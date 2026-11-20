@@ -157,6 +157,8 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
           OR COALESCE(al.fx_idr_per_usd,ap.fx_idr_per_usd,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
         WHEN l.storebat_elig IS NOT NULL OR l.pv_storebat_product_id IS NOT NULL OR sb.id IS NOT NULL THEN
           sb.id IS NULL OR (sb.status!='completed' AND COALESCE(sb.refunded_usd,0)<=0 AND l.fi_delivered=0)
+          OR COALESCE(sb.cost_usd,l.storebat_elig_cost,l.pv_storebat_cost*l.qty) IS NULL
+          OR COALESCE(sb.fx_idr_per_usd,l.storebat_elig_fx,l.pv_storebat_fx,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
         WHEN l.mirai_elig IS NOT NULL OR l.pv_mirai_package_code IS NOT NULL OR mr.id IS NOT NULL THEN
           mr.id IS NULL OR (mr.status!='completed' AND l.fi_delivered=0)
           OR COALESCE(mr.cost_usdt,l.mirai_elig_cost,mp.cost_usdt*l.qty,l.pv_mirai_cost*l.qty) IS NULL
@@ -176,7 +178,7 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
         WHEN (l.storebat_elig IS NOT NULL OR l.pv_storebat_product_id IS NOT NULL OR sb.id IS NOT NULL)
               AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
           ROUND(MAX(0,COALESCE(sb.cost_usd,l.storebat_elig_cost,l.pv_storebat_cost*l.qty,0)-COALESCE(sb.refunded_usd,0))
-            * COALESCE(sb.fx_idr_per_usd,l.storebat_elig_fx,l.pv_storebat_fx,0))
+            * COALESCE(sb.fx_idr_per_usd,l.storebat_elig_fx,l.pv_storebat_fx,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END,0))
         WHEN (l.mirai_elig IS NOT NULL OR l.pv_mirai_package_code IS NOT NULL OR mr.id IS NOT NULL)
               AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
           ROUND(COALESCE(COALESCE(mr.cost_usdt,l.mirai_elig_cost,mp.cost_usdt*l.qty,l.pv_mirai_cost*l.qty),0)

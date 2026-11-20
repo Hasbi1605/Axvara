@@ -1,5 +1,10 @@
 # Aturan agent — MiraiAPI (18–19 November 2026)
 
+## Perbaikan audit H2 — 21 November 2026 (lokal)
+
+- Dispatch: pemulihan `GET /orders/{external_order_id}` untuk order yang `request_sent_at`-nya sudah terkirim kini berjalan **sebelum** gerbang varian aktif, sehingga order yang sudah dibeli tetap diterima walau varian dinonaktifkan/diarsipkan admin; POST baru tetap ditolak saat varian tidak aktif. Error transport GET setelah `attempt_count>=3` kini menghormati batas 24 jam dan naik ke `needs_admin` (`attempts_exhausted`), bukan `processing` selamanya.
+- Katalog: `projectMiraiCatalog` menulis `product_variants.min_qty` dari `min_quantity` paket dan mengetatkan `max_qty` ke batas supplier (tidak melonggarkan batas admin yang lebih ketat), serta mengosongkan `compare_price` bila harga proyeksi menyentuh/melampauinya. Status: implementasi lokal + test.
+
 ## Urutan `sort_order` saat insert pertama — 19 November 2026 (lokal)
 
 - Insert produk baru di `projectMiraiCatalog` memakai `buildSupplierProductInsertSql` (`src/lib/supplier/product-insert.ts`) untuk mengalokasikan `sort_order` ekor kategori (`MAX(sort_order)` produk non-arsip kategori yang sama, default `0`, `+ 10 × rank`). Baris existing tidak pernah diubah `sort_order`-nya saat re-sync; migrasi data `0143_supplier_products_category_tail.sql` memindahkan baris lama `<= 0` ke ekor kategori (menjaga satu slot per `product_group`).

@@ -1,5 +1,9 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Perbaikan audit H2 — 21 November 2026 (lokal)
+
+- Katalog: `projectStorebatCatalog` mengosongkan `compare_price` bila harga proyeksi menyentuh/melampauinya, selaras dengan handler markup. Ringkasan admin (`dashboard-report.ts`) memakai fallback kurs `crypto_market_snapshot.fx_rate_text` untuk baris StoreBat tanpa kurs per-baris/eligibility dan menandainya `estimated`, alih-alih mencatat modal 0. Status: implementasi lokal + test.
+
 ## Checkout Telegram dan kartu Made By Order — 20 November 2026 (lokal)
 
 - Untuk SB-60 (varian 34576, `max_qty=100`, stok 76), snapshot QRIS tunggal tidak menyertakan `max_qty`; resolver crypto juga tidak meneruskannya. `buyerSnapshotMatches` membandingkan `null` dengan `100`, membatalkan reservasi sebelum provider: QRIS salah melaporkan stok habis, crypto salah melaporkan metode gangguan. Web sudah menandatangani dan memeriksa batas qty. Kedua rail Telegram kini menyertakan konfigurasi dari varian server; bukan dari tombol pembeli.

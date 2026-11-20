@@ -1,5 +1,9 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Perbaikan audit H2 — 21 November 2026 (lokal)
+
+- Refresh topup SK setelah kegagalan baca channel (create berakhir `unknown` tanpa status/rentang tervalidasi) kini memanggil `fetchSkTopupChannels()` lagi dan menolak `channel_unavailable`/`amount_out_of_range` sebelum `POST v1/balance`, tidak lagi langsung repost. Status: implementasi lokal + test.
+
 ## Topup saldo SK dari admin — 20 November 2026 (keputusan owner, lokal)
 
 - Admin boleh membuat **invoice topup saldo reseller SK** dari AXVARA tanpa membuka web SK. AXVARA hanya membuat invoice + melacak status; **owner membayar sendiri** (link/QR). Tidak ada payout otomatis, tidak ada POST order/dispatch baru.

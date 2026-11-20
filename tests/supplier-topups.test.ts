@@ -255,6 +255,39 @@ describe("Sekalipay topup", () => {
     }
   });
 
+  it("H2-18: refresh re-validates channels before reposting after a channel-read failure", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubSkEnv();
+      const now = Date.UTC(2026, 10, 20, 8);
+      let channelsFail = true;
+      const posts: unknown[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: RequestInit) => {
+        const s = String(url);
+        if (s.includes("/sk/v1/balance/channels")) {
+          if (channelsFail) return new Response("{}", { status: 502 });
+          return Response.json({ data: [channel({ status: "off" })] });
+        }
+        if (s.includes("/sk/v1/balance")) { posts.push(init?.body); return Response.json({ data: skInvoice() }); }
+        throw new Error(`Unexpected fetch ${s}`);
+      }));
+      const db = createDatabaseAccess(fx.db);
+      await expect(
+        createSupplierTopup(db, { supplier: "sekalipay", code: "sk-topup", amount: 50_000 }, { now }),
+      ).rejects.toBeInstanceOf(SupplierTopupError);
+      const row = fx.sql.prepare("SELECT id,status FROM supplier_topups").get() as { id: number; status: string };
+      expect(row.status).toBe("unknown");
+
+      channelsFail = false;
+      const refreshed = await refreshSupplierTopup(db, row.id, { now: now + 11_000 });
+      expect(posts).toHaveLength(0);
+      expect(refreshed.status).toBe("failed");
+      expect(refreshed.error).toBe("channel_unavailable");
+    } finally {
+      fx.close();
+    }
+  });
+
   it("refresh matches the credit mutation invoice and marks paid", async () => {
     const fx = createD1Fixture();
     try {
@@ -424,6 +457,27 @@ describe("TUNVN topup", () => {
       paid = true;
       const late = await refreshSupplierTopup(db, created.id, { now: now + 140_000 });
       expect(late.status).toBe("paid");
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("H2-18: an undated invoice honours upstream status=expired", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubTunvnEnv();
+      const now = Date.UTC(2026, 10, 20, 8);
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+        if (String(url).includes("/api/deposit/status")) {
+          return Response.json({ success: true, deposit: { status: "expired" }, paid: false });
+        }
+        return Response.json(depositResponse({ expires_in_minutes: null }));
+      }));
+      const db = createDatabaseAccess(fx.db);
+      const created = await createSupplierTopup(db, { supplier: "tunvn", amount: 10 }, { now });
+      expect(created.expires_at).toBeNull();
+      const refreshed = await refreshSupplierTopup(db, created.id, { now: now + 11_000 });
+      expect(refreshed.status).toBe("expired");
     } finally {
       fx.close();
     }

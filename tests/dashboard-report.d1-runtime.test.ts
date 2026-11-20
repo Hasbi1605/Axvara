@@ -133,3 +133,24 @@ it("TUNVN and AIVault links/eligibility become their own supplier buckets at the
     fixture.close();
   }
 });
+
+it("H2-15: StoreBat cost without a per-row FX falls back to the D1 snapshot instead of zero", async () => {
+  const fixture = createD1Fixture();
+  try {
+    fixture.sql.exec(`
+      INSERT INTO products(id,name,slug,price,stock) VALUES (9,'StoreBat','storebat-fixture',20000,10);
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,storebat_product_id,storebat_cost_usd)
+        VALUES (9,9,'SB-121','StoreBat',20000,10,121,0.5);
+      INSERT INTO crypto_market_snapshot(id,fx_rate_text) VALUES (1,'16000.00');
+    `);
+    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,paid_at)
+      VALUES('SB-MAN','X','6280',?,20000,'qris','lunas','paid','web','2026-11-10T05:00:00Z')`)
+      .run(JSON.stringify([{ product_id: 9, variant_id: 9, name: "StoreBat", price: 20000, qty: 1 }]));
+    const report = await readSelectedFinancialReport({ date_from: "2026-11-10", date_to: "2026-11-10" }, new Date("2026-11-11T00:00:00Z"));
+    // 0.5 USD × 16.000 = Rp8.000 (before the fix this silently became 0).
+    expect(report.suppliers.storebat).toMatchObject({ orders: 1, revenue: 20000, cost: 8000, profit: 12000 });
+    expect(report.estimated_orders).toBe(1);
+  } finally {
+    fixture.close();
+  }
+});

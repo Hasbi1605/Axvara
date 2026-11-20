@@ -437,3 +437,14 @@ describe("generic family publication", () => {
     expect(budget.used).toBeLessThanOrEqual(25);
   });
 });
+
+it("H2-14: clears compare_price when the projected price rises above it", async () => {
+  supplier([upstreamProduct(86)]);
+  await publishTunvnCatalog(db(), RATE);
+  const before = fx.sql.prepare("SELECT price FROM product_variants WHERE sku='TUNVN-86'").get() as { price: number };
+  fx.sql.exec(`UPDATE product_variants SET compare_price=${Number(before.price) + 1} WHERE sku='TUNVN-86'`);
+  supplier([upstreamProduct(86, { price_usdt: 6, price_vnd: 155_000 })]);
+  expect(await publishTunvnCatalog(db(), RATE)).toMatchObject({ ok: true });
+  expect(fx.sql.prepare("SELECT price,compare_price FROM product_variants WHERE sku='TUNVN-86'").get())
+    .toEqual({ price: 146_500, compare_price: null });
+});

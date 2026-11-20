@@ -66,13 +66,14 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
     bulk_pricing_enabled=(SELECT json_extract(j.value,'$.bulk_enabled') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
     bulk_pricing_tiers=(SELECT json_extract(j.value,'$.bulk_tiers') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
     max_qty=CASE WHEN max_qty IS NULL OR max_qty > 100 THEN 100 ELSE max_qty END,
+    compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= (SELECT json_extract(j.value,'$.price') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id) THEN NULL ELSE compare_price END,
     updated_at=datetime('now')
     WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND sku='AV-'||aivault_service_id AND fulfillment_mode='manual' AND wr_variant_id IS NULL AND sk_variant_id IS NULL AND tunvn_buff_quantity_b IS NULL
     AND EXISTS(SELECT 1 FROM aivault_products m JOIN json_each(?) j ON m.service_id=json_extract(j.value,'$.service_id')
       WHERE m.service_id=product_variants.aivault_service_id AND m.axvara_product_id=product_variants.product_id
       AND product_variants.aivault_admin_price_idr IS json_extract(j.value,'$.admin_price') AND m.markup_percent IS json_extract(j.value,'$.markup')
       AND m.unit_price_usd IS json_extract(j.value,'$.unit_price') AND m.synced_at IS json_extract(j.value,'$.synced_at')
-      AND m.bulk_markup_tiers_json IS json_extract(j.value,'$.bulk_markup'))`,json,json,json,json);
+      AND m.bulk_markup_tiers_json IS json_extract(j.value,'$.bulk_markup'))`,json,json,json,json,json);
   await db.execRun(`UPDATE aivault_products SET sell_price_idr=(SELECT v.price FROM product_variants v WHERE v.aivault_service_id=aivault_products.service_id AND v.product_id=aivault_products.axvara_product_id),fx_idr_per_usd=? WHERE axvara_product_id IS NOT NULL`,fx);
   await db.execRun(`UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=products.id AND is_active=1),price),
     stock=COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=products.id AND is_active=1),0)

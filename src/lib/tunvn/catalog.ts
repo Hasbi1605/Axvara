@@ -246,6 +246,7 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
           const buffRes = await db.execRun(
             `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty) WITH archive_candidate(product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty) AS (VALUES (?,?,?,?, ?, 'manual', ?, ?, ?, ?, ?, ?, 'muse_invite_code',30)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products p WHERE p.id=archive_candidate.product_id AND p.archived_at IS NULL) ON CONFLICT(sku) DO UPDATE SET price=excluded.price, stock=excluded.stock, tunvn_cost_usdt=excluded.tunvn_cost_usdt,
                tunvn_markup_percent=excluded.tunvn_markup_percent, tunvn_fx_idr_per_usdt=excluded.tunvn_fx_idr_per_usdt,
+               compare_price=CASE WHEN product_variants.compare_price IS NOT NULL AND product_variants.compare_price <= excluded.price THEN NULL ELSE product_variants.compare_price END,
                updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products p WHERE p.id=product_variants.product_id AND p.archived_at IS NULL) AND product_variants.tunvn_markup_percent IS ? AND product_variants.tunvn_admin_price_idr IS ?`,
             museId, sku, `Buff Token Muse AI per ${quantityB}B`, sell, stock, keepActive,
             9 + TUNVN_BUFF_VARIANT_B.indexOf(quantityB) + 1, quantityB, costUsdt, markup, idrPerUsdt,
@@ -347,7 +348,9 @@ ON CONFLICT(sku) DO UPDATE SET tunvn_source_product_id=excluded.tunvn_source_pro
   WHERE product_variants.tunvn_source_product_id IS NULL`;
 
 const UPDATE_VARIANTS_SQL = `UPDATE product_variants AS pv
-SET price=json_extract(j.value,'$.price'), stock=json_extract(j.value,'$.stock'), updated_at=datetime('now')
+SET price=json_extract(j.value,'$.price'), stock=json_extract(j.value,'$.stock'),
+  compare_price=CASE WHEN pv.compare_price IS NOT NULL AND pv.compare_price <= json_extract(j.value,'$.price') THEN NULL ELSE pv.compare_price END,
+  updated_at=datetime('now')
 FROM json_each(?) AS j
 WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=pv.product_id AND archive_parent.archived_at IS NULL) AND pv.id=json_extract(j.value,'$.vid') AND pv.tunvn_source_product_id IS NOT NULL
   AND pv.tunvn_admin_price_idr IS json_extract(j.value,'$.admin_price')

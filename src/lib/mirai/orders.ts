@@ -433,6 +433,31 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
 
     await encryptSecret("mirai-encryption-preflight");
 
+    // Recovery after a previous POST attempt: always GET /orders/{external_order_id} first.
+    if (link.request_sent_at) {
+      if (Date.now() >= deadlineMs) {
+        await settle(db, link, "processing", "lookup_deferred");
+        return { claimed: true, rateLimited: false };
+      }
+      const lookup = await getMiraiOrder(String(link.external_order_id));
+      if (lookup.status === 429) rateLimited = true;
+      if (lookup.status === 200) {
+        if (!(await saveReceipt(db, link, lookup))) return { claimed: true, rateLimited };
+        if (!(await interpret(db, link, lookup))) await deferRetry(db, link, lookup.retryAfterSeconds);
+        return { claimed: true, rateLimited };
+      }
+      if (lookup.status === 429 || lookup.status >= 500) {
+        await deferRetry(db, link, lookup.retryAfterSeconds);
+        return { claimed: true, rateLimited };
+      }
+      if (lookup.status !== 404) {
+        await settle(db, link, "needs_admin", `http_${lookup.status}`);
+        return { claimed: true, rateLimited };
+      }
+    }
+
+    // The active-sale gate only guards a NEW/replayed POST. Any POST already sent
+    // was recovered above via GET and must never be stranded by a disabled variant.
     const variant = await db.queryFirst(
       `SELECT pv.*, p.source, p.is_active AS product_active, p.archived_at,
          p.mirai_family, p.wr_product_id, p.sk_product_id, p.wr_auto_managed, p.sk_auto_managed,
@@ -467,29 +492,6 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     ) {
       await settle(db, link, "needs_admin", "source_changed");
       return { claimed: true, rateLimited: false };
-    }
-
-    // Recovery after a previous POST attempt: always GET /orders/{external_order_id} first.
-    if (link.request_sent_at) {
-      if (Date.now() >= deadlineMs) {
-        await settle(db, link, "processing", "lookup_deferred");
-        return { claimed: true, rateLimited: false };
-      }
-      const lookup = await getMiraiOrder(String(link.external_order_id));
-      if (lookup.status === 429) rateLimited = true;
-      if (lookup.status === 200) {
-        if (!(await saveReceipt(db, link, lookup))) return { claimed: true, rateLimited };
-        if (!(await interpret(db, link, lookup))) await deferRetry(db, link, lookup.retryAfterSeconds);
-        return { claimed: true, rateLimited };
-      }
-      if (lookup.status === 429 || lookup.status >= 500) {
-        await deferRetry(db, link, lookup.retryAfterSeconds);
-        return { claimed: true, rateLimited };
-      }
-      if (lookup.status !== 404) {
-        await settle(db, link, "needs_admin", `http_${lookup.status}`);
-        return { claimed: true, rateLimited };
-      }
     }
 
     if (Number(link.attempt_count) >= 3) {
@@ -608,7 +610,9 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
   } catch {
     // Fixed metadata only; provider bodies/keys/redeem codes never enter logs/errors.
     if (sent || link.request_sent_at) {
-      await deferRetry(db, link, undefined, true).catch(() => {});
+      // Only a failed POST may stay in "processing" forever; a failed GET recovery
+      // must still honour the 24h cap once attempts are exhausted.
+      await deferRetry(db, link, undefined, sent).catch(() => {});
     } else {
       await settle(db, link, "needs_admin", "preflight_unavailable").catch(() => {});
     }

@@ -181,3 +181,13 @@ it("allocates distinct category-tail sort_order (+10 each after non-archived max
     { storebat_family: "chatgpt-go", sort_order: 520 },
   ]);
 });
+
+it("H2-14: clears compare_price when FX pushes the projected price above it",async()=>{
+  const db=createDatabaseAccess(f.db);
+  await publishStorebatCatalog(db,20000,{force:true});
+  const before=f.sql.prepare("SELECT price FROM product_variants WHERE sku='SB-121'").get() as {price:number};
+  f.sql.exec(`UPDATE product_variants SET compare_price=${Number(before.price)+1} WHERE sku='SB-121'`);
+  expect(await publishStorebatCatalog(db,25000,{force:true})).toMatchObject({ok:true});
+  expect(f.sql.prepare("SELECT price,compare_price FROM product_variants WHERE sku='SB-121'").get())
+    .toEqual({price:16900,compare_price:null});
+});

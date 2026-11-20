@@ -63,7 +63,7 @@ export async function projectStorebatCatalog(db: DatabaseAccess, fx: number, lea
       SELECT p.id,${STOREBAT_SKU_SQL("j.value->>'id'")},j.value->>'label',j.value->>'price',j.value->>'stock','manual',0,j.value->>'id',j.value->>'markup',j.value->>'cost',j.value->>'fx',j.value->>'max_qty',j.value->>'buyer_field',j.value->>'admin_terms',j.value->>'admin_terms_en',j.value->>'admin_activation',j.value->>'admin_activation_en'
       FROM json_each(?) j JOIN products p ON p.storebat_family=j.value->>'key' WHERE j.value->>'create'=1 AND p.archived_at IS NULL AND ${owned}
       ON CONFLICT DO NOTHING`).bind(json),
-    d1.prepare(`UPDATE product_variants AS v SET price=j.value->>'price',stock=j.value->>'stock',storebat_cost_usd=j.value->>'cost',storebat_fx_idr_per_usd=j.value->>'fx',updated_at=datetime('now')
+    d1.prepare(`UPDATE product_variants AS v SET price=j.value->>'price',stock=j.value->>'stock',storebat_cost_usd=j.value->>'cost',storebat_fx_idr_per_usd=j.value->>'fx',compare_price=CASE WHEN v.compare_price IS NOT NULL AND v.compare_price <= CAST(j.value->>'price' AS INTEGER) THEN NULL ELSE v.compare_price END,updated_at=datetime('now')
       FROM json_each(?) j JOIN products p ON p.storebat_family=j.value->>'key'
       WHERE p.id=v.product_id AND p.archived_at IS NULL AND ${owned} AND v.id=j.value->>'variant_id' AND v.storebat_product_id=j.value->>'id'
         AND v.sku=${STOREBAT_SKU_SQL("v.storebat_product_id")} AND v.fulfillment_mode='manual'

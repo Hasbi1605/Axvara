@@ -206,3 +206,58 @@ it("accepts the live delivered GET shape without external_order_id or success",a
   expect(link()).toMatchObject({status:"completed",provider_order_id:"API1VLJZG0"});expect(buys()).toHaveLength(1);
   const fi=f.sql.prepare("SELECT * FROM fulfillment_items").get()!;expect(await decryptSecret(String(fi.delivered_ciphertext),String(fi.delivered_iv))).toBe(fakeRedeemUrl);
 });
+
+it("H2-1: idempotent replay completes after the variant is disabled post-timeout",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});timeout=true;await tick();
+  expect(link()).toMatchObject({status:"pending",attempt_count:1,request_sent_at:expect.any(String)});
+  f.sql.exec("UPDATE product_variants SET is_active=0");
+  timeout=false;stock=0;fundable=false;post={...post,idempotent_replay:true};due();await tick();
+  expect(buys()).toHaveLength(2);
+  expect(link()).toMatchObject({status:"completed",attempt_count:2});
+});
+
+it("H2-10: a transient D1 fault at the job-queue step on attempt 3 keeps the sealed receipt",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});
+  const {createAivaultOrderLinks}=await import("@/lib/aivault/orders");
+  await createAivaultOrderLinks(code,createDatabaseAccess(f.db));
+  f.sql.exec("UPDATE aivault_order_links SET attempt_count=2, request_sent_at=datetime('now')");
+  f.control.fail=q=>q.includes("UPDATE fulfillment_jobs SET status='queued'");
+  await tick();
+  f.control.fail=null;
+  expect(buys()).toHaveLength(1);
+  expect(link()).toMatchObject({status:"processing",provider_order_id:"API_TEST",attempt_count:3});
+  const fi=f.sql.prepare("SELECT status,delivered_ciphertext FROM fulfillment_items").get()!;
+  expect(fi.status).toBe("queued");
+  expect(fi.delivered_ciphertext).toBeTruthy();
+  due();await tick();
+  expect(link().status).toBe("completed");
+});
+
+it("H2-9: HTTP 429 on quote stops the batch after the first link",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});
+  insertTestOrder(f.sql,`${code}B`,{status:"lunas",channel:"web",items:[item()]});
+  const original=vi.mocked(fetch).getMockImplementation()!;
+  let quoteCalls=0;
+  vi.mocked(fetch).mockImplementation(async (url,init)=>{
+    if(new URL(String(url)).pathname.endsWith("/quote")){quoteCalls++;return new Response("",{status:429});}
+    return original(url,init);
+  });
+  // Large budget so only the 429 stop (not the statement budget) can end the loop.
+  await processAivaultOrders(createBudgetedDatabase(200,2,f.db).access);
+  expect(buys()).toHaveLength(0);
+  expect(quoteCalls).toBe(1);
+});
+
+it("H2-11: invalid orphan snapshots cannot starve a valid younger orphan",async()=>{
+  for(let i=0;i<8;i++){
+    const bad=item();
+    (bad.aivault_eligibility as Record<string,unknown>).quantity=2;
+    insertTestOrder(f.sql,`${code}-BAD${i}`,{status:"lunas",channel:"web",items:[bad]});
+  }
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});
+  await tick();
+  const good=f.sql.prepare("SELECT * FROM aivault_order_links WHERE order_code=?").get(code);
+  expect(good).toBeTruthy();
+  expect(good?.status).toBe("completed");
+  expect(f.sql.prepare("SELECT COUNT(*) n FROM aivault_order_links").get()?.n).toBe(1);
+});

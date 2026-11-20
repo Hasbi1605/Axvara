@@ -427,3 +427,29 @@ describe("Buff accepted is not delivered",()=>{
     expect(await processItem(order,item)).toBe(true);expect(buys()).toBe(1);expect(item.delivered_ciphertext).toBeNull();
   });
 });
+
+it("H2-9: a 429 on the catalog preflight stops the batch after the first link", async () => {
+  const first = seed([account()], "AXV-20261110-RATE429A");
+  seed([account()], "AXV-20261110-RATE429B");
+  transport.mockImplementation(async (url) => {
+    if (new URL(String(url)).pathname === "/api/products") return new Response("", { status: 429 });
+    throw new Error("Unexpected fixture request");
+  });
+  await tick();
+  expect(buys()).toBe(0);
+  expect(transport.mock.calls.filter(([u]) => new URL(String(u)).pathname === "/api/products")).toHaveLength(1);
+  expect(fixture.sql.prepare("SELECT status,last_error FROM tunvn_order_links WHERE order_code=?").get(first.code))
+    .toMatchObject({ status: "needs_admin", last_error: "catalog_unavailable" });
+});
+
+it("H2-8: handover is blocked by an unbound active TUNVN link", async () => {
+  const order = seed();
+  await ensureFulfillmentItems(order);
+  fixture.sql.exec("UPDATE fulfillment_items SET status='manual_required'");
+  fixture.sql.exec(`INSERT INTO tunvn_order_links(order_code,item_index,variant_id,product_id,kind,source_product_id,quantity,cost_usdt,status)
+    VALUES('${order.code}',0,1,1,'account',86,1,2,'pending')`);
+  const { recordManualHandoverDetailed } = await import("@/lib/fulfillment/delivery/handover");
+  const result = await recordManualHandoverDetailed(String(order.code), 0, "fixture@example.test");
+  expect(result.ok).toBe(false);
+  expect(fixture.sql.prepare("SELECT status FROM fulfillment_items").get()?.status).toBe("manual_required");
+});
