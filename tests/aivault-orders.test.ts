@@ -58,6 +58,21 @@ it.each(["unpaid","disabled","wrong_sku","legacy","source","inactive"])("never b
 it("admin can retry a pre-send balance failure without changing identity",async()=>{
   insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;await tick();expect(link()).toMatchObject({status:"needs_admin",attempt_count:0,request_sent_at:null});fundable=true;expect(await retryAivaultOrder(createDatabaseAccess(f.db),Number(link().id))).toBe(true);expect(link().status).toBe("completed");
 });
+it("momentary stock 0 auto-retries preflight (separate counter), 5th failure needs admin, manual retry resets",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});stock=0;await tick();
+  expect(link()).toMatchObject({status:"pending",last_error:"stock_unavailable",preflight_attempts:1,attempt_count:0,request_sent_at:null});
+  expect(f.sql.prepare("SELECT status FROM fulfillment_items").get()).not.toMatchObject({status:"manual_required"});
+  for(const n of [2,3,4]){due();await tick();expect(link()).toMatchObject({status:"pending",preflight_attempts:n});}
+  due();await tick();expect(link()).toMatchObject({status:"needs_admin",last_error:"stock_unavailable",preflight_attempts:4,attempt_count:0});
+  expect(f.sql.prepare("SELECT status FROM fulfillment_items").get()).toMatchObject({status:"manual_required"});expect(buys()).toHaveLength(0);
+  stock=10;expect(await retryAivaultOrder(createDatabaseAccess(f.db),Number(link().id))).toBe(true);expect(link()).toMatchObject({status:"completed",preflight_attempts:0});
+});
+it("stock recovering during auto-retry completes the order without admin",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});stock=0;await tick();expect(link().status).toBe("pending");stock=10;due();await tick();expect(link().status).toBe("completed");expect(buys()).toHaveLength(1);
+});
+it("insufficient balance stays an immediate needs_admin without preflight retries",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;await tick();expect(link()).toMatchObject({status:"needs_admin",last_error:"insufficient_balance",preflight_attempts:0});
+});
 it("concurrent admin retry queues only the supplier-settled winner",async()=>{
   insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;await tick();fundable=true;
   f.sql.prepare("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')").run();queued.mockClear();

@@ -51,6 +51,13 @@ async function settle(db: DatabaseAccess, link: Row, status: string, error: stri
   if (!result.changes) return;
   if (status === "needs_admin") await db.execRun("UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL WHERE aivault_link_id=? AND status NOT IN ('delivered','sending') AND EXISTS(SELECT 1 FROM aivault_order_links WHERE id=? AND status='needs_admin' AND lease_owner IS NULL)",link.id,link.id);
 }
+/** Pre-send failures (no POST yet): auto re-preflight 5x over ~30 min (2,4,8,16 min) before needs_admin; attempt_count untouched. */
+async function retryPreflight(db: DatabaseAccess, link: Row, error: string) {
+  const n=Number(link.preflight_attempts ?? 0)+1;
+  if (n>=5) return settle(db,link,"needs_admin",error);
+  await db.execRun(`UPDATE aivault_order_links SET preflight_attempts=?,status='pending',last_error=?,lease_owner=NULL,lease_expires_at=NULL,
+    next_attempt_at=datetime('now','+'||?||' minutes'),updated_at=datetime('now') WHERE id=? AND lease_owner=? AND status!='completed'`,n,error,2**n,link.id,link.lease_owner);
+}
 async function deferRetry(db: DatabaseAccess, link: Row) {
   await settle(db,link,Number(link.attempt_count)>=3 ? "needs_admin" : "pending", Number(link.attempt_count)>=3 ? "attempts_exhausted" : "retry_same_external_id");
 }
@@ -147,7 +154,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     else if (q.stock<Number(link.quantity)) error="stock_unavailable";
     else if (!q.sufficient_balance) error="insufficient_balance";
     else if (q.price_conflict) error="price_conflict";
-    if (error) { await settle(db,link,"needs_admin",error); return { claimed: true, rateLimited }; }
+    if (error) { await (["quote_unavailable","stock_unavailable"].includes(error) ? retryPreflight(db,link,error) : settle(db,link,"needs_admin",error)); return { claimed: true, rateLimited }; }
     }
     if (Date.now()>=deadlineMs) { await settle(db,link,"pending","dispatch_deferred"); return { claimed: true, rateLimited: false }; }
     const fenced=await db.execRun(`UPDATE aivault_order_links SET request_sent_at=COALESCE(request_sent_at,?),attempt_count=attempt_count+1,receipt_ciphertext=NULL,receipt_iv=NULL,receipt_http_status=NULL
@@ -165,13 +172,13 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     // Fixed metadata only; provider bodies/credentials never enter logs/errors.
     if (link.provider_order_id) await settle(db,link,"processing","poll_unavailable").catch(()=>{});
     else if (sent || link.request_sent_at) await deferRetry(db,link).catch(()=>{});
-    else await settle(db,link,"needs_admin","preflight_unavailable").catch(()=>{});
+    else await retryPreflight(db,link,"preflight_unavailable").catch(()=>{});
   }
   return { claimed: true, rateLimited };
 }
 export async function retryAivaultOrder(db: DatabaseAccess, id: number): Promise<boolean> {
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled() || !db.canSpend(30)) return false;
-  const r=await db.execRun(`UPDATE aivault_order_links SET status='pending',last_error=NULL,next_attempt_at=datetime('now'),lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND ${AIVAULT_RETRYABLE_SQL}`,id);
+  const r=await db.execRun(`UPDATE aivault_order_links SET status='pending',last_error=NULL,preflight_attempts=0,next_attempt_at=datetime('now'),lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND ${AIVAULT_RETRYABLE_SQL}`,id);
   if (!r.changes) return false;
   await processLink(db,id); return true;
 }

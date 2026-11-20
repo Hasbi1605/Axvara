@@ -2506,3 +2506,6 @@ WHEN OLD.mirai_package_code IS NOT NEW.mirai_package_code OR OLD.mirai_cost_usdt
     SELECT m.group_id,lower(hex(randomblob(16))),1 FROM product_group_members m WHERE m.product_id IN (OLD.product_id,NEW.product_id) GROUP BY m.group_id
     ON CONFLICT(group_id) DO UPDATE SET version=excluded.version,pending=1;
 END;
+
+-- Migration 0150: percobaan preflight AIVault otomatis (20 November 2026).
+ALTER TABLE aivault_order_links ADD COLUMN preflight_attempts INTEGER NOT NULL DEFAULT 0;

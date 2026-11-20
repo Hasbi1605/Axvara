@@ -603,10 +603,15 @@ export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAc
   return Boolean(sent?.ok);
 }
 
-/** Order web lunas dalam 6 jam terakhir yang notif adminnya belum terkirim (retry cron). */
+/** Order web lunas dalam 6 jam terakhir yang notif adminnya belum terkirim (retry cron).
+ * Timeout ambigu: Telegram bisa menahan lalu tetap mengirim pesan (insiden 20 Nov 2026 —
+ * Bot API hang ±20 menit, retry tiap run cron tiba bersamaan sebagai spam). Gagal karena
+ * timeout baru diulang setelah 20 menit; gagal pasti (ditolak) tetap diulang tiap run. */
+export const WEB_PAID_ADMIN_TIMEOUT_BACKOFF = "-20 minutes";
 export const WEB_PAID_ADMIN_PENDING_WHERE = `o.sales_channel='web' AND o.status='lunas' AND o.payment_status='paid'
   AND julianday(COALESCE(o.paid_at, o.updated_at)) >= julianday('now','-6 hours')
-  AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key='admin-paid:' || o.code AND b.status='sent')`;
+  AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key='admin-paid:' || o.code AND (b.status='sent'
+    OR (b.status='failed' AND b.error='Request timeout' AND julianday(b.updated_at) > julianday('now','${WEB_PAID_ADMIN_TIMEOUT_BACKOFF}'))))`;
 
 /** Retry best-effort Telegram notifications from the five-minute operations cron.
  *

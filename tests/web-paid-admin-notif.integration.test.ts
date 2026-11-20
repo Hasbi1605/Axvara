@@ -108,7 +108,7 @@ describe("notif Pembayaran diterima — Web ke grup admin", () => {
     expect(ledger()?.error).toContain("terkirim tanpa tombol: Bad Request");
   });
 
-  it("timeout → tidak dikirim ulang seketika (bisa dobel); cron mengirim ulang lalu berhenti", async () => {
+  it("timeout → tidak dikirim ulang seketika (bisa dobel); cron menunggu 20 menit, mengirim ulang lalu berhenti", async () => {
     const { sendMessage } = await import("@/lib/telegram/api");
     vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
     await paidWebOrder();
@@ -116,6 +116,13 @@ describe("notif Pembayaran diterima — Web ke grup admin", () => {
     expect(await adminMessages()).toHaveLength(1);
     expect(ledger()).toMatchObject({ status: "failed", error: "Request timeout" });
 
+    // Insiden 20 Nov 2026: Telegram menahan pesan yang timeout lalu tetap mengirimnya;
+    // retry tiap run cron menumpuk jadi spam. Belum 20 menit → tidak dikirim ulang.
+    const early = await cron();
+    expect(early.telegram_paid_admin_web_notifications_retried ?? 0).toBe(0);
+    expect(await adminMessages()).toHaveLength(1);
+
+    fixture.sql.prepare("UPDATE buyer_notice_log SET updated_at=datetime('now','-21 minutes') WHERE idempotency_key=?").run(`admin-paid:${CODE}`);
     const first = await cron();
     expect(first.telegram_paid_admin_web_notifications_retried).toBe(1);
     expect(await adminMessages()).toHaveLength(2);

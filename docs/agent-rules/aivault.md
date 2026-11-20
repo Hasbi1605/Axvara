@@ -1,5 +1,10 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Auto-retry preflight stok/quote — 20 November 2026 (keputusan owner)
+
+- Insiden 20 Nov: order Gemini 6M `AXV-20261120-9849706E` jatuh `needs_admin`/`stock_unavailable` karena `/quote` sesaat melaporkan stok kurang, padahal mirror (dan stok sesudahnya) 2.301; Retry manual lalu sukses dan terkirim.
+- Kini `quote_unavailable`, `stock_unavailable` dan `preflight_unavailable` (belum ada POST beli) dicoba ulang otomatis lewat `preflight_attempts` (migrasi0150): backoff 2/4/8/16 menit, kegagalan ke-5 baru `needs_admin`. Selama menunggu, `fulfillment_items` tidak diubah ke `manual_required`. `insufficient_balance`/`price_conflict` tetap langsung `needs_admin`; Retry manual me-reset penghitung. Implementasi lokal; publikasi via CI.
+
 ## Salinan Duolingo Super + cek duplikat migrasi — 20 November 2026
 
 - Migrasi `0146_aivault_duolingo_copy.sql` mengisi deskripsi ID/EN produk dan S&K + cara aktivasi ID/EN varian `service_duolingo_12m` (gaya StoreBat `duolingo-sb` + aturan supplier: garansi hold link 5 hari, satu kali redeem, akun tanpa Super berbayar aktif; tanpa klaim VPN India karena supplier tidak menyebutnya). Hanya menimpa template bawaan/kolom kosong.

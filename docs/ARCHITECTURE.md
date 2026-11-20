@@ -3032,9 +3032,14 @@ atau retry. Notif Telegram/WA memakai `||` sehingga tetap jalan.
 - URL tombol lewat `siteOrigin()` (`src/lib/site-url.ts`), selalu absolut. Tombol WA
   (`webPaidAdminKeyboard`) hanya dipasang untuk nomor `62…` yang valid. Bila Telegram tetap
   menolak tombol (400 Bad Request), pesan dikirim ulang **tanpa tombol**. Timeout tidak diulang
-  seketika (pesan bisa saja sudah sampai); cron yang mengulang.
+  seketika (pesan bisa saja sudah sampai); cron yang mengulang, tetapi ledger `failed` dengan
+  error `Request timeout` baru diulang setelah 20 menit (`WEB_PAID_ADMIN_TIMEOUT_BACKOFF`,
+  20 November 2026): saat Bot API hang, Telegram menahan pesan yang timeout lalu tetap
+  mengirimnya, sehingga retry tiap run cron tiba bersamaan sebagai spam. Gagal pasti
+  (ditolak/error lain) tetap diulang tiap run.
 - Cron `operations` (fase notify) menghitung `paid_admin_web` dengan
-  `WEB_PAID_ADMIN_PENDING_WHERE`: order web lunas dalam 6 jam terakhir tanpa ledger `sent`.
+  `WEB_PAID_ADMIN_PENDING_WHERE`: order web lunas dalam 6 jam terakhir tanpa ledger `sent`
+  (dan bukan timeout <20 menit).
   `retryPendingTelegramNotifications` menerima `paidAdminWeb`; pemanggil lama yang memberi
   `only` tanpa kunci ini tidak membaca antrean web (anggaran query RR3-01). Order lama
   (>6 jam) tidak pernah dikirim ulang, jadi deploy tidak membanjiri grup.
@@ -6372,6 +6377,13 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   `product_variants.aivault_service_id/aivault_admin_price_idr`,
   `fulfillment_items.aivault_link_id` beserta indeks unik/due. Tidak mengubah
   identitas/order TUNVN/WR/SK atau mengaktifkan katalog.
+- Migrasi `0150_aivault_preflight_retries.sql` (20 November 2026) menambah
+  `aivault_order_links.preflight_attempts` (default 0). Kegagalan sebelum POST
+  beli (`quote_unavailable`, `stock_unavailable`, `preflight_unavailable`)
+  kembali `pending` dengan backoff 2/4/8/16 menit; kegagalan ke-5 baru
+  `needs_admin` (kode error sama). `attempt_count` tetap hanya POST nyata, jadi
+  Retry manual (`AIVAULT_RETRYABLE_SQL`) tetap berlaku dan me-reset penghitung.
+  `insufficient_balance`/`price_conflict` tetap langsung `needs_admin`.
 - Catalog sync json_each chunk50, publisher jumlah statement tetap dengan
   lease90detik/throttle2menit dan CAS markup/manual/snapshot. Product copy,
   kategori (mapSkCategory), gambar kandidat existing dan label ditulis sekali.
