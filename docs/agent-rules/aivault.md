@@ -1,5 +1,10 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Salinan Duolingo Super + cek duplikat migrasi — 20 November 2026
+
+- Migrasi `0146_aivault_duolingo_copy.sql` mengisi deskripsi ID/EN produk dan S&K + cara aktivasi ID/EN varian `service_duolingo_12m` (gaya StoreBat `duolingo-sb` + aturan supplier: garansi hold link 5 hari, satu kali redeem, akun tanpa Super berbayar aktif; tanpa klaim VPN India karena supplier tidak menyebutnya). Hanya menimpa template bawaan/kolom kosong.
+- Cek baca-saja produksi 20 Nov sesudah migrasi host: tidak ada duplikat AIVault (tiap `aivault_service_id` 1 varian, tiap `aivault_family` 1 produk); migrasi host tidak membuat produk baru karena `service_id` identik.
+
 ## Family eksplisit Duolingo Super + foto — 20 November 2026
 
 - Permintaan owner: produk fallback `Duolingo Super 12M` (id51946, tanpa foto) dipasangi foto. `families.ts` menambah family `duolingo` → "Duolingo Super", slug `duolingo-super-av`, label "Super 12 Bulan", kandidat gambar `duolingo-sk`/`duolingo-sb`. Migrasi `0145_aivault_duolingo_family.sql` mengikuti guard 0125 (hanya baris fallback nonaktif, foto/deskripsi/label hanya bila masih bawaan). Cek baca-saja produksi 20 Nov: guard tepat 1 produk + 1 varian. Produk tetap nonaktif; aktivasi dan salinan deskripsi milik admin.

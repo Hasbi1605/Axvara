@@ -1,5 +1,9 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+
+## Arsip produk ganda #118 — 20 November 2026
+
+- 19 Nov 2026 supplier sempat menayangkan #118 "MUSE AI 1B - GMAIL (W2D)" (nama identik #111, yang sudah menjadi varian `TUNVN-111` "Akun 1B Token (garansi 2 hari)" di produk Muse AI owner id112), lalu menghapusnya lagi (mirror stok 0, tersembunyi, `synced_at` berhenti). Karena #118 tidak ada di `families.ts`, publisher membuat fallback 1:1 id51944 `muse-ai-1b-gmail-w2d-tunvn`. Migrasi `0147_tunvn_archive_duplicate_118.sql` mengarsipkannya (setara tombol hapus admin) hanya bila masih nonaktif dan mirror #118 tetap stok 0 + tersembunyi. #118 sengaja tidak ditambahkan ke family Muse; bila supplier menayangkannya lagi dengan stok, tinjau dulu apakah pengganti #111.
 ## Resolusi manual turunan pasca-handover — 19 November 2026 (lokal)
 
 - Aturan turunan (tanpa mutasi link atau migrasi): link TUNVN, StoreBat, Mirai, atau AIVault dengan `status != 'completed'` yang baris `fulfillment_items`-nya `(order_code, item_index)` sudah `status = 'delivered'` diperlakukan sebagai selesai secara manual (`resolved_manually: true` di `GET /api/admin/orders` dan di keempat route Antrean `GET /api/admin/{tunvn,storebat,mirai,aivault}/orders`, berbagi predikat `resolvedManuallySql` di `src/lib/supplier/resolved-manually.ts`). Status-only metadata tetap terjaga tanpa receipt/invite.
