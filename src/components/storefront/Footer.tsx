@@ -36,10 +36,11 @@ const SOCIAL_LINKS: { key: SocialKey; label: string; href: string }[] = [
 ];
 
 /** `pediaLayout`: dirender oleh layout Pedia, sehingga path subdomain (`/p/x`) dinormalkan ke `/pedia/p/x`. */
-export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) {
+export function Footer({ pediaLayout = false, gamesLayout = false }: { pediaLayout?: boolean; gamesLayout?: boolean } = {}) {
   const shop = (path: string) => `${SITE.webUrl}${path}`;
   // URL kanonis subdomain: pedia.axvara.tech/lacak, bukan /pedia/lacak (2026-11-01).
   const pedia = (path: string) => `${SITE.pediaUrl}${path}`;
+  const orderGuide = gamesLayout ? `${SITE.gamesUrl}/bantuan` : pediaLayout ? pedia("/bantuan#cara-order") : shop("/cara-order");
   const pathname = usePathname();
   const storeSettings = useStoreSettings();
   const locale = useDisplayLocale();
@@ -152,7 +153,7 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
           <nav aria-label={t.footerHelpAria}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">{t.footerHelp}</p>
             <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
-              <li><Link prefetch={false} href={pediaLayout ? pedia("/bantuan#cara-order") : shop("/cara-order")} className="text-white/60 transition hover:text-white">{t.footerHowToOrder}</Link></li>
+              <li><Link prefetch={false} href={orderGuide} className="text-white/60 transition hover:text-white">{t.footerHowToOrder}</Link></li>
               <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">{t.footerTrackPedia}</Link></li>
               <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">{t.footerTrackMarket}</Link></li>
               <li><Link prefetch={false} href={`${SITE.gamesUrl}/lacak`} className="text-white/60 transition hover:text-white">{games.footerTrack}</Link></li>

@@ -4,8 +4,7 @@
 // dikutip langsung: apa AXVARA, cara beli & bayar, garansi, kontak, dan
 // produk yang SAAT INI bisa dibeli beserta harga mulai (dari D1, aturan
 // stok yang sama dengan katalog web & Telegram).
-import { queryAll } from "@/lib/db";
-import { purchasableStockSql } from "@/lib/catalog-availability";
+import { listIndexableProducts } from "@/lib/catalog-index";
 import { SITE } from "@/lib/site";
 import { SITE_BASE } from "@/lib/site-seo";
 import { formatRupiah } from "@/lib/utils";
@@ -16,15 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   let products: { slug: string; name: string; price: number; category: string | null }[] = [];
   try {
-    const rows = await queryAll(
-      `SELECT p.slug, p.name, MIN(pv.price) AS price, c.name AS category
-       FROM products p
-       JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1 AND ${purchasableStockSql("pv")}
-       LEFT JOIN categories c ON c.id=p.category_id
-       WHERE p.is_active=1
-       GROUP BY p.id
-       ORDER BY p.sort_order ASC, p.name ASC`,
-    );
+    const rows = await listIndexableProducts(true);
     products = rows.map((row) => ({
       slug: String(row.slug),
       name: String(row.name),
@@ -62,7 +53,7 @@ export async function GET() {
     `## Produk tersedia saat ini (${products.length})`,
     "",
     ...(products.length > 0
-      ? products.map((p) => `- [${p.name}](${SITE_BASE}/produk/${p.slug}): mulai ${formatRupiah(p.price)}${p.category ? ` · ${p.category}` : ""}`)
+      ? products.map((p) => `- [${p.name}](${SITE_BASE}/produk/${encodeURIComponent(p.slug)}): mulai ${formatRupiah(p.price)}${p.category ? ` · ${p.category}` : ""}`)
       : ["- Daftar produk sedang tidak dapat dimuat. Lihat katalog di situs."]),
     "",
   ];

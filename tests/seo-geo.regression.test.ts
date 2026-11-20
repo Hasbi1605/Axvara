@@ -141,6 +141,48 @@ describe("dengan D1", () => {
     expect(text).toContain("Produk tersedia saat ini (1)");
   });
 
+  it("uses canonical visible PDPs for sitemap and only buyable admitted prices for llms.txt", async () => {
+    const { JASPAY_LEGACY_PRODUCTS } = await import("@/lib/warung-rebahan/new-sales");
+    const insert = fx.sql.prepare("INSERT INTO products(id,name,slug,price,is_active,archived_at,wr_product_id) VALUES(?,?,?,1000,?,?,?)");
+    for (const [id, slug] of ["loser", "winner", "null-winner", "missing-winner", "inactive-winner", "archived-winner", "paused", "mixed", "archived", "inactive", "unique-empty", "unique-live", "no-variant"].map((slug, i) => [i + 10, slug] as const)) {
+      insert.run(id, slug, slug, id !== 19 ? 1 : 0, null, id === 16 ? JASPAY_LEGACY_PRODUCTS.zoom : id === 17 ? JASPAY_LEGACY_PRODUCTS.scribd : null);
+    }
+    fx.sql.exec(`INSERT INTO product_groups(id,name,winner_product_id) VALUES (1,'valid',11),(2,'null',NULL),(3,'missing',99),(4,'inactive',19),(5,'archived',18);
+      INSERT INTO product_group_members(group_id,product_id) VALUES (1,10),(1,11),(2,12),(3,13),(4,14),(5,15);
+      INSERT INTO wr_products(wr_product_id,wr_product_name) VALUES ('wr','WR');
+      INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_delivery_class) VALUES ('mbo','wr','MBO',1,'made_by_order');`);
+    const variant = fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id) VALUES(?,?,?,?,?,? ,?,?)");
+    for (let id = 10; id <= 21; id++) variant.run(id * 100, id, `s${id}`, "Variant", [16, 17].includes(id) ? 500 : 6000, -1, id >= 20 ? "unique" : "manual", [16, 17].includes(id) ? "mbo" : null);
+    variant.run(1701, 17, "mixed-ready", "Ready", 8000, 2, "manual", null);
+    // A stale archive row (e.g. imported historical data) must not be listed even if marked active.
+    fx.sql.exec("DROP TRIGGER archived_product_activation; UPDATE products SET archived_at='2026-11-21' WHERE id=18");
+    fx.sql.exec("INSERT INTO fulfillment_inventory(product_id,variant_id,secret_ciphertext,secret_iv,secret_fingerprint) VALUES(21,2100,'fixture','fixture','fixture')");
+
+    const { default: sitemap } = await import("@/app/sitemap");
+    const urls = (await sitemap()).map(entry => entry.url);
+    const slugs = urls.filter(url => url.includes("/produk/")).map(url => url.split("/").at(-1)).sort();
+    const { GET } = await import("@/app/llms.txt/route");
+    const text = await (await GET()).text();
+    const aiSlugs = [...text.matchAll(/\/produk\/([a-z-]+)\)/g)].map(match => match[1]).sort();
+    expect(slugs).toEqual(["archived-winner", "campur", "grosir-saja", "inactive-winner", "kosong", "missing-winner", "mixed", "null-winner", "unique-empty", "unique-live", "winner"]);
+    expect(aiSlugs).toEqual(["archived-winner", "campur", "inactive-winner", "missing-winner", "mixed", "null-winner", "unique-live", "winner"]);
+    expect(text).toMatch(/\/produk\/mixed\): mulai Rp\s*8\.000/);
+
+    const { default: pdp } = await import("@/app/(shop)/produk/[slug]/page");
+    await expect(pdp({ params: Promise.resolve({ slug: "loser" }) })).rejects.toThrow("NEXT_REDIRECT");
+    for (const slug of ["winner", "null-winner", "missing-winner", "inactive-winner", "archived-winner", "mixed"]) {
+      await expect(pdp({ params: Promise.resolve({ slug }) })).resolves.toBeTruthy();
+    }
+  });
+
+  it("keeps static sitemap URLs without resurrecting seed products after D1 failure", async () => {
+    vi.stubGlobal("DB", { prepare() { throw new Error("fixture unavailable"); } });
+    const { default: sitemap } = await import("@/app/sitemap");
+    const urls = (await sitemap()).map(entry => entry.url);
+    expect(urls).toContain("https://axvara.tech/cara-order");
+    expect(urls.some(url => url.includes("/produk/"))).toBe(false);
+  });
+
   it("artikel punya judul, canonical, dan gambar preview sendiri", async () => {
     fx.sql.prepare(`INSERT INTO articles(slug,title,excerpt,cover_url,content,status,published_at)
       VALUES('tips-ai','Tips Memilih Tools AI','Panduan singkat memilih tools AI.','/r2/articles/cover.webp','Isi','published','2026-09-20 03:00:00')`).run();

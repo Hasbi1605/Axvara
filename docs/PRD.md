@@ -1,5 +1,7 @@
 # PRD — AXVARA
 
+Panduan Market `/cara-order` (ID/EN, perbaikan lokal) menjelaskan WhatsApp aktif dan email wajib tanpa kolom nama, QRIS per order atau metode lain jika tampil, serta cek status otomatis. Detail siap tersedia di halaman pesanan dan melalui email; Lacak Pesanan memakai kode + kontak checkout, dengan PIN email bila diminta untuk membuka detail di perangkat lain. Ini bukan perubahan checkout atau pengiriman.
+
 ## Paritas checkout supplier Market — 20 November 2026 (SB-PAY-FIX, lokal)
 
 - Produk supplier yang memenuhi eligibilitas tetap berlabel otomatis di pemilihan varian, review Telegram, dan checkout Market web; kartu Made By Order tidak tampil untuk StoreBat/AIVault/Mirai/TUNVN yang eligible. Kelas antrean WR/SK dan manual lokal tidak berubah.

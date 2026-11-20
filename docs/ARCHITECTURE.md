@@ -1,5 +1,11 @@
 # ARCHITECTURE.md — AXVARA
 
+## Koreksi storefront FX-4 — 21 November 2026 (lokal)
+
+- Market `/sitemap.xml` dan `/llms.txt` memakai `src/lib/catalog-index.ts`: kecualikan produk arsip/nonaktif, varian yang ditahan kebijakan jual WR, dan slug yang dialihkan PDP ke winner aktif nonarsip. Sitemap tetap memuat produk habis yang tampil; harga AI memakai stok efektif (termasuk inventory unik) dan minimum pembelian. D1 gagal: jangan pakai seed.
+- Rewrite Pedia memakai route `/pedia/sitemap.xml` dan `/pedia/robots.txt`; URL dalam sitemap tanpa prefix `/pedia`. Beranda dan sitemap membaca katalog publik dari `src/lib/pedia/public-catalog.ts` lewat cache revisi yang sama dengan API. Beranda meneruskan ringkasan kartu/pencarian saja; API detail tetap utuh.
+- Footer Games menautkan panduan ke `/bantuan` di host Games. Dialog cabut token agent, hapus satu stok, hapus exclusion WR/SK, dan cabut tautan refund mengunci permintaan selama proses; endpoint dan otorisasi tidak berubah.
+
 ## Telegram TG-POLISH-B — 20 November 2026 (lokal)
 
 - `pmc:<nonce>[:<simbol>|:others]` membaca payq1 milik pembeli yang masih `quoted` dan belum kedaluwarsa; `pmb:<nonce>` kembali ke pemilih metode. Mengetuk jaringan tetap memakai `pm:<nonce>:<indeks asli>`, tanpa mutasi saat navigasi.

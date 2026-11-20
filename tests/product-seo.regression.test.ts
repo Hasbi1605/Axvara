@@ -45,12 +45,14 @@ const baseProduct: SeoProduct = {
 };
 
 describe("sitemap memakai produk aktif D1, bukan seed statis", () => {
-  it("tidak memakai seed sebagai sumber utama; hanya fallback bila D1 gagal", () => {
+  it("memakai daftar kanonis D1 bersama llms.txt, tanpa seed", () => {
     const src = read("src/app/sitemap.ts");
-    expect(src).not.toMatch(/^import .*@\/lib\/products/m);
-    expect(src).toMatch(/FROM products/i);
-    expect(src).toContain("p.is_active=1");
-    expect(src).toContain("pv.is_active=1");
+    expect(src).toContain("listIndexableProducts()");
+    expect(src).not.toMatch(/@\/lib\/products|seedProducts/);
+    const query = read("src/lib/catalog-index.ts");
+    expect(query).toMatch(/FROM products/i);
+    expect(query).toContain("p.is_active=1");
+    expect(query).toContain("pv.is_active=1");
     expect(src).toContain("updated_at");
   });
 
@@ -58,13 +60,6 @@ describe("sitemap memakai produk aktif D1, bukan seed statis", () => {
     expect(read("src/app/sitemap.ts")).not.toContain("#katalog");
   });
 
-  it("fallback seed hanya bila D1 gagal (bukan sumber utama)", () => {
-    const src = read("src/app/sitemap.ts");
-    const d1At = src.indexOf("FROM products");
-    const seedAt = src.indexOf("seedProducts");
-    expect(d1At).toBeGreaterThan(0);
-    expect(seedAt).toBeGreaterThan(d1At);
-  });
 });
 
 describe("PDP server-rendered dengan metadata per produk", () => {
