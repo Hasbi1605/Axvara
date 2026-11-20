@@ -1,9 +1,10 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
-### Anti-spam notifikasi admin Lunas — 21 November 2026 (berlaku setelah rilis CI)
+### Anti-spam notifikasi admin Lunas — 21 November 2026 (revisi pemulihan lokal, belum deploy)
 
-- Semua asal order (Web/Telegram/WhatsApp) memakai klaim D1 `admin-paid:<kode>` sebelum POST ke Telegram. D1 gagal → jangan kirim. Jangan reset/rebut `sending`, `unknown`, `admin-paid-timeout:<kode>`, atau `failed` warisan tanpa `access_retry_at`: pesan mungkin sudah diterima Telegram. Panel Pesanan adalah sumber status; tidak ada resend otomatis untuk hasil ambigu.
-- Cron lite/heavy dan probe notify memakai jendela lunas 6 jam. Hanya 400/401/403/404 dan 429 terstruktur membuka retry; 429 menunggu `retry_after` (minimum 60 detik). Web boleh satu fallback tanpa tombol untuk 400 dalam klaim yang sama. Rilis CI harus menerapkan migrasi 0152 lebih dulu; migrasi mempertahankan baris/indeks dan menambah `unknown` khusus ledger admin, bukan notifikasi pembeli.
+- Semua asal order (Web/Telegram/WhatsApp) memakai klaim D1 `admin-paid:<kode>` sebelum POST ke Telegram. D1 gagal → jangan kirim. Callback, fulfillment, dan route admin tidak boleh memulihkan `unknown`, `sending`, atau marker timeout lama. Panel Pesanan tetap sumber status.
+- Cron lite/heavy dan probe notify memakai jendela lunas 6 jam. `unknown`, `sending`, atau `admin-paid-timeout:<kode>` yang berumur ≥30 menit boleh satu pemulihan berlabel, hanya setelah `getMe` berhasil (maks. sekali/run, timeout 5 detik). CAS menghabiskan kesempatan (`access_attempts=1`) sebelum POST; jangan reset penghitung atau memulihkan hasil ambigu kedua. Pemulihan ini bisa menghasilkan satu salinan tambahan bila kirim awal ternyata sampai.
+- Penolakan terstruktur 400/401/403/404 dan 429 tetap memakai retry biasa tanpa cek `getMe`; 429 menunggu `retry_after` (minimum 60 detik). Web tetap boleh satu fallback tanpa tombol untuk 400 dalam klaim yang sama. `failed` warisan tanpa `access_retry_at` tetap dikarantina. Tidak ada migrasi baru di atas 0152; pembeli dan guard webhook tidak berubah.
 
 ### Alert saldo SK/WR fail-closed & ringkasan alarm cron kompak — 21 November 2026 (berlaku setelah rilis CI)
 

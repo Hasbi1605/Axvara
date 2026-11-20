@@ -11,6 +11,7 @@ import type {
   EditMessageCaptionParams,
   EditMessageReplyMarkupParams,
   TelegramMessage,
+  TelegramUser,
   WebhookInfo,
 } from "./types";
 import { applyButtonStyles } from "./button-style";
@@ -87,6 +88,10 @@ async function callApi<T>(
 
 export async function sendMessage(params: SendMessageParams): Promise<TelegramApiResponse<TelegramMessage>> {
   return callApi<TelegramMessage>("sendMessage", params as unknown as Record<string, unknown>);
+}
+
+export async function getMe(): Promise<TelegramApiResponse<TelegramUser>> {
+  return callApi<TelegramUser>("getMe", undefined, 5_000);
 }
 
 export { classifyTelegramSend, type TelegramSendOutcome } from "./send-outcome";

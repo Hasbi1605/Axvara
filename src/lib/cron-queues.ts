@@ -3,11 +3,20 @@ export const LEGACY_ADMIN_PAID_TIMEOUT_PREFIX = "admin-paid-timeout:";
 // A retry timestamp is only written for a proven Bot API rejection. Old
 // 'failed' rows have none: they may have been accepted and are quarantined.
 export const ADMIN_PAID_RETRY_DUE = `b.status='failed' AND julianday(b.access_retry_at) <= julianday('now')`;
-const PAID_ADMIN_PENDING = `o.status='lunas' AND o.payment_status='paid'
-  AND julianday(COALESCE(o.paid_at, o.updated_at)) >= julianday('now','-6 hours')
-  AND NOT EXISTS(SELECT 1 FROM buyer_notice_log bt WHERE bt.idempotency_key='${LEGACY_ADMIN_PAID_TIMEOUT_PREFIX}' || o.code)
-  AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key='${ADMIN_PAID_PREFIX}' || o.code
-    AND (${ADMIN_PAID_RETRY_DUE}) IS NOT TRUE)`;
+export const ADMIN_PAID_ORDER_WINDOW = `o.status='lunas' AND o.payment_status='paid'
+  AND julianday(COALESCE(o.paid_at, o.updated_at)) >= julianday('now','-6 hours')`;
+export const ADMIN_PAID_RECOVERY_DUE = `b.access_attempts=0 AND julianday(b.updated_at) <= julianday('now','-30 minutes')
+  AND (b.status IN ('unknown','sending') OR (b.status='failed' AND b.idempotency_key='${LEGACY_ADMIN_PAID_TIMEOUT_PREFIX}' || b.order_code))`;
+const adminKey = `'${ADMIN_PAID_PREFIX}' || o.code`;
+const legacyKey = `'${LEGACY_ADMIN_PAID_TIMEOUT_PREFIX}' || o.code`;
+// A canonical row, if present, wins over the legacy marker even when not due.
+export const ADMIN_PAID_RECOVERY_KEY = `(SELECT CASE WHEN ${ADMIN_PAID_RECOVERY_DUE} THEN b.idempotency_key END
+  FROM buyer_notice_log b WHERE b.idempotency_key IN (${adminKey}, ${legacyKey}) AND b.order_code=o.code
+  ORDER BY b.idempotency_key='${ADMIN_PAID_PREFIX}' || b.order_code DESC LIMIT 1)`;
+const PAID_ADMIN_PENDING = `${ADMIN_PAID_ORDER_WINDOW} AND (
+  (NOT EXISTS(SELECT 1 FROM buyer_notice_log bt WHERE bt.idempotency_key=${legacyKey})
+  AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key=${adminKey}
+    AND (${ADMIN_PAID_RETRY_DUE}) IS NOT TRUE)) OR ${ADMIN_PAID_RECOVERY_KEY} IS NOT NULL)`;
 export const WEB_PAID_ADMIN_PENDING_WHERE = `o.sales_channel='web' AND ${PAID_ADMIN_PENDING}`;
 export const CHAT_PAID_ADMIN_PENDING_WHERE = `o.sales_channel IN ('telegram','whatsapp')
   AND o.telegram_paid_admin_notified_at IS NULL AND ${PAID_ADMIN_PENDING}`;

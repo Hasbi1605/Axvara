@@ -3036,15 +3036,21 @@ atau retry. Notif Telegram/WA memakai `||` sehingga tetap jalan.
   setelah `sent`. Notifikasi pembeli tidak berubah.
 - URL tombol web tetap absolut via `siteOrigin()`; tombol WA hanya untuk nomor `62…` valid.
   Respons Bot API 400 pada pesan web bertombol memungkinkan tepat satu fallback dengan teks
-  sama **tanpa tombol** dalam klaim yang sama. Hanya penolakan Bot API 400/401/403/404 atau
-  429 membuka retry (`failed` dengan `access_retry_at`; 429 menunggu `retry_after`, min. 60 dtk).
+  sama **tanpa tombol** dalam klaim yang sama. Penolakan Bot API 400/401/403/404 atau
+  429 masuk jalur retry biasa (`failed` dengan `access_retry_at`; 429 menunggu `retry_after`, min. 60 dtk).
   Timeout, putus jaringan, JSON tak terbaca, 5xx, atau respons sukses tanpa `message_id`
-  menjadi `unknown`: tidak dikirim ulang otomatis. Klaim `sending` yang tertinggal, baris
-  `admin-paid-timeout:<kode>` dan `failed` warisan tanpa waktu retry juga tidak diklaim ulang.
-  Status `unknown` hanya diizinkan untuk kunci admin Telegram oleh migrasi 0152.
-- Cron lite dan `operations` (fase notify) hanya memilih order lunas ≤6 jam tanpa ledger
-  atau dengan `failed` yang sudah jatuh tempo. Probe `paid_admin_web`/`paid_admin` memakai
-  syarat yang sama (`src/lib/cron-queues.ts`).
+  menjadi `unknown` (diizinkan khusus ledger admin melalui migrasi 0152).
+- Pemulihan (implementasi lokal, belum deploy): hanya cron lite/`operations` (fase notify)
+  boleh mengulang `unknown`, `sending` yang tertinggal, atau `admin-paid-timeout:<kode>`
+  warisan, masing-masing setelah ≥30 menit dan selama order lunas ≤6 jam. Probe
+  `paid_admin_web`/`paid_admin` ikut menghitung kandidat. Sebelum klaim pemulihan pertama,
+  cron mengecek `getMe` sekali per run (timeout 5 dtk, tanpa D1); bila gagal, semua
+  pemulihan ditunda tanpa menghabiskan kesempatan. Kirim pertama dan retry penolakan tetap jalan.
+  CAS memeriksa ulang jendela dan lease baru mengunci `access_attempts=1`; marker timeout
+  warisan dipindah ke kunci kanonik dalam CAS yang sama. Pesan disusun ulang dengan baris awal
+  `🔁 Kirim ulang otomatis — abaikan bila notif lunas order ini sudah ada`. Label dipertahankan
+  bila penolakan pasti memerlukan retry biasa. Jika hasil kembali ambigu, tidak ada pemulihan
+  berikutnya. `failed` warisan tanpa waktu retry tetap dikarantina. Tidak ada migrasi baru.
   `retryPendingTelegramNotifications` menerima `paidAdminWeb`; pemanggil lama yang memberi
   `only` tanpa kunci ini tidak membaca antrean web (anggaran query RR3-01).
 - Dikunci oleh `tests/web-paid-admin-notif.integration.test.ts` (termasuk rute cron) dan

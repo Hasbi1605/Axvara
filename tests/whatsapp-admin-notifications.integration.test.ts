@@ -129,7 +129,7 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
   });
 
-  it("timeout kirim notif Lunas → unknown, tetap tidak diulang (insiden spam 2026-11-20)", async () => {
+  it("timeout kirim notif Lunas → unknown, tidak diulang dalam 30 menit", async () => {
     seedWhatsAppOrder("WA-TO", "lunas");
     fixture.sql.prepare("UPDATE orders SET telegram_order_notified_at=datetime('now') WHERE code='WA-TO'").run();
     const { sendMessage } = await import("@/lib/telegram/api");

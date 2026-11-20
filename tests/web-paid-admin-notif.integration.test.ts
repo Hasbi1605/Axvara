@@ -7,7 +7,7 @@
 // seluruh pesan, dan hasil kirim diabaikan. Dikunci di sini pada D1 nyata:
 //  - URL tombol selalu absolut walau SITE_URL kosong / tanpa skema;
 //  - tombol ditolak (400) → dikirim ulang tanpa tombol, alasan tercatat;
-//  - timeout → tidak pernah dikirim ulang, termasuk dari cron;
+//  - timeout → pemulihan bertanda hanya dari cron setelah 30 menit;
 //  - sekali per order; order lama (>6 jam) tidak dikirim ulang oleh cron;
 //  - order web tidak lagi mengirim "Order Baru" saat dibuat.
 import fs from "node:fs";
@@ -38,6 +38,9 @@ beforeEach(async () => {
   messages = [];
   telegramResponse = () => Response.json({ ok: true, result: { message_id: 1 } });
   vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
+    if (input === "https://api.telegram.org/botbot-test/getMe" && init?.method === "POST") {
+      return Response.json({ ok: true, result: { id: 17 } });
+    }
     if (input !== "https://api.telegram.org/botbot-test/sendMessage" || init?.method !== "POST") {
       throw new Error("Network disabled in fixture");
     }
@@ -112,24 +115,30 @@ describe("notif Pembayaran diterima — Web ke grup admin", () => {
     expect(ledger()?.error).toContain("terkirim tanpa tombol: Bad Request");
   });
 
-  it("timeout → unknown; operasi cron dan follow-up tidak pernah mengirim ulang", async () => {
+  it("timeout → unknown; hanya fase notify boleh mengirim ulang setelah 30 menit", async () => {
     telegramResponse = () => { throw new DOMException("aborted", "AbortError"); };
     await paidWebOrder();
     await ensureFulfillmentForPaidOrder(CODE);
     expect(await adminMessages()).toHaveLength(1);
     expect(ledger()).toMatchObject({ status: "unknown", error: "ambiguous" });
 
-    for (const minutes of [10, 20, 60, 360]) {
-      fixture.sql.prepare("UPDATE orders SET paid_at=datetime('now',?),updated_at=datetime('now',?) WHERE code=?")
-        .run(`-${minutes} minutes`, `-${minutes} minutes`, CODE);
+    for (const minutes of [10, 20, 29]) {
       fixture.sql.prepare("UPDATE buyer_notice_log SET updated_at=datetime('now',?) WHERE idempotency_key=?")
         .run(`-${minutes} minutes`, `admin-paid:${CODE}`);
       const tick = await cron();
       expect(tick.telegram_paid_admin_web_notifications_retried ?? 0).toBe(0);
     }
+    fixture.sql.prepare("UPDATE buyer_notice_log SET updated_at=datetime('now','-31 minutes') WHERE idempotency_key=?").run(`admin-paid:${CODE}`);
     await ensureFulfillmentForPaidOrder(CODE);
     expect(await adminMessages()).toHaveLength(1);
     expect(ledger()?.status).toBe("unknown");
+    telegramResponse = () => Response.json({ ok: true, result: { message_id: 2 } });
+    expect((await cron()).telegram_paid_admin_web_notifications_retried).toBe(1);
+    const [original, recovery] = await adminMessages();
+    expect(recovery).toEqual({ ...original, text: `🔁 Kirim ulang otomatis — abaikan bila notif lunas order ini sudah ada\n${original.text}` });
+    expect(ledger()?.status).toBe("sent");
+    await cron();
+    expect(await adminMessages()).toHaveLength(2);
   });
 
   it("order web yang lunas lebih dari 6 jam lalu tidak dikirim oleh cron", async () => {
