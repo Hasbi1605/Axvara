@@ -2509,3 +2509,25 @@ END;
 
 -- Migration 0150: percobaan preflight AIVault otomatis (20 November 2026).
 ALTER TABLE aivault_order_links ADD COLUMN preflight_attempts INTEGER NOT NULL DEFAULT 0;
+
+-- Migration 0151: invoice topup saldo supplier dari admin (20 November 2026).
+CREATE TABLE IF NOT EXISTS supplier_topups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier TEXT NOT NULL CHECK(supplier IN ('sekalipay','tunvn')),
+  ref_id TEXT NOT NULL UNIQUE,
+  supplier_ref TEXT,
+  channel TEXT,
+  currency TEXT NOT NULL CHECK(currency IN ('IDR','USDT')),
+  requested_amount REAL NOT NULL,
+  pay_amount REAL,
+  credit_amount REAL,
+  fee_amount REAL,
+  status TEXT NOT NULL CHECK(status IN ('creating','pending','paid','expired','failed','unknown')),
+  payment_json TEXT,
+  error TEXT,
+  expires_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  paid_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_supplier_topups_recent ON supplier_topups(supplier, created_at DESC);

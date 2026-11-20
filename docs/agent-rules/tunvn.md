@@ -1,5 +1,12 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Deposit saldo TUNVN dari admin — keputusan owner 20 November 2026 (lokal)
+
+- **Menggantikan** aturan setup "`POST /api/deposit` sengaja tidak diimplementasikan" hanya untuk scope ini: admin boleh membuat **invoice deposit saldo TUNVN** dari AXVARA. AXVARA hanya membuat invoice + melacak status; owner transfer sendiri. **Tidak ada auto payout, tidak ada dana dikirim AXVARA**, dan tidak ada deposit untuk QA.
+- `callTunvnDeposit(amountUsdt)` = `POST /api/deposit {amount,currency:"usdt"}`; `callTunvnDepositStatus(code)` = `GET /api/deposit/status?code=<encoded>`. Tanpa retry, redirect manual, key hanya di header (pola `callTunvnRead`); 401/403 = config, 429/5xx = ambigu.
+- Parser menolak invoice yang tidak sesuai: `wallet_transfer.network` wajib `BEP20`, address `0x` + 40 hex, dan `exact_amount >= nominal diminta && < nominal+1` (owner wajib transfer PERSIS nominal). `paid===true` atau `status==="confirmed"` = lunas. Invoice menyimpan `payment_json` non-secret `{address,network,exact_amount,instruction}` saja.
+- Gate = `isTunvnConfigured()` existing; tidak ada env/secret baru. Maks 3 invoice non-terminal per supplier, refresh ≥10 detik; `expired` tetap dicek ulang (pembayaran terlambat bisa dikonfirmasi). Detail ARCHITECTURE §16.65.
+
 
 ## Salinan varian Muse lain (#112, #97, #98) — 20 November 2026
 

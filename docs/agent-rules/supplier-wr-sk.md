@@ -1,5 +1,12 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Topup saldo SK dari admin — 20 November 2026 (keputusan owner, lokal)
+
+- Admin boleh membuat **invoice topup saldo reseller SK** dari AXVARA tanpa membuka web SK. AXVARA hanya membuat invoice + melacak status; **owner membayar sendiri** (link/QR). Tidak ada payout otomatis, tidak ada POST order/dispatch baru.
+- Channel TIDAK di-hardcode: `fetchSkTopupChannels()` membaca `GET v1/balance/channels`, lalu server memvalidasi `status:"on"` dan nominal integer dalam `[minimum,maximum]` sebelum `POST v1/balance`. `ref_id` server-side `AXVTU-YYYYMMDD-<8hex>` (tidak pernah `GW-`, tidak dari klien); refresh yang gagal ambigu **mengulang ref_id yang sama**, tidak pernah membuat ref baru.
+- Konfirmasi lunas hanya dari `GET v1/balance/mutations?type=topup&direction=credit&per_page=50` yang `invoice`-nya cocok dengan `supplier_ref`. 4xx definitif (`REF_ID_ALREADY_EXIST`, `CODE_NOT_FOUND_OR_INACTIVE`, `AMOUNT_MINIMUM/MAXIMUM_IS_*`, `TOPUP_DAILY_LIMIT`, `TRX_DAILY_LIMIT`) = `failed` tanpa retry; timeout/network/5xx = `unknown` (aman refresh).
+- Gate SK = `isSkEnabled() && isSkConfigured() && !isSkSandbox()`; tidak ada env baru. Maks 3 invoice non-terminal per supplier, refresh ≥10 detik. Test memakai mock fetch/DB; **jangan** memanggil POST tulis SK nyata untuk QA. Detail ARCHITECTURE §16.65.
+
 ## Panel admin bersama — 19 November 2026 (keputusan owner, lokal)
 
 - Ringkas/Antrean/Markup/Alat memakai `SupplierAdminPanel` dengan saldo IDR,

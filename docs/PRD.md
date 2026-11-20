@@ -2469,3 +2469,22 @@ dengan markup persentase dan nominal. Exclusion WR/SK dan sandbox SK tersedia di
 - **Ringkas & katalog WR/SK (`GET /api/admin/{warung,sekalipay}/{sync-log,markup,orders}`):** `/sync-log` menambah status konfigurasi/gate (`configured`, `dispatch_enabled`, `sync_enabled`) serta ringkasan varian & keluarga produk tanpa panggilan provider; `/markup` menambah metadata pengelompokan produk/varian, batas `limit <= 500` (default `200`) dan `offset` berurut stabil; `/orders` menambah nama produk & varian pemasok untuk kolom Unit tanpa mengubah filter/aksi/visibilitas kontak WR/SK.
 - **Antrean order & visibilitas varian 4 supplier lain (`{aivault,tunvn,storebat,mirai}`):** `GET /orders` menambah informasi pembeli tersamar (`customer_name` atau `null` tanpa menurunkan dari email, `customer_wa`/`customer_email` tersamar termasuk kasus pendek/invalid, `sales_channel`, `purchase_disabled`) tanpa membocorkan kredensial; `GET /products` dan `GET /tunvn/buff` menambah `variant_status`/`variant_reason` mengikuti hierarki arsip/nonaktif > kalah grup > belum terpetakan > stok/minimum efektif tak bisa dibeli > live.
 - **Bulk markup 4 supplier (`POST /api/admin/{aivault,tunvn,storebat,mirai}/markup/bulk`)** memakai 1–200 ID asli (dedup), persentase `0..1000` langkah `0.5`, dan `reset_manual` opsional. Harga manual dipertahankan secara default. Pagar grosir AIVault, Buff 1B TUNVN, eksklusi #60, dan CAS kepemilikan berlaku pada tiap baris. Verifikasi lokal dengan fixture.
+
+## Topup saldo supplier dari admin (20 November 2026, implementasi lokal)
+
+Owner dapat membuat invoice topup saldo reseller Sekalipay dan TUNVN dari panel
+admin AXVARA tanpa membuka web/bot supplier. AXVARA hanya membuat invoice dan
+melacak statusnya; owner membayar sendiri lewat link/QR SK atau transfer USDT
+BEP20 TUNVN. Tidak ada payout otomatis dan tidak ada dana yang dikirim AXVARA.
+
+Admin memilih supplier dan nominal (SK: channel + nominal IDR; TUNVN: nominal
+USDT 1–1000 maks 2 desimal). Untuk SK, AXVARA memvalidasi channel aktif dan
+rentang nominal di server sebelum membuat invoice; konfirmasi lunas berasal dari
+mutasi saldo `credit` yang invoice-nya cocok. Untuk TUNVN, instruksi transfer
+menampilkan address, network BEP20, dan nominal PERSIS yang harus dikirim;
+status dicek lewat endpoint status invoice. Status invoice: `creating`,
+`pending`, `paid`, `expired`, `failed`, `unknown`; `paid`/`failed` terminal,
+`unknown`/`expired` dapat diperiksa ulang. Maksimal 3 invoice non-terminal per
+supplier dan refresh minimal 10 detik sekali. Gate memakai konfigurasi supplier
+existing; tidak ada env/secret baru. Implementasi lokal + test fokus; belum
+migrasi remote, publikasi CI, atau deployment. Lihat ARCHITECTURE §16.65.

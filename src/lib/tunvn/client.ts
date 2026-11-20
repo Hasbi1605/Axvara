@@ -1,7 +1,8 @@
 // src/lib/tunvn/client.ts — klien server-side TUNVN PREHUB (reseller Telegram).
 //
 // Fondasi GET/probe 2026-11-09. Dispatch lokal 2026-11-10 ada di orders.ts
-// dan purchase.ts; deposit tetap tidak diimplementasikan.
+// dan purchase.ts. Deposit invoice saldo (admin-only) ditambahkan 2026-11-20:
+// AXVARA hanya MEMBUAT invoice, owner membayar manual lewat transfer USDT BEP20.
 //
 // Kontrak upstream (https://tunvnmmo.duckdns.org/api/docs, dibaca 2026-11-09):
 //   header `X-API-Key: <TUNVN_API_KEY>`; base URL TUNVN_BASE_URL
@@ -15,7 +16,10 @@
 //   GET  /api/rate      → {success,usdt_vnd,description} (publik, tetap
 //                         dipanggil lewat jalur yang sama)
 //   POST /api/buy       → purchase.ts, hanya melalui durable dispatcher.
-//   POST /api/deposit   → SENGAJA tidak diimplementasikan pada setup awal.
+//   POST /api/deposit   → invoice deposit saldo, ADMIN-ONLY (2026-11-20).
+//                         Body {amount, currency:"usdt"}; AXVARA tidak mengirim
+//                         uang — owner transfer manual ke address BEP20.
+//   GET  /api/deposit/status?code=<payment_code> → status invoice deposit.
 //   POST /api/buff/check → harga Buff Token Muse AI (read-only secara efek:
 //                         tidak mendebit saldo; dipakai panel admin).
 //
@@ -91,17 +95,60 @@ export async function callTunvnRead(endpoint: TunvnReadEndpoint): Promise<TunvnC
   } catch {
     return { kind: "ambiguous", reason: "network_or_timeout" };
   }
+  return readTunvnJson(res);
+}
+
+/** Klasifikasi respons JSON TUNVN (baca + deposit; tanpa retry, redirect
+ *  manual): 401/403 = config, 429/5xx = ambigu, body tidak bocor ke error. */
+async function readTunvnJson(res: Response): Promise<TunvnCallResult> {
   if (res.status === 401 || res.status === 403) return { kind: "config", reason: `auth_${res.status}` };
   if (res.status >= 300 && res.status < 400) return { kind: "config", reason: "unexpected_redirect" };
   if (res.status === 429 || res.status >= 500) return { kind: "ambiguous", reason: `http_${res.status}` };
   if (res.status < 200 || res.status >= 300) return { kind: "http_error", status: res.status };
-  let text = "";
+  let text: string;
   try { text = await res.text(); } catch { return { kind: "ambiguous", reason: "unreadable_body" }; }
   try {
     return { kind: "ok", status: res.status, json: JSON.parse(text) };
   } catch {
     return { kind: "ambiguous", reason: "unreadable_json" };
   }
+}
+
+/** POST /api/deposit — buat invoice deposit saldo (admin-only). Tanpa retry:
+ *  5 key salah/60 dtk memicu blokir upstream. Key hanya di header, redirect
+ *  manual. Hasil ambigu TIDAK boleh dianggap gagal permanen oleh pemanggil. */
+export async function callTunvnDeposit(amountUsdt: number): Promise<TunvnCallResult> {
+  if (!isTunvnConfigured()) return { kind: "config", reason: "not_configured" };
+  let res: Response;
+  try {
+    res = await fetch(`${getTunvnBaseUrl()}/api/deposit`, {
+      method: "POST",
+      headers: { "x-api-key": getTunvnApiKey(), "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ amount: amountUsdt, currency: "usdt" }),
+      redirect: "manual",
+      signal: AbortSignal.timeout(TUNVN_DEFAULT_TIMEOUT_MS),
+    });
+  } catch {
+    return { kind: "ambiguous", reason: "network_or_timeout" };
+  }
+  return readTunvnJson(res);
+}
+
+/** GET /api/deposit/status?code=<payment_code> — status invoice deposit. */
+export async function callTunvnDepositStatus(code: string): Promise<TunvnCallResult> {
+  if (!isTunvnConfigured()) return { kind: "config", reason: "not_configured" };
+  let res: Response;
+  try {
+    res = await fetch(`${getTunvnBaseUrl()}/api/deposit/status?code=${encodeURIComponent(code)}`, {
+      method: "GET",
+      headers: { "x-api-key": getTunvnApiKey(), accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(TUNVN_DEFAULT_TIMEOUT_MS),
+    });
+  } catch {
+    return { kind: "ambiguous", reason: "network_or_timeout" };
+  }
+  return readTunvnJson(res);
 }
 
 // ---- Parser (murni, dapat diuji tanpa jaringan) ---------------------------
@@ -154,6 +201,76 @@ export function parseTunvnProduct(raw: unknown): TunvnProduct | null {
     discount_price_vnd: discountVnd !== null && discountVnd > 0 ? discountVnd : null,
     discount_threshold_usdt: nonNegativeInt(raw.discount_threshold_usdt) ?? 0,
     discount_price_usdt: discountUsdt !== null && discountUsdt > 0 ? discountUsdt : null,
+  };
+}
+
+export type TunvnDeposit = {
+  payment_code: string;
+  amount_usdt: number | null;
+  status: string;
+  expires_in_minutes: number | null;
+  wallet_transfer: {
+    address: string;
+    network: "BEP20";
+    exact_amount: number;
+    instruction: string;
+  };
+};
+
+export type TunvnDepositParse =
+  | { ok: true; deposit: TunvnDeposit }
+  | { ok: false; error: string };
+
+/** Parse invoice deposit (admin-only). Address wajib EVM 20-byte, network WAJIB
+ *  BEP20, dan exact_amount harus >= nominal diminta serta < nominal+1 (owner
+ *  transfer PERSIS nominal itu). Field yang tidak sesuai = tolak, jangan tebak. */
+export function parseTunvnDeposit(raw: unknown, requestedAmount: number): TunvnDepositParse {
+  if (!isRecord(raw) || raw.success !== true) return { ok: false, error: "deposit_shape" };
+  if (!isRecord(raw.deposit)) return { ok: false, error: "deposit_shape" };
+  const paymentCode = str(raw.deposit.payment_code).trim();
+  if (!paymentCode) return { ok: false, error: "deposit_shape" };
+  if (!isRecord(raw.deposit.wallet_transfer)) return { ok: false, error: "deposit_shape" };
+  const wallet = raw.deposit.wallet_transfer;
+  const network = str(wallet.network).trim();
+  if (network !== "BEP20") return { ok: false, error: "unexpected_network" };
+  const address = str(wallet.address).trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return { ok: false, error: "invalid_address" };
+  const exact = num(wallet.exact_amount);
+  if (exact === null || exact < requestedAmount || exact >= requestedAmount + 1) {
+    return { ok: false, error: "invalid_exact_amount" };
+  }
+  return {
+    ok: true,
+    deposit: {
+      payment_code: paymentCode,
+      amount_usdt: num(raw.deposit.amount_usdt),
+      status: str(raw.deposit.status).trim() || "pending",
+      expires_in_minutes: num(raw.deposit.expires_in_minutes),
+      wallet_transfer: {
+        address,
+        network: "BEP20",
+        exact_amount: exact,
+        instruction: str(wallet.instruction),
+      },
+    },
+  };
+}
+
+export type TunvnDepositStatusParse =
+  | { ok: true; status: string; paid: boolean; amount_usdt: number | null }
+  | { ok: false; error: string };
+
+/** Parse status deposit. `paid===true` ATAU `status==="confirmed"` = lunas. */
+export function parseTunvnDepositStatus(raw: unknown): TunvnDepositStatusParse {
+  if (!isRecord(raw) || raw.success !== true) return { ok: false, error: "status_shape" };
+  if (!isRecord(raw.deposit)) return { ok: false, error: "status_shape" };
+  const status = str(raw.deposit.status).trim();
+  if (!status) return { ok: false, error: "status_shape" };
+  return {
+    ok: true,
+    status,
+    paid: raw.paid === true || status === "confirmed",
+    amount_usdt: num(raw.deposit.amount_usdt),
   };
 }
 

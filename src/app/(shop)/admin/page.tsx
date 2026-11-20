@@ -25,6 +25,7 @@ function sectionFallback(label: string) {
 }
 const CategoryManagerLazy = lazy(() => import("@/components/admin/CategoryManager").then((m) => ({ default: m.CategoryManager })));
 const PaymentMethodsManagerLazy = lazy(() => import("@/components/admin/PaymentMethodsManager").then((m) => ({ default: m.PaymentMethodsManager })));
+const SupplierTopupManagerLazy = lazy(() => import("@/components/admin/SupplierTopupManager").then((m) => ({ default: m.SupplierTopupManager })));
 const WarungRebahanManagerLazy = lazy(() => import("@/components/admin/WarungRebahanManager").then((m) => ({ default: m.WarungRebahanManager })));
 const SekalipayManagerLazy = lazy(() => import("@/components/admin/SekalipayManager").then((m) => ({ default: m.SekalipayManager })));
 const ProductGroupsManagerLazy = lazy(() => import("@/components/admin/ProductGroupsManager").then((m) => ({ default: m.ProductGroupsManager })));
@@ -47,7 +48,7 @@ const ExpensesManagerLazy = lazy(() => import("@/components/admin/finance/Expens
 const ExpenseFormSheetLazy = lazy(() => import("@/components/admin/finance/ExpenseFormSheet").then((m) => ({ default: m.ExpenseFormSheet })));
 const ProductEditorModalLazy = lazy(() => import("@/components/admin/ProductEditorModal").then((m) => ({ default: m.ProductEditorModal })));
 
-const ADMIN_SECTIONS: AdminSection[] = ["summary","expenses","products","orders","categories","payments","warung","sekalipay","tunvn","aivault","storebat","mirai","pairs","links","pedia","games","articles","banners","broadcasts","subscribers","bot","agent","settings"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","expenses","products","orders","categories","payments","topup","warung","sekalipay","tunvn","aivault","storebat","mirai","pairs","links","pedia","games","articles","banners","broadcasts","subscribers","bot","agent","settings"];
 
 export default function AdminPage() {
   const toast = useToast();
@@ -162,6 +163,7 @@ export default function AdminPage() {
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
       {tab==="categories" && <Suspense fallback={sectionFallback("kategori")}>{<CategoryManagerLazy />}</Suspense>}
       {tab==="payments" && <Suspense fallback={sectionFallback("pembayaran")}>{<PaymentMethodsManagerLazy onChanged={loadOverview} />}</Suspense>}
+      {tab==="topup" && <Suspense fallback={sectionFallback("saldo supplier")}><SupplierTopupManagerLazy /></Suspense>}
       {tab==="warung" && <Suspense fallback={sectionFallback("Warung Rebahan")}>{<WarungRebahanManagerLazy />}</Suspense>}
       {tab==="sekalipay" && <Suspense fallback={sectionFallback("Sekalipay")}>{<SekalipayManagerLazy />}</Suspense>}
       {tab==="pairs" && <Suspense fallback={sectionFallback("grup produk")}>{<ProductGroupsManagerLazy />}</Suspense>}

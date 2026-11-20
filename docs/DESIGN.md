@@ -79,6 +79,11 @@
 - **Tombol invoice QRIS menunggu pembayaran (owner 2026-11-20):** `qrisInvoiceKeyboard` hanya tiga tombol — baris 1 `🔄 Cek Pembayaran` (`primary`) | `💬 Bantuan` (URL), baris 2 `Batalkan Pesanan` (`danger`); tombol `📋 Detail Pesanan` dihapus karena kode/produk/total/batas sudah ada di caption invoice.
 - **Copy pembayaran:** `"💳 Checkout"` (menggantikan `"💳 Checkout 1 QRIS"`), `"Satu pembayaran untuk semua item."`, `"QRIS"` untuk label tampilan `QRIS Dinamis`, dan `"Tekan <b>Cek Pembayaran</b>"`.
 
+## Saldo & Topup supplier — 20 November 2026 (lokal)
+
+- Entri pertama dropdown **Supplier**. `PageHeader` dan tujuh `Card` memakai token `admin-*`: nominal tabular dengan mata uang asli, Skeleton serta retry per supplier. Riwayat 20 tagihan memakai `Badge` status dan susunan bertumpuk di HP.
+- `Dialog` Sekalipay menonjolkan total bayar, saldo masuk, biaya, dan QR/link; TUNVN menonjolkan nominal USDT persis dan alamat BEP20 yang bisa disalin. Hitung mundur tidak diumumkan setiap detik. Fokus kembali ke tombol pembuka atau judul riwayat jika aksi baris sudah hilang.
+
 ## Panel supplier admin terpadu (6 supplier) — 19 November 2026 (V3, lokal)
 
 Warung Rebahan (`warung`) dan Sekalipay (`sekalipay`) disatukan ke panel bersama

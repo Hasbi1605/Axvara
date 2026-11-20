@@ -3,8 +3,9 @@ import { ChevronDown } from "lucide-react";
 import { IosIcon, type IosIconName } from "./AdminIcon";
 import type { AdminSection } from "./AdminShell";
 import { Button, Badge, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Tooltip, TooltipTrigger, TooltipContent } from "./ui";
-export type SupplierSectionId = "warung" | "sekalipay" | "tunvn" | "aivault" | "storebat" | "mirai" | "pairs" | "links";
+export type SupplierSectionId = "topup" | "warung" | "sekalipay" | "tunvn" | "aivault" | "storebat" | "mirai" | "pairs" | "links";
 export const SUPPLIER_ITEMS: { id: SupplierSectionId; label: string; icon: IosIconName }[] = [
+  { id: "topup", label: "Saldo & Topup", icon: "wallet" },
   { id: "warung", label: "Warung Rebahan", icon: "shopping-bag" },
   { id: "sekalipay", label: "Sekalipay", icon: "wallet" },
   { id: "tunvn", label: "TUNVN", icon: "send" },
