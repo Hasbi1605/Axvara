@@ -6400,7 +6400,7 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   error JSON, body limit; reveal receipt privat/no-store+audit POST. Load memakai
   allSettled dan error bagian+status. Badge origin AIVault hanya admin Produk.
 - Empat env Pages **kelak secret_text**, belum dipasang: `AIVAULT_API_KEY`,
-  `AIVAULT_BASE_URL` default `https://reseller.aivaulthub.store`, `AIVAULT_ENABLED`,
+  `AIVAULT_BASE_URL` default `https://api.aivaulthub.store` (migrasi supplier 20 Nov 2026; host lama `reseller.aivaulthub.store` pensiun), `AIVAULT_ENABLED`,
   `AIVAULT_SYNC_ENABLED`. HTTPS/key/master/sync gate fail-closed; kredensial lokal
   ignored `.aivault-credentials*`. Penambahan env mengikuti backup§16.2; tidak ada
   perubahan backup/env pada pekerjaan lokal ini. Tidak ada registrasi webhook.

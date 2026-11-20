@@ -1,5 +1,13 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Migrasi host + API key supplier — 20 November 2026
+
+- AIVault memindahkan bot/API reseller: base URL kini `https://api.aivaulthub.store` (dokumentasi `/api/v1/docs`), key baru akun yang sama (`chat_id` sama). Key baru ditolak host lama (401 `invalid_api_key`); key lama di host lama masih hidup dengan saldo $0 dan stok basi, jadi **jangan kembali ke `reseller.aivaulthub.store`**.
+- Kontrak tidak berubah (cek baca-saja 20 Nov): `/me`, `/products`, `/quote`, `POST /order`, `/order/{id}`, `/orders`; bentuk respons, header `X-API-Key`, rate limit 60/menit dan 12 `service_id` identik dengan mirror, jadi SKU `AV-*`, family, markup dan grosir tidak tersentuh. Field baru `description`/`instructions` (HTML Telegram) dan `bulk_discounts` diabaikan parser; belum dipakai.
+- Riwayat order provider tidak ikut pindah (`/orders` host baru kosong). Saat cutover semua 11 `aivault_order_links` produksi `completed`, jadi tidak ada polling `provider_order_id` lama yang tertinggal; receipt lama tetap di D1 terenkripsi. Link lama yang di-Retry/poll di host baru akan 404 → needs_admin (fail-closed).
+- Env Pages `AIVAULT_API_KEY` + `AIVAULT_BASE_URL` (production + preview, `secret_text`) diganti 20 Nov lewat `scripts/pages-env-restore.mjs --apply --only` dari `.pages-env-backup`; `.aivault-credentials` ikut diperbarui. Default kode `AIVAULT_DEFAULT_BASE_URL` = host baru. Nilai env berlaku di deployment CI berikutnya; status live belum diverifikasi oleh catatan ini.
+- Tindak lanjut owner: perbarui salinan password manager; pertimbangkan rotasi key (key terkirim lewat chat) dan meminta AIVault mencabut key lama.
+
 ## Urutan `sort_order` saat insert pertama — 19 November 2026 (lokal)
 
 - Insert produk baru di `projectAivaultCatalog` memakai `buildSupplierProductInsertSql` (`src/lib/supplier/product-insert.ts`) untuk mengalokasikan `sort_order` ekor kategori (`MAX(sort_order)` produk non-arsip kategori yang sama, default `0`, `+ 10 × rank`). Baris existing tidak pernah diubah `sort_order`-nya saat re-sync; migrasi data `0143_supplier_products_category_tail.sql` memindahkan baris lama `<= 0` ke ekor kategori (menjaga satu slot per `product_group`).
@@ -223,7 +231,7 @@ push, migrasi remote, konfigurasi Pages, atau deployment. Migrasi0123 tetap
 untuk TUNVN; AIVault memakai0124. Perilaku TUNVN dan AIVault dipertahankan pada
 integrasi bersama; source dispatcher TUNVN tidak diubah.
 
-- Supplier terpisah: `https://reseller.aivaulthub.store`, dokumentasi `/api/v1/docs`,
+- Supplier terpisah: `https://reseller.aivaulthub.store` (histori; host kini `https://api.aivaulthub.store`, lihat migrasi 20 Nov), dokumentasi `/api/v1/docs`,
   header `X-API-Key`. Kredensial sumber lokal `/Users/macbookair/axvara/.aivault-credentials`
   (`AIVAULT_API_KEY`, `AIVAULT_BASE_URL`), ignored `.aivault-credentials*`, chmod600.
   Jangan cetak key, body provider, atau kredensial pembeli; jangan menyalin key ke

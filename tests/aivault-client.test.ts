@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it,vi} from "vitest";
-import {parseAivaultProduct,parseAivaultProducts,parseAivaultQuote,parseAivaultBalance,fetchAivaultProducts,isAivaultConfigured} from "@/lib/aivault/client";
+import {parseAivaultProduct,parseAivaultProducts,parseAivaultQuote,parseAivaultBalance,fetchAivaultProducts,fetchAivaultBalance,getAivaultBaseUrl,isAivaultConfigured,AIVAULT_DEFAULT_BASE_URL} from "@/lib/aivault/client";
 import {aivaultFamily,aivaultSellPrice,aivaultSlugHash} from "@/lib/aivault/families";
 import {aivaultEligibility,withoutPrivateBuyerData} from "@/lib/buyer-fields";
 const product={service_id:"service_udemy_1m",name:"Udemy",stock:22,custom_pricing:false,pricing_tiers:[{min:1,max:4,price:0.8},{min:5,max:9,price:0.75},{min:10,max:null,price:0.7}]};
@@ -46,5 +46,11 @@ describe("AIVault pure contracts",()=>{
   it("never fetches without full HTTPS configuration",async()=>{
     const fetcher=vi.fn();vi.stubGlobal("fetch",fetcher);vi.stubEnv("AIVAULT_ENABLED","false");expect(await fetchAivaultProducts()).toMatchObject({kind:"config"});
     vi.stubEnv("AIVAULT_ENABLED","true");vi.stubEnv("AIVAULT_API_KEY","fixture");vi.stubEnv("AIVAULT_BASE_URL","http://supplier.test");expect(isAivaultConfigured()).toBe(false);await fetchAivaultProducts();expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("defaults to the migrated api.aivaulthub.store host when AIVAULT_BASE_URL is unset",async()=>{
+    const fetcher=vi.fn(async()=>new Response(JSON.stringify({balance:1,currency:"USD"}),{status:200}));vi.stubGlobal("fetch",fetcher);
+    vi.stubEnv("AIVAULT_ENABLED","true");vi.stubEnv("AIVAULT_API_KEY","fixture");vi.stubEnv("AIVAULT_BASE_URL","");
+    expect(AIVAULT_DEFAULT_BASE_URL).toBe("https://api.aivaulthub.store");expect(getAivaultBaseUrl()).toBe("https://api.aivaulthub.store");
+    expect(await fetchAivaultBalance()).toMatchObject({kind:"ok"});expect(fetcher).toHaveBeenCalledWith("https://api.aivaulthub.store/api/v1/me",expect.objectContaining({method:"GET",redirect:"manual"}));
   });
 });

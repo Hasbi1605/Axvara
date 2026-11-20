@@ -1,5 +1,5 @@
 /** Server-only AIVault transport. GETs never retry and redirects never receive keys. */
-export const AIVAULT_DEFAULT_BASE_URL = "https://reseller.aivaulthub.store";
+export const AIVAULT_DEFAULT_BASE_URL = "https://api.aivaulthub.store";
 export const isAivaultEnabled = () => process.env.AIVAULT_ENABLED === "true";
 export const isAivaultSyncEnabled = () => isAivaultEnabled() && process.env.AIVAULT_SYNC_ENABLED === "true";
 export const getAivaultApiKey = () => (process.env.AIVAULT_API_KEY || "").trim();
