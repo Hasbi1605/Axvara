@@ -1,10 +1,11 @@
-import { ADMIN_PAID_TIMEOUT_PREFIX, ADMIN_PAID_TIMEOUT_COOLDOWN_SQL } from "@/lib/cron-queues";
+import { ADMIN_PAID_PREFIX, ADMIN_PAID_RETRY_DUE, CHAT_PAID_ADMIN_PENDING_WHERE, LEGACY_ADMIN_PAID_TIMEOUT_PREFIX, WEB_PAID_ADMIN_PENDING_WHERE } from "@/lib/cron-queues";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 
 type Row = Record<string, unknown>;
 import { parseExpiry } from "@/lib/expiry";
 import { formatRupiah } from "@/lib/telegram/messages/format";
-import { sendMessage } from "@/lib/telegram/api";
+import { classifyTelegramSend, sendMessage } from "@/lib/telegram/api";
+import type { SendMessageParams } from "@/lib/telegram/types";
 import {
   adminTelegramOrderCreatedMessage,
   adminTelegramOrderPaidMessage,
@@ -315,24 +316,72 @@ export async function notifyWhatsAppOrderCreated(orderCode: string, database: Da
   return true;
 }
 
-/** Timeout kirim notif admin bersifat ambigu: saat Bot API hang Telegram menahan
- * pesan lalu tetap mengirimnya (insiden 20 Nov 2026 → spam). Order Telegram/WhatsApp
- * tidak punya ledger, jadi timeout dicatat di `buyer_notice_log` kunci
- * `admin-paid-timeout:<kode>` (status `failed`, tidak pernah `sent`) dan cron baru
- * mengulang setelah 20 menit. Gagal pasti (ditolak) tetap diulang tiap run. */
-async function recordAdminPaidTimeout(database: DatabaseAccess, orderCode: string, description: unknown): Promise<void> {
-  if (String(description ?? "") !== "Request timeout") return;
-  await database.execRun(
-    `INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status, error)
-     VALUES (?, ?, 'telegram', 'failed', 'Request timeout')
-     ON CONFLICT(idempotency_key) DO UPDATE SET status='failed', error='Request timeout', updated_at=datetime('now')`,
-    `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, orderCode,
-  ).catch(() => undefined);
+// One claim across direct and cron senders. Never reclaim 'sending': a killed
+// invocation or a lost settlement may already have delivered the Telegram POST.
+async function sendPaidAdmin(database: DatabaseAccess, orderCode: string, message: SendMessageParams, web = false): Promise<boolean> {
+  const { execRun } = database;
+  const key = `${ADMIN_PAID_PREFIX}${orderCode}`;
+  const lease = crypto.randomUUID();
+  try {
+    const claim = await execRun(
+      `INSERT INTO buyer_notice_log AS b (idempotency_key, order_code, channel, status, access_lease)
+       SELECT ?, ?, 'telegram', 'sending', ?
+       WHERE NOT EXISTS(SELECT 1 FROM buyer_notice_log WHERE idempotency_key=?)
+       ON CONFLICT(idempotency_key) DO UPDATE SET status='sending', access_lease=excluded.access_lease,
+         access_retry_at=NULL, error=NULL, updated_at=datetime('now')
+       WHERE ${ADMIN_PAID_RETRY_DUE}`,
+      key, orderCode, lease, `${LEGACY_ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`,
+    );
+    if (!(Number(claim.changes) > 0)) return false;
+  } catch {
+    console.warn(`[telegram-paid-admin] ${key} class=claim_unavailable`);
+    return false;
+  }
+
+  const attempt = async (params: SendMessageParams) => {
+    try { return classifyTelegramSend(await sendMessage(params)); }
+    catch { return classifyTelegramSend(undefined); }
+  };
+  let outcome = await attempt(message);
+  let sentWithoutKeyboard = false;
+  if (web && message.reply_markup && outcome.kind === "rejected" && outcome.errorCode === 400) {
+    outcome = await attempt({ ...message, reply_markup: undefined });
+    sentWithoutKeyboard = outcome.kind === "sent";
+  }
+
+  const status = outcome.kind === "sent" ? "sent" : outcome.kind === "ambiguous" ? "unknown" : "failed";
+  const error = outcome.kind === "sent" ? (sentWithoutKeyboard ? "terkirim tanpa tombol: Bad Request (400)" : null)
+    : outcome.kind === "rejected" ? `rejected:${outcome.errorCode}` : outcome.kind;
+  const retryDelay = outcome.kind === "rate_limited" ? Math.max(60, Math.ceil(outcome.retryAfter ?? 0)) : 0;
+  console.info(`[telegram-paid-admin] ${key} class=${outcome.kind}`);
+  try {
+    const settled = await execRun(
+      `UPDATE buyer_notice_log SET status=?, provider_id=?, error=?, access_lease=NULL,
+         access_retry_at=strftime('%Y-%m-%dT%H:%M:%fZ','now',?), updated_at=datetime('now')
+       WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
+      status, outcome.kind === "sent" ? String(outcome.messageId) : null, error,
+      status === "failed" ? `+${retryDelay} seconds` : null, key, lease,
+    );
+    if (!(Number(settled.changes) > 0)) return false;
+    if (status !== "sent") return false;
+    if (!web) {
+      await execRun(
+        `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
+         WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
+        orderCode,
+      );
+    }
+    return true;
+  } catch {
+    // Even if the acknowledgement write failed, the original claim blocks replay.
+    console.warn(`[telegram-paid-admin] ${key} class=settle_unavailable`);
+    return false;
+  }
 }
 
 /** Announce a paid WhatsApp order to the admin group (separate from order-created). */
 export async function notifyWhatsAppPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
-  const { queryFirst, execRun } = database;
+  const { queryFirst } = database;
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
 
@@ -352,7 +401,7 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
   const member = String(order.channel_member_id || order.customer_wa || "");
   const paymentMethod = String(order.payment_method || "qris");
   const summary = await adminDeliverySummary(order, database);
-  const sent = await sendMessage({
+  return sendPaidAdmin(database, orderCode, {
     chat_id: adminChatId,
     text: adminWhatsAppOrderPaidMessage({
       paidAt: order.paid_at, orderStatus: summary.orderStatus, deliveryLines: summary.lines,
@@ -372,18 +421,11 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
       paidMarket: order.order_kind === "apps",
     }),
   });
-  if (!sent.ok) { await recordAdminPaidTimeout(database, orderCode, sent.description); return false; }
-
-  await execRun(
-    `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
-     WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
-    orderCode,
-  );
-  return true;
 }
 
 /** Announce a paid Telegram order to the admin group (separate from order-created). */
-export async function notifyTelegramPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {  const { queryFirst, execRun } = database;
+export async function notifyTelegramPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  const { queryFirst } = database;
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
 
@@ -402,7 +444,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
   const username = String(order.username || "").replace(/^@/, "");
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
   const summary = await adminDeliverySummary(order, database);
-  const sent = await sendMessage({
+  return sendPaidAdmin(database, orderCode, {
     chat_id: adminChatId,
     text: adminTelegramOrderPaidMessage({
       paidAt: order.paid_at, orderStatus: summary.orderStatus, deliveryLines: summary.lines,
@@ -423,14 +465,6 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
       paidMarket: order.order_kind === "apps",
     }),
   });
-  if (!sent.ok) { await recordAdminPaidTimeout(database, orderCode, sent.description); return false; }
-
-  await execRun(
-    `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
-     WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
-    orderCode,
-  );
-  return true;
 }
 
 /** Pedia paid admin summary — reads the durable pedia item, never Market
@@ -555,16 +589,7 @@ async function adminDeliverySummary(order: Row, database: DatabaseAccess): Promi
     lines: [profile.hasLocalManual ? "🛠 Pengiriman manual oleh admin" : "🤖 Pengiriman otomatis"] };
 }
 
-/**
- * Notif admin "Lunas — Web" (2026-09-25). Dulu order web hanya mengirim
- * "Order Baru — Web" saat dibuat, dengan tombol `SITE_URL ?? fallback` yang
- * menjadi URL relatif ketika SITE_URL kosong (§16.4) sehingga Telegram menolak
- * seluruh pesan, dan hasil kirimnya diabaikan. Kini: sekali per order lewat
- * buyer_notice_log (kunci `admin-paid:<kode>`, kanal telegram, kolom `error`
- * menyimpan alasan gagal), URL tombol selalu absolut (`siteOrigin`), dan bila
- * Telegram tetap menolak tombol (400 Bad Request) pesan dikirim ulang tanpa
- * tombol. Cron mengulang yang gagal (retryPendingTelegramNotifications).
- */
+/** Notif admin "Lunas — Web" setelah upaya fulfillment pertama. */
 export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
   const { queryFirst } = database;
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
@@ -578,9 +603,6 @@ export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAc
     orderCode,
   ).catch(() => null);
   if (!order) return true;
-  const { claimNotice, settleNotice } = await import("@/lib/notify-buyer");
-  const key = `admin-paid:${orderCode}`;
-  if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
   const delivery = await adminDeliverySummary(order, database);
   const { deriveNameFromEmail } = await import("@/lib/utils");
   const storedName = String(order.customer_name || "").trim();
@@ -597,39 +619,17 @@ export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAc
     needsAdmin: delivery.needsAdmin,
     deliveryLines: delivery.lines,
   });
-  const failed = (description: string) => ({ ok: false as const, description });
-  let sent = await sendMessage({
+  return sendPaidAdmin(database, orderCode, {
     chat_id: adminChatId,
     text,
     parse_mode: "HTML",
     reply_markup: webPaidAdminKeyboard({ customerWa: String(order.customer_wa || ""), orderCode: String(order.code), siteUrl: siteOrigin(), orderKind: String(order.order_kind || "apps") }),
-  }).catch(() => failed("telegram_send_failed"));
-  let note: string | null = null;
-  // Hanya 400 (pesan ditolak, jadi pasti belum terkirim) yang dikirim ulang;
-  // timeout bisa saja sudah sampai, jadi tidak diulang di sini agar tidak dobel.
-  if (!sent?.ok && String(sent?.description ?? "").startsWith("Bad Request")) {
-    const plain = await sendMessage({ chat_id: adminChatId, text, parse_mode: "HTML" }).catch(() => failed("telegram_send_failed"));
-    if (plain?.ok) note = `terkirim tanpa tombol: ${String(sent?.description ?? "")}`;
-    sent = plain;
-  }
-  await settleNotice(database, key, Boolean(sent?.ok), undefined, sent?.ok ? undefined : String(sent?.description ?? "telegram_send_failed"));
-  if (note) {
-    await database.execRun(`UPDATE buyer_notice_log SET error=? WHERE idempotency_key=?`, note.slice(0, 300), key).catch(() => undefined);
-  }
-  return Boolean(sent?.ok);
+  }, true);
 }
 
-/** Order web lunas dalam 6 jam terakhir yang notif adminnya belum terkirim (retry cron).
- * Timeout ambigu: Telegram bisa menahan lalu tetap mengirim pesan (insiden 20 Nov 2026 —
- * Bot API hang ±20 menit, retry tiap run cron tiba bersamaan sebagai spam). Gagal karena
- * timeout baru diulang setelah 20 menit; gagal pasti (ditolak) tetap diulang tiap run. */
-export const WEB_PAID_ADMIN_TIMEOUT_BACKOFF = "-20 minutes";
-export const WEB_PAID_ADMIN_PENDING_WHERE = `o.sales_channel='web' AND o.status='lunas' AND o.payment_status='paid'
-  AND julianday(COALESCE(o.paid_at, o.updated_at)) >= julianday('now','-6 hours')
-  AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key='admin-paid:' || o.code AND (b.status='sent'
-    OR (b.status='failed' AND b.error='Request timeout' AND julianday(b.updated_at) > julianday('now','${WEB_PAID_ADMIN_TIMEOUT_BACKOFF}'))))`;
+export { WEB_PAID_ADMIN_PENDING_WHERE };
 
-/** Retry best-effort Telegram notifications from the five-minute operations cron.
+/** Retry best-effort Telegram notifications from cron lite/operations.
  *
  * RR3-09: ketiga jenis pekerjaan (order-created, paid buyer, paid admin)
  * dihitung dan di-retry TERPISAH per marker — tidak lagi digantungkan pada
@@ -694,10 +694,8 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
 
   if (want.paidAdmin && database.canSpend(1)) {
     const pendingPaidAdmin = await queryAll(
-      `SELECT code, sales_channel FROM orders
-       WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid'
-         AND telegram_paid_admin_notified_at IS NULL AND ${ADMIN_PAID_TIMEOUT_COOLDOWN_SQL}
-       ORDER BY updated_at ASC LIMIT ?`,
+      `SELECT o.code, o.sales_channel FROM orders o WHERE ${CHAT_PAID_ADMIN_PENDING_WHERE}
+       ORDER BY o.updated_at ASC LIMIT ?`,
       max,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaidAdmin) {
@@ -707,7 +705,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
           ? await notifyWhatsAppPaidAdmin(String(order.code), database)
           : await notifyTelegramPaidAdmin(String(order.code), database);
         if (ok) paidAdmin++;
-      } catch { /* Retry the same durable marker on the next cron run. */ }
+      } catch { /* Pre-claim preparation failed; other orders can still proceed. */ }
     }
   }
   let paidAdminWeb = 0;
@@ -721,7 +719,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
       if (!database.canSpend(7)) break;
       try {
         if (await notifyWebPaidAdmin(String(order.code), database)) paidAdminWeb++;
-      } catch { /* Ledger tetap failed/sending; run berikutnya mencoba lagi. */ }
+      } catch { /* Pre-claim preparation failed; other orders can still proceed. */ }
     }
   }
   return { created, paid, paidAdmin, paidAdminWeb };

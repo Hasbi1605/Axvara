@@ -17,7 +17,8 @@ import { createOrderWithStock } from "@/lib/db";
 import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 
-vi.mock("@/lib/telegram/api", () => ({
+vi.mock("@/lib/telegram/api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/telegram/api")>(),
   sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
 }));
 vi.mock("@/lib/whatsapp/gateway", () => ({

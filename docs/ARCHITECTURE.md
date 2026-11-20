@@ -3027,27 +3027,27 @@ atau retry. Notif Telegram/WA memakai `||` sehingga tetap jalan.
   jumlah item terkirim otomatis ke email, perlu **Kirim ke pembeli**, sudah diserahkan admin,
   sedang dikirim, atau diproses Warung Rebahan. Judulnya "Lunas — Web", atau "Lunas — Web ·
   perlu dikirim admin" bila ada item `manual_required`/`failed`.
-- Sekali per order lewat `buyer_notice_log` kunci `admin-paid:<kode>` (kanal telegram). Kolom
-  `error` menyimpan alasan penolakan Telegram, jadi kegagalan berikutnya bisa dibaca di D1.
-- URL tombol lewat `siteOrigin()` (`src/lib/site-url.ts`), selalu absolut. Tombol WA
-  (`webPaidAdminKeyboard`) hanya dipasang untuk nomor `62…` yang valid. Bila Telegram tetap
-  menolak tombol (400 Bad Request), pesan dikirim ulang **tanpa tombol**. Timeout tidak diulang
-  seketika (pesan bisa saja sudah sampai); cron yang mengulang, tetapi ledger `failed` dengan
-  error `Request timeout` baru diulang setelah 20 menit (`WEB_PAID_ADMIN_TIMEOUT_BACKOFF`,
-  20 November 2026): saat Bot API hang, Telegram menahan pesan yang timeout lalu tetap
-  mengirimnya, sehingga retry tiap run cron tiba bersamaan sebagai spam. Gagal pasti
-  (ditolak/error lain) tetap diulang tiap run.
-- Cron `operations` (fase notify) menghitung `paid_admin_web` dengan
-  `WEB_PAID_ADMIN_PENDING_WHERE`: order web lunas dalam 6 jam terakhir tanpa ledger `sent`
-  (dan bukan timeout <20 menit). Notif "Lunas" order Telegram/WhatsApp (marker
-  `telegram_paid_admin_notified_at`, tanpa ledger) memakai cooldown yang sama: timeout
-  dicatat di `buyer_notice_log` kunci `admin-paid-timeout:<kode>` (status `failed`, tidak
-  pernah `sent`) dan `ADMIN_PAID_TIMEOUT_COOLDOWN_SQL` (`src/lib/cron-queues.ts`) menahan
-  probe `paid_admin` + retry 20 menit.
+- Revisi 21 November 2026 (lokal): notifikasi admin order Web, Telegram, dan WhatsApp
+  memakai satu kunci `buyer_notice_log` (`admin-paid:<kode>`). Sebelum POST, klaim atomik
+  dengan `access_lease` memblokir pengirim paralel dan gagal tertutup bila D1 bermasalah.
+  Settlement harus cocok dengan lease; `ok:true` + `message_id` dicatat sebagai `sent`.
+  Marker `telegram_paid_admin_notified_at` Telegram/WhatsApp tetap dihormati dan ditulis
+  setelah `sent`. Notifikasi pembeli tidak berubah.
+- URL tombol web tetap absolut via `siteOrigin()`; tombol WA hanya untuk nomor `62…` valid.
+  Respons Bot API 400 pada pesan web bertombol memungkinkan tepat satu fallback dengan teks
+  sama **tanpa tombol** dalam klaim yang sama. Hanya penolakan Bot API 400/401/403/404 atau
+  429 membuka retry (`failed` dengan `access_retry_at`; 429 menunggu `retry_after`, min. 60 dtk).
+  Timeout, putus jaringan, JSON tak terbaca, 5xx, atau respons sukses tanpa `message_id`
+  menjadi `unknown`: tidak dikirim ulang otomatis. Klaim `sending` yang tertinggal, baris
+  `admin-paid-timeout:<kode>` dan `failed` warisan tanpa waktu retry juga tidak diklaim ulang.
+  Status `unknown` hanya diizinkan untuk kunci admin Telegram oleh migrasi 0152.
+- Cron lite dan `operations` (fase notify) hanya memilih order lunas ≤6 jam tanpa ledger
+  atau dengan `failed` yang sudah jatuh tempo. Probe `paid_admin_web`/`paid_admin` memakai
+  syarat yang sama (`src/lib/cron-queues.ts`).
   `retryPendingTelegramNotifications` menerima `paidAdminWeb`; pemanggil lama yang memberi
-  `only` tanpa kunci ini tidak membaca antrean web (anggaran query RR3-01). Order lama
-  (>6 jam) tidak pernah dikirim ulang, jadi deploy tidak membanjiri grup.
-- Dikunci oleh `tests/web-paid-admin-notif.integration.test.ts` (termasuk cron sungguhan).
+  `only` tanpa kunci ini tidak membaca antrean web (anggaran query RR3-01).
+- Dikunci oleh `tests/web-paid-admin-notif.integration.test.ts` (termasuk rute cron) dan
+  `tests/paid-admin-ledger.{integration,workerd}.test.ts`.
 
 ## 14. Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA (Terimplementasi)
 

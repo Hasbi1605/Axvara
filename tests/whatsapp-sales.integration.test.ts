@@ -5,7 +5,10 @@ import { SALES_CONFIG_KEY } from "@/lib/whatsapp/sales-notifications";
 import { processWhatsAppOutboxRow, recoverStaleWhatsAppLeases } from "@/lib/whatsapp/outbox";
 import { summarizeWebDelivery, notifyWebPaidAdmin } from "@/lib/telegram/order-notifications";
 vi.mock("@/lib/whatsapp/gateway", async original => ({ ...await original<object>(), sendTextMessage: vi.fn(), salesGatewayControl: vi.fn() }));
-vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn(async () => ({ ok: true })) }));
+vi.mock("@/lib/telegram/api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/telegram/api")>(),
+  sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+}));
 const CODE = "AXV-20261024-1234ABCD";
 const GROUP = "120363123456789012@g.us";
 let fixture: ReturnType<typeof createD1Fixture>;

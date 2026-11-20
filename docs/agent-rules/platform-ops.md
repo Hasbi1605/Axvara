@@ -1,5 +1,10 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Anti-spam notifikasi admin Lunas — 21 November 2026 (lokal, belum deploy)
+
+- Semua asal order (Web/Telegram/WhatsApp) memakai klaim D1 `admin-paid:<kode>` sebelum POST ke Telegram. D1 gagal → jangan kirim. Jangan reset/rebut `sending`, `unknown`, `admin-paid-timeout:<kode>`, atau `failed` warisan tanpa `access_retry_at`: pesan mungkin sudah diterima Telegram. Panel Pesanan adalah sumber status; tidak ada resend otomatis untuk hasil ambigu.
+- Cron lite/heavy dan probe notify memakai jendela lunas 6 jam. Hanya 400/401/403/404 dan 429 terstruktur membuka retry; 429 menunggu `retry_after` (minimum 60 detik). Web boleh satu fallback tanpa tombol untuk 400 dalam klaim yang sama. Rilis CI harus menerapkan migrasi 0152 lebih dulu; migrasi mempertahankan baris/indeks dan menambah `unknown` khusus ledger admin, bukan notifikasi pembeli.
+
 ### Workers Logs `axvara-mcp` + runbook log Pages — 20 November 2026 (keputusan owner; berlaku setelah rilis CI)
 
 - **Keputusan owner:** aktifkan Workers Logs persisten (retensi 7 hari, dashboard Observability) di Worker `axvara-mcp` dengan invocation logs otomatis **ON**. Konfigurasi di `mcp-worker/wrangler.toml`: `[observability] enabled = true`, `head_sampling_rate = 1`, dan `[observability.logs] invocation_logs = true`. Sampling 1 agar kegagalan langka (queue/cron) tidak terlewat; turunkan hanya bila pemakaian bersama menuntut.
@@ -19,7 +24,7 @@
   - Dijadwalkan setiap 1 menit di `mcp-worker/src/cron.ts` (`group: "notify"`, `alarm: "soft"`). Wajib ringan (1 panggilan `getWebhookInfo` saat sehat; ≤3 saat auto-kick), **tidak pernah** melempar exception (catch → `{ status, error }` tersanitasi), dan **tidak pernah** mencatat token/secret.
   - **Kondisi tertahan (`isStuck`):** `pending_update_count >= 3` DAN `last_error_date` dalam 180 detik terakhir. **Salah URL (`isWrongUrl`):** `url !== canonicalWebhookUrl()` (`${siteOrigin()}/api/telegram/webhook`, berbagi single source dengan `/api/admin/telegram/setup`).
   - **Auto-recover:** paling banyak 1× per 5 menit (CAS di `store_settings.tg_webhook_guard_state` `last_kick_at`). Memanggil `deleteWebhook({ drop_pending_updates: false })` lalu `setWebhook(...)` dengan parameter kanonis dan `drop_pending_updates: false`. **Dilarang keras** mengirim `drop_pending_updates: true`. Jika `setWebhook` gagal, coba ulang 1× seketika agar webhook tidak tertinggal kosong; bila kedua percobaan gagal, kirim alert kritis ke `TELEGRAM_ADMIN_CHAT_ID`.
-  - **Notifikasi admin:** mengirim `"⚠️ Bot Telegram tertahan: {pending} update antre · error terakhir {hh:mm WIB}: {message} · webhook dipasang ulang otomatis"` (rate-limit 1×/30 menit selama tertahan) dan `"✅ Bot Telegram pulih (antrean kosong)"` sekali saat `pending_update_count` kembali ke 0 setelah alert tertahan. Revisi 20 Nov malam: `sendMessage` yang timeout dianggap terkirim untuk kedua alert ini (Telegram bisa menahan lalu tetap mengirim saat Bot API hang), agar run tiap menit tidak menumpuk salinan.
+  - **Notifikasi admin:** mengirim `"⚠️ Bot Telegram tertahan: {pending} update antre · error terakhir {hh:mm WIB}: {message} · webhook dipasang ulang otomatis"` (rate-limit 1×/30 menit selama tertahan) dan `"✅ Bot Telegram pulih (antrean kosong)"` sekali saat `pending_update_count` kembali ke 0 setelah alert tertahan. Revisi 21 Nov (lokal): kedua alert memperbarui cooldown/latch pada hasil `sent` atau ambigu, bukan hanya pada sukses/timeout; penolakan pasti dan 429 tetap due seperti sebelumnya.
   - **`GET /api/admin/bot/health`:** ikut melaporkan `pending_update_count`, `last_error_date`, `last_error_message`, dan `last_auto_kick_at` pada objek `webhook`.
 
 ### Kuota menit GitHub Actions — 20 November 2026

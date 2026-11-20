@@ -7,7 +7,7 @@
 // seluruh pesan, dan hasil kirim diabaikan. Dikunci di sini pada D1 nyata:
 //  - URL tombol selalu absolut walau SITE_URL kosong / tanpa skema;
 //  - tombol ditolak (400) → dikirim ulang tanpa tombol, alasan tercatat;
-//  - timeout → TIDAK dikirim ulang langsung (bisa dobel), cron yang mengulang;
+//  - timeout → tidak pernah dikirim ulang, termasuk dari cron;
 //  - sekali per order; order lama (>6 jam) tidak dikirim ulang oleh cron;
 //  - order web tidak lagi mengirim "Order Baru" saat dibuat.
 import fs from "node:fs";
@@ -20,13 +20,11 @@ import { siteOrigin } from "@/lib/site-url";
 import { summarizeWebDelivery } from "@/lib/telegram/order-notifications";
 import { webPaidAdminKeyboard } from "@/lib/telegram/keyboards";
 
-vi.mock("@/lib/telegram/api", () => ({
-  sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
-}));
-
 type Msg = { chat_id: string; text: string; reply_markup?: { inline_keyboard: { text: string; url?: string }[][] } };
 let fixture: ReturnType<typeof createD1Fixture>;
 const CODE = "AXV-20260925-NOTIF001";
+let messages: Msg[];
+let telegramResponse: () => Response;
 
 beforeEach(async () => {
   fixture = createD1Fixture();
@@ -37,10 +35,15 @@ beforeEach(async () => {
   vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "-100200");
   vi.stubEnv("SITE_URL", "");
   vi.stubEnv("CRON_SECRET", "fixture");
-  vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Network disabled in fixture"); }));
-  const { sendMessage } = await import("@/lib/telegram/api");
-  vi.mocked(sendMessage).mockReset();
-  vi.mocked(sendMessage).mockResolvedValue({ ok: true, result: { message_id: 1 } } as never);
+  messages = [];
+  telegramResponse = () => Response.json({ ok: true, result: { message_id: 1 } });
+  vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
+    if (input !== "https://api.telegram.org/botbot-test/sendMessage" || init?.method !== "POST") {
+      throw new Error("Network disabled in fixture");
+    }
+    messages.push(JSON.parse(String(init.body)) as Msg);
+    return telegramResponse();
+  }));
   fixture.sql.exec("INSERT INTO products(id,name,slug,price,stock,source) VALUES(1,'Canva Pro','canva-premium',5000,100,'manual')");
   fixture.sql.exec("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(2,1,'SKU-2','Invite Lifetime',5000,-1,'manual')");
 });
@@ -56,8 +59,7 @@ async function paidWebOrder(code = CODE) {
 }
 
 async function adminMessages(): Promise<Msg[]> {
-  const { sendMessage } = await import("@/lib/telegram/api");
-  return vi.mocked(sendMessage).mock.calls.map(([m]) => m as unknown as Msg).filter((m) => m.chat_id === "-100200");
+  return messages.filter((m) => m.chat_id === "-100200");
 }
 const ledger = (code = CODE) => fixture.sql.prepare("SELECT status, error FROM buyer_notice_log WHERE idempotency_key=?").get(`admin-paid:${code}`) as { status: string; error: string | null } | undefined;
 
@@ -95,8 +97,10 @@ describe("notif Pembayaran diterima — Web ke grup admin", () => {
   });
 
   it("tombol ditolak Telegram (400) → dikirim ulang tanpa tombol, alasannya tercatat", async () => {
-    const { sendMessage } = await import("@/lib/telegram/api");
-    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: inline keyboard button URL '/admin' is invalid" } as never);
+    const accept = telegramResponse;
+    telegramResponse = () => messages.length === 1
+      ? Response.json({ ok: false, error_code: 400, description: "Bad Request: inline keyboard button URL '/admin' is invalid" }, { status: 400 })
+      : accept();
     await paidWebOrder();
     await ensureFulfillmentForPaidOrder(CODE);
     const msgs = await adminMessages();
@@ -108,28 +112,24 @@ describe("notif Pembayaran diterima — Web ke grup admin", () => {
     expect(ledger()?.error).toContain("terkirim tanpa tombol: Bad Request");
   });
 
-  it("timeout → tidak dikirim ulang seketika (bisa dobel); cron menunggu 20 menit, mengirim ulang lalu berhenti", async () => {
-    const { sendMessage } = await import("@/lib/telegram/api");
-    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
+  it("timeout → unknown; operasi cron dan follow-up tidak pernah mengirim ulang", async () => {
+    telegramResponse = () => { throw new DOMException("aborted", "AbortError"); };
     await paidWebOrder();
     await ensureFulfillmentForPaidOrder(CODE);
     expect(await adminMessages()).toHaveLength(1);
-    expect(ledger()).toMatchObject({ status: "failed", error: "Request timeout" });
+    expect(ledger()).toMatchObject({ status: "unknown", error: "ambiguous" });
 
-    // Insiden 20 Nov 2026: Telegram menahan pesan yang timeout lalu tetap mengirimnya;
-    // retry tiap run cron menumpuk jadi spam. Belum 20 menit → tidak dikirim ulang.
-    const early = await cron();
-    expect(early.telegram_paid_admin_web_notifications_retried ?? 0).toBe(0);
+    for (const minutes of [10, 20, 60, 360]) {
+      fixture.sql.prepare("UPDATE orders SET paid_at=datetime('now',?),updated_at=datetime('now',?) WHERE code=?")
+        .run(`-${minutes} minutes`, `-${minutes} minutes`, CODE);
+      fixture.sql.prepare("UPDATE buyer_notice_log SET updated_at=datetime('now',?) WHERE idempotency_key=?")
+        .run(`-${minutes} minutes`, `admin-paid:${CODE}`);
+      const tick = await cron();
+      expect(tick.telegram_paid_admin_web_notifications_retried ?? 0).toBe(0);
+    }
+    await ensureFulfillmentForPaidOrder(CODE);
     expect(await adminMessages()).toHaveLength(1);
-
-    fixture.sql.prepare("UPDATE buyer_notice_log SET updated_at=datetime('now','-21 minutes') WHERE idempotency_key=?").run(`admin-paid:${CODE}`);
-    const first = await cron();
-    expect(first.telegram_paid_admin_web_notifications_retried).toBe(1);
-    expect(await adminMessages()).toHaveLength(2);
-    expect(ledger()?.status).toBe("sent");
-    const second = await cron();
-    expect(second.telegram_paid_admin_web_notifications_retried ?? 0).toBe(0);
-    expect(await adminMessages()).toHaveLength(2);
+    expect(ledger()?.status).toBe("unknown");
   });
 
   it("order web yang lunas lebih dari 6 jam lalu tidak dikirim oleh cron", async () => {

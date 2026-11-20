@@ -26,7 +26,8 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { deriveNameFromEmail } from "@/lib/utils";
 
-vi.mock("@/lib/telegram/api", () => ({
+vi.mock("@/lib/telegram/api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/telegram/api")>(),
   sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
 }));
 

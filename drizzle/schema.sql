@@ -1067,7 +1067,10 @@ CREATE TABLE IF NOT EXISTS buyer_notice_log (
   idempotency_key TEXT PRIMARY KEY,
   order_code TEXT NOT NULL,
   channel TEXT NOT NULL CHECK (channel IN ('email', 'telegram')),
-  status TEXT NOT NULL DEFAULT 'sending' CHECK (status IN ('sending', 'sent', 'failed')),
+  status TEXT NOT NULL DEFAULT 'sending' CHECK (
+    status IN ('sending', 'sent', 'failed')
+    OR (status = 'unknown' AND channel = 'telegram' AND idempotency_key GLOB 'admin-paid:*')
+  ),
   provider_id TEXT,
   error TEXT,
   access_attempts INTEGER NOT NULL DEFAULT 0 CHECK (access_attempts >= 0),
