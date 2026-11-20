@@ -403,13 +403,30 @@ describe("S&K admin versi Inggris (migrasi 0105)", () => {
     expect(staleWithoutEn.copy!.sections.flatMap((s) => s.items).join(" ")).not.toContain("English custom terms");
   });
 
-  it("EN tanpa ID admin tidak tampil (EN hanya selama salinan admin ID berlaku)", async () => {
+  // Audit AU-H2-7 (21 Nov 2026): dulu menyimpan EN tanpa menimpa ID menghapus
+  // EN diam-diam (clear berdasarkan ID saja) dan resolver memblokir EN di belakang
+  // override ID. Kontrak baru: EN disimpan & tampil mandiri; ID tetap otomatis.
+  it("EN tanpa ID admin tetap tersimpan dan tampil mandiri", async () => {
     const [entry] = await getCopy(1);
     const res = await put({ variant_id: 1, terms: "", activation: "", terms_en: "Only English", activation_en: "", supplier_key: entry.supplierKey });
     expect(res.status).toBe(200);
     const [saved] = await getCopy(1);
     expect(saved.hasOverride).toBe(false);
-    expect(saved.adminTermsEn).toBe("");
+    expect(saved.adminTermsEn).toContain("Only English");
+    // ID tetap kembali otomatis, tapi pembeli EN melihat salinan EN admin.
+    const { resolveVariantCopyDetailed } = await import("@/lib/product-copy/resolve");
+    const en = resolveVariantCopyDetailed(legal.terms, legal.deliveryTerms, {
+      terms: saved.adminTerms, activation: saved.adminActivation, fingerprint: saved.supplierKey,
+      termsEn: saved.adminTermsEn, activationEn: saved.adminActivationEn,
+    }, "en");
+    expect(en.status).toBe("admin");
+    expect(en.copy!.sections.flatMap((s) => s.items).join(" ")).toContain("Only English");
+    // Pembeli ID tetap memakai salinan otomatis (tidak terpengaruh EN-only).
+    const idCopy = resolveVariantCopyDetailed(legal.terms, legal.deliveryTerms, {
+      terms: saved.adminTerms, activation: saved.adminActivation, fingerprint: saved.supplierKey,
+      termsEn: saved.adminTermsEn, activationEn: saved.adminActivationEn,
+    }, "id");
+    expect(idCopy.status).not.toBe("admin");
   });
 
   it("EN admin bertahan dari baris katalog sampai copy_en publik, ID tetap di copy", async () => {

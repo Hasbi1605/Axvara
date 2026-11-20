@@ -63,6 +63,14 @@ export type VariantSummary = {
   sk_auto_managed?: number;
   /** order_process SK mentah (auto/manual/h2h/smm/vip) — dari sk_products. */
   sk_order_process?: string | null;
+  /**
+   * Keluarga supplier untuk payload PUBLIK (audit AU-C1-1, 21 Nov 2026):
+   * "wr" | "sk" | null. Menggantikan wr_variant_id/sk_variant_id mentah yang
+   * TIDAK boleh dikirim ke pembeli; diisi server-side oleh withVariantCopy.
+   */
+  supplier_variant?: "wr" | "sk" | null;
+  /** Varian WR3 Jaspay (dibuat otomatis oleh bot) — pengganti cek prefix wr_variant_id di payload publik. */
+  automatic_processing?: boolean;
   /** Deskripsi mentah SK dari sk_products (server-only; dihapus oleh withVariantCopy). */
   sk_description?: string | null;
   /** Durasi SK turunan render-time saat kolom duration_* kosong (aman dikirim ke browser). */
@@ -446,21 +454,33 @@ export function formatDuration(v: VariantSummary): string {
  *   semua bila ditempel). Insiden 2026-09-19: helper lama menggabung untuk
  *   semua produk → "Invite Lifetime - 6 Bulan", "Head 1 Bulan - 14 Hari".
  */
+/**
+ * Keluarga supplier sebuah varian dari sumber tepercaya: kolom mentah
+ * `wr_variant_id`/`sk_variant_id` (server) ATAU penanda publik
+ * `supplier_variant` (payload /api/catalog setelah ID mentah dibuang).
+ */
+export function supplierVariantOf(v: { wr_variant_id?: unknown; sk_variant_id?: unknown; supplier_variant?: unknown }): "wr" | "sk" | null {
+  if (v.supplier_variant === "wr" || v.supplier_variant === "sk") return v.supplier_variant;
+  const wrId = v.wr_variant_id == null ? "" : String(v.wr_variant_id).trim();
+  if (wrId) return "wr";
+  const skId = v.sk_variant_id == null ? "" : String(v.sk_variant_id).trim();
+  return skId ? "sk" : null;
+}
+
 export function formatVariantLabel(
   v: Pick<VariantSummary, "label">
-    & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit" | "terms" | "sk_description" | "sk_duration">>
+    & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit" | "terms" | "sk_description" | "sk_duration" | "supplier_variant">>
     & { wr_variant_id?: unknown; sk_variant_id?: unknown },
   locale: Locale = "id",
 ): string {
   const label = String(v.label || "").trim();
-  const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id;
-  if (wrId != null && String(wrId).trim() !== "") {
+  const kind = supplierVariantOf(v);
+  if (kind === "wr") {
     const dur = formatDuration(v as VariantSummary).trim();
     const composed = !dur || label.toLowerCase().includes(dur.toLowerCase()) ? label : `${label} - ${dur}`;
     return translateVariantLabel(composed, locale);
   }
-  const skId = (v as { sk_variant_id?: unknown }).sk_variant_id;
-  if (skId != null && String(skId).trim() !== "") {
+  if (kind === "sk") {
     const hasAdminDuration =
       (v.duration_label != null && String(v.duration_label).trim() !== "")
       || (v.duration_value != null && Number(v.duration_value) > 0)
@@ -491,10 +511,10 @@ export function formatVariantLabel(
  */
 export type BuyerDeliveryKind = "instant" | "queued";
 
-export function buyerDeliveryKind(v: { fulfillment_mode?: unknown; wr_delivery_class?: unknown; sk_order_process?: unknown; automatic_delivery?: boolean; wr_variant_id?: unknown; sk_variant_id?: unknown }): BuyerDeliveryKind {
+export function buyerDeliveryKind(v: { fulfillment_mode?: unknown; wr_delivery_class?: unknown; sk_order_process?: unknown; automatic_delivery?: boolean; wr_variant_id?: unknown; sk_variant_id?: unknown; supplier_variant?: unknown }): BuyerDeliveryKind {
   return isQueuedFulfillment({
-    wrVariantId: v.wr_variant_id, wrClass: v.wr_delivery_class,
-    skVariantId: v.sk_variant_id, skOrderProcess: v.sk_order_process,
+    wrVariantId: v.supplier_variant === "wr" ? "1" : v.wr_variant_id, wrClass: v.wr_delivery_class,
+    skVariantId: v.supplier_variant === "sk" ? "1" : v.sk_variant_id, skOrderProcess: v.sk_order_process,
     fulfillmentMode: v.fulfillment_mode, automaticDelivery: v.automatic_delivery,
   }) ? "queued" : "instant";
 }
@@ -506,7 +526,7 @@ export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0] & 
     : String((v as { wr_variant_id?: unknown }).wr_variant_id).trim();
   // WR3 Jaspay: dibuat otomatis (bukan disiapkan admin), tapi tetap antrean
   // (bukan instan/stok). Tanpa brand supplier di copy pembeli.
-  if (wrId.startsWith("jaspay:")) return "Diproses otomatis";
+  if (wrId.startsWith("jaspay:") || (v as { automatic_processing?: unknown }).automatic_processing === true) return "Diproses otomatis";
   return buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Made By Order";
 }
 

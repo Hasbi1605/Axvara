@@ -15,7 +15,7 @@ const settingsSchema = z.object({
   supportHours: z.string().trim().min(5, "Jam layanan wajib diisi").max(60),
   footerText: z.string().trim().min(10, "Keterangan footer minimal 10 karakter").max(300),
   logoUrl: z.string().trim().max(600).refine(
-    (value) => value === "" || value.startsWith("/") || /^https:\/\//i.test(value),
+    (value) => value === "" || (value.startsWith("/") && !value.startsWith("//")) || /^https:\/\//i.test(value),
     "Logo harus berupa path situs atau URL HTTPS",
   ),
 });

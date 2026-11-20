@@ -422,7 +422,9 @@ lewat `readJsonBody`.
   `syncGamesCatalog` membaca map referensi dari tabel ini (bukan dari
   `games_products.reference_price`) lalu menulis cermin `reference_price` +
   `sell_price` saat upsert. Menghapus baris referensi membuat sinkron berikutnya
-  mengembalikan harga ke batas bawah modal.
+  mengembalikan harga ke batas bawah modal. (Catatan 21 Nov 2026: fungsi
+  `syncGamesCatalog`/`src/lib/games/catalog-sync.ts` dihapus sebagai dead code —
+  audit AU-C1-7; cron `games_catalog` memakai `sk-catalog-sync.ts`.)
 - **Seed A2 Oura (lokal, 9 November 2026).** Migrasi `0111_games_reference_seed.sql`
   menambah198 referensi: FREE FIRE16, Free Fire Max8, MOBILE LEGENDS156, PUBG MOBILE18.
   Generator offline `node scripts/generate-games-reference-seed.mjs <reference.json> <skus.json>`
