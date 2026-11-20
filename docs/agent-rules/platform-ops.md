@@ -1,5 +1,15 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Penjaga webhook Bot Telegram (`tg_webhook`) — 20 November 2026 (lokal, belum deploy)
+
+- **Insiden 20 Nov 2026 12:40–12:58 WIB:** edge Cloudflare mengembalikan HTTP 500 ke pengiriman webhook Telegram (request tidak pernah mencapai Pages Functions; situs dari SIN normal). Karena Telegram mengirim update berurutan per bot, satu update gagal menahan seluruh antrean pembeli ~18 menit (`pending_update_count` naik ke 10). Pemulihan manual yang berhasil: `deleteWebhook(drop_pending_updates:false)` lalu `setWebhook(url, secret_token, max_connections:40, allowed_updates:["message","callback_query"], drop_pending_updates:false)` → antrean mengalir habis dalam ~15 detik.
+- **Guard otomatis (`src/lib/telegram/webhook-guard.ts`, job `cron/lite?job=tg_webhook`):**
+  - Dijadwalkan setiap 1 menit di `mcp-worker/src/cron.ts` (`group: "notify"`, `alarm: "soft"`). Wajib ringan (1 panggilan `getWebhookInfo` saat sehat; ≤3 saat auto-kick), **tidak pernah** melempar exception (catch → `{ status, error }` tersanitasi), dan **tidak pernah** mencatat token/secret.
+  - **Kondisi tertahan (`isStuck`):** `pending_update_count >= 3` DAN `last_error_date` dalam 180 detik terakhir. **Salah URL (`isWrongUrl`):** `url !== canonicalWebhookUrl()` (`${siteOrigin()}/api/telegram/webhook`, berbagi single source dengan `/api/admin/telegram/setup`).
+  - **Auto-recover:** paling banyak 1× per 5 menit (CAS di `store_settings.tg_webhook_guard_state` `last_kick_at`). Memanggil `deleteWebhook({ drop_pending_updates: false })` lalu `setWebhook(...)` dengan parameter kanonis dan `drop_pending_updates: false`. **Dilarang keras** mengirim `drop_pending_updates: true`. Jika `setWebhook` gagal, coba ulang 1× seketika agar webhook tidak tertinggal kosong; bila kedua percobaan gagal, kirim alert kritis ke `TELEGRAM_ADMIN_CHAT_ID`.
+  - **Notifikasi admin:** mengirim `"⚠️ Bot Telegram tertahan: {pending} update antre · error terakhir {hh:mm WIB}: {message} · webhook dipasang ulang otomatis"` (rate-limit 1×/30 menit selama tertahan) dan `"✅ Bot Telegram pulih (antrean kosong)"` sekali saat `pending_update_count` kembali ke 0 setelah alert tertahan.
+  - **`GET /api/admin/bot/health`:** ikut melaporkan `pending_update_count`, `last_error_date`, `last_error_message`, dan `last_auto_kick_at` pada objek `webhook`.
+
 ### Kuota menit GitHub Actions — 20 November 2026
 
 - **Pengamatan 20 Nov 2026 (estimasi dari durasi job, bukan angka billing resmi):** 1–20 Nov ≈ 2.816 menit (`AXVARA CI/CD` 266 run ≈ 2.745 mnt, D1 usage monitor 68, backup 3); proyeksi akhir bulan ≈ 4.400 menit. Kuota bawaan repo privat: Free 2.000/bulan, Pro 3.000/bulan; kelebihan Linux ditagih ~US$0,008/menit bila budget mengizinkan, bila tidak run tidak dijalankan. Satu run CI ≈ 10–19 mnt (test 12,5 mnt di runner 2-core).

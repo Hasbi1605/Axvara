@@ -3,9 +3,8 @@ import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/dana-
 // Admin-authenticated. Does NOT expose bot token.
 
 import { NextRequest, NextResponse } from "next/server";
-import { siteOrigin } from "@/lib/site-url";
 import { requireAdmin } from "@/lib/auth";
-import { setWebhook, getWebhookInfo, deleteWebhook, setMyCommands } from "@/lib/telegram/api";
+import { setWebhook, getWebhookInfo, deleteWebhook, setMyCommands, canonicalWebhookUrl } from "@/lib/telegram/api";
 
 export const runtime = "edge";
 
@@ -15,7 +14,6 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json() as { action?: string };
   // SITE_URL bisa kosong di worker (§16.4): `??` menghasilkan URL webhook relatif.
-  const siteUrl = siteOrigin();
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -23,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "bot_not_configured" }, { status: 503 });
   }
 
-  const webhookUrl = `${siteUrl}/api/telegram/webhook`;
+  const webhookUrl = canonicalWebhookUrl();
 
   if (body.action === "delete") {
     const result = await deleteWebhook();

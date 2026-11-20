@@ -12,9 +12,31 @@ import type {
   WebhookInfo,
 } from "./types";
 import { applyButtonStyles } from "./button-style";
+import { siteOrigin } from "@/lib/site-url";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const DEFAULT_TIMEOUT_MS = 10_000;
+
+export const TELEGRAM_WEBHOOK_MAX_CONNECTIONS = 40;
+export const TELEGRAM_WEBHOOK_ALLOWED_UPDATES = ["message", "callback_query"] as const;
+
+export function canonicalWebhookUrl(): string {
+  return `${siteOrigin()}/api/telegram/webhook`;
+}
+
+export function buildCanonicalWebhookParams(
+  secretToken: string,
+  url = canonicalWebhookUrl(),
+  maxConnections = TELEGRAM_WEBHOOK_MAX_CONNECTIONS,
+) {
+  return {
+    url,
+    secret_token: secretToken,
+    max_connections: maxConnections,
+    allowed_updates: [...TELEGRAM_WEBHOOK_ALLOWED_UPDATES],
+    drop_pending_updates: false as const,
+  };
+}
 
 function getToken(): string {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -51,7 +73,11 @@ async function callApi<T>(
     if (error instanceof DOMException && error.name === "AbortError") {
       return { ok: false, description: "Request timeout" };
     }
-    return { ok: false, description: error instanceof Error ? error.message : "Unknown error" };
+    const raw = error instanceof Error ? error.message : "Unknown error";
+    return {
+      ok: false,
+      description: raw.replace(/https:\/\/api\.telegram\.org\/bot[^/\s]+/gi, "https://api.telegram.org/bot[REDACTED]"),
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -126,14 +152,9 @@ export async function answerCallbackQuery(
 export async function setWebhook(
   url: string,
   secretToken: string,
-  maxConnections = 40,
+  maxConnections = TELEGRAM_WEBHOOK_MAX_CONNECTIONS,
 ): Promise<TelegramApiResponse> {
-  return callApi("setWebhook", {
-    url,
-    secret_token: secretToken,
-    max_connections: maxConnections,
-    allowed_updates: ["message", "callback_query"],
-  });
+  return callApi("setWebhook", buildCanonicalWebhookParams(secretToken, url, maxConnections));
 }
 
 export async function getWebhookInfo(): Promise<TelegramApiResponse<WebhookInfo>> {

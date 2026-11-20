@@ -3,6 +3,7 @@ import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/dana-
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getWebhookInfo } from "@/lib/telegram/api";
+import { TG_WEBHOOK_GUARD_STATE_KEY, parseWebhookGuardState } from "@/lib/telegram/webhook-guard";
 import { queryAll, queryFirst } from "@/lib/db";
 
 export const runtime = "edge";
@@ -45,16 +46,38 @@ export async function GET(request: NextRequest) {
 
   // Webhook info (if configured)
   if (process.env.TELEGRAM_BOT_TOKEN) {
+    let lastAutoKickAt: string | null = null;
+    try {
+      const guardRow = await queryFirst(
+        `SELECT value FROM store_settings WHERE key=?`,
+        TG_WEBHOOK_GUARD_STATE_KEY,
+      );
+      const guardState = parseWebhookGuardState(guardRow?.value);
+      if (guardState.last_kick_at && Number.isFinite(guardState.last_kick_at)) {
+        lastAutoKickAt = new Date(guardState.last_kick_at).toISOString();
+      }
+    } catch { /* store_settings opsional */ }
+
     try {
       const info = await getWebhookInfo();
       if (info.ok && info.result) {
         health.webhook = {
           url: info.result.url || "(not set)",
           pending_updates: info.result.pending_update_count,
+          pending_update_count: info.result.pending_update_count ?? 0,
           last_error: info.result.last_error_message ?? null,
+          last_error_message: info.result.last_error_message ?? null,
+          last_error_date: info.result.last_error_date
+            ? new Date(info.result.last_error_date * 1000).toISOString()
+            : null,
+          last_auto_kick_at: lastAutoKickAt,
         };
+      } else {
+        health.webhook = { error: "check_failed", last_auto_kick_at: lastAutoKickAt };
       }
-    } catch { health.webhook = { error: "check_failed" }; }
+    } catch {
+      health.webhook = { error: "check_failed", last_auto_kick_at: lastAutoKickAt };
+    }
   }
 
   // Stats

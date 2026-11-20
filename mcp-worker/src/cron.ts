@@ -89,6 +89,7 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "notify_a", alarm: "soft", group: "notify" },
   { phase: "lite", lite: "notify_b", alarm: "soft", group: "notify" },
   { phase: "lite", lite: "promo", alarm: "soft", group: "notify" },
+  { phase: "lite", lite: "tg_webhook", alarm: "soft", group: "notify" },
   { phase: "lite", lite: "cleanup", alarm: "none", everyMinutes: 5, group: "notify" },
   // AXVARA Games (docs/GAMES.md §12.5): sinkron katalog tiap 10 mnt;
   // throttle & no-op tanpa kredensial dijaga di dalam job.

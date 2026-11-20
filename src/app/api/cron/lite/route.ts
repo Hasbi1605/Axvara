@@ -1,4 +1,4 @@
-// POST /api/cron/lite?job=payments|expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|cleanup|games_catalog|games_orders — langkah
+// POST /api/cron/lite?job=payments|expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|tg_webhook|cleanup|games_catalog|games_orders — langkah
 // cron INTI yang dipisah dari route raksasa `/api/cron/operations` (2026-10-05).
 //
 // Latar: Workers Free ~10 ms CPU per request. Malam 4→5 Okt 10–20% request
@@ -47,7 +47,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, unwrapD1, type DatabaseAcc
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "aivault_orders", "aivault_catalog", "storebat_orders", "storebat_catalog", "mirai_orders", "mirai_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
+const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "aivault_orders", "aivault_catalog", "storebat_orders", "storebat_catalog", "mirai_orders", "mirai_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "tg_webhook", "cleanup", "games_catalog", "games_orders"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 30;
 const ORPHAN_LEDGER_PER_RUN = 30;
@@ -254,6 +254,10 @@ export async function POST(request: NextRequest) {
       const ran = await processGamesPaidOrders(undefined, db);
       Object.assign(result, ran);
       if (ran.error) return NextResponse.json({ ...result, ok: false }, { status: 503 });
+    }
+    else if (job === "tg_webhook") {
+      const { guardTelegramWebhook } = await import("@/lib/telegram/webhook-guard");
+      Object.assign(result, await guardTelegramWebhook(db));
     }
     else Object.assign(result, await runPromo(db));
   } catch (error) {
