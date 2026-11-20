@@ -4,7 +4,8 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 type Row = Record<string, unknown>;
 import { parseExpiry } from "@/lib/expiry";
 import { formatRupiah } from "@/lib/telegram/messages/format";
-import { classifyTelegramSend, sendMessage } from "@/lib/telegram/api";
+import { sendMessage } from "@/lib/telegram/api";
+import { classifyTelegramSend } from "@/lib/telegram/send-outcome";
 import type { SendMessageParams } from "@/lib/telegram/types";
 import {
   adminTelegramOrderCreatedMessage,

@@ -2,12 +2,12 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import {
   canonicalWebhookUrl,
-  classifyTelegramSend,
   deleteWebhook,
   getWebhookInfo,
   sendMessage,
   setWebhook,
 } from "@/lib/telegram/api";
+import { classifyTelegramSend } from "@/lib/telegram/send-outcome";
 
 /** Advance the latch on ambiguity: the POST may have been delivered. */
 function alertDelivered(res: unknown): boolean {
