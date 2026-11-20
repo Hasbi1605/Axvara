@@ -80,3 +80,30 @@ it("0148 rewrites only TUNVN-111 Muse 1B copy to the Gmail + 2FA format and adds
       .toEqual({ destination: "https://drive.google.com/file/d/1v95Q95v2jB8LkWLwQlw3WTwO7U3Ma2d4/view?usp=drivesdk" });
   } finally { close(); }
 });
+
+it("0149 rewrites #112/#97/#98 Muse copy and leaves #114 mailbox copy untouched", () => {
+  const { sql, close } = createD1Fixture();
+  try {
+    const m = readFileSync("drizzle/migrations/0149_tunvn_muse_other_variants_copy.sql", "utf8");
+    sql.exec(`INSERT INTO products(id,name,slug,price,is_active) VALUES (112,'Muse AI','muse-ai-1-miliar-token',0,1);
+      INSERT INTO product_variants(product_id,sku,label,price,is_active,admin_terms,admin_activation) VALUES
+      (112,'TUNVN-112','31B W2D',19600,1,'Hotmail API mail','mail-dongvan'),
+      (112,'TUNVN-97','1B NW',3000,1,'Link baca mailbox','old'),
+      (112,'TUNVN-98','31B NW',9400,1,'Link baca mailbox','old'),
+      (112,'TUNVN-114','25-28B NW',12200,1,'Keep mailbox','Keep');`);
+    sql.exec(m); sql.exec(m);
+    const get = (sku: string) => sql.prepare("SELECT admin_terms,admin_terms_en,admin_activation,admin_activation_en FROM product_variants WHERE sku=?").get(sku) as Record<string, string>;
+    const w2d = get("TUNVN-112");
+    expect(w2d.admin_terms).toContain("31 miliar token berbasis Gmail");
+    expect(w2d.admin_terms).toContain("Format: Email | Password | Kode 2FA");
+    for (const sku of ["TUNVN-97", "TUNVN-98"]) {
+      const v = get(sku);
+      expect(v.admin_terms).toContain("Format: Email | Password");
+      expect(v.admin_terms).toContain("Tanpa garansi");
+      expect(v.admin_activation).toContain("axvara.tech/go/otp-2fa");
+      expect(v.admin_activation_en).toContain("axvara.tech/go/muse-login-gmail");
+    }
+    for (const sku of ["TUNVN-112", "TUNVN-97", "TUNVN-98"]) expect(Object.values(get(sku)).join("\n")).not.toMatch(/Hotmail|API mail|mail-dongvan|mailbox/);
+    expect(get("TUNVN-114").admin_terms).toBe("Keep mailbox");
+  } finally { close(); }
+});
