@@ -1,4 +1,5 @@
 import { escapeHtml, escapeItemSummary, formatRupiah, truncate, paymentLabels, fulfillmentLabels } from "./format";
+import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 import type { Locale } from "@/lib/i18n/locale";
 
 export type TgLocaleOpts = { locale?: Locale };
@@ -45,11 +46,14 @@ export function orderPaidMessage(
 ): string {
   const en = opts?.locale === "en";
   const name = escapeItemSummary(productName, 2800);
+  // ETA kanonis (satu sumber dengan halaman pesanan web, `WR_QUEUED_MAX_HOURS`):
+  // "umumnya kurang dari 1 jam, maksimal 12 jam" — bukan janji tanpa waktu.
+  const hours = WR_QUEUED_MAX_HOURS;
   const deliveryLine = delivery === "instant"
     ? (en ? "Product is sent automatically to this chat." : "Produk dikirim otomatis ke chat ini.")
     : delivery === "queued"
-      ? (en ? "Made By Order (queue up to 12h). Sent automatically to this chat." : "Made By Order (antrean maks 12 jam). Dikirim otomatis ke chat ini.")
-      : (en ? "An admin will send the product to this private chat." : "Produk akan dikirim admin ke chat pribadi ini.");
+      ? (en ? `Made By Order — usually under 1 hour, up to ${hours} hours. Sent automatically to this chat.` : `Made By Order — umumnya kurang dari 1 jam, maksimal ${hours} jam. Dikirim otomatis ke chat ini.`)
+      : (en ? `An admin will send the product to this private chat — usually under 1 hour, up to ${hours} hours.` : `Produk akan dikirim admin ke chat pribadi ini — umumnya kurang dari 1 jam, maksimal ${hours} jam.`);
   const lines = [
     en ? "<b>✅ Payment confirmed</b>" : "<b>✅ Pembayaran lunas</b>",
     ...(name ? [name] : []),

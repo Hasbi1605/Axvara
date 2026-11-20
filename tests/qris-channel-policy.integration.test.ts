@@ -99,7 +99,7 @@ it("WA expiry creates a durable message once for the original conversation", asy
   const notices = fixture.sql.prepare("SELECT * FROM whatsapp_outbox WHERE idempotency_key=?").all(`wa:qris-expired:${code}`);
   expect(notices).toHaveLength(1);
   expect(notices[0]).toMatchObject({ destination: "fixture@g.us", payload: expect.stringContaining("15 menit") });
-  expect(String(notices[0].payload)).toContain("buat pesanan ulang");
+  expect(String(notices[0].payload)).toContain("buat pesanan baru");
 });
 it("migration shortens an existing active WA order to its invoice deadline", async () => {
   const invoice = await checkout("whatsapp");

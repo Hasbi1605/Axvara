@@ -41,6 +41,20 @@ export type WhatsAppProductLabel = { name: string; whatsappAlias?: string | null
 
 export type WhatsAppPaymentMethod = "QRIS" | "SEABANK" | "EWALLET";
 
+/**
+ * Broadcast grup bersifat publik ke seluruh anggota (order WA historis), jadi
+ * bagian yang mengidentifikasi pembeli disamarkan — pola sama dengan
+ * `maskAdminWa`/`maskAdminEmail`: pertahankan kepala + ekor, sembunyikan tengah.
+ */
+export function maskOrderCode(code: string): string {
+  const c = String(code ?? "").trim();
+  if (c.length <= 4) return "••••";
+  return `${c.slice(0, 4)}••••${c.slice(-4)}`;
+}
+
+/** Nominal persis tidak pernah dicetak di grup; hanya penanda ter-mask. */
+export const MASKED_TOTAL = "Rp•••••";
+
 /** A CMS alias is presentation-only; blank always falls back to the web name. */
 export function getWhatsAppDisplayName(product: WhatsAppProductLabel): string {
   return (product.whatsappAlias?.trim() || product.name.trim()).toUpperCase();
@@ -192,7 +206,7 @@ export function paymentMessage(params: {
 
   if (params.method === "QRIS") {
     lines.push(`⏰ ${QRIS_PAYMENT_DEADLINE_NOTICE}`);
-    lines.push("Tidak ada perpanjangan QRIS. Jangan bayar QRIS yang hangus; buat pesanan ulang untuk mendapatkan QRIS baru.");
+    lines.push("QRIS di grup WhatsApp tidak bisa diperpanjang. Jangan bayar QRIS yang hangus; buat pesanan baru untuk mendapatkan QRIS baru.");
     lines.push("Scan gambar QRIS yang dikirim setelah pesan ini.");
     lines.push("Bayar tepat sesuai total; status lunas terdeteksi otomatis.");
     lines.push("Screenshot opsional. Jika dikirim, cukup beri caption *QRIS*.");
@@ -287,19 +301,20 @@ export function paymentDetectedMessage(params: {
     "🎊🎉 *PEMBAYARAN BERHASIL!* 🎉🎊",
     "━━━━━━━━━━━━━━━━━━━━",
     "",
-    `✅ Order: *${params.orderCode}*`,
+    `✅ Order: *${maskOrderCode(params.orderCode)}*`,
   ];
   if (params.productName) {
     lines.push(`🛍 ${params.productName}${params.variantLabel ? ` — *${params.variantLabel}*` : ""}`);
   }
   if (params.total) {
-    lines.push(`💰 Total: *${formatRupiah(params.total)}*`);
+    // Privacy grup: jangan pernah mencetak nominal persis pembeli.
+    lines.push(`💰 Total: *${MASKED_TOTAL}*`);
   }
   if (params.method) {
     lines.push(`💳 Via: *${params.method}*`);
   }
   lines.push("");
-  lines.push("🚀 Pesanan kamu sedang diproses, ditunggu ya!");
+  lines.push("🚀 Pesanan lunas sedang diproses admin. Pembeli tidak perlu membayar ulang.");
   lines.push("");
   lines.push("━━━━━━━━━━━━━━━━━━━━");
   lines.push("💎 Terima kasih sudah belanja di *AXVARA*!");
@@ -382,7 +397,7 @@ export function welcomeNewMemberMessage(name?: string): string {
 }
 
 export function qrisExpiredMessage(orderCode: string): string {
-  return `⏰ *QRIS Hangus — Pesanan Kedaluwarsa*\n${orderCode}\n\nBatas pembayaran 15 menit sudah habis. Jangan bayar QRIS lama. Tidak ada perpanjangan QRIS; buat pesanan ulang di website atau Telegram untuk mendapatkan QRIS baru.`;
+  return `⏰ *QRIS Hangus — Pesanan Kedaluwarsa*\n${orderCode}\n\nBatas pembayaran 15 menit sudah habis. Jangan bayar QRIS lama. QRIS di grup WhatsApp tidak bisa diperpanjang; buat pesanan baru di website atau Telegram untuk mendapatkan QRIS baru.`;
 }
 
 /**

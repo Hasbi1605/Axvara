@@ -10,7 +10,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import { createActiveQrisInvoice, createDanaQrisInvoice, createGopayQrisInvoice, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
 
 const mocks = vi.hoisted(() => ({
-  send: vi.fn(async () => ({ ok: true })),
+  send: vi.fn(async (_payload?: unknown) => ({ ok: true })),
   wa: vi.fn(async () => ({ ok: true })),
 }));
 vi.mock("@/lib/telegram/api", () => ({
@@ -32,11 +32,13 @@ function expectNoDatabaseAccess() { expect(fixture.control.queries).toBe(0); }
 function expectTelegramNotice() {
   expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
     chat_id: 123,
-    text: expect.stringContaining("order manual lewat WhatsApp"),
+    text: expect.stringContaining("hubungi admin"),
     reply_markup: expect.objectContaining({ inline_keyboard: expect.arrayContaining([
-      [{ text: "Order manual via WhatsApp", url: PAYMENT_MANUAL_ORDER_URL }],
+      [{ text: "💬 Hubungi admin / Contact admin", url: PAYMENT_MANUAL_ORDER_URL }],
     ]) }),
   }));
+  // FX-13 X4-8: alur beli WhatsApp pensiun — jangan tawarkan "order manual via WhatsApp".
+  expect(JSON.stringify(mocks.send.mock.calls.at(-1)?.[0])).not.toContain("Order manual via WhatsApp");
   expectNoDatabaseAccess();
 }
 
