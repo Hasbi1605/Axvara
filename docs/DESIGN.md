@@ -87,6 +87,7 @@
 
 - Entri pertama dropdown **Supplier**. `PageHeader` dan tujuh `Card` memakai token `admin-*`: nominal tabular dengan mata uang asli, Skeleton serta retry per supplier. Riwayat 20 tagihan memakai `Badge` status dan susunan bertumpuk di HP.
 - `Dialog` Sekalipay menonjolkan total bayar, saldo masuk, biaya, dan QR/link; TUNVN menonjolkan nominal USDT persis dan alamat BEP20 yang bisa disalin. Hitung mundur tidak diumumkan setiap detik. Fokus kembali ke tombol pembuka atau judul riwayat jika aksi baris sudah hilang.
+- Baris gagal dengan referensi supplier menawarkan **Cek status**, bukan **Lihat topup**. Dialog hanya mengecek kredit; instruksi bayar dan aksi buat ulang tetap tersembunyi.
 
 ## Panel supplier admin terpadu (6 supplier) — 19 November 2026 (V3, lokal)
 

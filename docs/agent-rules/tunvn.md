@@ -291,6 +291,7 @@ Produk admin”. Implementasi/migrasi baru lokal; tanpa perubahan produksi.
   owner menangani sendiri melalui Telegram TUNVN. D1 keduanya sudah diberi
   `supplier_purchase_disabled=1`; hanya flag dan updated_at diubah, bukan status
   pengiriman, receipt, fence, notifikasi atau pembelian. Readback attempt0/sendNULL.
+- FX-11: `insufficient_balance` yang masuk `needs_admin` mengirim notis penanganan manual sekali per order. Notis Pesanan Diproses tetap hanya setelah acceptance supplier.
 - Perbaikan lokal: kegagalan preflight memiliki alasan aman terpisah; saldo
   terkonfirmasi kurang = `insufficient_balance`, gagal baca saldo bukan saldo0.
   Error generik historis tidak membuktikan penyebab saldo kurang.

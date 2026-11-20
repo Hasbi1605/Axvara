@@ -104,10 +104,10 @@ describe("Paid background payment recovery",()=>{
    const code=`AXV-20261018-AAAAA00${i}`;
    await seed(code);await createActiveQrisInvoice(code,1000);
   }
-  const start=Date.now();const times:number[]=[];
   const original=fetchMock.getMockImplementation()!;
   vi.useFakeTimers({toFake:["Date"]});
   try {
+   const start=Date.now();const times:number[]=[];
    fetchMock.mockImplementation(async(url,init)=>{
     if(String(url).includes("/status/")) {times.push(Date.now()-start);vi.setSystemTime(Date.now()+10_000);}
     return original(url,init);
@@ -119,6 +119,8 @@ describe("Paid background payment recovery",()=>{
    const expiry=await POST(new NextRequest("https://axvara.tech/api/cron/lite?job=expiry",{method:"POST",headers:{authorization:"Bearer fixture-cron"}}));
    expect(expiry.status).toBe(200);
    expect(await (await run()).json()).toMatchObject({ok:true,payments_checked:2,payments_deferred:0});
+   expect(times).toEqual([0,10_000,20_000,30_000,40_000,50_000]);
+   expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM payment_transactions WHERE last_checked_at IS NULL").get()?.n).toBe(0);
   } finally {vi.useRealTimers();}
  });
  it("confirms a closed-page payment, dispatches immediately and never reissues or delivers twice",async()=>{

@@ -10,6 +10,7 @@
 - Channel TIDAK di-hardcode: `fetchSkTopupChannels()` membaca `GET v1/balance/channels`, lalu server memvalidasi `status:"on"` dan nominal integer dalam `[minimum,maximum]` sebelum `POST v1/balance`. `ref_id` server-side `AXVTU-YYYYMMDD-<8hex>` (tidak pernah `GW-`, tidak dari klien); refresh yang gagal ambigu **mengulang ref_id yang sama**, tidak pernah membuat ref baru.
 - Konfirmasi lunas hanya dari mutasi `credit` topup yang `invoice`-nya cocok dengan `supplier_ref`. Jika invoice sudah diketahui, cek mutasi dan kedaluwarsa sebelum mencoba mengambil ulang link dengan ref yang sama. Duplikat ref atau gagal mengambil link bukan bukti invoice yang sudah diketahui gagal dibayar. Saat create, 4xx definitif = `failed` tanpa retry; timeout/network/5xx = `unknown` (aman refresh).
 - Gate SK = `isSkEnabled() && isSkConfigured() && !isSkSandbox()`; tidak ada env baru. Slot maks 3 invoice non-terminal per supplier direservasi atomik sebelum panggilan supplier; refresh ≥10 detik dan hasil lebih lambat tidak dapat menimpa `paid`. Test memakai mock fetch dan fixture DB; **jangan** memanggil POST tulis SK nyata untuk QA. Detail ARCHITECTURE §16.65.
+- `failed` dengan `supplier_ref` hanya boleh dicek lewat mutasi kredit invoice yang cocok. Tanpa kredit tetap `failed`; jangan expire, tampilkan ulang instruksi bayar, atau POST lagi.
 
 ## Panel admin bersama — 19 November 2026 (keputusan owner, lokal)
 

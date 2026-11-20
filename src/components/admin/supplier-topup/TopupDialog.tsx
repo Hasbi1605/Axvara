@@ -118,7 +118,7 @@ export function TopupDialog({ supplier, enabled, initialItem, onItem, onClose, o
   const invoiceId = item?.id;
   const status = item?.status;
   const expired = status === "expired" || (status === "pending" && left === 0);
-  const checkable = status != null && status !== "paid" && status !== "failed";
+  const checkable = status != null && status !== "paid" && (status !== "failed" || !!item?.supplier_ref);
 
   useEffect(() => {
     if (!isSk || item || !enabled) return;
@@ -268,7 +268,7 @@ export function TopupDialog({ supplier, enabled, initialItem, onItem, onClose, o
           <CheckCircle2 aria-hidden="true" className="size-5 shrink-0" />
           <div><p className="font-semibold">Saldo masuk</p>{item.credit_amount !== null && <p className="text-sm">{money(item.credit_amount, item.currency)} dikreditkan ke {SUPPLIER_NAMES[supplier]}.</p>}</div>
         </div> : expired ? <p className="text-sm text-admin-muted">Jangan bayar tagihan ini. Jika sudah membayar setelah kedaluwarsa, kamu masih bisa mengecek statusnya.</p>
-          : item.status === "failed" ? <p className="text-sm text-admin-muted">Topup ini gagal. Tidak ada pembayaran yang perlu dilakukan.</p>
+          : item.status === "failed" ? <p className="text-sm text-admin-muted">Topup ini gagal. Jangan bayar tagihan ini.{checkable && " Jika sudah membayar, cek status untuk memastikan saldo masuk."}</p>
           : item.status === "unknown" ? <p className="text-sm text-admin-muted">Status tagihan belum pasti. Cek status sebelum membayar atau membuat tagihan lain.</p>
           : item.status === "creating" ? <p className="text-sm text-admin-muted">Tagihan masih disiapkan. Cek status sebelum membayar.</p>
           : isSk ? <SekalipayPayment item={item} checking={checking} onRefresh={() => void refresh(true)} /> : <TunvnPayment item={item} />}

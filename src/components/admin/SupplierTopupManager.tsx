@@ -152,12 +152,14 @@ export function SupplierTopupManager() {
             const [status, variant] = STATUS[item.status];
             const supplier = SUPPLIER_NAMES[item.supplier];
             const canReopen = item.status !== "paid" && item.status !== "failed";
+            const canCheckFailed = item.status === "failed" && !!item.supplier_ref;
+            const action = canCheckFailed ? "Cek status topup" : "Lihat topup";
             return <li key={item.id} className={HISTORY_ROW}>
               <span className="font-medium">{supplier}</span>
               <time className="text-sm text-admin-muted" dateTime={new Date(item.created_at).toISOString()}>{dateTime.format(item.created_at)}</time>
               <span className="text-sm tabular-nums"><span className="sr-only">Total bayar: </span>{item.currency === "USDT" && item.pay_amount !== null ? `${item.pay_amount} USDT` : money(item.pay_amount, item.currency)}</span>
               <span><Badge variant={variant}>{status}</Badge></span>
-              <span className="sm:min-w-[6.5rem]">{canReopen && <Button variant="outline" size="sm" className="h-11" aria-label={`Lihat topup ${supplier} ${item.ref_id}`} onClick={e => openDialog(e.currentTarget, item.supplier, item)}>Lihat topup</Button>}</span>
+              <span className="sm:min-w-[6.5rem]">{(canReopen || canCheckFailed) && <Button variant="outline" size="sm" className="h-11" aria-label={`${action} ${supplier} ${item.ref_id}`} onClick={e => openDialog(e.currentTarget, item.supplier, item)}>{canCheckFailed ? "Cek status" : action}</Button>}</span>
             </li>;
           })}
         </ul>

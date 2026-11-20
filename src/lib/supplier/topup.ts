@@ -363,11 +363,17 @@ export async function refreshSupplierTopup(
   const now = opts.now ?? Date.now();
   const item = await loadItem(db, id);
   if (!item) throw new SupplierTopupError(404, "not_found");
-  // paid/failed terminal on entry. In-flight refreshes may still finish out
-  // of order; their writes also guard the current status in SQL.
-  if (item.status === "paid" || item.status === "failed") return item;
+  if (item.status === "paid") return item;
+  // No authoritative supplier lookup is possible without the invoice/code.
+  if (item.status === "failed" && !item.supplier_ref) return item;
   if (now - item.updated_at < SUPPLIER_TOPUP_REFRESH_MIN_MS) throw new SupplierTopupError(429, "too_soon");
   assertSupplierGate(item.supplier);
+  if (item.status === "failed") {
+    // Pace read-only checks without overwriting the create failure or a winning paid write.
+    const check = await db.execRun("UPDATE supplier_topups SET updated_at=? WHERE id=? AND status='failed' AND updated_at<=?",
+      now, id, now - SUPPLIER_TOPUP_REFRESH_MIN_MS);
+    if (!check.changes) throw new SupplierTopupError(429, "too_soon");
+  }
   if (item.supplier === "sekalipay") await refreshSekalipayTopup(db, item, now);
   else await refreshTunvnTopup(db, item, now);
   const refreshed = await loadItem(db, id);
@@ -400,6 +406,7 @@ async function refreshSekalipayTopup(db: DatabaseAccess, item: SupplierTopupItem
       );
       return;
     }
+    if (item.status === "failed") return;
     if (item.expires_at !== null && now > item.expires_at) {
       if (item.status !== "expired") await setStatus(db, item.id, "expired", item.error, now);
       else await touch(db, item.id, now);
@@ -489,6 +496,7 @@ async function refreshTunvnTopup(db: DatabaseAccess, item: SupplierTopupItem, no
     );
     return;
   }
+  if (item.status === "failed") return;
   // Upstream can expire an undated invoice (no expires_in_minutes) without a
   // local deadline; honour that status instead of leaving it pending forever.
   if (parsed.status.toLowerCase() === "expired") {

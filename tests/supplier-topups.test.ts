@@ -78,6 +78,46 @@ describe("ref_id", () => {
   });
 });
 
+it.each(["sekalipay", "tunvn"] as const)("%s refresh only checks for late credit on a failed invoice", async (supplier) => {
+  const fx = createD1Fixture();
+  try {
+    const sk = supplier === "sekalipay";
+    if (sk) stubSkEnv();
+    else stubTunvnEnv();
+    const now = Date.UTC(2026, 10, 20, 8);
+    const ref = sk ? "SK-INV-1" : "TUN-123";
+    const statusPath = sk ? "/sk/v1/balance/mutations" : "/api/deposit/status";
+    let paid = false;
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const target = new URL(String(url));
+      expect(target.pathname).toBe(statusPath);
+      expect(init?.method ?? "GET").toBe("GET");
+      if (sk) return Response.json({ data: paid ? [{ invoice: ref, direction: "credit", type: "topup", amount: 50_000 }] : [] });
+      expect(target.searchParams.get("code")).toBe(ref);
+      return Response.json({ success: true, deposit: { status: paid ? "confirmed" : "expired" }, paid });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    fx.sql.prepare(`INSERT INTO supplier_topups
+      (supplier,ref_id,supplier_ref,channel,currency,requested_amount,status,error,created_at,updated_at,expires_at)
+      VALUES (?,'AXVTU-late-credit',?,?,?,?,'failed','create_failed',?,?,?)`)
+      .run(supplier, ref, sk ? "sk-topup" : null, sk ? "IDR" : "USDT", sk ? 50_000 : 10, now, now, now + 60_000);
+    const db = createDatabaseAccess(fx.db);
+    for (const elapsed of [11_000, 61_000]) {
+      const unpaid = await refreshSupplierTopup(db, 1, { now: now + elapsed });
+      expect(unpaid).toMatchObject({ status: "failed", paid_at: null, error: "create_failed", updated_at: now + elapsed });
+      await expect(refreshSupplierTopup(db, 1, { now: now + elapsed + 1 })).rejects.toMatchObject({ status: 429, code: "too_soon" });
+    }
+    paid = true;
+    const paidAt = now + 72_000;
+    const refreshed = await refreshSupplierTopup(db, 1, { now: paidAt });
+    expect(refreshed).toMatchObject({ status: "paid", paid_at: paidAt, error: null });
+    if (sk) expect(refreshed.credit_amount).toBe(50_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(await refreshSupplierTopup(db, 1, { now: paidAt + 11_000 })).toEqual(refreshed);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  } finally { fx.close(); }
+});
+
 describe("Sekalipay topup", () => {
   it("stores invoice, pay vs credit amounts, fees and expiry", async () => {
     const fx = createD1Fixture();

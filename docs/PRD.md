@@ -2498,8 +2498,10 @@ rentang nominal di server sebelum membuat invoice; konfirmasi lunas berasal dari
 mutasi saldo `credit` yang invoice-nya cocok. Untuk TUNVN, instruksi transfer
 menampilkan address, network BEP20, dan nominal PERSIS yang harus dikirim;
 status dicek lewat endpoint status invoice. Status invoice: `creating`,
-`pending`, `paid`, `expired`, `failed`, `unknown`; `paid`/`failed` terminal,
-`unknown`/`expired` dapat diperiksa ulang. Maksimal 3 invoice non-terminal per
+`pending`, `paid`, `expired`, `failed`, `unknown`; `paid` terminal,
+`unknown`/`expired` dapat diperiksa ulang. Untuk `failed` dengan referensi supplier,
+admin hanya dapat mengecek kredit terlambat, tanpa membuka pembayaran atau membuat ulang tagihan.
+Maksimal 3 invoice non-terminal per
 supplier dan refresh minimal 10 detik sekali. Gate memakai konfigurasi supplier
 existing; tidak ada env/secret baru. Implementasi lokal + test fokus; belum
 migrasi remote, publikasi CI, atau deployment. Lihat ARCHITECTURE §16.65.
