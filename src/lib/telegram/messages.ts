@@ -34,6 +34,7 @@ export {
 
 export {
   confirmVariantBuyMessage, chooseVariantMessage, confirmBuyMessage, chooseQtyMessage,
+  reviewPurchaseMessage, type ReviewCopySection,
   cartMessage, cartAddedMessage, cartCheckoutSummaryMessage, orderReminderMessage, providerOrderReminderMessage,
   invoiceMessage, emailConfirmationMessage, type TelegramCartLine,
 } from "./messages/purchase";

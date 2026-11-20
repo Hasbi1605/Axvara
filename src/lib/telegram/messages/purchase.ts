@@ -38,10 +38,12 @@ export function tgTierPreview(params: {
   maxQty?: number;
   qty: number;
   locale?: Locale;
+  formatPrice?: (idr: number) => string;
 }): string[] {
   const locale = params.locale ?? "id";
   const en = locale === "en";
   if (params.bulkEnabled === false || !params.bulkTiers?.length) return [];
+  const format = params.formatPrice ?? ((idr: number) => formatIdr(idr, locale));
   const tiers = [...params.bulkTiers].sort((a, b) => a.min_qty - b.min_qty).slice(0, 5);
   const reachLimit = Math.min(
     params.maxQty ?? TIER_RANGE_QTY_CAP,
@@ -51,7 +53,7 @@ export function tgTierPreview(params: {
   const out = [en ? "Bulk price (per pcs, all units):" : "Harga grosir (per pcs, semua unit):"];
   for (const [index, tier] of tiers.entries()) {
     const unreachable = tier.min_qty > reachLimit;
-    out.push(`• ${tierRangeLabel(tier, tiers[index + 1], locale)}: ${formatIdr(tier.unit_price, locale)}${unreachable ? (en ? " (exceeds stock)" : " (melebihi stok)") : ""}`);
+    out.push(`• ${tierRangeLabel(tier, tiers[index + 1], locale)}: ${format(tier.unit_price)}${unreachable ? (en ? " (exceeds stock)" : " (melebihi stok)") : ""}`);
   }
   return out;
 }
@@ -141,13 +143,39 @@ export function confirmBuyMessage(productName: string, price: number, qty = 1, o
   return lines.join("\n");
 }
 
+export type ReviewCopySection = {
+  kind: "package" | "activation" | "warranty_terms";
+  lines: string[];
+};
+
+const INVISIBLE_REVIEW_CHARS = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g;
+
+function normalizeReviewPlain(text: string): string {
+  return text.normalize("NFKC").replace(INVISIBLE_REVIEW_CHARS, "").trim();
+}
+
+function truncatePlainForEscapedMax(plain: string, maxEscapedLen: number): string {
+  if (maxEscapedLen <= 0) return "";
+  if (escapeHtml(plain).length <= maxEscapedLen) return plain;
+  const suffix = "…";
+  let out = "";
+  let escapedLen = 0;
+  for (const ch of Array.from(plain)) {
+    const esc = escapeHtml(ch);
+    if (escapedLen + esc.length > Math.max(0, maxEscapedLen - suffix.length)) break;
+    out += ch;
+    escapedLen += esc.length;
+  }
+  return out.trimEnd() + suffix;
+}
+
 export function chooseQtyMessage(params: {
   productName: string;
   variantLabel: string;
   duration?: string | null;
   price: number;
   stock: number;
-  qty: number;
+  qty?: number;
   maxQty?: number;
   minQty?: number;
   requiresEmail?: boolean;
@@ -158,58 +186,156 @@ export function chooseQtyMessage(params: {
   appliedTierMinQty?: number | null;
   bulkTiers?: BulkTier[] | null;
   bulkEnabled?: boolean;
-}, opts?: TgMoneyOpts): string {
+}, opts?: TgMoneyOpts & { formatPrice?: (idr: number) => string }): string {
   const { productName, variantLabel, price, stock } = params;
   const locale = opts?.locale ?? "id";
   const en = locale === "en";
-  // Telegram bulk cap is 100/order.
+  const formatPrimary = (idr: number) => (opts?.formatPrice ? opts.formatPrice(idr) : formatIdr(idr, locale));
   const minQty = Math.max(1, Math.floor(Number(params.minQty ?? 1) || 1));
   const maxQty = Math.max(1, Math.min(100, stock === -1 ? 100 : Math.max(1, stock), Math.floor(params.maxQty ?? 100)));
-  const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), maxQty);
   const stockPart = stock === -1
-    ? (en ? "In stock" : "Stok ∞")
+    ? (en ? "Stock ∞" : "Stok ∞")
     : stock > 0
       ? (en ? `Stock ${stock}` : `Stok ${stock}`)
-      : (en ? "Out of stock" : "Stok habis");
-  const minPart = minQty > 1 ? (en ? `Minimum purchase ${minQty}` : `Minimal pembelian ${minQty}`) : null;
-  const maxPart = (stock > 0 && maxQty < stock) || (stock === -1 && maxQty < 100)
-    ? (en ? `Max ${maxQty}/order` : `Maks ${maxQty}/pesanan`)
-    : null;
-  const deliveryPart = params.deliveryKind === "instant"
-    ? (en ? "⚡ Instant delivery" : "⚡ Kirim otomatis")
-    : params.deliveryKind === "queued"
-      ? (en ? "⏳ Processed after payment" : "⏳ Diproses setelah bayar")
-      : null;
-  const metaLine = [stockPart, minPart, maxPart, deliveryPart].filter(Boolean).join(" · ");
-  const tierPreview = tgTierPreview({ basePrice: Number(params.basePrice ?? price), bulkTiers: params.bulkTiers, bulkEnabled: params.bulkEnabled, stock, maxQty, qty, locale });
-  const tierApplied = tgTierAppliedLine({ price, basePrice: params.basePrice, appliedTierMinQty: params.appliedTierMinQty, qty, bulkTiers: params.bulkTiers, stock, maxQty, locale });
-  const nextTierHint = tierApplied.find((line) => /^(Tambah|Add) /.test(line));
-  const base = Number(params.basePrice ?? NaN);
-  const discounted = Number.isSafeInteger(base) && base > price;
-  const saved = discounted ? (base - price) * qty : 0;
-  const unitText = formatIdr(price, locale);
-  const totalText = formatIdr(price * qty, locale);
-  const durSuffix = params.duration?.trim() ? ` (${escapeHtml(truncate(params.duration.trim(), 24))})` : "";
+      : (en ? "Stock 0" : "Stok 0");
+  const unitPrice = Number(params.basePrice ?? price);
+  const rawDur = params.duration?.trim() ?? "";
+  const variantWithDur = rawDur && !variantLabel.toLowerCase().includes(rawDur.toLowerCase())
+    ? `${variantLabel} · ${rawDur}`
+    : variantLabel;
+  const tierPreview = tgTierPreview({
+    basePrice: unitPrice,
+    bulkTiers: params.bulkTiers,
+    bulkEnabled: params.bulkEnabled,
+    stock,
+    maxQty,
+    qty: minQty,
+    locale,
+    formatPrice: formatPrimary,
+  });
 
   const lines = [
-    en ? "<b>🛒 Summary</b>" : "<b>🛒 Ringkasan</b>",
-    "",
-    `<b>${escapeHtml(truncate(productName, 80))}</b> · ${escapeHtml(truncate(variantLabel, 80))}${durSuffix}`,
-    `${en ? "Quantity" : "Jumlah"} ${qty} × ${unitText} = <b>${totalText}</b>${discounted ? (en ? ` (bulk ${params.appliedTierMinQty ?? ""}+, save ${formatIdr(saved, locale)})` : ` (grosir ${params.appliedTierMinQty ?? ""}+, hemat ${formatIdr(saved, locale)})`) : ""}`,
+    `<b>${escapeHtml(truncate(productName, 80))} · ${escapeHtml(truncate(variantWithDur, 80))}</b>`,
+    `💰 ${escapeHtml(formatPrimary(unitPrice))}/pcs · 📦 ${stockPart}`,
   ];
-  if (opts?.usdEquivalentText) lines.push(`≈ ${opts.usdEquivalentText}`);
-  if (opts?.usdUnavailable) lines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
+  if (opts?.usdUnavailable) {
+    lines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
+  }
   if (tierPreview.length > 0) {
     lines.push("", `<blockquote>${tierPreview.join("\n")}</blockquote>`);
   }
-  if (nextTierHint) lines.push(nextTierHint);
-  lines.push(
-    "",
-    metaLine,
-    ...(params.warrantyLabel ? [`${en ? "Warranty" : "Garansi"}: ${escapeHtml(params.warrantyLabel)}`] : []),
-    ...(params.requiresEmail ? [en ? "Active email required." : "Email aktif diperlukan."] : []),
-  );
+  if (minQty > 1) {
+    lines.push("", en ? `Minimum purchase ${minQty}` : `Minimal pembelian ${minQty}`);
+  }
   return lines.join("\n");
+}
+
+export function reviewPurchaseMessage(params: {
+  productName: string;
+  variantLabel: string;
+  duration?: string | null;
+  qty: number;
+  unitPrice: number;
+  basePrice?: number;
+  appliedTierMinQty?: number | null;
+  sections?: ReviewCopySection[];
+}, opts?: TgMoneyOpts & { formatPrice?: (idr: number) => string }): { text: string; truncated: boolean } {
+  const locale = opts?.locale ?? "id";
+  const en = locale === "en";
+  const formatPrimary = (idr: number) => (opts?.formatPrice ? opts.formatPrice(idr) : formatIdr(idr, locale));
+  const qty = Math.max(1, Math.floor(params.qty || 1));
+  const total = params.unitPrice * qty;
+  const base = Number(params.basePrice ?? NaN);
+  const discounted = Number.isSafeInteger(base) && base > params.unitPrice;
+  const saved = discounted ? (base - params.unitPrice) * qty : 0;
+  const bulkNote = discounted
+    ? (en ? ` (bulk ${params.appliedTierMinQty ?? ""}+, save ${formatPrimary(saved)})` : ` (grosir ${params.appliedTierMinQty ?? ""}+, hemat ${formatPrimary(saved)})`)
+    : "";
+  const rawDur = params.duration?.trim() ?? "";
+  const variantWithDur = rawDur && !params.variantLabel.toLowerCase().includes(rawDur.toLowerCase())
+    ? `${params.variantLabel} · ${rawDur}`
+    : params.variantLabel;
+
+  const header = en ? "🧾 <b>Read before you pay</b>" : "🧾 <b>Baca sebelum bayar</b>";
+  const summaryLines = [
+    `${escapeHtml(truncate(params.productName, 80))} · ${escapeHtml(truncate(variantWithDur, 80))}`,
+    `${en ? "Quantity" : "Jumlah"} ${qty} × ${escapeHtml(formatPrimary(params.unitPrice))} = <b>${escapeHtml(formatPrimary(total))}</b>${escapeHtml(bulkNote)}`,
+  ];
+  if (opts?.usdUnavailable) {
+    summaryLines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
+  }
+  const topBlock = `${header}\n\n${summaryLines.join("\n")}`;
+  const bottomBlock = en ? "By continuing, you agree to these terms." : "Dengan lanjut, kamu setuju ketentuan ini.";
+
+  const titles: Record<ReviewCopySection["kind"], string> = en
+    ? { package: "📦 Package details", activation: "🛠 How to activate", warranty_terms: "🛡 Warranty & terms" }
+    : { package: "📦 Detail paket", activation: "🛠 Cara aktivasi", warranty_terms: "🛡 Garansi & ketentuan" };
+
+  const sections = (params.sections ?? [])
+    .map((sec) => ({
+      title: titles[sec.kind],
+      lines: sec.lines.map(normalizeReviewPlain).filter(Boolean),
+    }))
+    .filter((sec) => sec.lines.length > 0);
+
+  const renderSection = (title: string, lines: string[], trimmed: boolean): string => {
+    const bodyLines = trimmed && lines[lines.length - 1] !== "…" ? [...lines, "…"] : lines;
+    return `<blockquote><b>${escapeHtml(title)}</b>\n${bodyLines.map(escapeHtml).join("\n")}</blockquote>`;
+  };
+  const assemble = (kept: string[][], trimmedFlags: boolean[]): string => {
+    const rendered = sections.map((sec, idx) => renderSection(sec.title, kept[idx], trimmedFlags[idx]));
+    return [topBlock, ...rendered, bottomBlock].filter(Boolean).join("\n\n");
+  };
+
+  const kept = sections.map((sec) => [...sec.lines]);
+  const trimmedFlags = sections.map(() => false);
+  const full = assemble(kept, trimmedFlags);
+  if (full.length <= 4096) {
+    return { text: full, truncated: false };
+  }
+
+  // Iteratively trim the longest multi-line section so every section retains its opening lines.
+  while (assemble(kept, trimmedFlags).length > 4096) {
+    let bestIdx = -1;
+    let bestLen = -1;
+    for (let i = 0; i < kept.length; i++) {
+      if (kept[i].length > 1) {
+        const len = renderSection(sections[i].title, kept[i], trimmedFlags[i]).length;
+        if (len > bestLen) {
+          bestLen = len;
+          bestIdx = i;
+        }
+      }
+    }
+    if (bestIdx === -1) break;
+    kept[bestIdx].pop();
+    trimmedFlags[bestIdx] = true;
+  }
+
+  // If still > 4096 when every section is down to 1 line, trim the longest single line safely.
+  while (assemble(kept, trimmedFlags).length > 4096) {
+    let bestIdx = -1;
+    let bestLen = -1;
+    for (let i = 0; i < kept.length; i++) {
+      const len = escapeHtml(kept[i][0] ?? "").length;
+      if (len > bestLen) {
+        bestLen = len;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx === -1 || bestLen <= 1) break;
+    const current = assemble(kept, trimmedFlags);
+    const excess = current.length - 4096;
+    const line = kept[bestIdx][0] ?? "";
+    const targetEscaped = Math.max(0, escapeHtml(line).length - excess - 2);
+    const shortened = truncatePlainForEscapedMax(line, targetEscaped);
+    if (shortened === line) break;
+    kept[bestIdx][0] = shortened;
+    // Shortened line already ends with "…", no extra "…" line needed.
+    trimmedFlags[bestIdx] = false;
+  }
+
+  return { text: assemble(kept, trimmedFlags), truncated: true };
 }
 
 export function emailConfirmationMessage(params: {

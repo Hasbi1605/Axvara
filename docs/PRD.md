@@ -1,5 +1,10 @@
 # PRD — AXVARA
 
+## Alur pilih jumlah → review ketentuan sebelum bayar Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-QTYREVIEW, lokal)
+
+- **Alur beli produk tunggal:** dari pemilihan varian (`var:` / `qty:`), pembeli masuk ke layar jumlah sederhana (preset `[1][5][10]` atau kelipatan `min` sesuai batas `min..max` dan stok, plus `✍️ Jumlah lain` via ForceReply) → memilih jumlah membuka layar `"🧾 Baca sebelum bayar"` (`q:<pid>:<vid>:<qty>`) yang menampilkan ringkasan subtotal (termasuk tier grosir), detail paket, cara aktivasi, dan garansi/ketentuan per varian → mengetuk `✅ Sudah dibaca — Lanjut Bayar` masuk ke jalur `pmentry` (untuk produk `require_email`, melewati verifikasi email terlebih dahulu seperti sebelumnya; untuk non-email langsung ke pemilih metode bayar dengan `[◀️ Kembali]` ke review dan `[✖️ Batal]` ke kartu produk).
+- **Guard, pemulihan, & kompatibilitas:** seluruh guard maintenance pembayaran, pending order aktif, status aktif produk/Telegram, stok efektif, `min_qty`, dan `max_qty` berjalan sebelum layar review maupun saat masuk ke `pmentry`/`pay`; ketidakcocokan `approvalTag` pada `pmentry` merender ulang layar review dengan harga dan tag terbaru tanpa menerbitkan quote/order. Tombol `[✖️ Batalkan]`/`[✖️ Batal]` kembali ke kartu produk tanpa membuat order. Callback pesan lama (`q:`, `qinput`, `pay:`, `pmentry`, `cadd:`, backend keranjang) tetap kompatibel penuh (`≤64` byte UTF-8) dan `pay:` mempertahankan perilaku QRIS langsung.
+
 ## Mata uang tampilan & urutan metode bayar Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-CURLANG, lokal)
 
 - **Mata uang tampilan mengikuti bahasa:** pemilih mata uang terpisah dihapus dari UI `@Axvara_bot`; pembeli ID melihat harga Rupiah (`Rp19.500`) dan pembeli EN melihat perkiraan USD (`$1.22` dari snapshot FX/crypto, fallback ke Rupiah bila FX tidak tersedia/basi). Nominal tagihan tidak berubah (QRIS selalu ditagih dalam IDR dengan catatan `"Charged in IDR…"` khusus pada invoice QRIS EN; crypto memakai estimasi USD/USDT quote).

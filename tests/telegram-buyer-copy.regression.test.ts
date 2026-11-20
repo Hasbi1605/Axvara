@@ -5,7 +5,7 @@ import {
   productDetailMessage, myOrdersMessage, searchPromptMessage, searchResultsMessage,
 } from "@/lib/telegram/messages/catalog";
 import {
-  chooseQtyMessage, confirmVariantBuyMessage, confirmBuyMessage, chooseVariantMessage,
+  chooseQtyMessage, reviewPurchaseMessage, confirmVariantBuyMessage, confirmBuyMessage, chooseVariantMessage,
   emailConfirmationMessage, cartMessage, cartAddedMessage, cartCheckoutSummaryMessage,
   invoiceMessage, orderReminderMessage, TELEGRAM_QRIS_DEADLINE_NOTICE,
 } from "@/lib/telegram/messages/purchase";
@@ -40,7 +40,6 @@ describe("plain Indonesian Telegram buyer copy", () => {
       searchPromptMessage(), searchResultsMessage("Produk", 4),
       myOrdersMessage([]), chooseVariantMessage("Produk A"),
       confirmVariantBuyMessage(item), confirmBuyMessage("Produk A", 5000),
-      chooseQtyMessage({ ...item, stock: 1, qty: 1 }),
       emailConfirmationMessage({ ...item, total: 10000, maskedEmail: "n***@example.test" }),
       cartMessage([]), cartMessage([item]), cartAddedMessage("Produk A", "Bulanan", 2, 1),
       cartCheckoutSummaryMessage([item], 10000),
@@ -58,6 +57,8 @@ describe("plain Indonesian Telegram buyer copy", () => {
     }
     const cardAndHelp = [
       productDetailMessage({ name: "Produk A", price: 5000 }),
+      chooseQtyMessage({ ...item, stock: 1, qty: 1 }),
+      reviewPurchaseMessage({ productName: "Produk A", variantLabel: "Bulanan", qty: 2, unitPrice: 5000 }).text,
       helpMessage(),
     ];
     for (const message of cardAndHelp) {
@@ -85,16 +86,16 @@ describe("plain Indonesian Telegram buyer copy", () => {
     expect(bounded).toContain("Stok: 3");
   });
 
-  it("uses the real quantity cap without claiming a single remaining item is unique", () => {
+  it("uses clear stock/min labels on qty and exact total on review without claiming unique scarcity", () => {
     const single = chooseQtyMessage({ ...item, stock: 1, qty: 1 });
     expect(single).toContain("Stok 1");
-    expect(single).not.toContain("Maks ");
+    expect(single).not.toContain("Minimal pembelian");
     expect(single).not.toMatch(/unik|bulk/i);
     const limited = chooseQtyMessage({ ...item, stock: 50, qty: 2, minQty: 2, maxQty: 4 });
     expect(limited).toContain("Minimal pembelian 2");
-    expect(limited).toContain("Maks 4/pesanan");
-    expect(limited).not.toContain("Maks 50");
-    expect(parsed(limited).body.textContent ?? "").toMatch(/Jumlah 2 × Rp\s?5\.000 = Rp\s?10\.000/);
+    expect(limited).toContain("Stok 50");
+    const review = reviewPurchaseMessage({ productName: "Produk A", variantLabel: "Bulanan", qty: 2, unitPrice: 5000 });
+    expect(parsed(review.text).body.textContent ?? "").toMatch(/Jumlah 2 × Rp\s?5\.000 = Rp\s?10\.000/);
   });
 
   it("does not describe every email-based product as an invitation or subtotal as final payment", () => {

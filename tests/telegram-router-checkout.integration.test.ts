@@ -52,9 +52,9 @@ function button(message: Pick<SendMessageParams, "reply_markup">, prefix: string
 }
 async function quantity(qty = 2) {
   await click(`q:1:1:${qty}`);
-  const pay = button(edited(), "pay:");
-  expect(pay).toBe(`pay:1:1:${qty}:${await checkoutApprovalTag([{ productId: 1, variantId: 1, qty, price: 10000 }])}`);
-  return pay;
+  const pmentry = button(edited(), "pmentry:");
+  expect(pmentry).toBe(`pmentry:1:1:${qty}:${await checkoutApprovalTag([{ productId: 1, variantId: 1, qty, price: 10000 }])}`);
+  return pmentry;
 }
 async function singleConfirmation() {
   await click(await quantity());
@@ -200,13 +200,23 @@ describe("Telegram router single-item checkout with real D1", () => {
     expect(sendPhoto).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["pay", "epay"])("a price change before %s refreshes quantity without reaching the factory", async stage => {
-    const callback = stage === "pay" ? await quantity() : await singleConfirmation();
+  it.each(["pmentry", "pay", "epay"])("a price change before %s refreshes without reaching the factory", async stage => {
+    const callback = stage === "epay"
+      ? await singleConfirmation()
+      : stage === "pay"
+        ? (await quantity()).replace(/^pmentry:/, "pay:")
+        : await quantity();
     fx.sql.exec("UPDATE product_variants SET price=12000 WHERE id=1");
     edit.mockClear();
     await click(callback);
-    const refreshed = button(edited(), "pay:");
-    expect(refreshed).toBe(`pay:1:1:2:${await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 2, price: 12000 }])}`);
+    const updatedTag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 2, price: 12000 }]);
+    if (stage === "pmentry") {
+      expect(button(edited(), "pmentry:")).toBe(`pmentry:1:1:2:${updatedTag}`);
+    } else {
+      expect(callbacks(edited())).toContain("q:1:1:1");
+      await click("q:1:1:2");
+      expect(button(edited(), "pmentry:")).toBe(`pmentry:1:1:2:${updatedTag}`);
+    }
     expect(factory).not.toHaveBeenCalled();
     expect(provider).not.toHaveBeenCalled();
     expect(orders()).toHaveLength(0);
@@ -219,7 +229,8 @@ describe("Telegram router single-item checkout with real D1", () => {
     expect(user().pending_action).toBe(oldState);
     await click(oldCallback);
     expect(factory).not.toHaveBeenCalled();
-    await click(button(edited(), "pay:"));
+    await click("q:1:1:2");
+    await click(button(edited(), "pmentry:"));
     expect(sent().text).toContain("c***d@example.net");
     const current = button(sent(), "epay:");
     expect(current).not.toBe(oldCallback);
@@ -259,7 +270,7 @@ describe("Telegram router single-item checkout with real D1", () => {
   });
 
   it("showEmailConfirmation uses expectedAction CAS and cannot overwrite newer navigation", async () => {
-    await quantity();
+    await click("var:1");
     send.mockClear();
     await showEmailConfirmation(buyer.id, 1, 1, 2, savedEmail);
     expect(send).not.toHaveBeenCalled();
@@ -506,8 +517,9 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     expect(edited().text).not.toMatch(/1\s*(month|bulan)\b/i);
   });
 
-  it("zero effective unique inventory disables product buying, quantity, cart add and a stale pay callback", async () => {
-    const pay = await quantity();
+  it("zero effective unique inventory disables product buying, quantity, cart add and stale review/pay callbacks", async () => {
+    const pmentry = await quantity();
+    const stalePay = pmentry.replace(/^pmentry:/, "pay:");
     fx.sql.exec("UPDATE product_variants SET fulfillment_mode='unique',stock=100 WHERE id=1; UPDATE product_variants SET is_active=0 WHERE id=2");
     await click("prd:1");
     expect(callbacks(edited())).not.toContain("var:1");
@@ -517,7 +529,8 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     expect(edit).not.toHaveBeenCalled();
     await click("cadd:1:1:1");
     expect((await getCartSummary(String(buyer.id))).lines).toEqual([]);
-    await click(pay);
+    await click(pmentry);
+    await click(stalePay);
     expect(factory).not.toHaveBeenCalled();
     expect(provider).not.toHaveBeenCalled();
     expect(orders()).toHaveLength(0);
@@ -527,9 +540,11 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     const id = Number.MAX_SAFE_INTEGER;
     fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,require_email) VALUES(?,'Large IDs','large-ids',10000,100,1)").run(id);
     fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock) VALUES(?,?,'MAX','Large IDs',10000,100)").run(id, id);
-    await click(`q:${id}:${id}:100`);
+    await click(`qty:${id}:${id}`);
     const qtyMessage = edited();
-    await click(button(qtyMessage, "pay:"));
+    await click(`q:${id}:${id}:100`);
+    const reviewMessage = edited();
+    await click(button(reviewMessage, "pmentry:"));
     const emailMessage = sent();
     expect(button(emailMessage, "epay:").split(":").at(-1)).toMatch(/^[a-f0-9]{8}$/);
     await click(`cadd:${id}:${id}:100`);
@@ -537,7 +552,7 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     const summaryMessage = sent();
     await click(button(summaryMessage, "cconfirm:"));
     const cartMessage = sent();
-    for (const message of [qtyMessage, emailMessage, summaryMessage, cartMessage]) {
+    for (const message of [qtyMessage, reviewMessage, emailMessage, summaryMessage, cartMessage]) {
       expect(callbacks(message).length).toBeGreaterThan(0);
       for (const data of callbacks(message)) expect(Buffer.byteLength(data, "utf8"), data).toBeLessThanOrEqual(64);
     }

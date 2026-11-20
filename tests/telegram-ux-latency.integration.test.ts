@@ -409,14 +409,16 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     expect(buttonPrice(50000)).toBe("Rp50.000");
 
     const qk = qtyKeyboard({ productId: 1, variantId: 2, stock: 48, qty: 5, price: 19500, minQty: 1 });
-    const presetRow = qk.inline_keyboard[1];
+    const presetRow = qk.inline_keyboard[0];
     expect(presetRow.map((b) => [b.text, b.callback_data])).toEqual([
       ["1", "q:1:2:1"],
-      ["✅ 5", "noop"],
+      ["5", "q:1:2:5"],
       ["10", "q:1:2:10"],
-    ]); // 50 excluded because stock is 48
+    ]);
+    for (const b of presetRow) expect(b.style).toBe("success");
     const flatQty = qk.inline_keyboard.flat();
-    expect(flatQty.find((b) => b.callback_data?.startsWith("pay:"))?.style).toBe("success");
+    expect(flatQty.find((b) => b.callback_data === "qinput:1:2")?.style).toBe("primary");
+    expect(flatQty.some((b) => b.callback_data?.startsWith("pay:"))).toBe(false);
     expect(flatQty.some((b) => b.callback_data?.startsWith("cadd:"))).toBe(false);
 
     const ck = cartKeyboard({ lines: [{ variantId: 1, qty: 1, stock: 5, fulfillmentMode: "manual", label: "Canva" }] });

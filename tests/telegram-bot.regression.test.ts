@@ -5,7 +5,7 @@ import {
   productDetailMessage, invoiceMessage, helpMessage, deliveryMessage,
   warrantyTermsMessage, warrantyClaimMessage, warrantyFullMessage,
   confirmBuyMessage, confirmVariantBuyMessage, chooseVariantMessage, chooseQtyMessage,
-  orderPaidMessage, waSavedAfterPaymentMessage,
+  reviewPurchaseMessage, orderPaidMessage, waSavedAfterPaymentMessage,
   adminTelegramOrderCreatedMessage, myOrdersMessage, searchPromptMessage,
   searchResultsMessage, breadcrumbLine, formatSoldCountLabel,
   cartMessage, cartAddedMessage, cartCheckoutSummaryMessage, orderReminderMessage,
@@ -13,7 +13,7 @@ import {
 } from "@/lib/telegram/messages";
 import {
   cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard,
-  productsKeyboard, catalogFlatKeyboard, qtyKeyboard, qrisInvoiceKeyboard,
+  productsKeyboard, catalogFlatKeyboard, qtyKeyboard, reviewKeyboard, qrisInvoiceKeyboard,
   orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard, searchNoResultsKeyboard,
   cartKeyboard, productDetailKeyboard, variantsKeyboard, emailConfirmationKeyboard,
   helpKeyboard, orderStatusKeyboard, paidOrderStatusKeyboard, orderTerminalKeyboard,
@@ -269,25 +269,34 @@ describe("Telegram keyboards", () => {
     expect(buttons.some((b) => b.callback_data === "cart")).toBe(false);
   });
 
-  it("qty keyboard uses one clear stepper and a direct QRIS CTA", () => {
+  it("qty keyboard uses filtered presets without stepper, direct pay, or cart button", () => {
     const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: 3, qty: 2, price: 5000 });
     const buttons = kb.inline_keyboard.flat();
     const texts = buttons.map(b => b.text);
     const datas = buttons.map(b => b.callback_data ?? "");
-    expect(datas.some(d => d === "q:1:2:1")).toBe(true);
-    expect(datas.some(d => d === "q:1:2:3")).toBe(true);
-    expect(datas.some(d => d === "pay:1:2:2")).toBe(true);
-    expect(texts).toContain("Jumlah: 2");
-    expect(texts).toContain("✍️ Masukkan Jumlah");
-    expect(texts.some(t => t.includes("Bayar QRIS") && t.includes("10.000"))).toBe(true);
-    expect(texts.some(t => t.includes("1️⃣") || t.includes("2️⃣") || t.includes("3️⃣"))).toBe(false);
+    expect(datas).toContain("q:1:2:1");
+    expect(datas).not.toContain("q:1:2:5");
+    expect(datas).toContain("qinput:1:2");
+    expect(datas).toContain("prd:1");
+    expect(datas).toContain("home");
+    expect(datas.some(d => d.startsWith("pay:"))).toBe(false);
+    expect(datas.some(d => d.startsWith("pmentry:"))).toBe(false);
+    expect(datas.some(d => d.startsWith("cadd:"))).toBe(false);
+    expect(texts).toContain("✍️ Jumlah lain");
+    expect(texts).toContain("◀️ Kembali ke Produk");
+    expect(texts).not.toContain("➖");
+    expect(texts).not.toContain("➕");
   });
 
-  it("email-required quantity uses an honest continue CTA", () => {
-    const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: 10, qty: 3, price: 5000, requiresEmail: true });
-    // TG2a: single display-currency price (shared formatIdr, Rp + NBSP grouping).
-    const payBtn = kb.inline_keyboard.flat().find((b) => b.callback_data === "pay:1:2:3");
-    expect(payBtn?.text).toMatch(/📧 Lanjut ke Email · Rp\s?15\.000/);
+  it("review keyboard exposes Lanjut Bayar (pmentry), Ubah Jumlah, Batalkan, and conditional Baca lengkap", () => {
+    const kb = reviewKeyboard({ productId: 1, variantId: 2, qty: 3, approvalTag: "tag3", truncated: true });
+    const buttons = kb.inline_keyboard.flat();
+    expect(buttons.map(b => [b.text, b.callback_data, b.style])).toEqual([
+      ["📋 Baca lengkap", "terms:1:2", "primary"],
+      ["✅ Sudah dibaca — Lanjut Bayar", "pmentry:1:2:3:tag3", "success"],
+      ["✍️ Ubah Jumlah", "qty:1:2", "primary"],
+      ["✖️ Batalkan", "prd:1", "danger"],
+    ]);
   });
 
   it("email confirmation offers pay, edit email, and edit quantity", () => {
@@ -452,19 +461,21 @@ describe("Telegram buyer messages", () => {
     expect(msg).not.toContain("Total:");
   });
 
-  it("qty message keeps the chosen quantity and total visible", () => {
+  it("qty message shows variant title, unit price, stock, and conditional min/tiers concisely", () => {
     const msg = chooseQtyMessage({
       productName: "Canva Pro",
       variantLabel: "Pro Head 1 Bulan",
       price: 5000,
       stock: -1,
       qty: 3,
+      bulkEnabled: true,
+      bulkTiers: [{ min_qty: 5, unit_price: 4500 }],
     });
-    expect(msg).toContain("<b>🛒 Ringkasan</b>");
-    expect(msg).toMatch(/Jumlah 3 × Rp\s?5\.000 = <b>Rp\s?15\.000<\/b>/);
-    expect(msg).toContain("Stok ∞");
+    expect(msg).toContain("<b>Canva Pro · Pro Head 1 Bulan</b>");
+    expect(msg).toMatch(/💰 Rp\s?5\.000\/pcs · 📦 Stok ∞/);
+    expect(msg).toContain("<blockquote>");
+    expect(msg).not.toContain("Minimal pembelian");
     expect(msg).not.toContain("Maks ");
-    expect(msg).not.toContain("Masukkan Jumlah");
   });
 
   it("email confirmation masks buyer email", () => {
@@ -474,26 +485,24 @@ describe("Telegram buyer messages", () => {
     expect(msg).toMatch(/Subtotal: Rp\s?15\.000/);
   });
 
-  it("qty supports bulk up to 100 for unlimited and finite stock", () => {
+  it("qty supports bulk up to 100 for unlimited and finite stock and review computes effective total", () => {
     const unlimited = qtyKeyboard({ productId: 1, variantId: 2, stock: -1, qty: 99, price: 5000 });
     const unlimitedDatas = unlimited.inline_keyboard.flat().map((b) => b.callback_data ?? "");
-    expect(unlimitedDatas.some((d) => d === "pay:1:2:99")).toBe(true);
-    expect(unlimitedDatas.some((d) => d === "q:1:2:100")).toBe(true);
+    expect(unlimitedDatas).toEqual(["q:1:2:1", "q:1:2:5", "q:1:2:10", "qinput:1:2", "prd:1", "home"]);
 
-    const finite = qtyKeyboard({ productId: 1, variantId: 2, stock: 150, qty: 100, price: 5000 });
+    const finite = qtyKeyboard({ productId: 1, variantId: 2, stock: 150, qty: 100, price: 5000, maxQty: 100 });
     const finiteDatas = finite.inline_keyboard.flat().map((b) => b.callback_data ?? "");
-    expect(finiteDatas.some((d) => d === "pay:1:2:100")).toBe(true);
+    expect(finiteDatas).toEqual(["q:1:2:1", "q:1:2:5", "q:1:2:10", "qinput:1:2", "prd:1", "home"]);
 
-    const finiteMsg = chooseQtyMessage({
+    const reviewMsg = reviewPurchaseMessage({
       productName: "Canva Pro",
       variantLabel: "Pro Head 1 Bulan",
-      price: 5000,
-      stock: 150,
+      unitPrice: 5000,
       qty: 100,
-      maxQty: 100,
     });
-    expect(finiteMsg).toContain("Stok 150 · Maks 100/pesanan");
-    expect(finiteMsg).toMatch(/Jumlah 100 × Rp\s?5\.000 = <b>Rp\s?500\.000<\/b>/);
+    expect(reviewMsg.text).toContain("🧾 <b>Baca sebelum bayar</b>");
+    expect(reviewMsg.text).toMatch(/Jumlah 100 × Rp\s?5\.000 = <b>Rp\s?500\.000<\/b>/);
+    expect(reviewMsg.truncated).toBe(false);
   });
 
   it("WA saved message confirms post-payment capture", () => {
@@ -846,12 +855,17 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     );
   });
 
-  it("qty step offers direct QRIS and other payment methods without add-to-cart", () => {
+  it("qty step omits direct pay and add-to-cart; review routes to pmentry", () => {
     const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: -1, qty: 2, price: 5000, approvalTag: "tag1" });
     const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
-    expect(datas.some((d) => d === "pay:1:2:2:tag1")).toBe(true);
-    expect(datas.some((d) => d === "pmentry:1:2:2:tag1")).toBe(true);
+    expect(datas).toEqual(["q:1:2:1", "q:1:2:5", "q:1:2:10", "qinput:1:2", "prd:1", "home"]);
+    expect(datas.some((d) => d.startsWith("pay:"))).toBe(false);
+    expect(datas.some((d) => d.startsWith("pmentry:"))).toBe(false);
     expect(datas.some((d) => d.startsWith("cadd:"))).toBe(false);
+
+    const rev = reviewKeyboard({ productId: 1, variantId: 2, qty: 2, approvalTag: "tag1" });
+    const revDatas = rev.inline_keyboard.flat().map((b) => b.callback_data ?? "");
+    expect(revDatas).toEqual(["pmentry:1:2:2:tag1", "qty:1:2", "prd:1"]);
   });
 
   it("cart keyboard exposes adjust, remove, checkout, and clear", () => {
@@ -961,7 +975,10 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
 
     const qtyKb = qtyKeyboard({ productId: 12, variantId: 34, stock: 10, qty: 2, price: 5000, approvalTag: "deadbeef" });
     const qtyCbs = qtyKb.inline_keyboard.flat().map((b) => b.callback_data);
-    expect(qtyCbs).toContain("pmentry:12:34:2:deadbeef");
+    expect(qtyCbs).toEqual(["q:12:34:1", "q:12:34:5", "q:12:34:10", "qinput:12:34", "prd:12", "home"]);
+
+    const revKb = reviewKeyboard({ productId: 12, variantId: 34, qty: 2, approvalTag: "deadbeef" });
+    expect(revKb.inline_keyboard.flat().map((b) => b.callback_data)).toContain("pmentry:12:34:2:deadbeef");
 
     const emailKb = emailConfirmationKeyboard(12, 34, 2, 10000, "deadbeef", "1234abcd");
     const emailCbs = emailKb.inline_keyboard.flat().map((b) => b.callback_data);
@@ -980,7 +997,8 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
       methods: [{ id: "qris", kind: "qris", label: "QRIS" }],
       source: { kind: "single", productId: 12, variantId: 34, qty: 2 },
     });
-    expect(singleOffer.inline_keyboard.at(-1)?.map((b) => b.callback_data)).toEqual(["q:12:34:2", "home"]);
+    expect(singleOffer.inline_keyboard.at(-2)?.map((b) => b.callback_data)).toEqual(["q:12:34:2", "prd:12"]);
+    expect(singleOffer.inline_keyboard.at(-1)?.map((b) => b.callback_data)).toEqual(["home"]);
 
     const cartOffer = paymentMethodOfferKeyboard({
       nonce: "abcd1234",

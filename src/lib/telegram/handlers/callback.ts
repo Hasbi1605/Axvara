@@ -29,8 +29,7 @@ import { clearPendingAction, installReplyMenu, replaceWithText, sendTgHome, setP
 import {
   handleShowCatalogEdit, handleShowCategoriesEdit, handleShowProducts,
   handleShowProduct, handleShowVariants, handleVariantConfirm, handleShowQty,
-  handleQtyInputPrompt,
-  handleProductTerms,
+  handleShowReview, handleQtyInputPrompt, handleProductTerms,
 } from "./catalog";
 import {
   handleMyOrders, handleSearchPrompt, handleBuyConfirm, handleConfirmPurchase,
@@ -332,7 +331,7 @@ export async function handleCallback(
       break;
 
     case "q":
-      await handleShowQty(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from, sourceMeta);
+      await handleShowReview(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from, sourceMeta);
       break;
 
     case "qinput":
@@ -398,8 +397,28 @@ export async function handleCallback(
         const { getActiveVariant, effectiveVariantStock, formatVariantLabel } = await import("@/lib/catalog");
         const { TELEGRAM_MAX_QTY } = await import("@/lib/telegram/keyboards");
         const { MAX_UNIQUE_UNITS_PER_ORDER } = await import("@/lib/fulfillment/units");
-        const { errorMessage, outOfStockMessage } = await import("@/lib/telegram/messages");
-        const variant = await getActiveVariant(variantId);
+        const { errorMessage, outOfStockMessage, alreadyPendingMessage } = await import("@/lib/telegram/messages");
+        const [existingOrder, variant] = await Promise.all([
+          queryFirst(
+            `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
+             ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
+            String(chatId), variantId,
+          ),
+          getActiveVariant(variantId),
+        ]);
+        if (existingOrder) {
+          try {
+            const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+            await retryTelegramInvoiceDelivery(String(existingOrder.code)).catch(() => false);
+          } catch { /* sapuan cron berikutnya */ }
+          await sendMessage({
+            chat_id: chatId,
+            text: alreadyPendingMessage(String(existingOrder.code), { locale: ctx.locale }),
+            parse_mode: "HTML",
+            reply_markup: orderStatusKeyboard(String(existingOrder.code), { locale: ctx.locale }),
+          });
+          break;
+        }
         const product = variant && variant.product_id === productId
           ? await queryFirst(`SELECT id, name, name_en, telegram_enabled FROM products WHERE id=? AND is_active=1`, productId)
           : null;
@@ -425,7 +444,7 @@ export async function handleCallback(
             parse_mode: "HTML",
             reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
           });
-          await handleShowQty(chatId, messageId, productId, variantId, minQty, from);
+          await handleShowQty(chatId, messageId, productId, variantId, minQty, from, sourceMeta);
           break;
         }
         if (variant.stock !== -1 && rawQty > variant.stock) {
@@ -433,7 +452,7 @@ export async function handleCallback(
           break;
         }
         if (rawQty > maxQty || rawQty > TELEGRAM_MAX_QTY) {
-          await handleShowQty(chatId, messageId, productId, variantId, maxQty, from);
+          await handleShowQty(chatId, messageId, productId, variantId, maxQty, from, sourceMeta);
           break;
         }
         let effectivePrice = Number(variant.price);
@@ -446,7 +465,7 @@ export async function handleCallback(
         }
         const currentTag = await checkoutApprovalTag([{ productId, variantId, qty: rawQty, price: effectivePrice }]);
         if (!approvalTag || approvalTag !== currentTag) {
-          await handleShowQty(chatId, messageId, productId, variantId, rawQty, from);
+          await handleShowReview(chatId, messageId, productId, variantId, rawQty, from, sourceMeta);
           break;
         }
         const { requestBuyerInput } = await import("./buyer-input");

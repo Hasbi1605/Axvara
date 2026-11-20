@@ -81,9 +81,9 @@ describe("TG2c1 transaction copy follows saved order.locale", () => {
   it("EN order keeps EN invoice/status/retry/reissue after pref flips to ID", async () => {
     await handleCallback("lang:en", buyer.id, 7, buyer, "cb-en-1");
     await handleCallback("cur:USD", buyer.id, 8, buyer, "cb-usd-1");
-    const { handleShowQty } = await import("@/lib/telegram/handlers/catalog");
-    await handleShowQty(buyer.id, 1, 1, 11, 1, buyer);
-    const tag = String(api.edit.mock.calls.at(-1)?.[0]?.reply_markup?.inline_keyboard?.flat().find((b: { text: string }) => b.text.includes("QRIS"))?.callback_data ?? "").split(":").at(-1);
+    const { handleShowReview } = await import("@/lib/telegram/handlers/catalog");
+    await handleShowReview(buyer.id, 1, 1, 11, 1, buyer);
+    const tag = String(api.edit.mock.calls.at(-1)?.[0]?.reply_markup?.inline_keyboard?.flat().find((b: { callback_data?: string }) => b.callback_data?.startsWith("pmentry:"))?.callback_data ?? "").split(":").at(-1);
     expect(tag).toBeTruthy();
     await handlePayWithQris(buyer.id, 1, 1, 11, 1, buyer, false, tag);
     const order = fx.sql.prepare("SELECT code,subtotal,locale FROM orders").get() as { code: string; subtotal: number; locale: string };
@@ -118,9 +118,9 @@ describe("TG2c1 transaction copy follows saved order.locale", () => {
 
   it("ID QRIS invoice omits USD charge note since display currency is already Rupiah", async () => {
     await handleCallback("lang:id", buyer.id, 7, buyer, "cb-id-1");
-    const { handleShowQty } = await import("@/lib/telegram/handlers/catalog");
-    await handleShowQty(buyer.id, 1, 1, 11, 1, buyer);
-    const tag = String(api.edit.mock.calls.at(-1)?.[0]?.reply_markup?.inline_keyboard?.flat().find((b: { text: string }) => b.text.includes("QRIS"))?.callback_data ?? "").split(":").at(-1);
+    const { handleShowReview } = await import("@/lib/telegram/handlers/catalog");
+    await handleShowReview(buyer.id, 1, 1, 11, 1, buyer);
+    const tag = String(api.edit.mock.calls.at(-1)?.[0]?.reply_markup?.inline_keyboard?.flat().find((b: { callback_data?: string }) => b.callback_data?.startsWith("pmentry:"))?.callback_data ?? "").split(":").at(-1);
     await handlePayWithQris(buyer.id, 1, 1, 11, 1, buyer, false, tag);
     expect(lastPhotoCaption()).toContain("IDR via QRIS");
     expect(lastPhotoCaption()).not.toContain("Ditagih dalam IDR");
@@ -141,9 +141,9 @@ describe("TG2c1 transaction copy follows saved order.locale", () => {
   });
 
   it("paid buyer notice + credential wrapper use order locale; admin copy stays ID", async () => {
-    const { handleShowQty } = await import("@/lib/telegram/handlers/catalog");
-    await handleShowQty(buyer.id, 1, 1, 11, 1, buyer);
-    const tag = String(api.edit.mock.calls.at(-1)?.[0]?.reply_markup?.inline_keyboard?.flat().find((b: { text: string }) => b.text.includes("QRIS"))?.callback_data ?? "").split(":").at(-1);
+    const { handleShowReview } = await import("@/lib/telegram/handlers/catalog");
+    await handleShowReview(buyer.id, 1, 1, 11, 1, buyer);
+    const tag = String(api.edit.mock.calls.at(-1)?.[0]?.reply_markup?.inline_keyboard?.flat().find((b: { callback_data?: string }) => b.callback_data?.startsWith("pmentry:"))?.callback_data ?? "").split(":").at(-1);
     await handleCallback("lang:en", buyer.id, 9, buyer, "cb-en-2");
     await handlePayWithQris(buyer.id, 1, 1, 11, 1, buyer, false, tag);
     const order = fx.sql.prepare("SELECT code FROM orders").get() as { code: string };

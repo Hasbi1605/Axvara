@@ -13,7 +13,7 @@ import { sendMessage } from "@/lib/telegram/api";
 import {
   catalogFlatMessage, categoriesMessage, categoryProductsMessage,
   productDetailMessage, outOfStockMessage, errorMessage,
-  chooseQtyMessage, escapeHtml,
+  chooseQtyMessage, reviewPurchaseMessage, type ReviewCopySection, escapeHtml,
 } from "@/lib/telegram/messages";
 import type { Locale } from "@/lib/i18n/locale";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
@@ -21,22 +21,26 @@ import { tgCtxFor, tgDisplayPrice, tgUsdAlternate, type TgCtx } from "@/lib/tele
 import {
   catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
   variantsKeyboard, variantButtonDuration, cb, minimalMenuKeyboard,
-  qtyKeyboard, TELEGRAM_MAX_QTY,
+  qtyKeyboard, reviewKeyboard, orderStatusKeyboard, TELEGRAM_MAX_QTY,
 } from "@/lib/telegram/keyboards";
-import { getProductDetail, getActiveVariant, formatVariantLabel, buyerWarrantyLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
+import {
+  getProductDetail, getActiveVariant, formatVariantLabel, buyerWarrantyLabel,
+  buyerDeliveryKind, effectiveVariantStock, displayDescription, displayDescriptionEn,
+} from "@/lib/catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { resolveVariantCopy, adminCopyOf } from "@/lib/product-copy/resolve";
 import { sanitizeSupplierCopy } from "@/lib/product-copy/sanitize";
 import { mergeProductCopy, parseProductDescription, copySectionTitles } from "@/lib/product-copy/format";
 import { loadActiveSupplierLinkMap } from "@/lib/supplier-links";
-import { localizedProductDescription } from "@/lib/i18n/catalog-copy";
+import { localizedProductDescription, catalogWarranty } from "@/lib/i18n/catalog-copy";
 import { productDisplayName } from "@/lib/i18n/product-name";
+import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { winnerForLoserProduct } from "@/lib/supplier-pairs";
 import { getCatalogRevision } from "@/lib/catalog-cache";
 import { unwrapD1 } from "@/lib/db-access";
 import {
-  clampQty, replaceWithPhoto, replaceWithText, runInBackground,
+  clampQty, clearPendingAction, replaceWithPhoto, replaceWithText, runInBackground,
   setPendingActionUnlessCreating, type ScreenSourceMeta,
 } from "./shared";
 
@@ -288,6 +292,7 @@ export async function handleShowVariants(chatId: number, messageId: number, prod
 }
 
 export async function handleVariantConfirm(chatId: number, messageId: number, variantId: number, from?: { id: number }, sourceMeta?: ScreenSourceMeta) {
+  if (await notifyPaymentMaintenance(chatId)) return;
   const [ctx, variant] = await Promise.all([
     tgCtx(from?.id ?? chatId),
     getActiveVariant(variantId),
@@ -304,7 +309,7 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
 
   // Parallel: fetch product metadata (reused in handleShowQty!) and existing pending order.
   const [product, existingOrder] = await Promise.all([
-    queryFirst(`SELECT id, name, name_en, require_email FROM products WHERE id=?`, variant.product_id),
+    queryFirst(`SELECT id, name, name_en, require_email, telegram_enabled, is_active FROM products WHERE id=?`, variant.product_id),
     queryFirst(
       `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
        ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
@@ -319,12 +324,11 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
       await retryTelegramInvoiceDelivery(String(existingOrder.code)).catch(() => false);
     } catch { /* sapuan cron berikutnya */ }
     const { alreadyPendingMessage } = await import("@/lib/telegram/messages");
-    const { orderStatusKeyboard } = await import("@/lib/telegram/keyboards");
     await sendMessage({
       chat_id: chatId,
       text: alreadyPendingMessage(String(existingOrder.code), { locale: ctx.locale }),
       parse_mode: "HTML",
-      reply_markup: orderStatusKeyboard(String(existingOrder.code)),
+      reply_markup: orderStatusKeyboard(String(existingOrder.code), { locale: ctx.locale }),
     });
     return;
   }
@@ -337,6 +341,8 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
       name: String(product.name),
       name_en: product.name_en == null ? null : String(product.name_en),
       require_email: Number(product.require_email ?? 0),
+      telegram_enabled: Number(product.telegram_enabled ?? 1),
+      is_active: Number(product.is_active ?? 1),
     } : null,
   });
 }
@@ -346,72 +352,76 @@ export async function handleShowQty(
   messageId: number,
   productId: number,
   variantId: number,
-  requestedQty = 1,
+  _requestedQty = 1,
   from?: { id: number },
   sourceMeta?: ScreenSourceMeta,
   preloaded?: {
     ctx: TgCtx;
     variant: NonNullable<Awaited<ReturnType<typeof getActiveVariant>>>;
-    product: { id: number; name: string; name_en: string | null; require_email: number } | null;
+    product: { id: number; name: string; name_en: string | null; require_email: number; telegram_enabled?: number; is_active?: number } | null;
   },
 ) {
-  const [ctx, variant, product] = preloaded
-    ? [preloaded.ctx, preloaded.variant, preloaded.product]
+  if (await notifyPaymentMaintenance(chatId)) return;
+  const [ctx, variant, product, existingOrder] = preloaded
+    ? [preloaded.ctx, preloaded.variant, preloaded.product, null]
     : await Promise.all([
         tgCtx(from?.id ?? chatId),
         getActiveVariant(variantId),
-        queryFirst(`SELECT id, name, name_en, require_email FROM products WHERE id=?`, productId).then((row) =>
+        queryFirst(`SELECT id, name, name_en, require_email, telegram_enabled, is_active FROM products WHERE id=?`, productId).then((row) =>
           row ? {
             id: Number(row.id),
             name: String(row.name),
             name_en: row.name_en == null ? null : String(row.name_en),
             require_email: Number(row.require_email ?? 0),
+            telegram_enabled: Number(row.telegram_enabled ?? 1),
+            is_active: Number(row.is_active ?? 1),
           } : null
         ),
+        queryFirst(
+          `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
+           ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
+          String(chatId), variantId,
+        ),
       ]);
-  if (!variant || variant.product_id !== productId) {
+  if (
+    !variant ||
+    variant.product_id !== productId ||
+    !product ||
+    Number(product.is_active ?? 1) !== 1 ||
+    Number(product.telegram_enabled ?? 1) !== 1
+  ) {
     await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+    return;
+  }
+  if (existingOrder) {
+    try {
+      const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+      await retryTelegramInvoiceDelivery(String(existingOrder.code)).catch(() => false);
+    } catch { /* sapuan cron berikutnya */ }
+    const { alreadyPendingMessage } = await import("@/lib/telegram/messages");
+    await sendMessage({
+      chat_id: chatId,
+      text: alreadyPendingMessage(String(existingOrder.code), { locale: ctx.locale }),
+      parse_mode: "HTML",
+      reply_markup: orderStatusKeyboard(String(existingOrder.code), { locale: ctx.locale }),
+    });
     return;
   }
   variant.stock = effectiveVariantStock(variant);
-  if (variant.stock !== -1 && variant.stock < variant.min_qty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
-    return;
-  }
-  const productName = product ? productDisplayName({ name: product.name, nameEn: product.name_en }, ctx.locale) : "Produk";
-  const requiresEmail = needsEmailForVariant({
-    wrType: variant.wr_type ?? null,
-    requireEmail: Number(product?.require_email ?? variant.require_email ?? 0),
-  });
   const stockMax = variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.max(1, Math.min(variant.stock, TELEGRAM_MAX_QTY));
   const uniqueMax = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, stockMax) : stockMax;
-  // Minimum pembelian (migrasi 0034): stepper dibuka LANGSUNG di min agar
-  // pembeli GSuite (min 50) tidak mulai dari 1 lalu ditolak saat bayar.
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
   const maxQty = Math.min(variant.max_qty ?? TELEGRAM_MAX_QTY, uniqueMax);
-  if (minQty > maxQty) {
+  if (variant.stock === 0 || (variant.stock !== -1 && variant.stock < minQty) || minQty > maxQty) {
     await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
-  const qty = Math.min(Math.max(clampQty(requestedQty), minQty), maxQty);
+  const productName = productDisplayName({ name: product.name, nameEn: product.name_en }, ctx.locale);
 
-  // Remember qty context so a typed number (1-100) works without buttons.
-  if (isD1Mode() && !(await setPendingActionUnlessCreating(String(chatId), chatId, `qty_for:${productId}:${variantId}`))) return;
+  // Remember qty context so a typed number (min..max) works without extra clicks.
+  if (isD1Mode() && !(await setPendingActionUnlessCreating(String(from?.id ?? chatId), chatId, `qty_for:${productId}:${variantId}`))) return;
 
-  // TG2b: harga efektif server (agregat qty varian yang sama = qty ini)
-  // untuk tampilan + approval; guard atomik memverifikasi ulang.
-  let effectiveQtyPrice = Number(variant.price);
-  let effectiveQtyTier: number | null = null;
-  try {
-    const { resolveBulkPrice: resolveQtyBulk } = await import("@/lib/bulk-pricing");
-    const resolvedQty = resolveQtyBulk(Number(variant.price), qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? []));
-    effectiveQtyPrice = resolvedQty.price;
-    effectiveQtyTier = resolvedQty.tier ?? null;
-  } catch {
-    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
-    return;
-  }
-
+  const unitPrice = Number(variant.price);
   const vLabel = formatVariantLabel(variant, ctx.locale);
   const vDuration = safeVariantDuration({ ...variant, label: vLabel }, ctx.locale);
 
@@ -422,25 +432,292 @@ export async function handleShowQty(
       productName,
       variantLabel: vLabel,
       duration: vDuration,
-      price: effectiveQtyPrice,
-      basePrice: Number(variant.price),
-      appliedTierMinQty: effectiveQtyTier,
+      price: unitPrice,
+      basePrice: unitPrice,
       bulkTiers: variant.bulk_pricing_tiers,
       bulkEnabled: variant.bulk_pricing_enabled ? true : variant.bulk_pricing_invalid ? false : undefined,
       stock: variant.stock,
-      qty,
       maxQty,
       minQty,
-      requiresEmail,
-      deliveryKind: buyerDeliveryKind(variant),
-      warrantyLabel: buyerWarrantyLabel(variant) || null,
-    }, { locale: ctx.locale, ...tgUsdAlternate(effectiveQtyPrice * qty, ctx) }),
+    }, {
+      locale: ctx.locale,
+      formatPrice: (idr) => tgDisplayPrice(idr, ctx),
+      usdUnavailable: tgUsdAlternate(unitPrice, ctx).usdUnavailable,
+    }),
     parse_mode: "HTML",
-    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: effectiveQtyPrice, maxQty, minQty, requiresEmail, approvalTag: await checkoutApprovalTag([{ productId, variantId, qty, price: effectiveQtyPrice }]) }, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
+    reply_markup: qtyKeyboard({
+      productId,
+      variantId,
+      stock: variant.stock,
+      maxQty,
+      minQty,
+    }, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
+  }, sourceMeta);
+}
+
+const BOILERPLATE_DESC_ID = /Detail benefit,\s*syarat,\s*dan cara aktivasi mengikuti varian yang dipilih\.?/gi;
+const BOILERPLATE_DESC_EN = /Benefit details,\s*terms,\s*and activation steps follow the chosen variant\.?/gi;
+
+function copyLineDedupeKey(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function buildReviewCopySections(params: {
+  locale: Locale;
+  variant: NonNullable<Awaited<ReturnType<typeof getActiveVariant>>>;
+  merged: ReturnType<typeof mergeProductCopy>;
+  parsedDesc: ReturnType<typeof parseProductDescription>;
+}): ReviewCopySection[] {
+  const { locale, variant, merged, parsedDesc } = params;
+  const seen = new Set<string>();
+  const addUnique = (target: string[], raw: string, bullet = false) => {
+    const cleaned = raw.trim();
+    const key = copyLineDedupeKey(cleaned);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    target.push(bullet ? `• ${cleaned}` : cleaned);
+  };
+
+  const pkgLines: string[] = [];
+  for (const sec of merged.sections) {
+    if (sec.kind === "paket" || sec.kind === "proses") {
+      for (const item of sec.items) addUnique(pkgLines, item, true);
+    }
+  }
+  for (const block of parsedDesc.blocks) {
+    if (block.type === "p") {
+      const stripped = block.text.replace(BOILERPLATE_DESC_ID, "").replace(BOILERPLATE_DESC_EN, "").trim();
+      if (stripped) addUnique(pkgLines, stripped, false);
+    } else {
+      for (const item of block.items) {
+        const stripped = item.replace(BOILERPLATE_DESC_ID, "").replace(BOILERPLATE_DESC_EN, "").trim();
+        if (stripped) addUnique(pkgLines, stripped, true);
+      }
+    }
+  }
+  for (const sec of parsedDesc.sections) {
+    if (sec.title.trim()) addUnique(pkgLines, `${sec.title.trim()}:`, false);
+    for (const item of sec.items) addUnique(pkgLines, item, true);
+  }
+
+  const activationLines: string[] = [];
+  for (const group of merged.activation) {
+    if (group.title?.trim()) activationLines.push(group.title.trim());
+    group.steps.forEach((step, idx) => {
+      const cleaned = step.trim();
+      if (cleaned) activationLines.push(`${idx + 1}. ${cleaned}`);
+    });
+  }
+
+  const warrantyLines: string[] = [];
+  if (variant.warranty_type && variant.warranty_type !== "none") {
+    const wLabel = locale === "en" ? catalogWarranty(variant, "en") : buyerWarrantyLabel(variant);
+    if (wLabel) addUnique(warrantyLines, wLabel, true);
+  }
+  for (const sec of merged.sections) {
+    if (sec.kind === "garansi" || sec.kind === "aturan") {
+      for (const item of sec.items) addUnique(warrantyLines, item, true);
+    }
+  }
+  for (const note of merged.notes) {
+    addUnique(warrantyLines, note, true);
+  }
+
+  const out: ReviewCopySection[] = [];
+  if (pkgLines.length > 0) out.push({ kind: "package", lines: pkgLines });
+  if (activationLines.length > 0) out.push({ kind: "activation", lines: activationLines });
+  if (warrantyLines.length > 0) out.push({ kind: "warranty_terms", lines: warrantyLines });
+  return out;
+}
+
+export async function handleShowReview(
+  chatId: number,
+  messageId: number,
+  productId: number,
+  variantId: number,
+  requestedQty: number,
+  from?: { id: number },
+  sourceMeta?: ScreenSourceMeta,
+) {
+  if (await notifyPaymentMaintenance(chatId)) return;
+  const userId = from?.id ?? chatId;
+  if (!Number.isSafeInteger(productId) || productId <= 0 || !Number.isSafeInteger(variantId) || variantId <= 0) {
+    const ctx = await tgCtx(userId);
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+    return;
+  }
+
+  const [ctx, variant, productRow, existingOrder] = await Promise.all([
+    tgCtx(userId),
+    getActiveVariant(variantId),
+    queryFirst(
+      `SELECT id, name, name_en, description, admin_description_override, description_en, require_email, telegram_enabled, is_active FROM products WHERE id=?`,
+      productId,
+    ),
+    queryFirst(
+      `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
+       ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, id DESC LIMIT 1`,
+      String(chatId),
+      variantId,
+    ),
+  ]);
+
+  if (
+    !variant ||
+    variant.product_id !== productId ||
+    !productRow ||
+    Number(productRow.is_active) !== 1 ||
+    Number(productRow.telegram_enabled) !== 1
+  ) {
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+    return;
+  }
+
+  if (existingOrder) {
+    try {
+      const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+      await retryTelegramInvoiceDelivery(String(existingOrder.code)).catch(() => false);
+    } catch { /* sapuan cron berikutnya */ }
+    const { alreadyPendingMessage } = await import("@/lib/telegram/messages");
+    await sendMessage({
+      chat_id: chatId,
+      text: alreadyPendingMessage(String(existingOrder.code), { locale: ctx.locale }),
+      parse_mode: "HTML",
+      reply_markup: orderStatusKeyboard(String(existingOrder.code), { locale: ctx.locale }),
+    });
+    return;
+  }
+
+  const en = ctx.locale === "en";
+  variant.stock = effectiveVariantStock(variant);
+  const stockMax = variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.max(1, Math.min(variant.stock, TELEGRAM_MAX_QTY));
+  const uniqueMax = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, stockMax) : stockMax;
+  const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
+  const maxQty = Math.min(variant.max_qty ?? TELEGRAM_MAX_QTY, uniqueMax);
+  if (variant.stock === 0 || (variant.stock !== -1 && variant.stock < minQty) || minQty > maxQty) {
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+    return;
+  }
+
+  if (!Number.isSafeInteger(requestedQty) || requestedQty < minQty) {
+    await sendMessage({
+      chat_id: chatId,
+      text: en
+        ? `Minimum purchase is ${minQty}. Adjust quantity to at least ${minQty} before paying.`
+        : `Minimal pembelian ${minQty}. Ubah jumlah ke minimal ${minQty} sebelum membayar.`,
+      parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+    });
+    await handleShowQty(chatId, messageId, productId, variantId, minQty, from, sourceMeta, {
+      ctx,
+      variant,
+      product: {
+        id: Number(productRow.id),
+        name: String(productRow.name),
+        name_en: productRow.name_en == null ? null : String(productRow.name_en),
+        require_email: Number(productRow.require_email ?? 0),
+        telegram_enabled: Number(productRow.telegram_enabled ?? 1),
+        is_active: Number(productRow.is_active ?? 1),
+      },
+    });
+    return;
+  }
+
+  if ((variant.stock !== -1 && requestedQty > variant.stock) || requestedQty > maxQty || requestedQty > TELEGRAM_MAX_QTY) {
+    await sendMessage({
+      chat_id: chatId,
+      text: variant.stock !== -1 && requestedQty > variant.stock
+        ? (en ? `Only ${variant.stock} left in stock. Choose a valid quantity.` : `Stok hanya tersisa ${variant.stock}. Pilih jumlah yang tersedia.`)
+        : (en ? `Maximum purchase is ${maxQty}. Choose a valid quantity.` : `Maksimal pembelian ${maxQty}. Pilih jumlah yang sesuai.`),
+      parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+    });
+    await handleShowQty(chatId, messageId, productId, variantId, maxQty, from, sourceMeta, {
+      ctx,
+      variant,
+      product: {
+        id: Number(productRow.id),
+        name: String(productRow.name),
+        name_en: productRow.name_en == null ? null : String(productRow.name_en),
+        require_email: Number(productRow.require_email ?? 0),
+        telegram_enabled: Number(productRow.telegram_enabled ?? 1),
+        is_active: Number(productRow.is_active ?? 1),
+      },
+    });
+    return;
+  }
+
+  const qty = clampQty(requestedQty);
+
+  let effectivePrice = Number(variant.price);
+  let appliedTierMinQty: number | null = null;
+  try {
+    const { resolveBulkPrice: resolveReviewBulk } = await import("@/lib/bulk-pricing");
+    const resolved = resolveReviewBulk(Number(variant.price), qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? []));
+    effectivePrice = resolved.price;
+    appliedTierMinQty = resolved.tier ?? null;
+  } catch {
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+    return;
+  }
+
+  // Clear qty_for / non-creating state so free-text won't re-trigger qty input while preserving any creating anchor.
+  if (from) await clearPendingAction(from);
+
+  const variantCopy = resolveVariantCopy(variant.terms, variant.delivery_terms, adminCopyOf(variant), ctx.locale);
+  const links = variantCopy?.source === "pemasok"
+    ? await loadActiveSupplierLinkMap().catch(() => null)
+    : null;
+  const sanitized = links ? sanitizeSupplierCopy(variantCopy, links) : variantCopy;
+  const productDesc = localizedProductDescription({
+    description: displayDescription(productRow),
+    descriptionEn: displayDescriptionEn(productRow),
+  }, ctx.locale);
+  const parsedDesc = parseProductDescription(productDesc);
+  const merged = mergeProductCopy(sanitized, parsedDesc);
+  const sections = buildReviewCopySections({ locale: ctx.locale, variant, merged, parsedDesc });
+
+  const productName = productDisplayName({
+    name: String(productRow.name),
+    nameEn: productRow.name_en == null ? null : String(productRow.name_en),
+  }, ctx.locale);
+  const vLabel = formatVariantLabel(variant, ctx.locale);
+  const vDuration = safeVariantDuration({ ...variant, label: vLabel }, ctx.locale);
+  const approvalTag = await checkoutApprovalTag([{ productId, variantId, qty, price: effectivePrice }]);
+
+  const rendered = reviewPurchaseMessage({
+    productName,
+    variantLabel: vLabel,
+    duration: vDuration,
+    qty,
+    unitPrice: effectivePrice,
+    basePrice: Number(variant.price),
+    appliedTierMinQty,
+    sections,
+  }, {
+    locale: ctx.locale,
+    formatPrice: (idr) => tgDisplayPrice(idr, ctx),
+    usdUnavailable: tgUsdAlternate(effectivePrice * qty, ctx).usdUnavailable,
+  });
+
+  await replaceWithText({
+    chat_id: chatId,
+    message_id: messageId,
+    text: rendered.text,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    reply_markup: reviewKeyboard({
+      productId,
+      variantId,
+      qty,
+      approvalTag,
+      truncated: rendered.truncated,
+    }, { locale: ctx.locale }),
   }, sourceMeta);
 }
 
 export async function handleQtyInputPrompt(chatId: number, productId: number, variantId: number, from: { id: number }) {
+  if (await notifyPaymentMaintenance(chatId)) return;
   const ctx = await tgCtx(from?.id ?? chatId);
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return;

@@ -29,7 +29,7 @@ import { cartCheckoutSummaryMessage, escapeHtml } from "@/lib/telegram/messages"
 import { productDisplayName } from "@/lib/i18n/product-name";
 import { countInventory } from "@/lib/fulfillment/inventory";
 import { clampQty, replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
-import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
+import { handleShowCatalog, handleShowQty, handleShowReview, handleShowVariants } from "./catalog";
 
 /**
  * Jawaban email untuk alur email_for: (migrasi 0033): user diminta email
@@ -353,7 +353,10 @@ export async function handlePendingQtyInput(
     const typedVariant = await getActiveVariant(variantId);
     if (typedVariant) typedVariant.stock = effectiveVariantStock(typedVariant);
     const need = Math.max(1, Number(typedVariant?.min_qty ?? 1) || 1);
-    const max = typedVariant?.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, typedVariant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : typedVariant.stock) : typedVariant?.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(Number(typedVariant?.stock ?? 0), TELEGRAM_MAX_QTY);
+    const stockCap = typedVariant?.fulfillment_mode === "unique"
+      ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, typedVariant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : typedVariant.stock)
+      : typedVariant?.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(Number(typedVariant?.stock ?? 0), TELEGRAM_MAX_QTY);
+    const max = typedVariant ? Math.min(typedVariant.max_qty ?? TELEGRAM_MAX_QTY, stockCap) : TELEGRAM_MAX_QTY;
     if (typedVariant && (typedQty < need || typedQty > max)) {
       await sendMessage({
         chat_id: chatId,
@@ -368,7 +371,7 @@ export async function handlePendingQtyInput(
     `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
     String(from.id),
   ).catch(() => {});
-  await handleShowQty(chatId, 0, productId, variantId, qty, from);
+  await handleShowReview(chatId, 0, productId, variantId, qty, from);
   return true;
 }
 

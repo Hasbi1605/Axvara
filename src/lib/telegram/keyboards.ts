@@ -574,62 +574,73 @@ export function qtyKeyboard(params: {
   productId: number;
   variantId: number;
   stock: number;
-  qty: number;
-  price: number;
+  qty?: number;
+  price?: number;
   maxQty?: number;
   /** Minimum pembelian per varian (migrasi 0034, default 1). */
   minQty?: number;
   requiresEmail?: boolean;
   approvalTag?: string;
 }, ctx?: TgPriceCtx & TgLocaleCtx): InlineKeyboardMarkup {
-  const { productId, variantId, stock, price } = params;
+  const { productId, variantId, stock } = params;
   const en = ctx?.locale === "en";
   // Telegram bulk cap is 100/order (matches TELEGRAM_MAX_QTY in the webhook).
-  const stockMax = stock === -1 ? 100 : Math.max(1, Math.min(stock, 100));
+  const stockMax = stock === -1 ? TELEGRAM_MAX_QTY : Math.max(1, Math.min(stock, TELEGRAM_MAX_QTY));
   const cap = Math.max(1, Math.min(params.maxQty ?? stockMax, stockMax));
-  // Minimum pembelian (GSuite min 50): stepper tidak boleh turun di bawah
-  // min. Bila min > cap (stok menipis), biarkan tombol bayar tampil dan
-  // serahkan penolakan ke guard stok invoice — jangan clamp diam-diam.
   const minQty = Math.max(1, Math.floor(Number(params.minQty ?? 1) || 1));
-  const max = Math.max(minQty, cap);
-  const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), max);
-  const minusQty = Math.max(minQty, qty - 1);
-  const plusQty = Math.min(max, qty + 1);
-  const displayCurrency = ctx?.displayCurrency ?? (ctx?.locale === "en" ? "USD" : "IDR");
-  const total = tgDisplayPrice(price * qty, { locale: ctx?.locale ?? "id", displayCurrency, fx: ctx?.fx ?? null });
-  const minusCb = qty > minQty ? cb.setQty(productId, variantId, minusQty) : "noop";
-  const minusLabel = qty > minQty ? (en ? "➖ Decrease" : "➖ Kurangi") : "➖";
-  const presets = [1, 5, 10, 50]
-    .filter((n) => n >= minQty && n <= max)
-    .map((n): InlineKeyboardButton => (
-      n === qty
-        ? { text: `✅ ${n}`, callback_data: "noop" }
-        : { text: String(n), callback_data: cb.setQty(productId, variantId, n) }
-    ));
-  return {
-    inline_keyboard: [
-      [
-        { text: minusLabel, callback_data: minusCb },
-        { text: en ? `Quantity: ${qty}` : `Jumlah: ${qty}`, callback_data: "noop" },
-        { text: qty < max ? (en ? "Add ➕" : "Tambah ➕") : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
-      ],
-      ...(presets.length > 0 ? [presets] : []),
-      ...(max > 1 ? [[{ text: en ? "✍️ Enter Quantity" : "✍️ Masukkan Jumlah", callback_data: cb.qtyInput(productId, variantId) }]] : []),
-      [{
-        text: params.requiresEmail ? (en ? `📧 Continue to Email · ${total}` : `📧 Lanjut ke Email · ${total}`) : (en ? `💳 Pay QRIS · ${total}` : `💳 Bayar QRIS · ${total}`),
-        callback_data: cb.pay(productId, variantId, qty, params.approvalTag),
-        style: "success",
-      }],
-      ...(!params.requiresEmail ? [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry(productId, variantId, qty, params.approvalTag) }]] : []),
-      [
-        { text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) },
-      ],
-      [
-        { text: en ? "Change Variant" : "Ganti Varian", callback_data: cb.variants(productId) },
-        { text: en ? "Home" : "Menu", callback_data: cb.home() },
-      ],
-    ],
-  };
+  const effectiveUpper = stock === 0 ? 0 : cap;
+  const candidatePresets = minQty > 1
+    ? [minQty, minQty * 2, minQty * 5]
+    : [1, 5, 10];
+  const presets = [...new Set(candidatePresets)]
+    .filter((n) => n >= minQty && n <= effectiveUpper)
+    .map((n): InlineKeyboardButton => ({
+      text: String(n),
+      callback_data: cb.setQty(productId, variantId, n),
+      style: "success",
+    }));
+  const rows: InlineKeyboardButton[][] = [];
+  if (presets.length > 0) rows.push(presets);
+  if (effectiveUpper > minQty) {
+    rows.push([{
+      text: en ? "✍️ Custom quantity" : "✍️ Jumlah lain",
+      callback_data: cb.qtyInput(productId, variantId),
+      style: "primary",
+    }]);
+  }
+  rows.push([
+    { text: en ? "◀️ Back to Product" : "◀️ Kembali ke Produk", callback_data: cb.product(productId), style: "primary" },
+    { text: "🏠 Menu", callback_data: cb.home(), style: "primary" },
+  ]);
+  return { inline_keyboard: rows };
+}
+
+export function reviewKeyboard(params: {
+  productId: number;
+  variantId: number;
+  qty: number;
+  approvalTag: string;
+  truncated?: boolean;
+}, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  const rows: InlineKeyboardButton[][] = [];
+  if (params.truncated) {
+    rows.push([{
+      text: en ? "📋 Read full terms" : "📋 Baca lengkap",
+      callback_data: cb.terms(params.productId, params.variantId),
+      style: "primary",
+    }]);
+  }
+  rows.push([{
+    text: en ? "✅ I have read — Continue to Payment" : "✅ Sudah dibaca — Lanjut Bayar",
+    callback_data: cb.payMethodsEntry(params.productId, params.variantId, params.qty, params.approvalTag),
+    style: "success",
+  }]);
+  rows.push([
+    { text: en ? "✍️ Change Quantity" : "✍️ Ubah Jumlah", callback_data: cb.qty(params.productId, params.variantId), style: "primary" },
+    { text: en ? "✖️ Cancel" : "✖️ Batalkan", callback_data: cb.product(params.productId), style: "danger" },
+  ]);
+  return { inline_keyboard: rows };
 }
 
 export function emailConfirmationKeyboard(productId: number, variantId: number, qty: number, total: number, tag?: string, nonce?: string, ctx?: TgPriceCtx & TgLocaleCtx): InlineKeyboardMarkup {
@@ -971,13 +982,20 @@ export function paymentMethodOfferKeyboard(
     ? [...cryptoRows, ...gatewayRows, ...qrisRows]
     : [...qrisRows, ...gatewayRows, ...cryptoRows];
 
-  const backCallback = state.source?.kind === "single"
-    ? cb.setQty(state.source.productId, state.source.variantId, state.source.qty)
-    : cb.cartCheckout();
-  rows.push([
-    { text: en ? "◀️ Back" : "◀️ Kembali", callback_data: backCallback },
-    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
-  ]);
+  if (state.source?.kind === "single") {
+    rows.push([
+      { text: en ? "◀️ Back" : "◀️ Kembali", callback_data: cb.setQty(state.source.productId, state.source.variantId, state.source.qty), style: "primary" },
+      { text: en ? "✖️ Cancel" : "✖️ Batal", callback_data: cb.product(state.source.productId), style: "danger" },
+    ]);
+    rows.push([
+      { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home(), style: "primary" },
+    ]);
+  } else {
+    rows.push([
+      { text: en ? "◀️ Back" : "◀️ Kembali", callback_data: cb.cartCheckout(), style: "primary" },
+      { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home(), style: "primary" },
+    ]);
+  }
   return { inline_keyboard: rows };
 }
 

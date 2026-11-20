@@ -113,14 +113,16 @@ describe("TG2b telegram bulk checkout", () => {
   });
 
   it("single invoice honors threshold discount and persists immutable locale snapshot", async () => {
-    const { handleShowQty } = await import("@/lib/telegram/handlers/catalog");
-    await handleShowQty(777001, 1, 1, 1, 12, buyer);
-    const qtyCall = api.edit.mock.calls.at(-1)?.[0];
-    const rows = qtyCall?.reply_markup?.inline_keyboard ?? [];
-    const payCb = String(rows.flat().find((b: { text: string }) => b.text.includes("QRIS"))?.callback_data ?? "");
+    const { handleShowQty, handleShowReview } = await import("@/lib/telegram/handlers/catalog");
+    await handleShowQty(777001, 1, 1, 1, 1, buyer);
+    expect(String(api.edit.mock.calls.at(-1)?.[0]?.text ?? "")).toContain("<blockquote>");
+    await handleShowReview(777001, 1, 1, 1, 12, buyer);
+    const reviewCall = api.edit.mock.calls.at(-1)?.[0];
+    const rows = reviewCall?.reply_markup?.inline_keyboard ?? [];
+    const payCb = String(rows.flat().find((b: { callback_data?: string }) => b.callback_data?.startsWith("pmentry:"))?.callback_data ?? "");
     const tag = payCb.split(":").at(-1);
     expect(tag).toBeTruthy();
-    expect(String(qtyCall?.text ?? "")).toMatch(/bulk 10\+/);
+    expect(String(reviewCall?.text ?? "")).toMatch(/bulk 10\+/);
     const { handlePayWithQris } = await import("@/lib/telegram/handlers/invoice");
     await handlePayWithQris(777001, 1, 1, 1, 12, buyer, false, tag);
     const order = fx.sql.prepare("SELECT code,subtotal,items,variant_snapshot,locale,sales_channel,telegram_user_id FROM orders").get();
