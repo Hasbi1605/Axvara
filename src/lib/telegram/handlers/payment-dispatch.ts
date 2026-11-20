@@ -4,12 +4,13 @@
 // no fake JWT, no fee/FX recompute, no adapter policy rewrites. Recovery:
 // ambiguous/network/timeout/POST => durable TX retained, GET-only reconcile,
 // next view re-reads saved TX (never re-POST blindly).
-import { queryFirst, execRun } from "@/lib/db";
+import { queryFirst, execRun, StockReservationError } from "@/lib/db";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { safeEditOrSend } from "@/lib/telegram/api";
 import { otherMethodsEntryKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import { paymentMethodNoticeMessage } from "@/lib/telegram/messages/purchase";
+import { outOfStockMessage } from "@/lib/telegram/messages/status";
 import type { Payq1State } from "@/lib/telegram/payment-quote";
 import type { Locale } from "@/lib/i18n/locale";
 
@@ -75,14 +76,14 @@ export async function dispatchPayq1Creating(
    * release refuses and the stale anchor is left for the existing resume/cancel
    * paths (ambiguous claims are never cancelled here).
    */
-  const failureNotice = async (notice: "create_failed" | "method_unavailable" = "create_failed") => {
+  const failureNotice = async (notice: "create_failed" | "method_unavailable" | "catalog_changed" | "stock" = "create_failed") => {
     const { releasePayq1CreatingIfNoOrder } = await import("@/lib/telegram/payment-create");
     await releasePayq1CreatingIfNoOrder(ownerId, creatingRaw, orderCode, idempotencyKey).catch(() => false);
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage(notice, { locale }),
+      text: notice === "stock" ? outOfStockMessage({ locale }) : paymentMethodNoticeMessage(notice, { locale }),
       parse_mode: "HTML",
-      reply_markup: otherMethodsEntryKeyboard({ locale, source: creating.source, tag: creating.tag }),
+      reply_markup: notice === "stock" ? minimalMenuKeyboard({ locale }) : otherMethodsEntryKeyboard({ locale, source: creating.source, tag: creating.tag }),
     });
   };
   if (creating.st !== "creating" || !selectedId || (kind !== "gateway" && kind !== "crypto")) {
@@ -120,20 +121,16 @@ export async function dispatchPayq1Creating(
   // Resolve CURRENT lines again (single source; cart cleared by prior QRIS
   // flows stays failed-closed here — R2 never guesses lines).
   const { resolveCurrentPayq1Lines } = await import("./payment-lines");
-  const { orderLinesFromSource, sanitizeCustomerName, releasePayq1CreatingIfNoOrder } = await import("@/lib/telegram/payment-create");
+  const { orderLinesFromSource, sanitizeCustomerName } = await import("@/lib/telegram/payment-create");
   const resolved = savedOrder ? null : await resolveCurrentPayq1Lines(ownerId, creating).catch(() => null);
   const built = savedOrder ? null : (resolved && resolved.ok ? orderLinesFromSource(creating, resolved.cartLines) : null);
   if (!savedOrder && !built) {
     // Tag/price drift or cart gone and NO order/TX exists yet: nothing financial
     // hangs on the anchor, so release it (exact CAS) and let the buyer requote
     // instead of leaving a permanent dead-end creating row.
-    await releasePayq1CreatingIfNoOrder(ownerId, creatingRaw, orderCode, idempotencyKey);
-    await safeEditOrSend({
-      chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("expired", { locale }),
-      parse_mode: "HTML",
-      reply_markup: minimalMenuKeyboard({ locale }),
-    });
+    const reason = resolved && !resolved.ok ? resolved.reason : "catalog_read_or_snapshot_failed";
+    console.warn("[telegram-checkout] rejected", { method: selectedId, reason });
+    await failureNotice(reason === "stock" ? "stock" : "catalog_changed");
     return;
   }
   const orderSubtotal = savedOrder ? Number(savedOrder.subtotal) : built!.subtotal;
@@ -149,6 +146,7 @@ export async function dispatchPayq1Creating(
     try {
       await checkNowpaymentsMinimum(amountText, "usd", payCurrency);
     } catch {
+      console.warn("[telegram-checkout] rejected", { method: selectedId, reason: "crypto_preflight_failed" });
       await failureNotice();
       return;
     }
@@ -200,10 +198,12 @@ export async function dispatchPayq1Creating(
     if (!created.isExisting) trackFunnelEvent({ stage: "order", channel: "telegram", locale: creating.locale,
       method: selectedId, subtotal: built.subtotal, productId: built.lines[0]?.productId, variantId: built.primaryVariantId,
       quantity: built.lines.reduce((sum, line) => sum + line.qty, 0) });
-  } catch {
+  } catch (error) {
     // Stock/config/pending-guard failure: fail closed, intent retained for
     // the user to requote honestly (no silent cart mutation here).
-    await failureNotice();
+    const reason = error instanceof StockReservationError ? error.reason : "order_create_failed";
+    console.warn("[telegram-checkout] rejected", { method: selectedId, variantId: built.primaryVariantId, reason });
+    await failureNotice(reason === "stock" ? "stock" : error instanceof StockReservationError ? "catalog_changed" : "create_failed");
     return;
   }
 

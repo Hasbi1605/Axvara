@@ -582,7 +582,7 @@ export function paymentMethodOfferDetails(
 
 /** R2 selection + expiry/refresh notices (localized, honest, no fallback). */
 export function paymentMethodNoticeMessage(
-  kind: "selected_other" | "expired" | "refreshed" | "deferred" | "unavailable" | "creating" | "create_failed" | "contact_needed" | "not_ready" | "method_unavailable",
+  kind: "selected_other" | "expired" | "refreshed" | "deferred" | "unavailable" | "creating" | "create_failed" | "contact_needed" | "not_ready" | "method_unavailable" | "catalog_changed",
   opts?: TgMoneyOpts,
 ): string {
   const en = opts?.locale === "en";
@@ -615,6 +615,8 @@ export function paymentMethodNoticeMessage(
       return en
         ? "Offer expired. Showing latest prices."
         : "Penawaran kedaluwarsa. Harga terbaru ditampilkan.";
+    case "catalog_changed":
+      return en ? "Price or stock was just updated. Please try again." : "Harga/stok baru saja diperbarui, coba lagi.";
     case "refreshed":
       return en
         ? "Showing latest offer."

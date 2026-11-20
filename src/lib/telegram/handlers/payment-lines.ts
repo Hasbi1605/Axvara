@@ -4,7 +4,7 @@
 // No order/provider writes; no UI.
 import { queryFirst } from "@/lib/db";
 import { getCartSummary } from "@/lib/telegram/cart";
-import { getActiveVariant, formatVariantLabel } from "@/lib/catalog";
+import { getActiveVariant, formatVariantLabel, effectiveVariantStock } from "@/lib/catalog";
 import { resolveBulkPrice } from "@/lib/bulk-pricing";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import type { Payq1State, Payq1CartSource } from "@/lib/telegram/payment-quote";
@@ -12,7 +12,7 @@ import type { CartLineLike } from "@/lib/telegram/payment-create";
 
 export type Payq1LinesResolved =
   | { ok: true; cartLines: CartLineLike[]; cartLinesForEmail: { productId: number; variantId: number }[] }
-  | { ok: false; reason: string };
+  | { ok: false; reason: "bad_subtotal" | "cart_changed" | "subtotal_changed" | "tag_changed" | "variant_changed" | "price_unavailable" | "stock" };
 
 export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1State): Promise<Payq1LinesResolved> {
   if (!Number.isSafeInteger(state.idrSubtotal) || state.idrSubtotal <= 0) return { ok: false, reason: "bad_subtotal" };
@@ -29,6 +29,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
         productId: l.productId, variantId: l.variantId, qty: l.qty,
         productName: l.productName, variantLabel: l.variantLabel,
         price: l.price, basePrice: l.basePrice, appliedTierMinQty: l.appliedTierMinQty ?? null,
+        buyerFieldKey: l.buyerFieldKey, maxQty: l.maxQty, buyerFields: l.buyerFields,
         stock: l.stock, fulfillmentMode: l.fulfillmentMode,
       })),
       cartLinesForEmail: summary.lines.map((l) => ({ productId: l.productId, variantId: l.variantId })),
@@ -38,12 +39,15 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
   // price (aggregate tiers) — caller tag + subtotal must still match.
   const variant = await getActiveVariant(source.variantId);
   if (!variant || variant.product_id !== source.productId) return { ok: false, reason: "variant_changed" };
-  let effective: number;
+  const stock = effectiveVariantStock(variant);
+  if (stock !== -1 && stock < source.qty) return { ok: false, reason: "stock" };
+  let resolved: ReturnType<typeof resolveBulkPrice>;
   try {
-    effective = resolveBulkPrice(Number(variant.price), source.qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? [])).price;
+    resolved = resolveBulkPrice(Number(variant.price), source.qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? []));
   } catch {
     return { ok: false, reason: "price_unavailable" };
   }
+  const effective = resolved.price;
   if (!Number.isSafeInteger(effective) || effective <= 0) return { ok: false, reason: "price_unavailable" };
   if (effective * source.qty !== state.idrSubtotal) return { ok: false, reason: "subtotal_changed" };
   const tag = await checkoutApprovalTag([{ productId: source.productId, variantId: source.variantId, qty: source.qty, price: effective }]);
@@ -55,8 +59,9 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
       productId: source.productId, variantId: source.variantId, qty: source.qty,
       productName: String(product?.name ?? "Produk"),
       variantLabel: formatVariantLabel(variant),
-      price: effective, basePrice: Number(variant.price), appliedTierMinQty: null,
-      stock: Number(variant.stock), fulfillmentMode: String(variant.fulfillment_mode || "manual"),
+      price: effective, basePrice: Number(variant.price), appliedTierMinQty: resolved.tier ?? null,
+      buyerFieldKey: variant.buyer_field_key, maxQty: variant.max_qty,
+      stock, fulfillmentMode: String(variant.fulfillment_mode || "manual"),
     }],
     cartLinesForEmail: [{ productId: source.productId, variantId: source.variantId }],
   };

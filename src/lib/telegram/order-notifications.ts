@@ -16,7 +16,7 @@ import {
   type TelegramPaidDelivery,
 } from "@/lib/telegram/messages";
 import { buyerDeliveryKind } from "@/lib/catalog";
-import { aivaultEligibility, miraiEligibility, storebatEligibility, tunvnEligibility } from "@/lib/buyer-fields";
+import { hasAutomaticSupplierDelivery } from "@/lib/buyer-fields";
 import {
   orderPaidKeyboard,
   telegramOrderAdminKeyboard,
@@ -101,14 +101,7 @@ export async function telegramPaidDeliveryProfile(
   let hasQueued = false;
   for (const row of rows) {
     const supplier = Boolean(String(row.wr_variant_id ?? "").trim() || String(row.sk_variant_id ?? "").trim());
-    const kind = buyerDeliveryKind({
-      fulfillment_mode: String(row.fulfillment_mode || "manual"),
-      automatic_delivery: Boolean((aivaultEligibility(row,1) || storebatEligibility(row,1) || miraiEligibility(row,1) || tunvnEligibility(row,1))),
-      wr_variant_id: row.wr_variant_id ?? null,
-      sk_variant_id: row.sk_variant_id ?? null,
-      wr_delivery_class: row.wr_delivery_class != null ? String(row.wr_delivery_class) : null,
-      sk_order_process: row.sk_order_process != null ? String(row.sk_order_process) : null,
-    } as Parameters<typeof buyerDeliveryKind>[0]);
+    const kind = buyerDeliveryKind({ ...row, automatic_delivery: hasAutomaticSupplierDelivery(row) });
     if (kind === "queued") {
       if (supplier) hasQueued = true;
       else hasLocalManual = true;

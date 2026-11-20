@@ -7,7 +7,8 @@ import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { bulkOwnerFromJoinedRow, isManualProductForBulk, validateBulkPricing, type BulkTier } from "@/lib/bulk-pricing";
 import type { Locale } from "@/lib/i18n/locale";
 import { translateVariantLabel } from "@/lib/i18n/variant-copy";
-import { aivaultEligibility, miraiEligibility, storebatEligibility, tunvnEligibility } from "@/lib/buyer-fields";
+import { hasAutomaticSupplierDelivery } from "@/lib/buyer-fields";
+import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
 import { displaySoldCountSql, notLoserProductSql } from "@/lib/product-groups";
 import { purchasableStockSql } from "@/lib/catalog-availability";
 import { deriveSkDuration, durationFromSupplierText, labelContainsDuration } from "@/lib/catalog-duration";
@@ -483,29 +484,23 @@ export function formatVariantLabel(
  * WR ikut `wr_delivery_class` (restock = instan, selainnya = antrean);
  * SK ikut `sk_order_process` (auto = instan/lisensi langsung, selainnya =
  * antrean seperti MBO — FAKTA API: 82 auto vs 6008 h2h vs 4 manual);
- * TUNVN eligible memakai marker otomatis, bukan janji selesai instan;
+ * TUNVN/AIVault/StoreBat/Mirai eligible memakai marker otomatis, bukan janji selesai instan;
  * non-supplier lain ikut `fulfillment_mode` (shared/unique = instan dari stok
  * sendiri, manual = dikerjakan admin). Satu fungsi agar PDP/modal/checkout
  * tidak menebak per layar.
  */
 export type BuyerDeliveryKind = "instant" | "queued";
 
-export function buyerDeliveryKind(v: Pick<VariantSummary, "fulfillment_mode"> & Partial<Pick<VariantSummary, "wr_delivery_class" | "sk_order_process" | "automatic_delivery">> & { wr_variant_id?: unknown; sk_variant_id?: unknown }): BuyerDeliveryKind {
-  const wrId = v.wr_variant_id == null ? "" : String(v.wr_variant_id).trim();
-  if (wrId) {
-    return String(v.wr_delivery_class ?? "").trim() === "restock" ? "instant" : "queued";
-  }
-  const skId = (v as { sk_variant_id?: unknown }).sk_variant_id == null ? "" : String((v as { sk_variant_id?: unknown }).sk_variant_id).trim();
-  if (skId) {
-    return String((v as { sk_order_process?: unknown }).sk_order_process ?? "").trim().toLowerCase() === "auto" ? "instant" : "queued";
-  }
-  const mode = String(v.fulfillment_mode ?? "manual").trim().toLowerCase();
-  if (v.automatic_delivery === true) return "instant";
-  return mode === "shared" || mode === "unique" ? "instant" : "queued";
+export function buyerDeliveryKind(v: { fulfillment_mode?: unknown; wr_delivery_class?: unknown; sk_order_process?: unknown; automatic_delivery?: boolean; wr_variant_id?: unknown; sk_variant_id?: unknown }): BuyerDeliveryKind {
+  return isQueuedFulfillment({
+    wrVariantId: v.wr_variant_id, wrClass: v.wr_delivery_class,
+    skVariantId: v.sk_variant_id, skOrderProcess: v.sk_order_process,
+    fulfillmentMode: v.fulfillment_mode, automaticDelivery: v.automatic_delivery,
+  }) ? "queued" : "instant";
 }
 
 /** Badge pembeli: "Kirim otomatis" (instan) atau "Made By Order" (antrean). */
-export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0]): string {
+export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0] & { wr_delivery_class?: string | null }): string {
   const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id == null
     ? ""
     : String((v as { wr_variant_id?: unknown }).wr_variant_id).trim();
@@ -680,7 +675,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),
     max_qty: row.max_qty == null ? null : Number(row.max_qty),
     buyer_field_key: row.buyer_field_key === "muse_invite_code" ? "muse_invite_code" : null,
-    ...((aivaultEligibility(row,1) || storebatEligibility(row,1) || miraiEligibility(row,1) || tunvnEligibility(row,1)) ? { automatic_delivery:true } : {}),
+    ...(hasAutomaticSupplierDelivery(row) ? { automatic_delivery:true } : {}),
     manual_cost: Math.max(0, Math.floor(Number(row.manual_cost ?? 0) || 0)),
     fulfillment_mode: String(row.fulfillment_mode || "manual"),
     is_active: Number(row.is_active ?? 1),

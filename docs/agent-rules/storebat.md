@@ -1,5 +1,11 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Checkout Telegram dan kartu Made By Order — 20 November 2026 (lokal)
+
+- Untuk SB-60 (varian 34576, `max_qty=100`, stok 76), snapshot QRIS tunggal tidak menyertakan `max_qty`; resolver crypto juga tidak meneruskannya. `buyerSnapshotMatches` membandingkan `null` dengan `100`, membatalkan reservasi sebelum provider: QRIS salah melaporkan stok habis, crypto salah melaporkan metode gangguan. Web sudah menandatangani dan memeriksa batas qty. Kedua rail Telegram kini menyertakan konfigurasi dari varian server; bukan dari tombol pembeli.
+- Guard atomik SKU/family/identitas, stok/status, harga dan lease sync tetap aktif. Bila batch ditolak dan pembacaan ulang mendeteksi modal/kurs StoreBat berubah tanpa perubahan harga pembeli, Telegram mencoba reservasi sekali lagi dengan biaya terbaru dan total semula; ini bukan pengulangan panggilan provider. Penolakan katalog menampilkan notis coba lagi (dengan log alasan tanpa data pembeli); stok benar-benar habis tetap disebut habis. Pergantian pemenang grup hanya mengubah visibilitas katalog, bukan identitas varian yang telah dipilih. Saldo supplier dicek saat fulfillment setelah pembayaran, bukan saat membuat invoice.
+- Quote web membentuk `queued_delivery` dengan kelas katalog yang juga dipakai PDP, modal dan review bot. StoreBat/AIVault/Mirai/TUNVN eligible tidak diberi kartu Made By Order; WR/SK non-instan dan manual lokal tetap antrean. Pada order berbayar, marker eligibilitas tersimpan tetap menentukan bahwa pengiriman supplier otomatis (bukan janji selesai instan).
+
 ## Urutan `sort_order` saat insert pertama — 19 November 2026 (lokal)
 
 - Insert produk baru di `projectStorebatCatalog` memakai `buildSupplierProductInsertSql` (`src/lib/supplier/product-insert.ts`) untuk mengalokasikan `sort_order` ekor kategori (`MAX(sort_order)` produk non-arsip kategori yang sama, default `0`, `+ 10 × rank`). Baris existing tidak pernah diubah `sort_order`-nya saat re-sync; migrasi data `0143_supplier_products_category_tail.sql` memindahkan baris lama `<= 0` ke ekor kategori (sambil menjaga satu slot per `product_group`).

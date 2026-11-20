@@ -72,15 +72,13 @@ export function isQueuedDelivery(wrClass: string | null | undefined): boolean {
 }
 
 /**
- * Apakah baris ini butuh antrean (manusia) alih-alih kirim instan?
+ * Apakah baris ini perlu diberi label antrean alih-alih kirim otomatis?
  * - Varian WR: hanya kelas `restock` yang instan.
  * - Varian SK: hanya `sk_order_process=auto` yang instan (lisensi langsung);
  *   SK non-auto (manual/h2h/smm) ikut kelas antrean walau fulfillment_mode
  *   lokalnya 'manual' (kontrak fulfillment hanya manual/shared/unique).
- * - Varian non-WR/non-SK: `shared`/`unique` instan dari stok sendiri; `manual`
- *   berarti diserahkan admin, jadi ikut kelas antrean.
- * Dipakai quote checkout + halaman pesanan supaya ekspektasi waktu yang
- * ditampilkan berasal dari satu aturan, bukan tebakan per layar.
+ * - Supplier otomatis lain tidak berlabel antrean walau mode lokal manual.
+ * - Sisanya: `shared`/`unique` otomatis; `manual` diserahkan admin.
  */
 export function isQueuedFulfillment(input: {
   wrVariantId?: unknown;
@@ -88,6 +86,7 @@ export function isQueuedFulfillment(input: {
   skVariantId?: unknown;
   skOrderProcess?: unknown;
   fulfillmentMode?: unknown;
+  automaticDelivery?: boolean;
 }): boolean {
   const wrId = input.wrVariantId == null ? "" : String(input.wrVariantId).trim();
   if (wrId) {
@@ -104,7 +103,9 @@ export function isQueuedFulfillment(input: {
       : String(input.skOrderProcess).trim().toLowerCase();
     return raw !== "auto";
   }
-  return String(input.fulfillmentMode ?? "").trim().toLowerCase() === "manual";
+  if (input.automaticDelivery === true) return false;
+  const mode = String(input.fulfillmentMode ?? "manual").trim().toLowerCase();
+  return mode !== "shared" && mode !== "unique";
 }
 
 /**

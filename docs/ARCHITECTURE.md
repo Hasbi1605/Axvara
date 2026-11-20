@@ -6691,6 +6691,16 @@ server ke baris order dan membuangnya dari respons publik. Jalur paid membuat
 link sebelum fulfillment generik; settlement mengantrekan pengiriman existing
 dan jalur paid/Retry yang selesai memicu pengiriman tanpa menunggu siklus katalog.
 
+**Paritas checkout (20 November 2026, lokal):** Telegram single QRIS dan
+resolver payq1 membawa `buyer_field_key`/`max_qty` ke snapshot item agar cocok
+dengan guard, seperti web. Setelah rollback karena race biaya StoreBat,
+reservasi Telegram boleh membaca ulang snapshot biaya dan mencoba satu kali
+dengan jumlah dan harga yang sama. Lease aktif, perubahan harga dan identitas
+tetap dipagari; provider belum dipanggil. Quote web memakai `buyerDeliveryKind`
+dengan marker eligibilitas yang sama dengan katalog; `queued_delivery` bukan
+salinan dari mode lokal `manual`. Status order lunas tetap membedakan progres
+otomatis supplier berdasarkan marker order, bukan janji pengiriman langsung.
+
 **Cron dan pemantauan:** `mcp-worker/src/cron.ts` menjadwalkan empat job setiap
 menit melalui `src/app/api/cron/lite/route.ts`, budget standar 40 statement/job:
 

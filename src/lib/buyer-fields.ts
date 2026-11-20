@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { miraiEligibility } from "@/lib/mirai/purchase";
 export { miraiEligibility, type MiraiEligibility } from "@/lib/mirai/purchase";
 
 export const buyerFieldsSchema = z.object({ muse_invite_code: z.string().trim().regex(/^[A-Za-z0-9]{6}$/, "Kode Invite Muse harus 6 huruf/angka ASCII.").optional() }).strict();
@@ -84,4 +85,9 @@ export function storebatEligibility(row: Record<string, unknown>, qty: number): 
   const unit = Number(row.storebat_cost_usd), fx = Number(row.storebat_fx_idr_per_usd), cost = unit * qty;
   return { version:1, kind:buff ? "muse_buff" : "product", sku, product_id:id, family, source_variant_id:variant, quantity:qty,
     ...(Number.isFinite(cost) && cost > 0 ? { cost_usd:cost } : {}), ...(Number.isFinite(fx) && fx > 0 ? { fx_idr_per_usd:fx } : {}) };
+}
+
+/** Buyer-facing catalog class, not an order admission or dispatch decision. */
+export function hasAutomaticSupplierDelivery(row: Record<string, unknown>, qty = 1): boolean {
+  return Boolean(aivaultEligibility(row, qty) || storebatEligibility(row, qty) || miraiEligibility(row, qty) || tunvnEligibility(row, qty));
 }

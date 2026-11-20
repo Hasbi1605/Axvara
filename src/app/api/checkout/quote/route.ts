@@ -1,15 +1,14 @@
 import { wrJaspayCoveredSql, wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { assertSameBuyerCode, buyerFieldsSchema, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, buyerFieldsSchema, hasAutomaticSupplierDelivery, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 import { queryAll, isD1Mode } from "@/lib/db";
-import { isVariantsReadEnabled } from "@/lib/catalog";
+import { buyerDeliveryKind, isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken } from "@/lib/auth";
 import { buildMethodCatalog } from "@/lib/payments/method-options";
 import { resolveBuyerPreferences } from "@/lib/i18n/locale";
 import { displayUsdCents } from "@/lib/i18n/format";
 import { loadCurrentFxSnapshot } from "@/lib/payments/market-snapshot";
-import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
 import { checkRateLimit, isSyntheticRequest } from "@/lib/rateLimit";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
@@ -358,16 +357,12 @@ export async function POST(req: NextRequest) {
       image: String(row.image_url ?? ""),
       // Kelas pengiriman per baris: checkout WAJIB memberi tahu pembeli
       // sebelum bayar kalau ada varian antrean (bukan kirim otomatis).
-      // SK auto ikut instan walau fulfillment_mode lokalnya 'manual'.
-      queued_delivery: item.variant_id
-        ? !tunvnEligibility({ ...fieldConfig,product_slug:row.slug },item.qty) && isQueuedFulfillment({
-            wrVariantId: variantById.get(item.variant_id)?.wr_variant_id,
-            wrClass: variantById.get(item.variant_id)?.wr_delivery_class,
-            skVariantId: variantById.get(item.variant_id)?.sk_variant_id,
-            skOrderProcess: variantById.get(item.variant_id)?.sk_order_process,
-            fulfillmentMode: variantById.get(item.variant_id)?.fulfillment_mode,
-          })
-        : false,
+      // Identitas supplier sama dengan katalog walau fulfillment_mode lokalnya manual.
+      queued_delivery: Boolean(item.variant_id) && buyerDeliveryKind({
+        ...fieldConfig,
+        automatic_delivery: hasAutomaticSupplierDelivery({ ...fieldConfig, product_slug: row.slug,
+          aivault_family: row.aivault_family, storebat_family: row.storebat_family, mirai_family: row.mirai_family }, item.qty),
+      }) === "queued",
       // WR3 Jaspay: server-derived (dari wr_variant_id mirror, BUKAN input
       // client). queued_delivery TETAP true; flag ini hanya memisahkan
       // notice otomatis vs manual di UI (tanpa nama/id supplier).

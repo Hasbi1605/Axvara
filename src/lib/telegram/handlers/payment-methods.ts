@@ -18,6 +18,7 @@ import {
   cryptoPickerMessage,
 } from "@/lib/telegram/messages/purchase";
 import { tgCtxFor, tgUsdAlternate } from "@/lib/telegram/render-prefs";
+import { outOfStockMessage } from "@/lib/telegram/messages/status";
 import {
   freezePayq1,
   parsePayq1Callback,
@@ -437,11 +438,13 @@ export async function handlePayMethodConfirm(
   const { resolveCurrentPayq1Lines } = await import("./payment-lines");
   const resolved = await resolveCurrentPayq1Lines(String(from.id), current).catch(() => null);
   if (!resolved || !resolved.ok) {
+    const reason = resolved?.reason ?? "catalog_read_failed";
+    console.warn("[telegram-checkout] rejected", { method: live.methodId, reason });
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("expired", { locale: ctx.locale }),
+      text: reason === "stock" ? outOfStockMessage({ locale: ctx.locale }) : paymentMethodNoticeMessage("catalog_changed", { locale: ctx.locale }),
       parse_mode: "HTML",
-      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+      reply_markup: reason === "stock" ? minimalMenuKeyboard({ locale: ctx.locale }) : otherMethodsEntryKeyboard({ locale: ctx.locale, source: current.source, tag: current.tag }),
     });
     return;
   }

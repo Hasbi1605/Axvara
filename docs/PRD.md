@@ -1,5 +1,10 @@
 # PRD — AXVARA
 
+## Paritas checkout supplier Market — 20 November 2026 (SB-PAY-FIX, lokal)
+
+- Produk supplier yang memenuhi eligibilitas tetap berlabel otomatis di pemilihan varian, review Telegram, dan checkout Market web; kartu Made By Order tidak tampil untuk StoreBat/AIVault/Mirai/TUNVN yang eligible. Kelas antrean WR/SK dan manual lokal tidak berubah.
+- Telegram QRIS dan crypto memakai batas qty varian server; perubahan katalog tidak disamarkan sebagai gangguan metode bayar. Stok habis tetap dilaporkan, dan perubahan harga memerlukan persetujuan ulang. Tidak ada perubahan nominal, biaya, atau cara dispatch supplier setelah lunas.
+
 ## Pemilih crypto, tagihan, dan pengingat Bot Telegram — 20 November 2026 (TG-POLISH-B, lokal)
 
 - **Pilih koin lalu jaringan:** setiap simbol yang tersedia punya satu tombol, koin lain dikelompokkan dalam Lainnya, dan koin satu jaringan langsung menuju konfirmasi metode. Tagihan pending ID/EN menampilkan kode, produk/jumlah, nominal tersimpan dan batas WIB; QRIS menyebut kode unik dan pemeriksaan manual bila lewat batas.

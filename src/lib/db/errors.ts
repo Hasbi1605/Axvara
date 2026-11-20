@@ -4,7 +4,7 @@
 // pesanan) mengandalkan teks persis ini.
 
 export class StockReservationError extends Error {
-  constructor() {
+  constructor(readonly reason: "invalid_order" | "buyer_config_changed" | "invalid_supplier_identity" | "price_changed" | "stock" | "variant_changed" | "storebat_sync_in_progress" | "storebat_cost_changed" | "atomic_guard" = "invalid_order") {
     super("Stok atau status produk berubah. Muat ulang checkout.");
     this.name = "StockReservationError";
   }

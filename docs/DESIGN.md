@@ -1,5 +1,10 @@
 # DESIGN.md — AXVARA Design System
 
+## Status pengiriman Market saat checkout — 20 November 2026 (SB-PAY-FIX, lokal)
+
+- Kartu kuning **Made By Order** hanya tampil bila quote berisi varian antrean. Supplier StoreBat/AIVault/Mirai/TUNVN eligible mengikuti badge pengiriman otomatis di katalog, bukan kartu antrean. Jaspay tetap punya notis proses otomatis terpisah; tidak ada perubahan layout.
+- Telegram membedakan **Stok habis** dari penolakan katalog: **Harga/stok baru saja diperbarui, coba lagi.** Notis katalog memberi jalur untuk memilih ulang tanpa membuat tagihan baru otomatis.
+
 ## Pembayaran Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-POLISH-B, lokal)
 
 - **Crypto:** layar `🪙 Pilih koin` menampilkan satu tombol per simbol, emoji standar, `[➕ Lainnya]` untuk koin sisanya, dan `[◀️ Kembali]`. Total USD termasuk biaya layanan; tampilkan rentang bila nominal beku berbeda antar opsi. Koin satu jaringan langsung ke konfirmasi metode; koin multi-jaringan menampilkan `🪙 {KOIN} · pilih jaringan` dengan tombol `{KOIN} · {JARINGAN}` dan Kembali. Tidak ada jaringan bawaan maupun logo custom Premium.

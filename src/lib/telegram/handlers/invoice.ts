@@ -14,7 +14,7 @@ import {
   queryFirst, execRun, getD1, isD1Mode, transitionPendingOrder, StockReservationError,
 } from "@/lib/db";
 import { sendMessage, sendPhoto, sendChatAction } from "@/lib/telegram/api";
-import { orderStatusKeyboard, qrisInvoiceKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
+import { orderStatusKeyboard, qrisInvoiceKeyboard, minimalMenuKeyboard, otherMethodsEntryKeyboard } from "@/lib/telegram/keyboards";
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage, invoiceMessage,
 } from "@/lib/telegram/messages";
@@ -36,6 +36,7 @@ import { clampQty, clearPendingAction } from "./shared";
 import { handleShowQty } from "./catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { readCheckoutEmail } from "@/lib/telegram/checkout-email";
+import { paymentMethodNoticeMessage } from "@/lib/telegram/messages/purchase";
 
 export async function handlePayWithQris(
   chatId: number,
@@ -128,6 +129,7 @@ export async function handlePayWithQris(
   }
   const currentTag = await checkoutApprovalTag([{ productId, variantId, qty, price: effectivePrice }]);
   if (!approvalTag || approvalTag !== currentTag) {
+    if (approvalTag) console.warn("[telegram-checkout] rejected", { method: "qris", variantId, reason: "price_or_approval_changed" });
     await handleShowQty(chatId, messageId, productId, variantId, qty);
     return;
   }
@@ -231,6 +233,8 @@ export async function createAndSendVariantInvoice(
     name: `${productName} — ${itemVariantLabel}`,
     price,
     base_price: Number(variant.price),
+    buyer_field_key: variant.buyer_field_key ?? null,
+    max_qty: variant.max_qty ?? null,
     ...(appliedSingleTier != null ? { applied_tier_min_qty: appliedSingleTier } : {}),
     qty,
   }];
@@ -320,10 +324,19 @@ export async function createAndSendVariantInvoice(
         return;
       }
     } catch (reservationError) {
-      // Guard gagal = stok/inventory habis saat commit. Batch dibatalkan
-      // seluruhnya, jadi tidak ada yang perlu di-rollback manual.
+      // The batch rolls back on any guard failure, not just depleted stock.
       if (reservationError instanceof StockReservationError) {
-        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
+        const reason = reservationError.reason;
+        console.warn("[telegram-checkout] rejected", { method: "qris", variantId: variant.id, reason });
+        const outOfStock = reason === "stock";
+        await sendMessage({ chat_id: chatId,
+          text: outOfStock ? outOfStockMessage({ locale: tgLocale }) : paymentMethodNoticeMessage("catalog_changed", { locale: tgLocale }),
+          parse_mode: "HTML",
+          reply_markup: outOfStock ? minimalMenuKeyboard({ locale: tgLocale }) : otherMethodsEntryKeyboard({
+            locale: tgLocale, source: { kind: "single", productId, variantId: variant.id, qty },
+            tag: await checkoutApprovalTag([{ productId, variantId: variant.id, qty, price }]),
+          }),
+        });
         return;
       }
       throw reservationError;
