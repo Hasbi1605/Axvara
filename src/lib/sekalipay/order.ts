@@ -52,6 +52,7 @@ export type SkProcessResult = {
 
 export const SK_RETRY_DELAYS_MINUTES = [1, 5, 15];
 export const SK_MAX_ATTEMPTS = 3;
+const SK_FINAL_REJECTION = "PRODUCT_TEMPORARILY_UNAVAILABLE:final_rejection";
 export const SK_CLAIM_LEASE_SECONDS = 120;
 export const SK_SUBMITTED_STALE_MINUTES = 10;
 /** Umur maksimum link blocked_balance yang boleh auto-revive (jam). */
@@ -561,19 +562,15 @@ async function handleSkOrderError(
   if (error instanceof SkTemporarilyUnavailableError && message === "PRODUCT_TEMPORARILY_UNAVAILABLE") {
     const exhausted = attempt >= Number(link.max_attempts ?? SK_MAX_ATTEMPTS);
     const changed = await execRun(
-      `UPDATE sk_order_links SET status=?, last_error=?, request_sent_at=NULL,
+      `UPDATE sk_order_links SET status='retry', last_error=?, request_sent_at=NULL,
          lease_owner=NULL, lease_expires_at=NULL,
          next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed'
            AND lease_owner=? AND attempt_count=? AND request_sent_at IS NOT NULL AND COALESCE(sk_invoice,'')=''`,
-      exhausted ? "failed" : "retry",
-      message,
+      exhausted ? SK_FINAL_REJECTION : message,
       exhausted ? null : nextAttemptIso(attempt),
       id, owner, attempt,
     );
-    if (exhausted && changed.changes) {
-      await escalateExhaustedSkLink(db, link);
-      return "failed";
-    }
+    if (exhausted && changed.changes && await settleExhaustedSkRetries(db, id)) return "failed";
     return "retried";
   }
   await execRun(
@@ -585,40 +582,53 @@ async function handleSkOrderError(
   return "retried";
 }
 
-async function escalateExhaustedSkLink(db: DatabaseAccess, link: Row) {
+// Only the explicit final rejection can write the proof above. A legacy
+// retry error or last_claim_at can describe an earlier attempt (or a claim
+// which never sent). Leave those links to the read-only aging watchdog.
+const EXHAUSTED_SK_CAS = `status='retry' AND attempt_count>=max_attempts AND request_sent_at IS NULL
+  AND COALESCE(sk_invoice,'')='' AND lease_owner IS NULL AND last_error='${SK_FINAL_REJECTION}'`;
+
+export async function settleExhaustedSkRetries(db: DatabaseAccess, linkId?: number): Promise<number> {
+  if (!db.d1 || !db.canSpend(11)) return 0;
+  const link = await db.queryFirst(`SELECT l.id, l.order_code, fi.id AS item_id
+    FROM (SELECT * FROM sk_order_links WHERE ${EXHAUSTED_SK_CAS} ${linkId === undefined ? "" : "AND id=?"}) l
+    JOIN orders o ON o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
+    JOIN fulfillment_items fi ON fi.order_code=l.order_code
+    LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+    WHERE (fi.id=l.fulfillment_item_id OR (l.fulfillment_item_id IS NULL AND pv.sk_variant_id=l.sk_variant_id))
+      AND (fi.sk_link_id IS NULL OR fi.sk_link_id=l.id) AND fi.status NOT IN ('delivered','sending','failed')
+      AND COALESCE(fi.last_error,'') NOT LIKE 'manual_handover:%' AND COALESCE(fi.delivered_message_id,'')!='manual'
+    ORDER BY l.id, fi.item_index LIMIT 1`, ...(linkId === undefined ? [] : [linkId]));
+  if (!link) return 0;
   const code = String(link.order_code);
-  const { bindSkLinkToFulfillmentItem } = await import("./deliver");
-  const itemId = await bindSkLinkToFulfillmentItem(Number(link.id), db);
-  if (itemId) await db.execRun(`UPDATE fulfillment_items SET status='failed',last_error='sk_attempts_exhausted',locked_until=NULL,updated_at=datetime('now')
-    WHERE id=? AND order_code=? AND sk_link_id=? AND status NOT IN ('delivered','sending')
-      AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%' AND COALESCE(delivered_message_id,'')!='manual'
-      AND EXISTS(SELECT 1 FROM sk_order_links WHERE id=? AND status='failed' AND request_sent_at IS NULL AND COALESCE(sk_invoice,'')='')`,
-    itemId, code, link.id, link.id);
-  // Mixed carts settle only after their other lines finish; do not overwrite
-  // a delivered order or an admin handover.
-  const failed = await db.execRun(`UPDATE orders SET fulfillment_status='failed',updated_at=datetime('now')
-    WHERE code=? AND status='lunas' AND payment_status='paid' AND COALESCE(fulfillment_status,'') NOT IN ('delivered','failed')
-      AND EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=orders.code AND sk_link_id=? AND last_error='sk_attempts_exhausted' AND status='failed')
-      AND NOT EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=orders.code AND status NOT IN ('delivered','manual_required','failed'))`, code, link.id);
+  // Repeat the paid, binding and send fences inside one D1 transaction. No
+  // item transition means no link failure. The aggregate waits for mixed carts.
+  const [item, failed] = await db.d1.batch([
+    db.d1.prepare(`UPDATE fulfillment_items AS fi SET sk_link_id=?,status='failed',last_error='sk_attempts_exhausted',
+      locked_until=NULL,updated_at=datetime('now')
+      WHERE id=? AND order_code=? AND (sk_link_id IS NULL OR sk_link_id=?) AND status NOT IN ('delivered','sending','failed')
+        AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%' AND COALESCE(delivered_message_id,'')!='manual'
+        AND EXISTS(SELECT 1 FROM sk_order_links WHERE id=? AND order_code=fi.order_code AND ${EXHAUSTED_SK_CAS}
+          AND (fulfillment_item_id=fi.id OR (fulfillment_item_id IS NULL
+            AND sk_variant_id=(SELECT pv.sk_variant_id FROM product_variants pv WHERE pv.id=fi.variant_id))))
+        AND EXISTS(SELECT 1 FROM orders WHERE code=fi.order_code AND status='lunas' AND payment_status='paid'
+          AND supplier_purchase_disabled=0)`).bind(link.id, link.item_id, code, link.id, link.id),
+    db.d1.prepare(`UPDATE sk_order_links SET status='failed',fulfillment_item_id=?,next_attempt_at=NULL,updated_at=datetime('now')
+      WHERE id=? AND ${EXHAUSTED_SK_CAS}
+        AND EXISTS(SELECT 1 FROM fulfillment_items WHERE id=? AND order_code=sk_order_links.order_code
+          AND sk_link_id=sk_order_links.id AND status='failed' AND last_error='sk_attempts_exhausted')`).bind(link.item_id, link.id, link.item_id),
+    db.d1.prepare(`UPDATE orders SET fulfillment_status='failed',updated_at=datetime('now')
+      WHERE code=? AND status='lunas' AND payment_status='paid' AND COALESCE(fulfillment_status,'') NOT IN ('delivered','failed')
+        AND EXISTS(SELECT 1 FROM sk_order_links l JOIN fulfillment_items fi ON fi.id=l.fulfillment_item_id
+          WHERE l.id=? AND l.order_code=orders.code AND l.status='failed' AND l.last_error=?
+            AND fi.sk_link_id=l.id AND fi.status='failed' AND fi.last_error='sk_attempts_exhausted')
+        AND NOT EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=orders.code AND status NOT IN ('delivered','manual_required','failed'))`).bind(code, link.id, SK_FINAL_REJECTION),
+  ]);
+  if (!item.meta?.changes || !failed.meta?.changes) return 0;
   await alertSupplierAdminOnce(db, code, `sk-exhausted:${code}`,
     `⚠️ <b>Order Sekalipay gagal</b> <code>${escapeHtml(code)}</code>\nPercobaan habis. Cek antrean untuk penyelesaian manual.`).catch(() => false);
-  if (failed.changes) {
-    const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
-    await notifyBuyerDeliveryFailed(code, db);
-  }
-}
-
-/** Backstop for pre-FX-11 exhausted retries; never touch a sent or invoiced link. */
-export async function settleExhaustedSkRetries(db: DatabaseAccess): Promise<number> {
-  if (!db.canSpend(12)) return 0;
-  const link = await db.queryFirst(`UPDATE sk_order_links SET status='failed', next_attempt_at=NULL, updated_at=datetime('now')
-    WHERE id=(SELECT l.id FROM sk_order_links l JOIN orders o ON o.code=l.order_code
-      WHERE l.status='retry' AND l.attempt_count>=l.max_attempts AND l.request_sent_at IS NULL
-        AND COALESCE(l.sk_invoice,'')='' AND l.lease_owner IS NULL AND l.last_error='PRODUCT_TEMPORARILY_UNAVAILABLE'
-        AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
-      ORDER BY l.id LIMIT 1) RETURNING id,order_code`);
-  if (!link) return 0;
-  await escalateExhaustedSkLink(db, link);
+  const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+  await notifyBuyerDeliveryFailed(code, db);
   return 1;
 }
 
@@ -626,7 +636,8 @@ export async function settleExhaustedSkRetries(db: DatabaseAccess): Promise<numb
 export async function alertAgingSkOrders(db: DatabaseAccess): Promise<number> {
   if (!process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_BOT_ENABLED !== "true" || !db.canSpend(3)) return 0;
   const rows = await db.queryAll(`SELECT l.id,l.order_code,l.status FROM sk_order_links l JOIN orders o ON o.code=l.order_code
-    WHERE l.status IN ('submitted','ordering','processing') AND o.status='lunas' AND o.payment_status='paid'
+    WHERE (l.status IN ('submitted','ordering','processing') OR (l.status IN ('pending','retry') AND l.attempt_count>=l.max_attempts))
+      AND o.status='lunas' AND o.payment_status='paid'
       AND datetime(COALESCE(l.request_sent_at,l.created_at)) <= datetime('now','-13 hours')
       AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key='admin:sk-aging:'||l.id)
     ORDER BY l.id LIMIT 3`);

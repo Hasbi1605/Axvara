@@ -178,6 +178,83 @@ describe("poll + kredit AC-13/14", () => {
   });
 });
 
+describe("FX-11b: plain needs_check notices", () => {
+  async function seedNotices(status: string, network: (url: string, init?: RequestInit) => Promise<Response>) {
+    const db = await seedPaidItem({ status });
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "123");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture");
+    vi.stubEnv("RESEND_API_KEY", "fixture");
+    vi.stubEnv("FORWARD_FROM_EMAIL", "noreply@example.test");
+    vi.stubGlobal("fetch", (url: RequestInfo | URL, init?: RequestInit) => network(String(url), init));
+    await db.execRun("UPDATE orders SET locale='en',paid_at=datetime('now','-2 days')");
+    await db.execRun("INSERT INTO buyer_notice_log(idempotency_key,order_code,channel,status) VALUES ('email:pedia-paid:AXP-T1','AXP-T1','email','sent')");
+    return db;
+  }
+
+  it("claims one admin ping per order across rediscovered interrupted submits and direct needs_check", async () => {
+    const admin = vi.fn(async () => Response.json({ ok: true, result: { message_id: 1 } }));
+    const mail = vi.fn(async () => Response.json({ id: "first" }));
+    const db = await seedNotices("submitting", async url => url.includes("api.telegram.org") ? admin() : mail());
+    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+    const supplier = vi.fn(async () => ({ ok: false as const, kind: "timeout" as const }));
+    await processPediaPaidOrders(supplier, db);
+    await db.execRun("UPDATE pedia_order_items SET status='submitting', lease_until=NULL");
+    await Promise.all([processPediaPaidOrders(supplier, db), processPediaPaidOrders(supplier, db)]);
+    expect(supplier).not.toHaveBeenCalled();
+    await db.execRun("UPDATE pedia_order_items SET status='queued', lease_until=NULL");
+    await processPediaPaidOrders(supplier, db);
+    expect(supplier).toHaveBeenCalledTimes(1);
+    expect(admin).toHaveBeenCalledTimes(1);
+    expect(mail).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([true, false])("settles a failed buyer send and retries with a cap; later success=%s", async succeeds => {
+    const mail = vi.fn(async (_init?: RequestInit) => mail.mock.calls.length > 1 && succeeds
+      ? Response.json({ id: "retried" }) : Response.json({ message: "fixture rejection" }, { status: 503 }));
+    const db = await seedNotices("submitting", async (url, init) => url.includes("api.telegram.org")
+      ? Response.json({ ok: true, result: { message_id: 1 } }) : mail(init));
+    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+    const supplier = vi.fn();
+    const notice = () => db.queryFirst("SELECT status,access_attempts FROM buyer_notice_log WHERE idempotency_key='pedia-manual:AXP-T1'");
+    await processPediaPaidOrders(supplier, db);
+    expect(await notice()).toEqual({ status: "failed", access_attempts: 1 });
+    await processPediaPaidOrders(supplier, db);
+    expect(mail).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 4; i++) {
+      await db.execRun("UPDATE buyer_notice_log SET access_retry_at=datetime('now','-1 minute') WHERE idempotency_key='pedia-manual:AXP-T1'");
+      await Promise.all([processPediaPaidOrders(supplier, db), processPediaPaidOrders(supplier, db)]);
+    }
+    expect(await notice()).toEqual(succeeds ? { status: "sent", access_attempts: 2 } : { status: "failed", access_attempts: 3 });
+    expect(mail).toHaveBeenCalledTimes(succeeds ? 2 : 3);
+    for (const [init] of mail.mock.calls) {
+      expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("pedia-manual:AXP-T1");
+      expect(JSON.parse(String(init?.body)).text).toContain("You do not need to place a new order");
+    }
+    expect(supplier).not.toHaveBeenCalled();
+  });
+
+  it.each(["in_progress", "completed"])("reads the live poll phase after a stale submitted selection: %s", async live => {
+    const mail = vi.fn(async () => Response.json({ id: "notice" }));
+    const db = await seedNotices("submitted", async url => url.includes("api.telegram.org")
+      ? Response.json({ ok: true, result: { message_id: 1 } }) : mail());
+    await db.execRun("UPDATE pedia_order_items SET supplier='legacy',supplier_order_id='SUP-1'");
+    const queryAll = db.queryAll;
+    db.queryAll = async (sql, ...params) => {
+      const rows = await queryAll(sql, ...params);
+      if (sql.includes("WHERE status IN ('submitted','in_progress')")) {
+        await db.execRun("UPDATE pedia_order_items SET status=?", live);
+      }
+      return rows;
+    };
+    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+    const supplier = vi.fn();
+    await processPediaPaidOrders(supplier, db);
+    expect(supplier).not.toHaveBeenCalled();
+    expect(await db.queryFirst("SELECT status FROM pedia_order_items")).toEqual({ status: live === "completed" ? "completed" : "needs_check" });
+    expect(mail).toHaveBeenCalledTimes(live === "completed" ? 0 : 1);
+  });
+});
+
 describe("start_count validation + conditional correction PEDIA-IMPL-ORDER", () => {
   it("Pending start 0 → Completed 8278 corrects the stored slot without guessing", async () => {
     const db = await seedPaidItem({ status: "submitted", supplier_order_id: "SUP-22042392", start_count: 0 });

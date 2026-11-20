@@ -3,6 +3,7 @@
 ## Penanganan manual setelah lunas — FX-11 (lokal)
 
 - Market memberi kabar pembeli ketika pengiriman otomatis perlu penanganan manual; Ringkasan menampilkan jumlah pesanan lunas `manual_required` yang berumur lebih dari 24 jam. Pedia memberi satu kabar saat masuk `needs_check` biasa: hubungi admin dengan kode pesanan, jangan pesan ulang.
+- FX-11b (lokal): order SK yang kehabisan percobaan tanpa bukti penolakan terakhir atau tanpa item yang bisa diselesaikan tetap menunggu pemeriksaan admin, bukan dinyatakan gagal ke pembeli. Kegagalan pengiriman email `needs_check` Pedia dicoba ulang secara terbatas tanpa menggandakan notis admin.
 - Games membedakan pengecekan biasa dari top up gagal yang telah direfund supplier. Untuk kasus terakhir, halaman pesanan menjelaskan bahwa pembayaran pembeli dikembalikan oleh admin dan menyediakan kontak WhatsApp dengan kode pesanan. Refund pembeli tetap manual.
 
 Panduan Market `/cara-order` (ID/EN, perbaikan lokal) menjelaskan WhatsApp aktif dan email wajib tanpa kolom nama, QRIS per order atau metode lain jika tampil, serta cek status otomatis. Detail siap tersedia di halaman pesanan dan melalui email; Lacak Pesanan memakai kode + kontak checkout, dengan PIN email bila diminta untuk membuka detail di perangkat lain. Ini bukan perubahan checkout atau pengiriman.

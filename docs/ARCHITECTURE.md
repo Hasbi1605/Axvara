@@ -4,6 +4,7 @@
 
 - `fulfillment/supplier-escalation.ts`: setelah CAS supplier menang, item `manual_required` tetap terminal; agregat paid berubah ketika semua item settled, dan job terminal diantrekan kembali agar manifest diperiksa. Satu klaim `buyer_notice_log` per alarm; timeout Telegram ambigu tidak dikirim ulang. Ringkasan admin menampilkan `aged_manual_required` (>24 jam sejak lunas) dan `games_needs_check`, terpisah dari antrean Market.
 - `cron/lite`: recovery WR/SK yang gagal menambah `recovery_failed` + `failed_subjobs`, menyimpan `*_recovery_last_error` tersanitasi, lalu menjawab 503 tanpa heartbeat sukses. Yield budget bukan error. Kegagalan maintenance tersimpan sebagai `cleanup_recovery_last_error` dan diteruskan ke alarm soft `notify_b` sampai cleanup berhasil; tidak menambah jadwal atau pengiriman Telegram sendiri.
+- FX-11b: settle retry SK membutuhkan bukti penolakan POST terakhir serta item yang masih boleh gagal; batch D1 menyatukan status link/item/agregat. Watchdog 13 jam mencakup retry habis yang belum bisa diselesaikan. Jalur langsung dan recovery Pedia memakai klaim notis per order; cron Pedia mengulang maksimal satu email manual yang due per tick memakai kunci Resend yang sama, tanpa mengulang Telegram admin.
 - API Games status/lookup memberi flag `manual_refund_required` hanya setelah bukti akses pembeli, tanpa mengirim error mentah supplier. Tidak ada refund otomatis.
 
 ## Koreksi storefront FX-4 — 21 November 2026 (lokal)
