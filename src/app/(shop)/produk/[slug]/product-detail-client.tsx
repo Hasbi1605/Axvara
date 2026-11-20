@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/products";
 import { productIsBuyable } from "@/lib/product-order";
-import type { VariantSummary } from "@/lib/catalog";
+import type { StorefrontVariant } from "@/lib/product-copy/resolve";
 import { effectiveVariantStock, formatVariantLabel } from "@/lib/catalog";
 import { buyerDeliveryBadge, buyerDeliveryKind } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
@@ -18,7 +18,7 @@ import { usePendingNavigation } from "@/hooks/usePendingNavigation";
 import { useCatalogRevisionWatcher } from "@/hooks/useCatalogRevision";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
-import { bulkCopy, bulkUnitEstimate, usableBulkTiers, type BulkVariantFields } from "@/lib/bulk-display";
+import { bulkCopy, bulkUnitEstimate, usableBulkTiers } from "@/lib/bulk-display";
 import { useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty, localizedProductDescription } from "@/lib/i18n/catalog-copy";
 import { marketCategoryName } from "@/lib/i18n/market-categories";
@@ -28,7 +28,7 @@ import { Price, PriceNote } from "@/components/storefront/Price";
 
 // /api/catalog mengganti teks mentah WR (terms/delivery_terms) dengan `copy`
 // siap tampil — versi Axvara atau teks pemasok yang dirapikan.
-type VariantItem = VariantSummary & BulkVariantFields & { copy?: VariantCopy | null; copy_en?: VariantCopy | null };
+type VariantItem = StorefrontVariant;
 
 const DESC_FADE = {
   WebkitMaskImage: "linear-gradient(to bottom, #000 55%, transparent)",

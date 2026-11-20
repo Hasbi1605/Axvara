@@ -8,7 +8,8 @@
 // - slug: lowercase a-z0-9-dash (validasi di API + route).
 // - destination: path internal ("/artikel/...", prioritas — navigasi dalam
 //   toko) atau https full (mailbox supplier, portal resmi, video tutorial).
-//   Skema selain https + path internal ditolak (anti open-redirect).
+//   Saat membuat/mengubah tujuan, HTTP dan URL protocol-relative ditolak.
+//   Jalur baca tetap memakai tujuan tersimpan, termasuk HTTP lama.
 // - redirect 307 (bukan 308): browser selalu cek ulang sehingga ganti tujuan
 //   di admin berlaku seketika tanpa cache permanen.
 // - noindex: link operasional, bukan konten SEO (robots.ts + metadata page).
@@ -42,7 +43,8 @@ export function isValidSupplierSlug(slug: string): boolean {
 }
 
 /**
- * Normalisasi + validasi tujuan. Kembalikan destination kanonis atau null.
+ * Normalisasi + validasi saat admin menulis tujuan, bukan saat membaca.
+ * Kembalikan destination kanonis atau null.
  * - Path internal "/..." (artikel/produk/halaman) → apa adanya. TIDAK boleh
  *   protocol-relative "//host" (audit AU-H2-12: itu open-redirect ke host lain).
  * - Bare axvara.tech/... → path internal.

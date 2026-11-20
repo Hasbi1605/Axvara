@@ -76,6 +76,17 @@ describe("POST /api/admin/variant-copy/bulk", () => {
     });
   });
 
+  it("treats EN-only saves as reviewed even when ID shows raw supplier copy", async () => {
+    const response = await POST(request({ ...payload, terms: "", activation: "" }));
+    expect(response.status).toBe(200);
+    for (const row of (await response.json()).variants) {
+      expect(row).toMatchObject({ status: "pemasok", adminTerms: "", adminTermsEn: payload.terms_en,
+        adminStale: false, reviewKind: null, needsReview: false, reviewed: false });
+      expect(fixture.sql.prepare("SELECT admin_copy_fingerprint FROM product_variants WHERE id=?").get(row.variantId))
+        .toEqual({ admin_copy_fingerprint: row.supplierKey });
+    }
+  });
+
   it.each([[1, 4], [1, 999]])("rejects foreign or missing variants %j without writing", async (...variant_ids) => {
     const batch = vi.spyOn(fixture.db, "batch");
     const response = await POST(request({ ...payload, variant_ids }));

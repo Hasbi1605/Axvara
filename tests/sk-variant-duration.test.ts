@@ -123,7 +123,7 @@ describe("formatVariantLabel — SK, WR, and manual non-WR", () => {
     })).toBe("1 Profile 1 User - 2 Tahun");
   });
 
-  it("preserves derived sk_duration through withVariantCopy without leaking raw sk_description", () => {
+  it("preserves the derived label duration through withVariantCopy without exposing SK fields", () => {
     const skVariant: VariantSummary = {
       ...baseVariant,
       sk_variant_id: "29",
@@ -134,8 +134,9 @@ describe("formatVariantLabel — SK, WR, and manual non-WR", () => {
     const out = withVariantCopy({ id: 72, variants: [skVariant] } as unknown as ProductDetail);
     const [v] = out.variants;
     expect(v.terms).toBeNull();
-    expect(v.sk_description).toBeUndefined();
-    expect(v.sk_duration).toBe("1 Bulan");
+    expect(v).not.toHaveProperty("sk_description");
+    expect(v).not.toHaveProperty("sk_duration");
+    expect(v.label_duration).toBe("1 Bulan");
     expect(formatVariantLabel(v, "id")).toBe("1 Profile 1 User - 1 Bulan");
     expect(formatVariantLabel(v, "en")).toBe("1 Profile 1 User - 1 Month");
   });
@@ -243,7 +244,7 @@ describe("SK duration end-to-end queries (Telegram, Cart, Web Catalog, Quote)", 
     expect(detail).not.toBeNull();
     const storefront = withVariantCopy(detail!);
     const v31 = storefront.variants.find((v) => v.id === 31)!;
-    expect(v31.sk_description).toBeUndefined();
+    expect(v31).not.toHaveProperty("sk_description");
     expect(formatVariantLabel(v31, "id")).toBe("1 Profile 2 User - 1 Bulan");
     expect(formatVariantLabel(v31, "en")).toBe("1 Profile 2 User - 1 Month");
   });

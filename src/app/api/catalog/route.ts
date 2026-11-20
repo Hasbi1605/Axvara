@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   });
 
   const response = await cachePublicCatalog(
-    `catalog:${key}`,
+    `${slug ? "catalog-detail-v2" : "catalog"}:${key}`,
     slug ? 120 : 300,
     async () => {
       if (slug) {

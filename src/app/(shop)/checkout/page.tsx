@@ -47,7 +47,8 @@ type CatalogVariant = BulkVariantFields & {
   duration_value?: number | null;
   duration_unit?: string | null;
   duration_label?: string | null;
-  sk_duration?: string | null;
+  supplier_variant?: boolean;
+  label_duration?: string | null;
   price: number;
   stock: number;
   min_qty?: number;

@@ -23,6 +23,22 @@ function seedLinks(fx: ReturnType<typeof createD1Fixture>) {
 }
 
 describe("GET /go/[slug] — redirect 307 + klik", () => {
+  it("redirects a stored legacy HTTP link without revalidating it on read", async () => {
+    const fx = createD1Fixture();
+    try {
+      const destination = "http://mailbox.example.test/inbox";
+      fx.sql.prepare("INSERT INTO supplier_links (slug, destination, title, is_active) VALUES (?, ?, ?, 1)")
+        .run("legacy-http", destination, "Legacy mailbox");
+      const { default: GoRedirect } = await import("@/app/(shop)/go/[slug]/page");
+      await expect(GoRedirect({ params: Promise.resolve({ slug: "legacy-http" }) }))
+        .rejects.toMatchObject({ digest: expect.stringContaining(`;${destination};307;`) });
+      const { loadActiveSupplierLinkMap } = await import("@/lib/supplier-links");
+      expect((await loadActiveSupplierLinkMap()).exact.get("mailbox.example.test/inbox")).toBe("legacy-http");
+    } finally {
+      fx.close();
+    }
+  });
+
   it("slug aktif → redirect destination + click_count +1", async () => {
     const fx = createD1Fixture();
     try {

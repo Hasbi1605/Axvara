@@ -7,14 +7,13 @@
 // Saat pemasok mengubah teksnya, suntingan admin tetap tampil ke pembeli
 // (tidak jatuh ke teks mentah supplier), namun ditandai stale/changed agar
 // admin meninjau ulang. Kurasi di kode tetap berhenti saat sidik jari berubah.
-import type { ProductDetail, VariantSummary } from "@/lib/catalog";
+import { buyerDeliveryKind, hasAutomaticProcessing, supplierVariantOf, variantLabelDuration, type ProductDetail, type VariantSummary } from "@/lib/catalog";
 import { CURATED_VARIANT_COPY, type CuratedVariantCopy } from "./curated";
 import { CURATED_VARIANT_COPY_EN, type CuratedVariantCopyEn } from "./curated-en";
 import type { Locale } from "@/lib/i18n/locale";
 import { buildSections, parseAdminVariantCopy, supplierVariantCopy, type ActivationGroup, type VariantCopy } from "./format";
 import { sanitizeSupplierCopy, type SupplierLinkMap } from "./sanitize";
 import { supplierFingerprint } from "./text";
-import { deriveSkDuration } from "@/lib/catalog-duration";
 
 const CURATED = new Map(CURATED_VARIANT_COPY.map((entry) => [entry.key, entry]));
 
@@ -94,8 +93,9 @@ export function resolveVariantCopyDetailed(
   const fingerprint = admin?.fingerprint ?? "";
   const hasAdmin = adminCopy !== null;
   const hasAdminEn = adminCopyEn !== null;
-  const adminFresh = hasAdmin && fingerprint === supplierKey;
-  const adminStale = !adminFresh && (hasAdmin || hasAdminEn);
+  const noOverride = !hasAdmin && !hasAdminEn;
+  const adminFresh = !noOverride && fingerprint === supplierKey;
+  const adminStale = !noOverride && !adminFresh;
   // Suntingan admin tetap tampil walau sidik jari supplier berubah. EN memakai
   // suntingan EN bila diisi, TANPA bergantung pada override ID (audit AU-H2-7):
   // dulu `hasAdmin ? … : auto` membuat EN-only tak pernah terlihat pembeli EN.
@@ -104,15 +104,13 @@ export function resolveVariantCopyDetailed(
   const status: VariantCopyStatus = localeOverride
     ? "admin"
     : auto ? auto.source : "none";
-  // Tinjauan dihitung dari salinan ID (bukan locale): admin menyunting teks ID.
-  // "reviewed" = teks supplier yang tampil persis sama dengan sidik jari yang
-  // sudah ditandai admin, tanpa override ID (EN-only juga berarti ada tinjauan).
+  // Bahasa tampilan tidak mengubah status tinjauan. Simpan override di salah
+  // satu bahasa mencatat sidik jari; `reviewed` khusus tanda tanpa override.
   const idStatus: VariantCopyStatus = hasAdmin ? "admin" : auto ? auto.source : "none";
-  const noOverride = !hasAdmin && !hasAdminEn;
   const reviewed = noOverride && fingerprint !== "" && fingerprint === supplierKey && idStatus === "pemasok";
   let reviewKind: VariantCopyReviewKind = null;
   if (adminStale || (noOverride && fingerprint !== "" && fingerprint !== supplierKey && idStatus === "pemasok")) reviewKind = "changed";
-  else if (idStatus === "pemasok" && !reviewed) reviewKind = "raw";
+  else if (idStatus === "pemasok" && !reviewed && !adminFresh) reviewKind = "raw";
   return { copy, status, adminStale, auto, supplierKey, reviewKind, reviewed };
 }
 
@@ -135,19 +133,49 @@ export function adminCopyOf(variant: Pick<VariantSummary, "admin_terms" | "admin
   return { terms: variant.admin_terms, activation: variant.admin_activation, fingerprint: variant.admin_copy_fingerprint, termsEn: variant.admin_terms_en, activationEn: variant.admin_activation_en };
 }
 
-export type StorefrontVariant = VariantSummary & { copy: VariantCopy | null; copy_en: VariantCopy | null };
+export type StorefrontVariant = ReturnType<typeof publicVariant>;
 export type StorefrontProductDetail = Omit<ProductDetail, "variants"> & { variants: StorefrontVariant[] };
 
-/**
- * Kolom internal yang TIDAK boleh sampai ke pembeli (audit AU-C1-1 21 Nov 2026):
- * modal/cost supplier + ID tautan supplier. Rute admin (/api/products/[id])
- * tetap mengembalikannya; hanya payload publik /api/catalog yang dibersihkan.
- */
-const PUBLIC_VARIANT_DENYLIST = [
-  "manual_cost", "wr_variant_id", "sk_variant_id", "wr_auto_managed", "sk_auto_managed",
-  "tunvn_source_product_id", "tunvn_buff_quantity_b", "aivault_service_id", "storebat_product_id",
-  "mirai_package_code", "supplier_cost", "supplier_cost_source", "cost_usd", "cost_snapshot",
-] as const;
+function publicVariant(v: VariantSummary, links?: SupplierLinkMap) {
+  const admin = adminCopyOf(v);
+  const copy = resolveVariantCopy(v.terms, v.delivery_terms, admin, "id");
+  const copyEn = resolveVariantCopy(v.terms, v.delivery_terms, admin, "en");
+  const supplier = supplierVariantOf(v);
+  const deliveryKind = buyerDeliveryKind(v);
+  // Allowlist: jangan spread baris varian; kolom supplier baru tetap server-only.
+  return {
+    id: v.id,
+    product_id: v.product_id,
+    label: v.label,
+    label_duration: variantLabelDuration(v),
+    warranty_type: v.warranty_type,
+    warranty_value: v.warranty_value,
+    warranty_unit: v.warranty_unit,
+    warranty_label: v.warranty_label,
+    price: v.price,
+    compare_price: v.compare_price,
+    stock: v.stock,
+    min_qty: v.min_qty,
+    max_qty: v.max_qty,
+    buyer_field_key: v.buyer_field_key,
+    fulfillment_mode: v.fulfillment_mode,
+    is_active: v.is_active,
+    bulk_pricing_enabled: v.bulk_pricing_enabled,
+    bulk_pricing_tiers: v.bulk_pricing_tiers,
+    bulk_pricing_invalid: v.bulk_pricing_invalid,
+    inventory_available: v.inventory_available,
+    // Placeholder lama; isi hanya dikirim melalui copy/copy_en.
+    terms: null,
+    delivery_terms: null,
+    supplier_variant: supplier !== null,
+    delivery_kind: deliveryKind,
+    ...(supplier === "wr" && deliveryKind === "queued" ? { queue_has_eta: true } : {}),
+    ...(hasAutomaticProcessing(v) ? { automatic_processing: true } : {}),
+    ...(v.automatic_delivery ? { automatic_delivery: true } : {}),
+    copy: links ? sanitizeSupplierCopy(copy, links) : copy,
+    copy_en: links ? sanitizeSupplierCopy(copyEn, links) : copyEn,
+  };
+}
 
 /**
  * Detail produk untuk storefront: teks mentah (WR & admin) diganti salinan
@@ -155,40 +183,12 @@ const PUBLIC_VARIANT_DENYLIST = [
  * tidak bergantung cookie; klien memilih `copy_en` saat EN.
  * Salinan bersumber "pemasok" ikut disanitasi memakai link aktif.
  *
- * Payload publik juga membuang modal/cost + ID supplier (AU-C1-1) dan
- * menggantinya dengan penanda turunan yang dibutuhkan storefront:
- * `supplier_variant` ("wr"|"sk"|null) dan `automatic_processing` (WR3 Jaspay).
+ * Penanda pengiriman dan durasi label hanya membawa perilaku pembeli,
+ * bukan identitas atau konfigurasi internal supplier (AU-C1-1).
  */
 export function withVariantCopy(detail: ProductDetail, links?: SupplierLinkMap): StorefrontProductDetail {
   return {
     ...detail,
-    variants: detail.variants.map((variant) => {
-      const admin = adminCopyOf(variant);
-      const copy = resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "id");
-      const copyEn = resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "en");
-      const skDuration = variant.sk_duration ?? deriveSkDuration(variant);
-      const wrId = variant.wr_variant_id == null ? "" : String(variant.wr_variant_id).trim();
-      const supplierVariant: "wr" | "sk" | null = wrId
-        ? "wr"
-        : variant.sk_variant_id != null && String(variant.sk_variant_id).trim() !== "" ? "sk" : null;
-      const out: StorefrontVariant = {
-        ...variant,
-        terms: null,
-        delivery_terms: null,
-        sk_description: undefined,
-        sk_duration: skDuration ?? null,
-        admin_terms: undefined,
-        admin_activation: undefined,
-        admin_terms_en: undefined,
-        admin_activation_en: undefined,
-        admin_copy_fingerprint: undefined,
-        supplier_variant: supplierVariant,
-        ...(wrId.startsWith("jaspay:") ? { automatic_processing: true } : {}),
-        copy: links ? sanitizeSupplierCopy(copy, links) : copy,
-        copy_en: links ? sanitizeSupplierCopy(copyEn, links) : copyEn,
-      };
-      for (const key of PUBLIC_VARIANT_DENYLIST) delete (out as Record<string, unknown>)[key];
-      return out;
-    }),
+    variants: detail.variants.map((variant) => publicVariant(variant, links)),
   };
 }

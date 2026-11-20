@@ -410,6 +410,8 @@ describe("S&K admin versi Inggris (migrasi 0105)", () => {
     const [entry] = await getCopy(1);
     const res = await put({ variant_id: 1, terms: "", activation: "", terms_en: "Only English", activation_en: "", supplier_key: entry.supplierKey });
     expect(res.status).toBe(200);
+    expect((await res.json()).variant).toMatchObject({ adminStale: false, reviewKind: null, needsReview: false });
+    expect(adminColumns(1).admin_copy_fingerprint).toBe(entry.supplierKey);
     const [saved] = await getCopy(1);
     expect(saved.hasOverride).toBe(false);
     expect(saved.adminTermsEn).toContain("Only English");
@@ -420,6 +422,7 @@ describe("S&K admin versi Inggris (migrasi 0105)", () => {
       termsEn: saved.adminTermsEn, activationEn: saved.adminActivationEn,
     }, "en");
     expect(en.status).toBe("admin");
+    expect(en).toMatchObject({ adminStale: false, reviewKind: null });
     expect(en.copy!.sections.flatMap((s) => s.items).join(" ")).toContain("Only English");
     // Pembeli ID tetap memakai salinan otomatis (tidak terpengaruh EN-only).
     const idCopy = resolveVariantCopyDetailed(legal.terms, legal.deliveryTerms, {
@@ -478,6 +481,19 @@ describe("tanda tinjau teks supplier (16 November 2026)", () => {
     const list = await (await GET(new NextRequest("http://localhost/api/products"))).json();
     return list.products.find((p: { slug: string }) => p.slug === slug);
   }
+
+  it("counts changed EN-only copy even if the new supplier text is curated", async () => {
+    seedRaw();
+    // Start from an EN-only save stamped against the previous raw supplier copy.
+    fixture.sql.prepare("UPDATE product_variants SET admin_terms_en=?, admin_copy_fingerprint=? WHERE id=4")
+      .run("Reviewed English terms", supplierFingerprint(rawTerms, rawDelivery));
+    fixture.sql.prepare("UPDATE wr_variants SET wr_terms=?, wr_delivery_terms=? WHERE wr_variant_id='var-raw'")
+      .run(legal.terms, legal.deliveryTerms);
+
+    expect(await listRow("raw-wr")).toMatchObject({ copyReview: 1, copyReviewRaw: 0, copyReviewChanged: 1 });
+    expect((await getCopy(4))[0]).toMatchObject({ status: "axvara", adminStale: true, reviewKind: "changed" });
+    expect((await storefrontVariant("raw-wr")).copy_en.source).toBe("admin");
+  });
 
   it("acknowledge menandai teks supplier oke tanpa mengubah teks admin/storefront", async () => {
     seedRaw();

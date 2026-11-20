@@ -19,9 +19,13 @@ export function toEntry(row: Record<string, unknown>): VariantCopyEntry {
   const supplierActivation = text(row.wr_delivery_terms) ?? text(row.sk_seller_note);
   const adminTerms = text(row.admin_terms);
   const adminActivation = text(row.admin_activation);
+  const adminTermsEn = text(row.admin_terms_en);
+  const adminActivationEn = text(row.admin_activation_en);
   const resolution = resolveVariantCopyDetailed(supplierTerms, supplierActivation, {
     terms: adminTerms,
     activation: adminActivation,
+    termsEn: adminTermsEn,
+    activationEn: adminActivationEn,
     fingerprint: row.admin_copy_fingerprint == null ? null : String(row.admin_copy_fingerprint),
   });
   const auto = serializeVariantCopy(resolution.auto);
@@ -43,8 +47,8 @@ export function toEntry(row: Record<string, unknown>): VariantCopyEntry {
     hasOverride: adminTerms !== null || adminActivation !== null,
     adminTerms: adminTerms ?? "",
     adminActivation: adminActivation ?? "",
-    adminTermsEn: text(row.admin_terms_en) ?? "",
-    adminActivationEn: text(row.admin_activation_en) ?? "",
+    adminTermsEn: adminTermsEn ?? "",
+    adminActivationEn: adminActivationEn ?? "",
     autoTerms: auto.terms,
     autoActivation: auto.activation,
     supplierTerms: supplierTerms ?? "",

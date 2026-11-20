@@ -365,9 +365,9 @@ describe("resolveVariantCopy — suntingan admin per varian", () => {
     } as unknown as VariantSummary;
     const [out] = withVariantCopy({ id: 1, variants: [variant] } as unknown as ProductDetail).variants;
     expect(out.copy?.source).toBe("admin");
-    expect(out.admin_terms).toBeUndefined();
-    expect(out.admin_activation).toBeUndefined();
-    expect(out.admin_copy_fingerprint).toBeUndefined();
+    expect(out).not.toHaveProperty("admin_terms");
+    expect(out).not.toHaveProperty("admin_activation");
+    expect(out).not.toHaveProperty("admin_copy_fingerprint");
     expect(JSON.parse(JSON.stringify(out))).not.toHaveProperty("admin_terms");
   });
 });
