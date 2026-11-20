@@ -228,7 +228,26 @@ export async function processBroadcastDeliveryBatch(
     telegramAfterMs = parseSqlTimestampMs(control.telegram_after);
     emailAfterMs = parseSqlTimestampMs(control.email_after);
 
-    if (hasExpiredSending) {
+    // AU-E2-6: rows were read BEFORE the lease. Another dispatcher may have
+    // advanced provider_id / attempts and returned the row to `pending`
+    // between that read and this lease; sending from the stale snapshot would
+    // restart the sender at its old sentChunks (duplicate chunks). Take a fresh
+    // snapshot now that we own the dispatch lease.
+    rows = await db.queryAll(
+      `SELECT d.*, ${ELIGIBLE_CASE_SQL}
+       FROM broadcast_deliveries d
+       WHERE d.campaign_id=? AND d.id IN (${placeholders})
+       ORDER BY d.id`,
+      campaignId,
+      ...uniqueIds,
+    );
+
+    if (rows.some((r) =>
+      r.status === 'sending' &&
+      r.channel !== 'whatsapp' &&
+      r.lease_until &&
+      parseSqlTimestampMs(r.lease_until) <= Date.now(),
+    )) {
       const currentIso = now();
       const recovered = await db.execRun(
         `UPDATE broadcast_deliveries

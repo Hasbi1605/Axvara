@@ -1,10 +1,13 @@
 import { STALE_INITIALIZING_SQL } from "@/lib/payments/stale-initializing";
 
 /** Notif admin "Lunas" Telegram/WhatsApp yang timeout baru diulang setelah 20 menit
- * (lihat recordAdminPaidTimeout di order-notifications). */
+ * (lihat recordAdminPaidTimeout di order-notifications). Hanya baris `failed`
+ * (timeout tercatat) yang menahan antrean; klaim `sending` dipagari CAS klaim
+ * pre-send, dan baris `sent` berarti sudah dikirim (AU-E2-7). */
 export const ADMIN_PAID_TIMEOUT_PREFIX = "admin-paid-timeout:";
 export const ADMIN_PAID_TIMEOUT_COOLDOWN_SQL = `NOT EXISTS(SELECT 1 FROM buyer_notice_log bt
   WHERE bt.idempotency_key='${ADMIN_PAID_TIMEOUT_PREFIX}' || orders.code
+    AND bt.status='failed'
     AND julianday(bt.updated_at) > julianday('now','-20 minutes'))`;
 
 /** A forced phase needs only its own probes. The legacy rotation still reads

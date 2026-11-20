@@ -155,7 +155,7 @@ export async function claimWhatsAppOutboxRow(row: Record<string, unknown>, datab
   return { outcome: "claimed", workerId };
 }
 
-/** Pulihkan lease `sending` basi ke `failed`; pensiunkan sale_completed ke `dead`.
+/** Pulihkan lease `sending` basi; pensiunkan sale_completed ke `dead`.
  *
  * Harus dipanggil dari jalur runtime (cron) sebelum mengambil baris due —
  * bukan dari SQL buatan tes. Syarat ketat:
@@ -164,6 +164,10 @@ export async function claimWhatsAppOutboxRow(row: Record<string, unknown>, datab
  * - outcome tercatat ambigu (`lease_recovered:delivery_outcome_unknown`)
  *   karena runtime tidak tahu apakah pesan sempat terkirim sebelum crash;
  *   tanpa janji exactly-once tanpa dukungan provider.
+ * - AU-E2-4: klaim yang crash pada percobaan TERAKHIR tidak boleh berhenti di
+ *   `failed` selamanya (query due mensyaratkan attempt_count < MAX). Baris
+ *   seperti itu dipensiunkan ke `dead` dengan alasan eksplisit agar operator
+ *   melihat hasil akhir yang ambigu, bukan baris menggantung.
  * Mengembalikan jumlah baris dipulihkan atau dipensiunkan.
  */
 export async function recoverStaleWhatsAppLeases(database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
@@ -171,11 +175,20 @@ export async function recoverStaleWhatsAppLeases(database: DatabaseAccess = crea
   try {
     const result = await execRun(
       `UPDATE whatsapp_outbox
-        SET status=CASE WHEN message_type='sale_completed' THEN 'dead' ELSE 'failed' END, worker_id=NULL, locked_until=NULL,
-            last_error=CASE WHEN message_type='sale_completed' THEN 'sales_notifications_retired' ELSE 'lease_recovered:delivery_outcome_unknown' END,
+        SET status=CASE
+              WHEN message_type='sale_completed' THEN 'dead'
+              WHEN attempt_count>=? THEN 'dead'
+              ELSE 'failed' END,
+            worker_id=NULL, locked_until=NULL,
+            last_error=CASE
+              WHEN message_type='sale_completed' THEN 'sales_notifications_retired'
+              WHEN attempt_count>=? THEN 'lease_recovered_exhausted:delivery_outcome_unknown'
+              ELSE 'lease_recovered:delivery_outcome_unknown' END,
            next_attempt_at=datetime('now'), updated_at=datetime('now')
         WHERE (status='sending' AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now')))
            OR (message_type='sale_completed' AND status IN ('pending','failed'))`,
+      WA_OUTBOX_MAX_ATTEMPTS,
+      WA_OUTBOX_MAX_ATTEMPTS,
     );
     return Number(result.changes ?? 0);
   } catch {
@@ -354,9 +367,17 @@ export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAcce
     }
     // Pacing manusiawi antar kirim (bukan sleep sebelum baris pertama).
     const delay = attempted > 0 ? paceDelayMsLive() : 0;
-    if (!hasTime(delay + 16_000)) break;
+    // RV-1: a tick starved BEFORE the first row is deferred work, not silence.
+    // Report it like payments_deferred so a zero-work run is visible.
+    if (!hasTime(delay + 16_000)) {
+      paused = rows.length - attempted;
+      break;
+    }
     if (attempted > 0) await new Promise((r) => setTimeout(r, delay));
-    if (!hasTime(16_000)) break;
+    if (!hasTime(16_000)) {
+      paused = rows.length - attempted;
+      break;
+    }
     attempted++;
     let done = false;
     try {

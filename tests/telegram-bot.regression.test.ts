@@ -952,7 +952,8 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
   it("both cron entry points use the shared reminder worker", () => {
     const lib = read("src/lib/telegram/order-notifications.ts");
     expect(lib).toContain("TELEGRAM_REMINDER_MAX = 2");
-    expect(read("src/app/api/cron/lite/route.ts")).toContain("sendPendingOrderReminders(50, db)");
+    // FX-1: lite passes the phase deadline budget (hasTime) into the worker.
+    expect(read("src/app/api/cron/lite/route.ts")).toContain("sendPendingOrderReminders(50, db, hasTime)");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(cron).toContain("sendPendingOrderReminders");
     expect(cron).toContain("telegram_pending_reminders_sent");

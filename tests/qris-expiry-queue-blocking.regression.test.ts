@@ -185,3 +185,30 @@ it("waktu run habis: berhenti sebelum kiriman berikutnya, sisanya untuk run beri
   expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
   expect(queued()).toBe(1);
 });
+
+// RV-1: the gateway/crypto terminal notice is its own Telegram send and now
+// runs BEFORE reminders/restock in notify_b. A deadline that lapses after the
+// loop check must stop the row instead of starting another 10s send.
+it("kabar terminal gateway tidak dimulai saat sisa waktu fase sudah habis", async () => {
+  const code = "AXV-HOL-NEWRAIL";
+  const at = iso("-2 minutes");
+  fixture.sql.prepare(`INSERT INTO orders
+    (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,
+     sales_channel,telegram_chat_id,telegram_user_id,variant_id,expires_at)
+    VALUES(?,'Buyer','6280','[]',10000,'nowpayments:usdtbsc','kadaluarsa','pending','telegram','73','73',1,?)`)
+    .run(code, at);
+  fixture.sql.prepare(`INSERT INTO payment_transactions
+    (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at)
+    VALUES(?,'nowpayments','crypto',?,'fixture',10000,10000,'expired',?)`)
+    .run(code, code, at);
+  expect(queued()).toBe(1);
+
+  let checks = 0;
+  const result = await sendQrisExpiryNotifications(2, undefined, { hasTime: () => ++checks === 1 });
+  expect(checks).toBe(2);
+  expect(result.sent).toBe(0);
+  expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
+  expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM buyer_notice_log WHERE idempotency_key=?")
+    .get(`telegram:terminal:${code}`)?.n).toBe(0);
+  expect(queued()).toBe(1);
+});

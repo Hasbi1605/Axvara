@@ -205,6 +205,44 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(cron).toContain("sales_channel IN ('telegram','whatsapp')");
   });
 
+  // AU-E2-7: reading the NULL marker then sending left a window where a slow
+  // direct send and the cron retry both reached transport.
+  it("a slow direct paid-admin send is not duplicated by a concurrent cron pass", async () => {
+    seedWhatsAppOrder("WA-RACE", "lunas");
+    fixture.sql.prepare("UPDATE orders SET telegram_order_notified_at=datetime('now') WHERE code='WA-RACE'").run();
+    const { sendMessage } = await import("@/lib/telegram/api");
+    const { createDatabaseAccess } = await import("@/lib/db-access");
+    const { retryPendingTelegramNotifications, notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
+    const db = createDatabaseAccess(fixture.db);
+    vi.mocked(sendMessage).mockClear();
+
+    let calls = 0;
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const enteredP = new Promise<void>((resolve) => { entered = resolve; });
+    vi.mocked(sendMessage).mockImplementation((async () => {
+      calls++;
+      entered();
+      await gate;
+      return { ok: true, result: { message_id: 1 } };
+    }) as never);
+
+    // Direct payment-path send holds the transport...
+    const direct = notifyWhatsAppPaidAdmin("WA-RACE", db);
+    await enteredP;
+    // ...while the cron retry pass runs on the same NULL marker.
+    const cron = await retryPendingTelegramNotifications(50, { paidAdmin: true }, db);
+    release();
+    expect(await direct).toBe(true);
+
+    expect(calls).toBe(1);
+    expect(cron.paidAdmin).toBe(0);
+    expect(fixture.sql.prepare("SELECT telegram_paid_admin_notified_at FROM orders WHERE code='WA-RACE'").get()
+      ?.telegram_paid_admin_notified_at).not.toBeNull();
+    vi.mocked(sendMessage).mockImplementation((async () => ({ ok: true, result: { message_id: 1 } })) as never);
+  });
+
   it("migration 0023 backfills pre-existing WhatsApp orders so deploy does not replay history", async () => {
     const fs = await import("node:fs");
     const migration = fs.readFileSync("drizzle/migrations/0023_whatsapp_admin_notifications.sql", "utf8");

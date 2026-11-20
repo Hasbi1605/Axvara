@@ -20,7 +20,7 @@ import { createActiveQrisInvoice, qrisPaymentAccountLabel } from "@/lib/payments
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
 // 2026-09-25): hanya "Lunas — Telegram" yang masuk grup.
-import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
+import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { activeQrisProvider } from "@/lib/payments/dana-qris";
@@ -188,6 +188,11 @@ export async function createAndSendCartInvoice(
     // invoice, reservasi, dan stok yang sama dipertahankan (tanpa order
     // kedua, tanpa potong stok ulang).
     await markInvoicePending(orderCode);
+    // AU-E2-2: klaim atomik sebelum sendPhoto (CAS attempts yang sama dengan
+    // teks provider) — retry cron/Refresh yang membaca marker yang sama menunggu.
+    if (await claimProviderInvoiceSend(orderCode, { allowFresh: true }) !== "claimed") {
+      throw new Error("telegram_invoice_send_failed:not_claimed");
+    }
     const cartPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,
@@ -208,6 +213,8 @@ export async function createAndSendCartInvoice(
       return;
     }
     if (isCriticalSendResult(cartPhoto, "transactional")) {
+      // Definitif: lepas stempel klaim agar redelivery/Refresh boleh langsung.
+      await releaseInvoiceSendClaim(orderCode);
       throw new Error(`telegram_invoice_send_failed:${cartPhoto.description || "unknown"}`);
     }
     await markInvoiceSent(orderCode);

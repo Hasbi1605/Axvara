@@ -84,11 +84,13 @@ export async function showPaymentMethodOffer(
 }
 
 /**
- * QRIS dari offer beku: draft payq1 sudah dilepas CAS oleh pemanggil; jalankan
- * alur QRIS legacy yang sudah ada. Single source = `handlePayWithQris`
- * (invoice langsung); cart = `handleCartCheckout` (ringkasan persetujuan →
- * `cconfirm:`). Guard pending-order/email/approval milik jalur legacy tetap
- * berlaku; tidak ada order kedua dari sini.
+ * QRIS dari offer beku: jalankan alur QRIS legacy yang sudah ada. Single
+ * source = `handlePayWithQris` (invoice langsung); cart = `handleCartCheckout`
+ * (ringkasan persetujuan → `cconfirm:`). Guard pending-order/email/approval
+ * milik jalur legacy tetap berlaku; tidak ada order kedua dari sini.
+ * Draft payq1 TIDAK dilepas sebelum checkout (AU-E2-9): kegagalan D1 transient
+ * setelah titik ini harus menyisakan anchor agar redelivery `pm:`/`pgo:`
+ * melanjutkan alur yang sama, bukan "session expired".
  */
 async function startLegacyQrisFromOffer(
   chatId: number,
@@ -109,6 +111,19 @@ async function startLegacyQrisFromOffer(
     const { handleCartCheckout } = await import("./cart");
     await handleCartCheckout(chatId, messageId, from);
   }
+}
+
+/**
+ * Lepas draft payq1 HANYA setelah alur QRIS legacy selesai (return normal).
+ * CAS exact-raw: bila alur menulis state lanjutan (email_for/email_confirm/
+ * qty_for) atau anchor creating, state itu yang dipertahankan. Kegagalan
+ * checkout (throw) sengaja tidak melepas draft — redelivery melanjutkan flow.
+ */
+async function releaseQrisOfferDraft(userId: string, raw: string): Promise<void> {
+  await execRun(
+    `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
+    userId, raw,
+  ).catch(() => undefined);
 }
 
 /**
@@ -173,17 +188,15 @@ export async function handlePayMethodSelect(
     await answer();
     return;
   }
-  // QRIS: BUKAN seleksi payq1 (rail-nya milik alur legacy). Lepas draft lewat
-  // CAS exact-raw, lalu mulai pembayaran QRIS. Tap ganda / layar lama: hanya
-  // CAS pertama yang menang — tap kedua no-op, jadi tidak ada dua order.
+  // QRIS: BUKAN seleksi payq1 (rail-nya milik alur legacy). Draft beku TIDAK
+  // dilepas dulu (AU-E2-9): kalau checkout gagal transient, redelivery `pm:`
+  // menemukan anchor dan melanjutkan alur — bukan "session expired". Tap ganda
+  // tetap aman: checkout legacy memakai ulang SATU pending order
+  // (`createChannelOrderAtomic` isExisting), tidak membuat order kedua.
   if (chosen.id === "qris" || chosen.kind === "qris") {
-    const released = await execRun(
-      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
-      String(from.id), raw,
-    ).catch(() => ({ changes: 0 }));
     await answer();
-    if ((released.changes ?? 0) < 1) return;
     await startLegacyQrisFromOffer(chatId, messageId, from, state);
+    await releaseQrisOfferDraft(String(from.id), raw);
     return;
   }
   const next = { ...state, sel: chosen.id };
@@ -396,13 +409,11 @@ export async function handlePayMethodConfirm(
     return;
   }
   // QRIS dipilih lewat pgo: dari keyboard LAMA (fallback kompatibilitas): jalur
-  // utama sekarang `pm:` baris QRIS. Lepas draft CAS lalu mulai alur legacy.
+  // utama sekarang `pm:` baris QRIS. Draft dilepas hanya SETELAH checkout
+  // kembali (AU-E2-9) supaya kegagalan transient tetap bisa dilanjutkan.
   if (current.sel === "qris") {
-    await execRun(
-      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
-      String(from.id), currentRaw,
-    ).catch(() => ({ changes: 0 }));
     await startLegacyQrisFromOffer(chatId, messageId, from, current);
+    await releaseQrisOfferDraft(String(from.id), currentRaw);
     return;
   }
   // Quoted/contact: validate the frozen selection is still live-supported
