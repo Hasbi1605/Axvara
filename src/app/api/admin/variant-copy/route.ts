@@ -146,7 +146,7 @@ export async function PUT(req: NextRequest) {
         AND sp.sk_description IS ? AND sp.sk_seller_note IS ?)`,
     clearId ? null : terms || null, clearId ? null : activation || null,
     hasEn ? termsEn || null : null, hasEn ? activationEn || null : null,
-    clearId ? null : supplier.supplierKey,
+    !clearId || hasEn ? supplier.supplierKey : null,
     variantId, row.admin_terms ?? null, row.admin_activation ?? null, row.admin_terms_en ?? null, row.admin_activation_en ?? null, row.admin_copy_fingerprint ?? null,
     variantId, row.wr_variant_id ?? null, row.sk_variant_id ?? null,
     row.wr_terms ?? null, row.wr_delivery_terms ?? null, row.sk_description ?? null, row.sk_seller_note ?? null,

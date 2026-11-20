@@ -184,6 +184,10 @@ verifikasi fixture lokal, deployment belum diverifikasi.
   `has_override`, 400 `not_pemasok`); unacknowledge mengosongkan fingerprint.
   Kolom EN dan teks admin tidak disentuh; CAS sumber+kolom admin sama. Jalur
   simpan teks lama (termasuk clear saat kosong/sama dengan otomatis) tetap.
+- FX-8b (lokal): simpan EN tanpa override ID mencatat sidik jari sumber pada
+  jalur tunggal maupun bulk. Saat sumber berubah, EN tetap tampil, tetapi
+  detail dan hitungan tinjauan admin menandainya `changed`. Data publik varian
+  memakai allowlist dan penanda netral, bukan ID/keluarga/konfigurasi supplier.
 - `GET /api/products` admin menambah `copyReviewChanged`/`copyReviewRaw` di
   samping total `copyReview`.
 - Formatter supplier: baris judul-saja (S&K/Syarat/Ketentuan/Rules/Wajib

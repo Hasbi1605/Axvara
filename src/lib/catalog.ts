@@ -63,17 +63,9 @@ export type VariantSummary = {
   sk_auto_managed?: number;
   /** order_process SK mentah (auto/manual/h2h/smm/vip) — dari sk_products. */
   sk_order_process?: string | null;
-  /**
-   * Keluarga supplier untuk payload PUBLIK (audit AU-C1-1, 21 Nov 2026):
-   * "wr" | "sk" | null. Menggantikan wr_variant_id/sk_variant_id mentah yang
-   * TIDAK boleh dikirim ke pembeli; diisi server-side oleh withVariantCopy.
-   */
-  supplier_variant?: "wr" | "sk" | null;
-  /** Varian WR3 Jaspay (dibuat otomatis oleh bot) — pengganti cek prefix wr_variant_id di payload publik. */
-  automatic_processing?: boolean;
   /** Deskripsi mentah SK dari sk_products (server-only; dihapus oleh withVariantCopy). */
   sk_description?: string | null;
-  /** Durasi SK turunan render-time saat kolom duration_* kosong (aman dikirim ke browser). */
+  /** Durasi SK turunan saat kolom duration_* kosong (server-only). */
   sk_duration?: string | null;
   /** Toggle email wajib per produk (migrasi 0033, untuk non-WR). */
   require_email: number;
@@ -427,7 +419,7 @@ export async function searchProductByName(input: string): Promise<{ exact: Produ
 
 // ---- Format helpers ----
 
-export function formatDuration(v: VariantSummary): string {
+export function formatDuration(v: Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">>): string {
   if (v.duration_label) return v.duration_label;
   if (!v.duration_value || !v.duration_unit) return "";
   const unitMap: Record<string, string> = { day: "Hari", month: "Bulan", year: "Tahun", lifetime: "Selamanya", custom: "" };
@@ -454,49 +446,39 @@ export function formatDuration(v: VariantSummary): string {
  *   semua bila ditempel). Insiden 2026-09-19: helper lama menggabung untuk
  *   semua produk → "Invite Lifetime - 6 Bulan", "Head 1 Bulan - 14 Hari".
  */
-/**
- * Keluarga supplier sebuah varian dari sumber tepercaya: kolom mentah
- * `wr_variant_id`/`sk_variant_id` (server) ATAU penanda publik
- * `supplier_variant` (payload /api/catalog setelah ID mentah dibuang).
- */
-export function supplierVariantOf(v: { wr_variant_id?: unknown; sk_variant_id?: unknown; supplier_variant?: unknown }): "wr" | "sk" | null {
-  if (v.supplier_variant === "wr" || v.supplier_variant === "sk") return v.supplier_variant;
-  const wrId = v.wr_variant_id == null ? "" : String(v.wr_variant_id).trim();
-  if (wrId) return "wr";
-  const skId = v.sk_variant_id == null ? "" : String(v.sk_variant_id).trim();
-  return skId ? "sk" : null;
+/** Keluarga supplier dari kolom mentah, tidak ikut diserialisasi. */
+export function supplierVariantOf(v: { wr_variant_id?: unknown; sk_variant_id?: unknown }): "wr" | "sk" | null {
+  if (String(v.wr_variant_id ?? "").trim()) return "wr";
+  return String(v.sk_variant_id ?? "").trim() ? "sk" : null;
 }
 
-export function formatVariantLabel(
-  v: Pick<VariantSummary, "label">
-    & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit" | "terms" | "sk_description" | "sk_duration" | "supplier_variant">>
-    & { wr_variant_id?: unknown; sk_variant_id?: unknown },
-  locale: Locale = "id",
-): string {
+type VariantLabelInput = Pick<VariantSummary, "label">
+  & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit" | "terms" | "sk_description" | "sk_duration">>
+  & { wr_variant_id?: unknown; sk_variant_id?: unknown; supplier_variant?: boolean; label_duration?: string | null };
+
+export function variantLabelDuration(v: VariantLabelInput): string | null {
+  if (v.supplier_variant !== undefined) return v.supplier_variant ? v.label_duration ?? null : null;
   const label = String(v.label || "").trim();
   const kind = supplierVariantOf(v);
+  let duration = "";
   if (kind === "wr") {
-    const dur = formatDuration(v as VariantSummary).trim();
-    const composed = !dur || label.toLowerCase().includes(dur.toLowerCase()) ? label : `${label} - ${dur}`;
-    return translateVariantLabel(composed, locale);
-  }
-  if (kind === "sk") {
+    duration = formatDuration(v).trim();
+  } else if (kind === "sk" && !labelContainsDuration(label)) {
     const hasAdminDuration =
       (v.duration_label != null && String(v.duration_label).trim() !== "")
       || (v.duration_value != null && Number(v.duration_value) > 0)
       || (v.duration_unit != null && String(v.duration_unit).trim() !== "");
-    const dur = hasAdminDuration
-      ? formatDuration(v as VariantSummary).trim()
-      : (
-          durationFromSupplierText(v.sk_description ?? v.terms ?? null)
-          ?? (v.sk_duration != null ? String(v.sk_duration).trim() : "")
-        );
-    const composed = !dur || labelContainsDuration(label) || label.toLowerCase().includes(dur.toLowerCase())
-      ? label
-      : `${label} - ${dur}`;
-    return translateVariantLabel(composed, locale);
+    duration = hasAdminDuration
+      ? formatDuration(v).trim()
+      : durationFromSupplierText(v.sk_description ?? v.terms ?? null) ?? String(v.sk_duration ?? "").trim();
   }
-  return translateVariantLabel(label, locale);
+  return duration && !label.toLowerCase().includes(duration.toLowerCase()) ? duration : null;
+}
+
+export function formatVariantLabel(v: VariantLabelInput, locale: Locale = "id"): string {
+  const label = String(v.label || "").trim();
+  const duration = variantLabelDuration(v);
+  return translateVariantLabel(duration ? `${label} - ${duration}` : label, locale);
 }
 
 /**
@@ -511,23 +493,31 @@ export function formatVariantLabel(
  */
 export type BuyerDeliveryKind = "instant" | "queued";
 
-export function buyerDeliveryKind(v: { fulfillment_mode?: unknown; wr_delivery_class?: unknown; sk_order_process?: unknown; automatic_delivery?: boolean; wr_variant_id?: unknown; sk_variant_id?: unknown; supplier_variant?: unknown }): BuyerDeliveryKind {
+type BuyerDeliveryInput = {
+  fulfillment_mode?: unknown; wr_delivery_class?: unknown; sk_order_process?: unknown;
+  wr_variant_id?: unknown; sk_variant_id?: unknown; automatic_delivery?: boolean;
+  delivery_kind?: BuyerDeliveryKind; automatic_processing?: boolean; queue_has_eta?: boolean;
+};
+
+export function buyerDeliveryKind(v: BuyerDeliveryInput): BuyerDeliveryKind {
+  if (v.delivery_kind === "instant" || v.delivery_kind === "queued") return v.delivery_kind;
   return isQueuedFulfillment({
-    wrVariantId: v.supplier_variant === "wr" ? "1" : v.wr_variant_id, wrClass: v.wr_delivery_class,
-    skVariantId: v.supplier_variant === "sk" ? "1" : v.sk_variant_id, skOrderProcess: v.sk_order_process,
+    wrVariantId: v.wr_variant_id, wrClass: v.wr_delivery_class,
+    skVariantId: v.sk_variant_id, skOrderProcess: v.sk_order_process,
     fulfillmentMode: v.fulfillment_mode, automaticDelivery: v.automatic_delivery,
   }) ? "queued" : "instant";
 }
 
 /** Badge pembeli: "Kirim otomatis" (instan) atau "Made By Order" (antrean). */
-export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0] & { wr_delivery_class?: string | null }): string {
-  const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id == null
-    ? ""
-    : String((v as { wr_variant_id?: unknown }).wr_variant_id).trim();
+export function buyerDeliveryBadge(v: BuyerDeliveryInput): string {
   // WR3 Jaspay: dibuat otomatis (bukan disiapkan admin), tapi tetap antrean
   // (bukan instan/stok). Tanpa brand supplier di copy pembeli.
-  if (wrId.startsWith("jaspay:") || (v as { automatic_processing?: unknown }).automatic_processing === true) return "Diproses otomatis";
+  if (hasAutomaticProcessing(v)) return "Diproses otomatis";
   return buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Made By Order";
+}
+
+export function hasAutomaticProcessing(v: Pick<BuyerDeliveryInput, "automatic_processing" | "wr_variant_id">): boolean {
+  return v.automatic_processing ?? String(v.wr_variant_id ?? "").trim().startsWith("jaspay:");
 }
 
 /**
@@ -558,7 +548,7 @@ export function buyerDeliveryEtaNonWr(): string {
   return "Made By Order — disiapkan admin setelah pembayaran dikonfirmasi, dikerjakan sesuai antrean pada jam layanan";
 }
 
-export function formatWarranty(v: VariantSummary): string {
+export function formatWarranty(v: Pick<VariantSummary, "warranty_type" | "warranty_value" | "warranty_unit" | "warranty_label">): string {
   // Tipe limited: SELALU bentuk kanonis "Garansi X Unit" dari field
   // terstruktur — JANGAN pulangkan warranty_label mentah ("12 Hari" ambigu:
   // pembeli tak bisa bedakan itu durasi atau garansi). Label mentah hanya

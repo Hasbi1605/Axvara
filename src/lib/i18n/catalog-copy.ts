@@ -1,24 +1,24 @@
 import type { Locale } from "./locale";
-import { buyerDeliveryBadge, buyerDeliveryEtaJaspay, buyerDeliveryEtaNonWr, buyerDeliveryKind, formatWarranty, supplierVariantOf, type VariantSummary } from "@/lib/catalog";
+import { buyerDeliveryBadge, buyerDeliveryEtaJaspay, buyerDeliveryEtaNonWr, buyerDeliveryKind, formatWarranty, hasAutomaticProcessing, supplierVariantOf } from "@/lib/catalog";
 import { deliveryEtaForBuyer, WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 
 export function catalogDeliveryBadge(v: Parameters<typeof buyerDeliveryBadge>[0], locale: Locale): string {
   if (locale === "id") return buyerDeliveryBadge(v);
   if (v.automatic_delivery) return "Automatic delivery";
-  if ((v as { automatic_processing?: unknown }).automatic_processing === true) return "Processed automatically";
+  if (hasAutomaticProcessing(v)) return "Processed automatically";
   return buyerDeliveryKind(v) === "instant" ? "Instant delivery" : "Made By Order";
 }
 
 export function catalogDeliveryEta(v: Parameters<typeof buyerDeliveryBadge>[0] | null, locale: Locale): string {
   if (v?.automatic_delivery) return locale === "en" ? "Processed automatically after payment is confirmed; we will notify you when it is complete." : "Diproses otomatis setelah pembayaran dikonfirmasi; kami kabari setelah selesai.";
-  const isJaspay = (v as { automatic_processing?: unknown } | null | undefined)?.automatic_processing === true;
-  if (locale === "id") return !v ? deliveryEtaForBuyer(null) : buyerDeliveryKind(v) === "instant" ? deliveryEtaForBuyer("restock") : isJaspay ? buyerDeliveryEtaJaspay() : supplierVariantOf(v) === "wr" ? deliveryEtaForBuyer(v.wr_delivery_class) : buyerDeliveryEtaNonWr();
-  if (v && buyerDeliveryKind(v) === "instant") return "Delivered automatically once payment is confirmed";
-  if (isJaspay) return "Made by order — created automatically by our bot after payment. Estimated 15 minutes–1 hour.";
-  return !v || supplierVariantOf(v) === "wr" ? `Made By Order — processed in queue, usually sooner, within ${WR_QUEUED_MAX_HOURS} hours during service hours` : "Made By Order — prepared by admin after payment is confirmed, in queue during service hours";
+  if (v && hasAutomaticProcessing(v)) return locale === "id" ? buyerDeliveryEtaJaspay() : "Made by order — created automatically by our bot after payment. Estimated 15 minutes–1 hour.";
+  if (v && buyerDeliveryKind(v) === "instant") return locale === "id" ? deliveryEtaForBuyer("restock") : "Delivered automatically once payment is confirmed";
+  const hasQueueEta = !v || (v.queue_has_eta ?? (supplierVariantOf(v) === "wr"));
+  if (locale === "id") return hasQueueEta ? deliveryEtaForBuyer(null) : buyerDeliveryEtaNonWr();
+  return hasQueueEta ? `Made By Order — processed in queue, usually sooner, within ${WR_QUEUED_MAX_HOURS} hours during service hours` : "Made By Order — prepared by admin after payment is confirmed, in queue during service hours";
 }
 
-export function catalogWarranty(v: VariantSummary, locale: Locale): string {
+export function catalogWarranty(v: Parameters<typeof formatWarranty>[0], locale: Locale): string {
   if (locale === "id" || (v.warranty_type !== "limited" && v.warranty_label)) return formatWarranty(v);
   if (v.warranty_type === "none") return "No warranty";
   if (v.warranty_type !== "limited" && v.warranty_type !== "full") return formatWarranty(v);
