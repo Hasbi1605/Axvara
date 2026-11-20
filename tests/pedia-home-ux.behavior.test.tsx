@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PediaHomeClient } from "@/app/pedia/home-client";
 import { PediaNavbar } from "@/components/pedia/PediaNavbar";
+import { PlatformCatalog } from "@/components/pedia/PlatformCatalog";
 import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { catalogCard, ProductCard } from "@/components/pedia/PlatformGrid";
@@ -178,12 +180,21 @@ describe("Pedia platform-first storefront", () => {
     expect(screen.getByRole("link", { name: /Views TikTok/ }).getAttribute("href")).toBe("/pedia/o/views-tiktok");
     expect(screen.queryByRole("link", { name: /Followers Instagram/ })).toBeNull();
   });
-  it("routes navbar search from an order to searchable services", () => {
+  it("routes navbar search from an order to searchable services on Enter, not during typing", async () => {
     navigation.path = "/pedia/o/followers-instagram";
-    renderPediaHome([product, tiktok]);
-    search("tiktok");
-    expect(navigation.push).toHaveBeenCalledWith("/pedia/layanan");
-    expect(screen.getByRole("link", { name: /Views TikTok/ })).toBeTruthy();
+    const user = userEvent.setup();
+    const { unmount } = render(<PediaNavbar />);
+    const input = screen.getByRole("searchbox", { name: "Cari layanan Pedia" });
+    await user.type(input, "tiktok");
+    expect(navigation.push).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
+    expect(navigation.push.mock.calls).toEqual([["/pedia/layanan"]]);
+
+    // Router is mocked; mount the actual destination catalog with the same store.
+    unmount();
+    render(<PlatformCatalog products={[product, tiktok]} headingLevel={1} />);
+    expect(screen.getByRole("link", { name: /Views TikTok/ }).getAttribute("href")).toBe("/pedia/o/views-tiktok");
+    expect(screen.queryByRole("link", { name: /Followers Instagram/ })).toBeNull();
   });
   it("groups a large service collection into a single platform without sales claims", () => {
     render(<PediaHomeClient products={Array.from({ length: 9 }, (_, i) => ({ ...product, slug: `service-${i}`, name: `Layanan ${i}`, is_featured: 0 }))} />);

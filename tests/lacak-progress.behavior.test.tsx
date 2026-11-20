@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams(),usePathname:()=>'/lacak-pesanan'}));
 vi.mock('@/components/storefront/WrCredentialsPanel',()=>({WrCredentialsPanel:({deliveryProgress}:{deliveryProgress?:{ready:number;total:number}})=><div data-testid="progress">{deliveryProgress?.ready}/{deliveryProgress?.total}</div>}));
@@ -36,8 +36,10 @@ it('keeps polling mixed Jaspay orders and renders truthful phases, counts, queue
  await act(async()=>{fireEvent.submit(contact.closest('form')!)});
  expect(screen.getByText('Urutan antrean: 3')).toBeTruthy();
  expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false);
- expect(screen.getByText('Sedang diproses').closest('li')?.getAttribute('aria-current')).toBe('step');
- expect(screen.getByText('Detail siap').className).toContain('text-white/40');
+ const timeline = () => within(screen.getByRole('list',{name:'Alur status pesanan'}));
+ const readyStep = () => timeline().getByText('Detail siap');
+ expect(timeline().getByRole('listitem',{current:'step'})).toBe(timeline().getByText('Sedang diproses').closest('li'));
+ expect(readyStep().classList.contains('text-white/65')).toBe(true);
  expect(screen.getByText(/Terakhir dicek .* WIB/)).toBeTruthy();
  stage='running';await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
  expect(screen.getByText('Membuat produkmu')).toBeTruthy();
@@ -47,8 +49,9 @@ it('keeps polling mixed Jaspay orders and renders truthful phases, counts, queue
   automatic_progress:[{label:'Scribd',stage,ready,total:1,queuePosition:null}]}}));
  await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
  expect(screen.getByText('Produk siap')).toBeTruthy();
- expect(screen.getByText('Sedang diproses').closest('li')?.hasAttribute('aria-current')).toBe(false);
- expect(screen.getByText('Detail siap').className).not.toContain('text-white/40');
+ expect(timeline().getByText('Sedang diproses').closest('li')?.hasAttribute('aria-current')).toBe(false);
+ expect(readyStep().classList.contains('text-white/65')).toBe(false);
+ expect(readyStep().classList.contains('text-white')).toBe(true);
  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
  const calls=fetcher.mock.calls.length;
  await act(async()=>{await vi.advanceTimersByTimeAsync(30000)});

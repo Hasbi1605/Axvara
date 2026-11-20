@@ -146,7 +146,7 @@ tidak membuka halaman bayar. Keranjang tetap utuh; pembeli dapat mengambil
 harga terbaru lalu menekan Bayar kembali. Pemulihan klaim yang masih hidup
 tetap tidak membuat pesanan atau tagihan duplikat.
 
-FX-4b (lokal): Enter pada form mengikuti validasi bayar yang sama dengan tombol. Menutup dialog harga/stok dengan Escape tidak menerima harga baru. Games meminta kontak saat entri lacak lama tidak punya kontak valid. Bila pengajuan refill Pedia gagal, pesannya tetap terlihat setelah cek ulang kelayakan; tidak ada pengajuan ulang otomatis.
+FX-4b (lokal): Enter pada form mengikuti validasi bayar yang sama dengan tombol. Koreksi FX-R2: WA atau email tidak valid tetap menampilkan pesan pada kolom terkait dan memindahkan fokus ke kolom salah pertama sebelum order dibuat. Menutup dialog harga/stok dengan Escape tidak menerima harga baru. Games meminta kontak saat entri lacak lama tidak punya kontak valid. Bila pengajuan refill Pedia gagal, pesannya tetap terlihat setelah cek ulang kelayakan; tidak ada pengajuan ulang otomatis.
 
 ## A-S: kesehatan checkout tanpa transaksi — 18 November 2026 (lokal)
 

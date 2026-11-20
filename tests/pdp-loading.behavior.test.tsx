@@ -38,18 +38,25 @@ describe("PDP loading", () => {
     const photos = [product.image, "/portrait.webp", "/landscape.webp"];
     render(<ProductDetailClient slug="netflix-premium" initialProducts={[{ ...product, images: photos }]} initialCatalog={catalog as never} />);
     const main = () => screen.getByRole("img", { name: product.name });
+    const thumb = (photo: number, pressed: boolean) => screen.getByRole("button", { name: `${product.name} foto ${photo}`, pressed });
     expect(main().className).toContain("object-cover");
+    expect(thumb(1, true)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Foto berikutnya" }));
     expect(main().getAttribute("src")).toBe(photos[1]);
     expect(main().className).toContain("h-auto object-contain");
     expect(main().className).not.toContain("aspect-");
-    fireEvent.click(screen.getByRole("img", { name: `${product.name} foto 3` }));
+    expect(thumb(2, true)).toBeTruthy();
+    fireEvent.click(thumb(3, false));
     expect(main().getAttribute("src")).toBe(photos[2]);
     expect(main().className).toContain("object-contain");
-    expect(screen.getByRole("img", { name: `${product.name} foto 2` }).className).toContain("object-contain");
+    expect(thumb(3, true)).toBeTruthy();
+    const secondThumbnail = thumb(2, false).querySelector("img");
+    expect(secondThumbnail?.getAttribute("alt")).toBe("");
+    expect(secondThumbnail?.className).toContain("object-contain");
     fireEvent.click(screen.getByRole("button", { name: "Foto berikutnya" }));
     expect(main().getAttribute("src")).toBe(photos[0]);
     expect(main().className).toContain("aspect-[4/3] object-cover");
+    expect(thumb(1, true)).toBeTruthy();
     await act(async () => {});
   });
 

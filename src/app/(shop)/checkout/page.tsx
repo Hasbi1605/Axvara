@@ -765,7 +765,8 @@ function CheckoutInner() {
         )}
       </div>
 
-      <form onSubmit={(event) => { event.preventDefault(); if (!ctaDisabled && !issueDialogOpen) void submit(); }} className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6 items-start">
+      {/* Keep the shared WA/email errors and focus handling on click and Enter. */}
+      <form noValidate onSubmit={(event) => { event.preventDefault(); if (!ctaDisabled && !issueDialogOpen) void submit(); }} className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6 items-start">
         {/* Kiri — METODE + DATA + S&K (revamp 2026-09-23 ala Sekalipay:
             ① Metode di atas → ② Data minimal (WA + Email) → S&K mobile.
             Rail kanan desktop hanya ringkasan + S&K + CTA.) */}

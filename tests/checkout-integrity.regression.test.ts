@@ -79,12 +79,18 @@ describe("Checkout quote integrity", () => {
     expect(checkout).not.toContain("Nama lengkap");
     // QRIS auto-select selama maintenance (hemat 1 klik).
     expect(checkout).toContain("Auto-select QRIS");
-    // Satu handler submit dipakai 2 tombol (rail + sticky mobile) —
-    // tidak ada logika validasi ganda.
+    // Satu form + handler untuk Enter dan kedua CTA; tepat satu CTA per rail.
     expect(checkout).toContain("ctaDisabled");
     expect(checkout).toContain("ctaLabel");
-    const submitCount = (checkout.match(/onClick=\{submit\}/g) || []).length;
-    expect(submitCount).toBe(2);
+    const form = checkout.match(/<form\b[\s\S]*?<\/form>/)?.[0] ?? "";
+    const mobileCta = form.match(/<div className="lg:hidden fixed bottom-0\b[\s\S]*?<\/div>/)?.[0] ?? "";
+    const desktopRail = form.match(/<aside className="hidden lg:block\b[\s\S]*?<\/aside>/)?.[0] ?? "";
+    const submitButtons = /<button type="submit" disabled=\{ctaDisabled\}/g;
+    expect(form).toContain("onSubmit=");
+    expect(form).toContain("if (!ctaDisabled && !issueDialogOpen) void submit();");
+    expect(form.match(/<button\b[^>]*\btype="submit"/g)).toHaveLength(2);
+    expect(mobileCta.match(submitButtons)).toHaveLength(1);
+    expect(desktopRail.match(submitButtons)).toHaveLength(1);
     // Mobile: accordion ringkasan di atas + sticky bottom CTA + spacer.
     expect(checkout).toContain("Ringkasan accordion");
     expect(checkout).toContain("checkout-summary-mobile");

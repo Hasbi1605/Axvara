@@ -157,16 +157,22 @@ describe("PDP produk non-WR: format yang sama dari deskripsi admin", () => {
     stubCatalog("akun-gsuite", canvaDesc, [variant(1, "Invite 1 Bulan", { wr_variant_id: null, copy: null, wr_delivery_class: null, fulfillment_mode: "shared" })]);
     render(<ProductDetailClient slug="akun-gsuite" />);
     const termsButton = await screen.findByRole("button", { name: /Syarat & Ketentuan/ });
+    expect(termsButton.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(termsButton);
     const panel = screen.getByRole("region", { name: /Syarat & Ketentuan/ });
     expect(within(panel).getByRole("region", { name: "Proses & pengiriman" }).textContent).toContain("Undangan Canva dikirim lewat email");
     expect(within(panel).getByRole("region", { name: "Aturan pakai" }).textContent).toContain("Pastikan email yang kamu isi saat checkout aktif");
     const activationButton = screen.getByRole("button", { name: /Cara Aktivasi · 1 langkah/ });
-    const [desktopActivation] = screen.getAllByTestId("product-activation-body");
-    expect(desktopActivation.parentElement?.classList.contains("rounded-2xl")).toBe(true);
-    expect(desktopActivation.parentElement?.classList.contains("p-5")).toBe(true);
+    const activationText = "Buka email undangan dari Canva, lalu terima undangannya";
+    const desktopActivation = screen.getByRole("heading", { level: 3, name: "Cara Aktivasi" }).parentElement!;
+    expect(desktopActivation.classList.contains("rounded-2xl")).toBe(true);
+    expect(desktopActivation.classList.contains("p-5")).toBe(true);
+    expect(desktopActivation.textContent).toContain(activationText);
+    expect(activationButton.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("region", { name: /Cara Aktivasi/ })).toBeNull();
     fireEvent.click(activationButton);
-    expect(screen.getByRole("region", { name: /Cara Aktivasi/ }).textContent).toContain("Buka email undangan dari Canva, lalu terima undangannya");
+    expect(activationButton.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("region", { name: /Cara Aktivasi/ }).textContent).toContain(activationText);
   });
 
   it("bagian 'Syarat & Ketentuan:' pindah ke panel S&K dan tidak tampil ganda di deskripsi", async () => {
