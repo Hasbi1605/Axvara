@@ -695,8 +695,12 @@ export function qrisInvoiceKeyboard(orderCode: string, ctx?: TgLocaleCtx): Inlin
       // handleOrderRefresh idempoten. Tanpa ini pembeli menunggu buta bila
       // hook telat; copy "tidak perlu cek manual" di invoiceMessage ikut
       // direvisi agar tidak berbohong.
-      [{ text: en ? "🔄 Check Payment" : "🔄 Cek Pembayaran", callback_data: cb.refresh(orderCode), style: "primary" }],
-      [{ text: en ? "📋 Order Details" : "📋 Detail Pesanan", callback_data: cb.order(orderCode) }, { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` }],
+      // 2026-11-20 (permintaan owner): tanpa Detail Pesanan — invoice sudah
+      // memuat kode/produk/total/batas; cukup Cek Pembayaran | Bantuan + Batalkan.
+      [
+        { text: en ? "🔄 Check Payment" : "🔄 Cek Pembayaran", callback_data: cb.refresh(orderCode), style: "primary" },
+        { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` },
+      ],
       [{ text: en ? "Cancel Order" : "Batalkan Pesanan", callback_data: cb.cancel(orderCode), style: "danger" }],
     ],
   };

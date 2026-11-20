@@ -316,6 +316,11 @@ describe("Telegram keyboards", () => {
     expect(datas.some(d => d === "refresh:AXV-20260906-TEST1234")).toBe(true);
     expect(buttons).toContainEqual(expect.objectContaining({ text: "🔄 Cek Pembayaran", callback_data: "refresh:AXV-20260906-TEST1234", style: "primary" }));
     expect(datas.some(d => d.startsWith("cancel:"))).toBe(true);
+    // Owner 2026-11-20: tiga tombol saja — [Cek Pembayaran | Bantuan] lalu [Batalkan], tanpa Detail Pesanan.
+    expect(kb.inline_keyboard.map(row => row.map(b => b.text))).toEqual([["🔄 Cek Pembayaran", "💬 Bantuan"], ["Batalkan Pesanan"]]);
+    expect(datas.some(d => d.startsWith("order:"))).toBe(false);
+    const en = qrisInvoiceKeyboard("AXV-1", { locale: "en" });
+    expect(en.inline_keyboard.map(row => row.map(b => b.text))).toEqual([["🔄 Check Payment", "💬 Help"], ["Cancel Order"]]);
   });
 
   it("paid-order keyboard has no looping WA button — reply-only, exposes both human support contacts", () => {
