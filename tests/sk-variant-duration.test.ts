@@ -188,7 +188,7 @@ describe("SK duration end-to-end queries (Telegram, Cart, Web Catalog, Quote)", 
     vi.unstubAllEnvs();
   });
 
-  it("Telegram handleShowProduct shows composed SK labels in Varian tersedia bullets and variant buttons", async () => {
+  it("Telegram handleShowProduct shows composed SK labels on variant buttons with simplified product caption", async () => {
     const { handleShowProduct } = await import("@/lib/telegram/handlers/catalog");
     const { safeEditOrSend, sendMessage } = await import("@/lib/telegram/api");
 
@@ -202,16 +202,13 @@ describe("SK duration end-to-end queries (Telegram, Cart, Web Catalog, Quote)", 
     const text = String(call.text ?? "").replace(/\u00a0/g, " ");
     const buttons = (call.reply_markup?.inline_keyboard ?? []).flat().map((b) => b.text);
 
-    expect(text).toContain("• 1 Profile 2 User - 1 Bulan · Rp 19.500 · stok 45");
-    expect(text).toContain("• 1 Profile 1 User - 1 Bulan · Rp 30.000 · stok 45");
-    expect(text).toContain("• 1 Bulan Private · Rp 85.000 · stok 45");
-    expect(text).not.toContain("1 Bulan Private - 28-30 Hari");
-    expect(text).toContain("• 7 Hari 1 Profile 1 User · Rp 12.000 · stok 45");
-    expect(text).toContain("• Basic Sharing · Rp 18.000 · stok 45");
+    expect(text).toBe("<b>Netflix</b>\nPilih varian 👇");
+    expect(text).not.toContain("Varian tersedia");
 
     expect(buttons).toContain("1 Profile 2 User - 1 Bulan · Rp19.500 · stok 45");
     expect(buttons).toContain("1 Profile 1 User - 1 Bulan · Rp30.000 · stok 45");
     expect(buttons).toContain("1 Bulan Private · Rp85.000 · stok 45");
+    expect(buttons).not.toContain("1 Bulan Private - 28-30 Hari · Rp85.000 · stok 45");
     expect(buttons).toContain("7 Hari 1 Profile 1 User · Rp12.000 · stok 45");
     expect(buttons).toContain("Basic Sharing · Rp18.000 · stok 45");
   });

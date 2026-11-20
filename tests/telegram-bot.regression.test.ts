@@ -250,7 +250,7 @@ describe("Telegram keyboards", () => {
     });
   });
 
-  it("variant keyboard keeps label and price compact, with sold-out choices last and terms accessible", () => {
+  it("variant keyboard keeps label and price compact, with sold-out choices last and no Detail & Ketentuan button", () => {
     const kb = variantsKeyboard(7, [
       { id: 1, label: "Legal", price: 36500, stock: 0, duration_label: "28 Hari", warranty_label: "Garansi 25 Hari" },
       { id: 2, label: "Anti Limit", price: 26000, stock: 4, duration_label: "28 Hari", warranty_label: "Garansi 20 Hari" },
@@ -261,7 +261,8 @@ describe("Telegram keyboards", () => {
     expect(buttons[1]).toMatchObject({ text: "❌ Legal · 28 Hari · Habis", callback_data: "soldout", style: "danger" });
     expect(buttons[2].text).toBe("🔔 Kabari saat restok");
     expect(buttons[2].callback_data).toBe("rst:7");
-    expect(buttons).toContainEqual({ text: "📋 Detail & Ketentuan", callback_data: "terms:7:0" });
+    expect(buttons.some((b) => String(b.callback_data ?? "").startsWith("terms:"))).toBe(false);
+    expect(buttons.some((b) => b.text.includes("Detail & Ketentuan"))).toBe(false);
     expect(kb.inline_keyboard.at(-1)).toEqual([
       { text: "🛍 Katalog", callback_data: "catalog:0" },
       { text: "🏠 Menu", callback_data: "home" },
@@ -391,62 +392,53 @@ describe("Telegram buyer messages", () => {
     expect(msg).toContain("Canva Pro");
   });
 
-  it("product detail lists available variants concisely and collapses sold-out count", () => {
-    const msg = productDetailMessage({
+  it("product detail renders exact minimal card shape with/without sold count and description, omitting variant lists/prices/warranty", () => {
+    const full = productDetailMessage({
       name: "Canva Pro",
+      sold_count: 412,
+      description: "Akun desain siap pakai dengan akses penuh. Cocok untuk kerja tim. Kalimat ketiga tidak ikut.\n\n- Bullet panjang\nLink:\nhttps://example.test",
       price: 5000,
+      compare_price: 50000,
       stock: -1,
       variants: [
-        { label: "Pro Head 1 Bulan", price: 5000, warranty: "Full Garansi 1 Bulan", duration: "1 Bulan", stock: -1 },
+        { label: "Pro Head 1 Bulan", price: 5000, warranty: "Full Garansi 1 Bulan", duration: "1 Bulan", stock: -1, delivery_badge: "⚡ Kirim otomatis" },
         { label: "Pro Invite 1 Bulan", price: 10000, warranty: "Garansi Terbatas 7 Hari", duration: "1 Bulan", stock: 0 },
       ],
     });
-    expect(msg).toContain("<b>Varian tersedia</b>");
-    expect(msg).toMatch(/Pro Head 1 Bulan — 1 Bulan · Rp\s?5\.000 · stok ∞/);
-    expect(msg).not.toContain("varian lain sedang habis");
-    expect(msg).toContain("Full Garansi 1 Bulan");
-    expect(msg).not.toContain("Pro Invite 1 Bulan");
-    expect(msg).not.toContain("Garansi Terbatas 7 Hari");
-    expect(msg.length).toBeLessThan(350);
+    expect(full).toBe(
+      "<b>Canva Pro</b> · Terjual 412+\n" +
+      "<blockquote>Akun desain siap pakai dengan akses penuh. Cocok untuk kerja tim.</blockquote>\n" +
+      "Pilih varian 👇",
+    );
+    expect(full).not.toContain("Varian tersedia");
+    expect(full).not.toContain("Harga");
+    expect(full).not.toContain("Full Garansi");
+    expect(full).not.toContain("Kirim otomatis");
+    expect(full).not.toContain("Bullet panjang");
+    expect(full).not.toContain("https://example.test");
+
+    const minimal = productDetailMessage({ name: "Test Product", price: 50000, stock: 3 });
+    expect(minimal).toBe("<b>Test Product</b>\nPilih varian 👇");
+    expect(minimal).not.toContain("Terjual");
+    expect(minimal).not.toContain("<blockquote>");
+
+    const enCard = productDetailMessage({ name: "Test Product", sold_count: 15, description: "Instant creative suite." }, { locale: "en" });
+    expect(enCard).toBe("<b>Test Product</b> · Sold 15+\n<blockquote>Instant creative suite.</blockquote>\nChoose a variant 👇");
   });
 
-  it("product detail shows factual low stock without urgency", () => {
-    const msg = productDetailMessage({
-      name: "Test Product",
-      price: 50000,
-      stock: 3,
-    });
-    expect(msg).toContain("Stok: 3");
-    expect(msg).not.toContain("segera order");
-  });
-
-  it("product detail handles out-of-stock", () => {
-    const msg = productDetailMessage({
-      name: "Test Product",
-      price: 50000,
-      stock: 0,
-    });
-    expect(msg).toContain("Stok habis");
-  });
-
-  it("product detail handles unlimited stock", () => {
-    const msg = productDetailMessage({
-      name: "Test Product",
-      price: 50000,
-      stock: -1,
-    });
-    expect(msg).toContain("tersedia");
-  });
-
-  it("product detail shows discount percentage", () => {
-    const msg = productDetailMessage({
-      name: "Canva Pro",
-      price: 45000,
-      compare_price: 600000,
-      stock: 60,
-    });
-    expect(msg).toContain("hemat 93%");
-    expect(msg).toContain("600.000");
+  it("product detail truncates long description at word boundary with ellipsis and matches photo/text fallback", () => {
+    const longDesc = "Akun streaming berkualitas tinggi untuk menonton film dan serial favorit setiap hari tanpa iklan yang mengganggu pengalaman menonton di berbagai perangkat keluarga anda sepanjang waktu";
+    const asPhoto = productDetailMessage({ name: "Prime Video", description: longDesc }, { hasImage: true });
+    const asText = productDetailMessage({ name: "Prime Video", description: longDesc }, { hasImage: false });
+    expect(asPhoto).toBe(asText);
+    expect(asPhoto.length).toBeLessThanOrEqual(1024);
+    const quoteMatch = asPhoto.match(/<blockquote>(.*?)<\/blockquote>/);
+    expect(quoteMatch).toBeTruthy();
+    const quoteText = quoteMatch![1];
+    expect(quoteText.endsWith("…")).toBe(true);
+    expect(quoteText.length).toBeLessThanOrEqual(180);
+    expect(longDesc.startsWith(quoteText.slice(0, -1))).toBe(true);
+    expect(longDesc[quoteText.length - 1]).toBe(" ");
   });
 
   it("confirm variant message leaves quantity selection to the next clear step", () => {
@@ -758,8 +750,8 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
     expect(clean).not.toContain("Terjual");
   });
 
-  it("product detail shows delivery class per variant (owner 2026-10-10)", () => {
-    const msg = productDetailMessage({
+  it("review message shows delivery line (automatic vs admin) while product detail omits delivery lines", () => {
+    const card = productDetailMessage({
       name: "Express VPN",
       price: 5500,
       stock: 85,
@@ -768,13 +760,27 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
         { label: "Pro", price: 9000, delivery_badge: "⚡ Kirim otomatis" },
       ],
     });
-    expect(msg).toContain("Pengiriman");
-    expect(msg).toContain("Premium");
-    expect(msg).toContain("Made By Order");
-    expect(msg).toContain("Kirim otomatis");
-    // Tanpa badge = tanpa blok pengiriman (bukan tebakan).
-    const clean = productDetailMessage({ name: "Canva Pro", price: 45000, stock: 60 });
-    expect(clean).not.toContain("Pengiriman");
+    expect(card).not.toContain("Pengiriman");
+    expect(card).not.toContain("Made By Order");
+    expect(card).not.toContain("Kirim otomatis");
+
+    const instant = reviewPurchaseMessage({
+      productName: "Express VPN",
+      variantLabel: "Pro",
+      qty: 1,
+      unitPrice: 9000,
+      deliveryKind: "instant",
+    });
+    expect(instant.text).toContain("⚡ Kirim otomatis setelah bayar");
+
+    const queued = reviewPurchaseMessage({
+      productName: "Express VPN",
+      variantLabel: "Premium",
+      qty: 1,
+      unitPrice: 5500,
+      deliveryKind: "queued",
+    });
+    expect(queued.text).toContain("⏳ Diproses admin setelah bayar");
   });
 
   it("legacy breadcrumb helper remains available but buyer messages omit it", () => {

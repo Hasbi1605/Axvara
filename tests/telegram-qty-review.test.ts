@@ -316,4 +316,67 @@ describe("TG-QTYREVIEW D1 router flows, guards, and compatibility", () => {
       expect(Buffer.byteLength(data, "utf8")).toBeLessThanOrEqual(64);
     }
   });
+
+  it("TG-CARD: review shows delivery line (automatic/manual ID+EN), uses variant copy only without product bullet duplication (Prime Video fixture), and dedupes across sections", async () => {
+    // 1. Prime-Video-like fixture: variant detail overlaps product bullets, plus duplicate lines across Detail paket / Cara aktivasi / Garansi.
+    fx.sql.exec(`
+      UPDATE products
+      SET name='Prime Video',
+          name_en='Prime Video',
+          description='Nonton film dan serial Prime Originals.\n- Masa aktif 25-30 hari\n- Legal dan bergaransi',
+          description_en='Watch Prime Originals movies and series.\n- 25-30 days validity\n- Legal and covered by warranty'
+      WHERE id=1;
+      UPDATE product_variants
+      SET label='Private 1 Bulan',
+          fulfillment_mode='shared',
+          admin_terms='Detail paket:\n- Masa aktif 25-30 hari dihitung 1 bulan\n- Akun legal dan bergaransi\nGaransi:\n- AKUN   LEGAL dan bergaransi',
+          admin_activation='1. Buka Prime Video\n2. Akun legal   dan bergaransi\n3. Login dengan email dan password',
+          admin_copy_fingerprint=''
+      WHERE id=1;
+    `);
+    await handleCallback("q:1:1:1", buyer.id, 10, buyer);
+    const revPrime = String(lastEdited()?.text ?? "");
+    expect(revPrime).toContain("⚡ Kirim otomatis setelah bayar");
+    expect(revPrime).toContain("• Masa aktif 25-30 hari dihitung 1 bulan");
+    expect(revPrime).toContain("• Akun legal dan bergaransi");
+    expect(revPrime).toContain("1. Buka Prime Video");
+    expect(revPrime).toContain("2. Login dengan email dan password");
+    // Must NEVER also include product bullets when variant has detail of its own:
+    expect(revPrime).not.toContain("• Masa aktif 25-30 hari\n");
+    expect(revPrime).not.toContain("• Legal dan bergaransi");
+    // Case/space-insensitive duplicate across Detail paket / Cara aktivasi / Garansi omitted:
+    expect(revPrime.toLowerCase().match(/akun\s+legal\s+dan\s+bergaransi/g)).toHaveLength(1);
+
+    // 2. Manual/queued variant + fallback to product bullets ONLY when variant has no detail of its own (EN + ID).
+    fx.sql.exec(`
+      UPDATE product_variants
+      SET fulfillment_mode='manual',
+          admin_terms=NULL,
+          admin_activation=NULL,
+          admin_terms_en=NULL,
+          admin_activation_en=NULL
+      WHERE id=1;
+    `);
+    await handleCallback("q:1:1:1", buyer.id, 10, buyer);
+    const revFallbackId = String(lastEdited()?.text ?? "");
+    expect(revFallbackId).toContain("⏳ Diproses admin setelah bayar");
+    expect(revFallbackId).toContain("• Masa aktif 25-30 hari");
+    expect(revFallbackId).toContain("• Legal dan bergaransi");
+    expect(revFallbackId).not.toContain("Nonton film dan serial Prime Originals.");
+
+    await handleCallback("lang:en", buyer.id, 10, buyer);
+    await handleCallback("q:1:1:1", buyer.id, 10, buyer);
+    const revFallbackEn = String(lastEdited()?.text ?? "");
+    expect(revFallbackEn).toContain("⏳ Processed by admin after payment");
+    expect(revFallbackEn).toContain("• 25-30 days validity");
+
+    // EN automatic delivery line
+    fx.sql.exec(`UPDATE product_variants SET fulfillment_mode='shared' WHERE id=1`);
+    await handleCallback("q:1:1:1", buyer.id, 10, buyer);
+    expect(String(lastEdited()?.text ?? "")).toContain("⚡ Instant delivery after payment");
+
+    // Legacy terms:1:0 callback still works for old buttons in chats
+    await handleCallback("terms:1:0", buyer.id, 10, buyer);
+    expect(String(lastEdited()?.text ?? "")).toContain("Choose a variant to read its terms.");
+  });
 });

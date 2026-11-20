@@ -504,8 +504,10 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     await click("prd:1");
     expect(withLoadingIndicator).not.toHaveBeenCalled();
     const product = edited();
-    expect(product.text).toContain("Google Head 18Bulan");
-    expect(product.text).not.toMatch(/1\s*(month|bulan)\b/i);
+    expect(product.text).toBe("<b>Google AI Pro</b>\nPilih varian 👇");
+    const var1Btn = (product.reply_markup as { inline_keyboard: { text: string; callback_data?: string }[][] }).inline_keyboard.flat().find((b) => b.callback_data === "var:1");
+    expect(var1Btn?.text).toContain("Google Head 18Bulan");
+    expect(var1Btn?.text).not.toMatch(/1\s*(month|bulan)\b/i);
     await click(button(product, "var:1"));
     expect(edited().text).toContain("Google Head 18Bulan");
     expect(edited().text).not.toMatch(/1\s*(month|bulan)\b/i);

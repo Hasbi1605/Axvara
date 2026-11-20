@@ -55,35 +55,39 @@ describe("plain Indonesian Telegram buyer copy", () => {
       expect((message.match(/\p{Extended_Pictographic}/gu) ?? []).length).toBeLessThanOrEqual(1);
       parsed(message);
     }
-    const cardAndHelp = [
-      productDetailMessage({ name: "Produk A", price: 5000 }),
+    const card = productDetailMessage({ name: "Produk A", price: 5000 });
+    expect(card).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS/u);
+    expect(card).toContain("Pilih varian 👇");
+    parsed(card);
+
+    const qtyReviewAndHelp = [
       chooseQtyMessage({ ...item, stock: 1, qty: 1 }),
       reviewPurchaseMessage({ productName: "Produk A", variantLabel: "Bulanan", qty: 2, unitPrice: 5000 }).text,
       helpMessage(),
     ];
-    for (const message of cardAndHelp) {
+    for (const message of qtyReviewAndHelp) {
       expect(message).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇/u);
       parsed(message);
     }
   });
 
-  it("renders blockquote highlight + full description after core lines and keeps photo captions <= 1024", () => {
+  it("renders short blockquote highlight only (no long bullets) and keeps photo/text fallback identical <= 1024", () => {
     const html = productDetailMessage({
       name: "Google Family", description: "Akses <produk> & panduan.\n\nParagraf panjang berikutnya.", price: 5000,
     });
-    expect(html).toContain("<blockquote>Akses &lt;produk&gt; &amp; panduan.</blockquote>");
-    expect(html).toContain("Paragraf panjang berikutnya.");
-    expect(html.indexOf("Paragraf panjang berikutnya.")).toBeGreaterThan(html.indexOf("Harga:"));
-    expect(html).not.toMatch(/Stok|keluarga|12 bulan|garansi/i);
+    expect(html).toBe("<b>Google Family</b>\n<blockquote>Akses &lt;produk&gt; &amp; panduan.</blockquote>\nPilih varian 👇");
+    expect(html).not.toContain("Paragraf panjang berikutnya.");
+    expect(html).not.toMatch(/Harga:|Stok|keluarga|12 bulan|garansi/i);
     const longPhoto = productDetailMessage({ name: "Produk", price: 5000, description: "x".repeat(1500) }, { hasImage: true });
+    const longText = productDetailMessage({ name: "Produk", price: 5000, description: "x".repeat(1500) }, { hasImage: false });
+    expect(longPhoto).toBe(longText);
     expect(longPhoto.length).toBeLessThanOrEqual(1024);
-    expect(longPhoto).toMatch(/Harga: <b>Rp\s?5\.000<\/b>/);
+    expect(longPhoto).toContain("…</blockquote>");
     const bounded = productDetailMessage({
       name: '"'.repeat(100), description: '"'.repeat(1000), price: 5000, stock: 3,
       variants: Array.from({ length: 10 }, () => ({ label: '"'.repeat(100), delivery_badge: '<&>"'.repeat(100), price: 5000 })),
     });
-    parsed(bounded);
-    expect(bounded).toContain("Stok: 3");
+    parsed(bounded, 1024);
   });
 
   it("uses clear stock/min labels on qty and exact total on review without claiming unique scarcity", () => {

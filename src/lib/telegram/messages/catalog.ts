@@ -1,7 +1,5 @@
 import { escapeHtml, escapeItemSummary, formatRupiah, truncate, formatSoldCountLabel, paymentLabels, fulfillmentLabels } from "./format";
 import type { Locale } from "@/lib/i18n/locale";
-import { formatIdr, formatUsdCents } from "@/lib/i18n/format";
-import type { FxSnapshot } from "@/lib/payments/fx";
 
 // TG2a read-surface localization: tiny optional render opts threaded through
 // existing messages (default id keeps admin/group callers compiling).
@@ -12,11 +10,6 @@ export type TgMoneyOpts = {
   usdEquivalentText?: string | null;
   usdUnavailable?: boolean;
 };
-
-function moneyLine(primary: string, opts?: TgMoneyOpts): string[] {
-  if (!opts?.usdEquivalentText) return [primary];
-  return [primary, `≈ ${opts.usdEquivalentText}`];
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // WELCOME & NAVIGATION
@@ -84,10 +77,60 @@ export type TelegramVariantLine = {
   delivery_badge?: string | null;
 };
 
+const CARD_INVISIBLE_CHARS = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g;
+const CARD_BULLET_LINE = /^\s*(?:[-–—•·*▪✓✔]|\d{1,2}[.)]\s)/u;
+const CARD_URL_LINE = /^\s*(?:https?:\/\/\S+|(?:links?|tautan)\s*:.*)$/i;
+const CARD_HEADING_LINE = /^.{1,48}:$/u;
+
+function truncateAtWordBoundary(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= maxChars) return text;
+  if (maxChars <= 1) return "…";
+  const sliced = chars.slice(0, maxChars - 1).join("");
+  const lastSpace = sliced.lastIndexOf(" ");
+  const cut = lastSpace >= Math.floor((maxChars - 1) * 0.5)
+    ? sliced.slice(0, lastSpace)
+    : sliced;
+  return cut.replace(/[\s,;:.!?-]+$/u, "").trimEnd() + "…";
+}
+
+function extractShortProductDescription(raw: string | null | undefined, maxChars = 180): string {
+  const cleanedRaw = String(raw ?? "")
+    .replace(/Detail benefit,\s*syarat,\s*dan cara aktivasi mengikuti varian yang dipilih\.?/gi, "")
+    .replace(/Benefit details,\s*terms,\s*and activation steps follow the chosen variant\.?/gi, "")
+    .normalize("NFKC")
+    .replace(CARD_INVISIBLE_CHARS, "")
+    .trim();
+  if (!cleanedRaw) return "";
+
+  const paraLines: string[] = [];
+  for (const rawLine of cleanedRaw.split(/\r?\n/)) {
+    const trimmed = rawLine
+      .replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/gi, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!trimmed) {
+      if (paraLines.length > 0) break;
+      continue;
+    }
+    if (CARD_BULLET_LINE.test(trimmed) || CARD_URL_LINE.test(trimmed) || CARD_HEADING_LINE.test(trimmed)) {
+      if (paraLines.length > 0) break;
+      break;
+    }
+    paraLines.push(trimmed);
+  }
+  const para = paraLines.join(" ").replace(/\s+/g, " ").trim();
+  if (!para) return "";
+
+  const sentences = para.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const firstTwo = sentences.slice(0, 2).join(" ").trim();
+  return truncateAtWordBoundary(firstTwo, maxChars);
+}
+
 export function productDetailMessage(product: {
   name: string;
   description?: string | null;
-  price: number;
+  price?: number;
   compare_price?: number | null;
   stock?: number | null;
   badge?: string | null;
@@ -106,117 +149,34 @@ export function productDetailMessage(product: {
   const locale = opts?.locale ?? "id";
   const en = locale === "en";
   const name = escapeHtml(truncate(product.name, 100));
-  const formatPrimary = (idr: number) => (opts?.formatPrice ? opts.formatPrice(idr) : formatIdr(idr, locale));
-  const priceStr = formatPrimary(product.price);
-
-  const lines: string[] = [];
   const sold = Math.max(0, Math.floor(product.sold_count ?? 0));
-  lines.push(sold > 0 ? `<b>${name}</b> · ${formatSoldCountLabel(sold, locale)}` : `<b>${name}</b>`);
+  const titleLine = sold > 0 ? `<b>${name}</b> · ${formatSoldCountLabel(sold, locale)}` : `<b>${name}</b>`;
+  const ctaLine = en ? "Choose a variant 👇" : "Pilih varian 👇";
+  const shortDesc = extractShortProductDescription(product.description, 180);
+  if (!shortDesc) return `${titleLine}\n${ctaLine}`;
 
-  const rawVariants = product.variants ?? [];
-  const purchasable = rawVariants.filter((v) => v.stock !== 0);
-  const oosCount = product.outOfStockCount != null
-    ? Math.max(0, Math.floor(product.outOfStockCount))
-    : rawVariants.filter((v) => v.stock === 0).length;
+  const maxTotal = opts?.maxLength ?? 1024;
+  const full = `${titleLine}\n<blockquote>${escapeHtml(shortDesc)}</blockquote>\n${ctaLine}`;
+  if (full.length <= maxTotal) return full;
 
-  if (product.compare_price && product.compare_price > product.price) {
-    const discount = Math.round((1 - product.price / product.compare_price) * 100);
-    lines.push(en
-      ? `Price: <b>${escapeHtml(priceStr)}</b> (was <s>${escapeHtml(formatPrimary(product.compare_price))}</s>, save ${discount}%)`
-      : `Harga: <b>${escapeHtml(priceStr)}</b> (sebelumnya <s>${escapeHtml(formatPrimary(product.compare_price))}</s>, hemat ${discount}%)`);
-  } else if (purchasable.length > 1 || rawVariants.length > 1) {
-    lines.push(en ? `From <b>${escapeHtml(priceStr)}</b>` : `Harga mulai <b>${escapeHtml(priceStr)}</b>`);
-  } else {
-    lines.push(en ? `Price: <b>${escapeHtml(priceStr)}</b>` : `Harga: <b>${escapeHtml(priceStr)}</b>`);
+  // Enforce photo-caption budget while keeping identical photo/text fallback content.
+  const overhead = titleLine.length + ctaLine.length + "<blockquote></blockquote>".length + 2;
+  const budget = Math.max(0, maxTotal - overhead);
+  if (budget < 8) return `${titleLine}\n${ctaLine}`;
+
+  const suffix = "…";
+  let plain = "";
+  let escapedLen = 0;
+  for (const ch of Array.from(shortDesc)) {
+    const esc = escapeHtml(ch);
+    if (escapedLen + esc.length > budget - suffix.length) break;
+    plain += ch;
+    escapedLen += esc.length;
   }
-  lines.push(...moneyLine("", opts).slice(1));
-  if (opts?.usdUnavailable) {
-    lines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
-  }
-
-  const showTopStock = purchasable.length === 0 || !purchasable.some((v) => v.stock != null);
-  if (showTopStock) {
-    const stock = product.stock;
-    if (stock === -1) lines.push(en ? "In stock" : "Stok tersedia");
-    else if (stock != null && stock > 0) lines.push(en ? `Stock: ${stock}` : `Stok: ${stock}`);
-    else if (stock === 0) lines.push(en ? "Out of stock" : "Stok habis");
-  }
-
-  // Highlight: one-line blockquote from supplied description (strip redundant variant-detail boilerplate).
-  const rawDesc = String(product.description ?? "")
-    .replace(/Detail benefit,\s*syarat,\s*dan cara aktivasi mengikuti varian yang dipilih\.?/gi, "")
-    .replace(/Benefit details,\s*terms,\s*and activation steps follow the chosen variant\.?/gi, "")
-    .trim();
-  let highlight = "";
-  let fullDescription = "";
-  if (rawDesc) {
-    const descLines = rawDesc.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-    const firstLine = descLines[0] ?? "";
-    highlight = truncate(firstLine, 160);
-    if (rawDesc.length > highlight.length || descLines.length > 1) {
-      fullDescription = descLines.slice(1).join("\n") || rawDesc;
-      if (descLines.length <= 1 && firstLine.length > 160) {
-        fullDescription = rawDesc;
-      }
-    }
-    lines.push(`<blockquote>${escapeItemSummary(highlight, 280)}</blockquote>`);
-  }
-
-  if (purchasable.length > 0) {
-    lines.push("", en ? "<b>Available variants</b>" : "<b>Varian tersedia</b>");
-    const visible = purchasable.slice(0, 10);
-    const bulletLines = visible.map((v) => {
-      const vPrice = v.price_text?.trim() || formatPrimary(v.price);
-      const dur = v.duration?.trim() ? ` — ${truncate(v.duration.trim(), 24)}` : "";
-      const stockTxt = v.stock == null
-        ? ""
-        : v.stock === -1
-          ? ` · ${en ? "Ready" : "stok ∞"}`
-          : ` · ${en ? `stock ${v.stock}` : `stok ${v.stock}`}`;
-      return `• ${truncate(v.label, 48)}${dur} · ${vPrice}${stockTxt}`;
-    });
-    lines.push(escapeItemSummary(bulletLines.join("\n"), opts?.hasImage ? 450 : 1400));
-    if (purchasable.length > visible.length) {
-      lines.push(en ? `• +${purchasable.length - visible.length} more variants` : `• +${purchasable.length - visible.length} varian lainnya`);
-    }
-  }
-  // Varian habis sudah tampil sebagai tombol merah ❌ (owner 2026-11-20);
-  // tidak perlu baris hitungan terpisah di kartu.
-  void oosCount;
-
-  // Warranty summary line (factual, from variant metadata only).
-  const warrantyList = product.warrantySummary?.trim()
-    ? [product.warrantySummary.trim()]
-    : Array.from(new Set(purchasable.map((v) => String(v.warranty ?? "").trim()).filter(Boolean)));
-  if (warrantyList.length > 0) {
-    lines.push(`${en ? "🛡 Warranty" : "🛡 Garansi"}: ${escapeHtml(truncate(warrantyList.join(" / "), 140))}`);
-  }
-
-  // Delivery / instant status (only for purchasable variants).
-  const deliveryLines = purchasable.filter((v) => (v.delivery_badge ?? "").trim() !== "");
-  if (deliveryLines.length > 0) {
-    const allInstant = deliveryLines.length === purchasable.length
-      && purchasable.every((v) => v.wr_delivery_class === "restock" || /^⚡/.test(String(v.delivery_badge ?? "").trim()));
-    if (allInstant) {
-      lines.push(en ? "⚡ Instant delivery" : "⚡ Kirim otomatis");
-    } else {
-      lines.push("", en ? "<b>Delivery</b>" : "<b>Pengiriman</b>");
-      const deliverySummary = deliveryLines.slice(0, 10).map((v) => {
-        const delivery = String(v.delivery_badge).replace(/^[⚡⏳]\s*/, "");
-        return `• ${truncate(v.label, 40)}: ${truncate(delivery, 80)}`;
-      }).join("\n");
-      lines.push(escapeItemSummary(deliverySummary, 900));
-    }
-  }
-
-  const core = lines.join("\n");
-  if (!fullDescription) return core;
-
-  // Respect 1024 caption limit on photo messages by truncating ONLY full description.
-  const maxTotal = opts?.maxLength ?? (opts?.hasImage ? 1024 : 3600);
-  const descBudget = maxTotal - core.length - 2;
-  if (descBudget < 24) return core;
-  return `${core}\n\n${escapeItemSummary(fullDescription, descBudget)}`;
+  const trimmed = plain.trimEnd();
+  return trimmed
+    ? `${titleLine}\n<blockquote>${escapeHtml(trimmed)}${suffix}</blockquote>\n${ctaLine}`
+    : `${titleLine}\n${ctaLine}`;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━

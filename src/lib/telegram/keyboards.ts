@@ -549,7 +549,6 @@ export function variantsKeyboard(
     }]);
   }
 
-  rows.push([{ text: en ? "📋 Details & Terms" : "📋 Detail & Ketentuan", callback_data: cb.terms(productId) }]);
   rows.push([{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() }, { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }]);
 
   return { inline_keyboard: rows };

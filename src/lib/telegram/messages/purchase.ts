@@ -238,6 +238,7 @@ export function reviewPurchaseMessage(params: {
   unitPrice: number;
   basePrice?: number;
   appliedTierMinQty?: number | null;
+  deliveryKind?: "instant" | "queued" | null;
   sections?: ReviewCopySection[];
 }, opts?: TgMoneyOpts & { formatPrice?: (idr: number) => string }): { text: string; truncated: boolean } {
   const locale = opts?.locale ?? "id";
@@ -261,6 +262,11 @@ export function reviewPurchaseMessage(params: {
     `${escapeHtml(truncate(params.productName, 80))} · ${escapeHtml(truncate(variantWithDur, 80))}`,
     `${en ? "Quantity" : "Jumlah"} ${qty} × ${escapeHtml(formatPrimary(params.unitPrice))} = <b>${escapeHtml(formatPrimary(total))}</b>${escapeHtml(bulkNote)}`,
   ];
+  if (params.deliveryKind === "instant") {
+    summaryLines.push(en ? "⚡ Instant delivery after payment" : "⚡ Kirim otomatis setelah bayar");
+  } else if (params.deliveryKind === "queued") {
+    summaryLines.push(en ? "⏳ Processed by admin after payment" : "⏳ Diproses admin setelah bayar");
+  }
   if (opts?.usdUnavailable) {
     summaryLines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
   }
@@ -271,11 +277,27 @@ export function reviewPurchaseMessage(params: {
     ? { package: "📦 Package details", activation: "🛠 How to activate", warranty_terms: "🛡 Warranty & terms" }
     : { package: "📦 Detail paket", activation: "🛠 Cara aktivasi", warranty_terms: "🛡 Garansi & ketentuan" };
 
+  const seenLines = new Set<string>();
   const sections = (params.sections ?? [])
-    .map((sec) => ({
-      title: titles[sec.kind],
-      lines: sec.lines.map(normalizeReviewPlain).filter(Boolean),
-    }))
+    .map((sec) => {
+      const uniqueLines: string[] = [];
+      for (const rawLine of sec.lines) {
+        const plain = normalizeReviewPlain(rawLine);
+        if (!plain) continue;
+        const key = plain
+          .replace(/^(?:[-–—•·*▪✓✔]+\s*|\d{1,2}[.)]\s+)/u, "")
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, " ")
+          .trim();
+        if (!key || seenLines.has(key)) continue;
+        seenLines.add(key);
+        uniqueLines.push(plain);
+      }
+      return {
+        title: titles[sec.kind],
+        lines: uniqueLines,
+      };
+    })
     .filter((sec) => sec.lines.length > 0);
 
   const renderSection = (title: string, lines: string[], trimmed: boolean): string => {

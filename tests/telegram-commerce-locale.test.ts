@@ -61,8 +61,9 @@ describe("TG2a read commerce follows saved locale/currency", () => {
     expect(lastMarkup()).toContain("Ready");
     vi.clearAllMocks();
     await handleCallback("prd:1", user.id, 8, user, "cb-prd");
-    expect(allTexts().join("\n")).toMatch(/From|Price/);
-    expect(allTexts().join("\n")).not.toMatch(/Harga mulai/);
+    expect(allTexts().join("\n")).toContain("Choose a variant 👇");
+    expect(allTexts().join("\n")).not.toMatch(/Harga mulai|Varian tersedia|Pilih varian/);
+    expect(lastMarkup()).toContain("$10.00");
     vi.clearAllMocks();
     await handleCallback("var:11", user.id, 9, user, "cb-var");
     expect(allTexts().join("\n")).toMatch(/Stock ∞/);
@@ -123,7 +124,9 @@ describe("TG2a read commerce follows saved locale/currency", () => {
     vi.clearAllMocks();
     await handleCallback("prd:1", user.id, 9, user, "cb-prd2");
     const detail = allTexts().join("\n");
-    expect(detail).toContain("Rp");
+    expect(detail).toBe("<b>Canva Pro &lt;b&gt;Bold&lt;/b&gt;</b>\nPilih varian 👇");
+    expect(lastMarkup()).toContain("Rp160.000");
+    expect(lastMarkup()).not.toMatch(/\$|USDT/);
     expect(detail).not.toMatch(/\$|USDT/);
   });
 
@@ -138,6 +141,10 @@ describe("TG2a read commerce follows saved locale/currency", () => {
     expect(lastMarkup()).not.toMatch(/USDT/);
     vi.clearAllMocks();
     await handleCallback("prd:1", user.id, 9, user, "cb-prd3");
+    expect(lastMarkup()).toContain("Rp160.000");
+    expect(lastMarkup()).not.toMatch(/\$0/);
+    vi.clearAllMocks();
+    await handleCallback("var:11", user.id, 9, user, "cb-var3");
     const detail = allTexts().join("\n");
     expect(detail).toMatch(/USD equivalent unavailable|Perkiraan USD tidak tersedia/);
     expect(detail).not.toMatch(/\$0/);

@@ -1,5 +1,15 @@
 # DESIGN.md — AXVARA Design System
 
+## Penyederhanaan kartu produk & pembersihan layar review Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-CARD, lokal)
+
+- **Kartu produk ringkas (`productDetailMessage` + `handleShowProduct`):** caption foto (`≤1024` karakter) dan fallback teks memuat konten yang sama dan tepat:
+  1. `<b>{Nama}</b> · Terjual {N}+` (EN `Sold {N}+`; bagian `· Terjual` dihilangkan bila `sold_count` kosong/`0`).
+  2. `<blockquote>{ringkasan}</blockquote>` — 1–2 kalimat / paragraf pembuka deskripsi produk sebagai teks polos, maksimal `~180` karakter dipotong di batas kata dengan `"…"` (dihilangkan bila tidak ada deskripsi).
+  3. `"Pilih varian 👇"` / `"Choose a variant 👇"`.
+  Baris `"Harga mulai …"`/harga coret, daftar `"Varian tersedia"`, hitungan varian habis, ringkasan garansi, status `"⚡ Kirim otomatis"`, deskripsi bullet panjang, dan blok tautan dihapus dari kartu karena detail/ketentuan hidup di tombol varian dan layar review.
+- **Keyboard produk (`variantsKeyboard`):** menampilkan varian tersedia (hijau `style: "success"`, format `"Label · durasi · Rp · stok"`), varian habis merah (`"❌ … · Habis"`, `style: "danger"`), `"🔔 Kabari saat restok"` bila ada varian habis, serta `[🛍 Katalog | 🏠 Menu]`. Tombol `"📋 Detail & Ketentuan"` dihapus dari kartu produk (handler `terms:*` tetap aktif untuk tombol lama di riwayat chat, dan `[📋 Baca lengkap]` tetap tampil di layar review saat terpotong).
+- **Layar review `"🧾 Baca sebelum bayar"` (`reviewPurchaseMessage` + `handleShowReview`):** di bawah baris `"Jumlah q × Rp = Total"` ditambahkan tepat satu baris pengiriman dari helper kelas pengiriman (`buyerDeliveryKind`): `"⚡ Kirim otomatis setelah bayar"` (`"⚡ Instant delivery after payment"`) atau `"⏳ Diproses admin setelah bayar"` (`"⏳ Processed by admin after payment"`). Blok `"📦 Detail paket"` hanya memakai salinan detail VARIAN, jatuh kembali ke poin deskripsi produk hanya bila varian tidak punya detail paket sendiri (tidak pernah keduanya), dan mende-duplikasi baris identik (case/space-insensitive + NFKC) lintas seksi `Detail paket` / `Cara aktivasi` / `Garansi & ketentuan`.
+
 ## Layar jumlah sederhana & review sebelum bayar Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-QTYREVIEW, lokal)
 
 - **Layar pilih jumlah (`chooseQtyMessage` + `qtyKeyboard`):** diedit di tempat dari kartu produk/varian; format singkat `"<b>{Produk} · {Varian + durasi}</b>\n💰 {harga}/pcs · 📦 Stok {n|∞}"` plus blok `<blockquote>` tier grosir bila aktif, serta `"Minimal pembelian N"` / `"Minimum purchase N"` hanya bila `min > 1`. Tombol: preset baris tunggal `[1][5][10]` atau `[min][min*2][min*5]` (`style: "success"`) tersaring ke rentang `min..max` & stok efektif; `[✍️ Jumlah lain]` (`qinput`, `style: "primary"`, disembunyikan bila batas atas `<= min`); `[◀️ Kembali ke Produk]` (`prd:<pid>`, `style: "primary"` eksplisit agar tidak menuruni hijau `prd`); dan `[🏠 Menu]` (`home`, `style: "primary"`). Tidak ada stepper `➖/➕`, tidak ada tombol `Bayar QRIS` langsung, `Metode pembayaran lain`, maupun `🛒 Keranjang`.

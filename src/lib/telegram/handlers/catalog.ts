@@ -215,49 +215,17 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   // Aggregate stock from variants for display
   trackFunnelEvent({ stage: "view", channel: "telegram", productId, locale: ctx.locale });
   const activeVariants = detail.variants.filter(v => v.is_active).map(v => ({ ...v, stock: effectiveVariantStock(v) }));
-  const purchasable = activeVariants.filter(v => v.stock === -1 || v.stock >= v.min_qty);
-  const purchasableSet = new Set(purchasable.map(v => v.id));
-  const hasUnlimited = purchasable.some(v => v.stock === -1);
-  const totalStock = hasUnlimited ? -1 : purchasable.reduce((sum, v) => sum + v.stock, 0);
-  const minPrice = purchasable.length > 0 ? Math.min(...purchasable.map(v => v.price)) : 0;
-  const maxPrice = purchasable.length > 0 ? Math.max(...purchasable.map(v => v.price)) : 0;
-
-  const comparePrice = productRow.compare_price ? Number(productRow.compare_price) : null;
-  const badge = productRow.badge ? String(productRow.badge) : null;
   const soldCount = productRow.sold_count ? Number(productRow.sold_count) : 0;
-
-  const variantLines = activeVariants.map((v) => {
-    const isBuyable = purchasableSet.has(v.id);
-    const kind = isBuyable ? buyerDeliveryKind(v) : null;
-    const rawLabel = formatVariantLabel(v, ctx.locale);
-    return {
-      label: rawLabel,
-      price: v.price,
-      warranty: isBuyable ? (buyerWarrantyLabel(v) || null) : null,
-      duration: isBuyable ? safeVariantDuration({ ...v, label: rawLabel }, ctx.locale) : null,
-      stock: isBuyable ? v.stock : 0,
-      wr_delivery_class: v.wr_delivery_class ?? null,
-      // Hanya varian yang masih bisa dibeli muncul di blok Pengiriman / summary.
-      delivery_badge: isBuyable ? (kind === "instant" ? "⚡ Kirim otomatis" : "⏳ Made By Order") : null,
-    };
-  });
 
   const imageUrl = detail.image?.startsWith("/") ? `https://axvara.tech${detail.image}` : detail.image ?? "";
   const canTryPhoto = imageUrl.startsWith("https://");
   const text = productDetailMessage({
     name: productDisplayName(detail, ctx.locale),
     description: localizedProductDescription(detail, ctx.locale),
-    price: minPrice,
-    compare_price: comparePrice && comparePrice > maxPrice ? comparePrice : null,
-    stock: totalStock,
-    badge,
     sold_count: soldCount,
-    variants: variantLines,
   }, {
     locale: ctx.locale,
-    ...tgUsdAlternate(minPrice, ctx),
     hasImage: canTryPhoto,
-    formatPrice: (idr) => tgDisplayPrice(idr, ctx),
   });
   const keyboard = variantsKeyboard(productId, activeVariants.map(v => ({
     ...v,
@@ -459,7 +427,13 @@ const BOILERPLATE_DESC_ID = /Detail benefit,\s*syarat,\s*dan cara aktivasi mengi
 const BOILERPLATE_DESC_EN = /Benefit details,\s*terms,\s*and activation steps follow the chosen variant\.?/gi;
 
 function copyLineDedupeKey(text: string): string {
-  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return text
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "")
+    .replace(/^(?:[-–—•·*▪✓✔]+\s*|\d{1,2}[.)]\s+)/u, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 }
 
 function buildReviewCopySections(params: {
@@ -484,29 +458,64 @@ function buildReviewCopySections(params: {
       for (const item of sec.items) addUnique(pkgLines, item, true);
     }
   }
-  for (const block of parsedDesc.blocks) {
-    if (block.type === "p") {
-      const stripped = block.text.replace(BOILERPLATE_DESC_ID, "").replace(BOILERPLATE_DESC_EN, "").trim();
-      if (stripped) addUnique(pkgLines, stripped, false);
-    } else {
-      for (const item of block.items) {
-        const stripped = item.replace(BOILERPLATE_DESC_ID, "").replace(BOILERPLATE_DESC_EN, "").trim();
-        if (stripped) addUnique(pkgLines, stripped, true);
+  // Fall back to product description bullets ONLY when the variant has no
+  // package/process detail of its own; never show both.
+  if (pkgLines.length === 0) {
+    const bulletItems: string[] = [];
+    for (const block of parsedDesc.blocks) {
+      if (block.type === "list") {
+        for (const item of block.items) {
+          const stripped = item.replace(BOILERPLATE_DESC_ID, "").replace(BOILERPLATE_DESC_EN, "").trim();
+          if (stripped) bulletItems.push(stripped);
+        }
       }
     }
-  }
-  for (const sec of parsedDesc.sections) {
-    if (sec.title.trim()) addUnique(pkgLines, `${sec.title.trim()}:`, false);
-    for (const item of sec.items) addUnique(pkgLines, item, true);
+    if (bulletItems.length > 0) {
+      for (const item of bulletItems) addUnique(pkgLines, item, true);
+    } else {
+      for (const block of parsedDesc.blocks) {
+        if (block.type === "p") {
+          const stripped = block.text.replace(BOILERPLATE_DESC_ID, "").replace(BOILERPLATE_DESC_EN, "").trim();
+          if (stripped) addUnique(pkgLines, stripped, false);
+        }
+      }
+    }
+    for (const sec of parsedDesc.sections) {
+      const tempLines: string[] = [];
+      for (const item of sec.items) addUnique(tempLines, item, true);
+      if (tempLines.length > 0) {
+        if (sec.title.trim()) {
+          const titleKey = copyLineDedupeKey(sec.title);
+          if (titleKey && !seen.has(titleKey)) {
+            seen.add(titleKey);
+            pkgLines.push(`${sec.title.trim()}:`);
+          }
+        }
+        pkgLines.push(...tempLines);
+      }
+    }
   }
 
   const activationLines: string[] = [];
   for (const group of merged.activation) {
-    if (group.title?.trim()) activationLines.push(group.title.trim());
-    group.steps.forEach((step, idx) => {
+    const groupSteps: string[] = [];
+    for (const step of group.steps) {
       const cleaned = step.trim();
-      if (cleaned) activationLines.push(`${idx + 1}. ${cleaned}`);
-    });
+      const key = copyLineDedupeKey(cleaned);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      groupSteps.push(`${groupSteps.length + 1}. ${cleaned}`);
+    }
+    if (groupSteps.length > 0) {
+      if (group.title?.trim()) {
+        const titleKey = copyLineDedupeKey(group.title);
+        if (titleKey && !seen.has(titleKey)) {
+          seen.add(titleKey);
+          activationLines.push(group.title.trim());
+        }
+      }
+      activationLines.push(...groupSteps);
+    }
   }
 
   const warrantyLines: string[] = [];
@@ -693,6 +702,7 @@ export async function handleShowReview(
     unitPrice: effectivePrice,
     basePrice: Number(variant.price),
     appliedTierMinQty,
+    deliveryKind: buyerDeliveryKind(variant),
     sections,
   }, {
     locale: ctx.locale,
