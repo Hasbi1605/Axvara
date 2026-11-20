@@ -335,10 +335,9 @@ async function recordAdminPaidTimeout(database: DatabaseAccess, orderCode: strin
  * Membaca `telegram_paid_admin_notified_at IS NULL` saja tidak memagari kiriman
  * langsung yang lambat dari cron: dua pembaca bisa sama-sama mengirim. Klaim
  * memakai kunci ledger yang sama dengan timeout (`admin-paid-timeout:<kode>`)
- * berstatus `sending`. Klaim basi (>2 menit = worker mati) boleh diambil alih;
+ * berstatus `sending`. Klaim worker yang crash bisa diambil alih setelah
+ * deadline lease `access_retry_at` (2 menit), bukan dari umur `updated_at`;
  * cooldown timeout 20 menit (status `failed`) dihormati semua pemanggil. */
-const ADMIN_PAID_CLAIM_STALE_SQL = "-2 minutes";
-
 async function claimAdminPaidSend(database: DatabaseAccess, orderCode: string): Promise<{ lease: string } | null> {
   const lease = crypto.randomUUID();
   const claimed = await database.execRun(
@@ -350,9 +349,9 @@ async function claimAdminPaidSend(database: DatabaseAccess, orderCode: string): 
      ON CONFLICT(idempotency_key) DO UPDATE SET
        status='sending', access_attempts=b.access_attempts+1, access_lease=excluded.access_lease,
        access_retry_at=excluded.access_retry_at, error=NULL, updated_at=datetime('now')
-     WHERE (b.status='sending' AND (b.access_lease IS NULL OR julianday(b.updated_at) <= julianday('now',?)))
-        OR (b.status='failed' AND julianday(b.updated_at) <= julianday('now','-20 minutes'))`,
-    `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, lease, orderCode, ADMIN_PAID_CLAIM_STALE_SQL,
+      WHERE (b.status='sending' AND datetime(b.access_retry_at) <= datetime('now'))
+         OR (b.status='failed' AND julianday(b.updated_at) <= julianday('now','-20 minutes'))`,
+     `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, lease, orderCode,
   ).catch(() => ({ changes: 0 }));
   return claimed.changes ? { lease } : null;
 }

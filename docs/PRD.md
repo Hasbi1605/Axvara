@@ -2323,6 +2323,8 @@ Pending (baru, tunggu verifikasi)
   → Kadaluarsa (WA QRIS 15 menit; Telegram/Web maksimal 1 QR pengganti dan selesai pada deadline QR terakhir; transfer manual 24 jam; stok dikembalikan)
 ```
 
+- **Telegram (FX-3b, implementasi lokal):** tombol QRIS Baru dan retry cron berbagi klaim kirim foto pengganti agar tidak mengirim bersamaan. Batas satu QR pengganti tidak berubah.
+
 ---
 
 ## 4. Katalog Awal (Seed Data)

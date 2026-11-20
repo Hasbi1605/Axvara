@@ -10,7 +10,7 @@ import type { Locale } from "@/lib/i18n/locale";
 import type { InlineKeyboardMarkup, InlineKeyboardButton } from "@/lib/telegram/types";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
-import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
+import { markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
 import { SITE } from "@/lib/site";
 import { marketWarrantyClaim, marketWarrantyClaimEn, warrantyClaimRules } from "@/lib/warranty-policy";
 import { escapeHtml, invoiceItemSummary } from "@/lib/telegram/messages/format";
@@ -383,6 +383,9 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
     return;
   }
 
+  // Reissue resets delivery state; cron may already own the replacement photo.
+  if (await claimProviderInvoiceSend(orderCode, { allowFresh: true }) !== "claimed") return;
+
   // Nama produk dibaca ulang dari snapshot order, bukan dari memori request
   // lama, agar caption selalu cocok dengan apa yang benar-benar dipesan.
   const photo = await sendPhoto({
@@ -405,7 +408,6 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
   if (isCriticalSendResult(photo, "transactional")) {
     // Ledger sudah diperbarui; foto gagal = lempar agar Telegram redelivery
     // dan cron menyapu invoice pending lewat jalur retry yang sudah ada.
-    await markInvoicePending(orderCode);
     // AU-E2-2: penolakan pasti → retry berikutnya boleh langsung (bukan 60 dtk).
     await releaseInvoiceSendClaim(orderCode);
     throw new Error(`telegram_invoice_send_failed:${photo.description || "unknown"}`);

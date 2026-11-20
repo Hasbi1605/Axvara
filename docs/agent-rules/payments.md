@@ -1,5 +1,7 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+- **Foto QRIS Telegram (FX-3b, lokal):** `qrenew:` mengambil klaim foto yang sama dengan checkout, Refresh dan cron setelah ledger QR pengganti sukses diperbarui. Jika klaim aktif atau foto sudah ditandai terkirim, jangan kirim foto lagi. Penolakan pasti melepas stempel klaim; hasil ambigu tetap memakai `settleAmbiguousInvoiceSend`.
+
 ## Bot Telegram TG-POLISH-B — 20 November 2026 (lokal)
 
 - **Cadence pengingat:** `notify_b` dan cron operations memakai `sendPendingOrderReminders`. Invoice pending harus berumur ≥ `max(8 menit, 60% umur total)`, dihitung dari `payment_transactions.invoice_issued_at` (fallback `created_at` transaksi) hingga deadline invoice tersimpan. QRIS 15 menit: maks. 1 pengingat per order, dengan ≤5 menit tersisa; lainnya: maks. `TELEGRAM_REMINDER_MAX`, jarak ≥ `max(10 menit, ⅓ umur total)`. Tidak ada pengingat pada menit terakhir. Predikat waktu diperiksa lagi saat klaim CAS; penanda kirim tetap dicatat sebelum pengiriman agar race tidak mengirim ganda. Interval 60 menit lama hanya membatasi kiriman berikutnya, bukan kiriman pertama (`sent_at IS NULL`).

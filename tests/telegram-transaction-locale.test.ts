@@ -62,7 +62,12 @@ beforeEach(() => {
   vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "tg2c1-fixture");
   vi.stubEnv("USD_IDR_RATE", "16000");
   vi.stubEnv("USD_FX_EFFECTIVE_AT", new Date(Date.now() - 60_000).toISOString());
-  qris.reissue.mockResolvedValue({ ok: true, invoice: { qrisUrl: "https://example.com/re.png", payableAmount: 10001, expiresAt: new Date(Date.now() + 900_000).toISOString() } });
+  qris.reissue.mockImplementation(async (code: string) => {
+    // A successful reissue resets the previous invoice's delivery marker and attempts.
+    fx.sql.prepare(`UPDATE orders SET telegram_invoice_sent_at=NULL, telegram_invoice_attempts=0,
+      updated_at=datetime('now') WHERE code=?`).run(code);
+    return { ok: true, invoice: { qrisUrl: "https://example.com/re.png", payableAmount: 10001, expiresAt: new Date(Date.now() + 900_000).toISOString() } };
+  });
   fx = createD1Fixture();
   seed();
   qris.create.mockImplementation(async (code: string, amount: number) => {
