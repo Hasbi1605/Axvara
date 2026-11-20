@@ -2070,8 +2070,9 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
   hidden di PDP/checkout). Susunan: Beranda · Kategori · Pesanan · Bantuan.
   Tab Kategori = `CategorySheet.tsx` (cermin HelpSheet: solid `#0B1025`,
   focus trap + Escape + scroll lock) berisi Semua + 6 taksonomi (fallback
-  lokal, lalu `/api/categories`); pilih → event `axvara:category` →
-  home-client filter + scroll `#katalog` (dari rute lain via `/?category=`).
+  lokal, lalu `/api/categories`); di beranda pilih → event `axvara:category` →
+  filter + gulir tanpa navigasi. Dari rute lain buka `/?category=<slug>#katalog`
+  (Semua Produk: `/#katalog`).
   Keranjang tetap milik navbar (badge Gold tidak berubah).
 - **Link di artikel bisa diklik (2026-10-03, laporan owner + screenshot).**
   URL di artikel Netflix tampil sebagai `<code>` biru tapi tidak bisa diklik
@@ -2278,6 +2279,9 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
 - **Dialog selalu bertema.** `confirm()`/`alert()` bawaan browser dilarang di
   panel admin — pakai `ConfirmDialog` (hapus) atau toast (error). Dialog OS
   putih-abu di atas panel midnight adalah cacat visual, bukan pilihan.
+  Cabut token agent, tarik satu kredensial, hapus aturan exclusion WR/SK, dan
+  cabut link refund menyebut target tanpa menyalin rahasia; kegagalan tampil
+  dalam dialog agar bisa dicoba ulang tanpa memilih target lagi.
 - **Modal = dialog yang sah.** Setiap overlay wajib `role="dialog"` +
   `aria-modal="true"` + tutup dengan Escape + `body` scroll-lock, mengikuti
   `ConfirmDialog` dan `ProductEditorModal`.

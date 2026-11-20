@@ -30,8 +30,8 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); usePediaSearch.getState().setQ(""); });
-function renderPediaHome(products: PediaCatalogProduct[], ordersEnabled?: boolean) {
-  return render(<><PediaNavbar /><PediaHomeClient products={products} ordersEnabled={ordersEnabled} /></>);
+function renderPediaHome(products: PediaCatalogProduct[]) {
+  return render(<><PediaNavbar /><PediaHomeClient products={products} /></>);
 }
 function search(value: string) { fireEvent.change(screen.getByRole("searchbox", { name: "Cari layanan Pedia" }), { target: { value } }); }
 
@@ -137,7 +137,8 @@ describe("Pedia platform-first storefront", () => {
   });
   it("does not render unsafe or unsaved promotional tagline markup", () => {
     expect(catalogCard({ ...product, tagline: " " }).tagline).toBeNull();
-    render(<PediaHomeClient products={[{ ...product, tagline: '<img src=x onerror="alert(1)">' }]} />);
+    const richProduct: PediaCatalogProduct = { ...product, tagline: '<img src=x onerror="alert(1)">' };
+    render(<PediaHomeClient products={[richProduct]} />);
     expect(document.querySelector('img[src="x"]')).toBeNull();
   });
   it("filters platform groups, searches service names, and recovers from empty search", () => {

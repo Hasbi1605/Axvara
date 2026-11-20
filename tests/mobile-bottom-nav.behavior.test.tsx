@@ -8,11 +8,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LOCAL_ORDERS_KEY, freshPendingCodes, readLocalOrders, settleLocalOrder } from "@/lib/local-orders";
+import { useSearch } from "@/stores/search";
 
-const nav = vi.hoisted(() => ({ pathname: "/" }));
+const nav = vi.hoisted(() => ({ pathname: "/", push: vi.fn() }));
 vi.mock("next/navigation", () => ({
   usePathname: () => nav.pathname,
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: nav.push, replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -26,6 +27,8 @@ function seedLocal(orders: Record<string, unknown>[]) {
 
 beforeEach(() => {
   nav.pathname = "/";
+  nav.push.mockClear();
+  useSearch.getState().setQ("");
   localStorage.clear();
   sessionStorage.clear();
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })));
@@ -62,10 +65,25 @@ describe("bottom nav mobile", () => {
       expect(names.length).toBeGreaterThanOrEqual(7);
       fireEvent.click(within(dialog).getByRole("button", { name: /Streaming & Hiburan/ }));
       expect(seen).toEqual(["streaming-hiburan"]);
+      expect(nav.push).not.toHaveBeenCalled();
       await waitFor(() => expect(screen.queryByRole("dialog", { name: "Kategori" })).toBeNull());
     } finally {
       window.removeEventListener("axvara:category", onCategory);
     }
+  });
+
+  it.each([["Special category", "/?category=a%26b#katalog"], ["Semua Produk", "/#katalog"]])("off-home selection %s navigates to the catalog", async (name, href) => {
+    nav.pathname = "/lacak-pesanan";
+    useSearch.getState().setQ("previous search");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ categories: [{ slug: "a&b", name: "Special category" }] }) })));
+    render(<MobileBottomNav />);
+    fireEvent.click(within(bar()).getByRole("button", { name: "Kategori" }));
+    const dialog = screen.getByRole("dialog", { name: "Kategori" });
+    await within(dialog).findByRole("button", { name: "Special category" });
+    fireEvent.click(within(dialog).getByRole("button", { name }));
+    expect(nav.push.mock.calls).toEqual([[href]]);
+    expect(useSearch.getState().q).toBe("");
+    expect(screen.queryByRole("dialog", { name: "Kategori" })).toBeNull();
   });
 
   it("Kategori: Escape menutup sheet", async () => {

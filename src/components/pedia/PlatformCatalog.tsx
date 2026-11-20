@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import type { PediaCatalogSummary } from "@/lib/pedia/catalog-summary";
 import { PEDIA_GROUPS, PEDIA_PLATFORM_CONFIG, pediaMatches, pediaPlatformSummary } from "@/lib/pedia/platforms";
 import { PlatformIcon } from "./PlatformGrid";
 import { IosIcon } from "@/components/ui/IosIcon";
@@ -17,7 +17,7 @@ function groupLabel(id: string, t: ReturnType<typeof pediaCopy>): string {
 }
 
 /** `headingLevel` 1 pada /pedia/layanan (judul utama halaman); beranda memakai 2 karena hero sudah h1. */
-export function PlatformCatalog({ products, headingLevel = 2 }: { products: PediaCatalogProduct[]; headingLevel?: 1 | 2 }) {
+export function PlatformCatalog({ products, headingLevel = 2 }: { products: PediaCatalogSummary[]; headingLevel?: 1 | 2 }) {
   const Heading = headingLevel === 1 ? "h1" : "h2";
   const [group, setGroup] = useState("");
   const query = usePediaSearch((s) => s.q);

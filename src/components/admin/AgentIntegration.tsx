@@ -2,10 +2,12 @@
 import {useEffect,useState}from"react";
 import { Copy, Plus, Trash2 } from "lucide-react";
 import { formatWibDateTime } from "@/lib/utils";
+import { AsyncConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, Input, Label } from "./ui";
 const scopes=["context:read","articles:read","articles:write","articles:submit","articles:schedule","articles:publish","media:write","audit:read"];
 type Token={id:number;name:string;token_prefix:string;scopes:string[];is_active:number;last_used_at?:string};
 export function AgentIntegration(){
+  const [revoke, setRevoke] = useState<Token | null>(null);
   const[tokens,setTokens]=useState<Token[]>([]),[name,setName]=useState(""),[selected,setSelected]=useState<string[]>(["context:read","articles:read","articles:write","articles:submit","media:write"]),[raw,setRaw]=useState<string|null>(null),[error,setError]=useState<string|null>(null);
   const load=()=>fetch("/api/admin/agent-tokens").then(r=>r.json()).then(j=>setTokens(j.tokens??[]));
   useEffect(()=>{void load()},[]);
@@ -20,6 +22,12 @@ export function AgentIntegration(){
         <Button onClick={create} disabled={!name.trim()||!selected.length} className="w-fit"><Plus aria-hidden="true" /> Buat token</Button>
         {error&&<p role="alert" className="text-sm text-admin-danger">{error}</p>}
       </div>
-      <div className="space-y-2">{tokens.map(t=><div key={t.id} className="flex items-center gap-3 rounded-md border border-admin-border px-4 py-3"><div className="min-w-0 flex-1"><p className="text-sm font-medium text-admin-fg">{t.name} <code className="font-normal text-admin-muted">{t.token_prefix}…</code></p><p className="text-xs text-admin-muted">{t.scopes.join(", ")} · {t.last_used_at?`dipakai ${formatWibDateTime(t.last_used_at)??"—"}`:"belum digunakan"}</p></div>{t.is_active? <Button variant="outline" size="icon" aria-label={`Cabut token ${t.name}`} title="Cabut token" onClick={async()=>{await fetch(`/api/admin/agent-tokens/${t.id}`,{method:"DELETE"});void load()}} className="text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger"><Trash2 aria-hidden="true" /></Button>:<Badge variant="secondary">Revoked</Badge>}</div>)}</div>
+      <div className="space-y-2">{tokens.map(t=><div key={t.id} className="flex items-center gap-3 rounded-md border border-admin-border px-4 py-3"><div className="min-w-0 flex-1"><p className="text-sm font-medium text-admin-fg">{t.name} <code className="font-normal text-admin-muted">{t.token_prefix}…</code></p><p className="text-xs text-admin-muted">{t.scopes.join(", ")} · {t.last_used_at?`dipakai ${formatWibDateTime(t.last_used_at)??"—"}`:"belum digunakan"}</p></div>{t.is_active? <Button variant="outline" size="icon" aria-label={`Cabut token ${t.name}`} title="Cabut token" onClick={() => setRevoke(t)} className="text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger"><Trash2 aria-hidden="true" /></Button>:<Badge variant="secondary">Revoked</Badge>}</div>)}</div>
+      {revoke && <AsyncConfirmDialog title="Cabut token?" description={`Token “${revoke.name}” tidak dapat digunakan lagi.`} confirmLabel="Cabut token" onClose={() => setRevoke(null)} onConfirm={async () => {
+        const res = await fetch(`/api/admin/agent-tokens/${revoke.id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("Gagal mencabut token. Coba lagi.");
+        setTokens(rows => rows.map(row => row.id === revoke.id ? { ...row, is_active: 0 } : row));
+        void load().catch(() => {});
+      }} />}
     </CardContent>
   </Card></section>}

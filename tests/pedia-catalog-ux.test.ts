@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { GET } from "@/app/api/pedia/catalog/route";
+import PediaHome from "@/app/pedia/page";
+import { middleware } from "@/middleware";
+import { NextRequest } from "next/server";
+import { isMetadataRouteFile } from "next/dist/lib/metadata/is-metadata-route";
+import { normalizeMetadataPageToRoute, normalizeMetadataRoute } from "next/dist/lib/metadata/get-metadata-route";
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 async function seed() {
@@ -21,6 +26,58 @@ async function seed() {
   }
   return db;
 }
+
+it("renders Pedia home directly from the public catalog and serializes only search/card data", async () => {
+  const db = await seed();
+  await db.execRun("UPDATE pedia_products SET description_md=?, checklist_json=?", "Detailed service copy ".repeat(100), '[{"id":"private-check","label":"Copy"}]');
+  await db.execRun("UPDATE pedia_tiers SET public_name='IndoSMM Paket A', region='indonesia', terms_md=?", "Detailed terms ".repeat(100));
+  const fetch = vi.fn(() => { throw new Error("Pedia home should not self-fetch"); });
+  vi.stubGlobal("fetch", fetch);
+  const { products } = (await PediaHome()).props;
+  const details = (await (await GET()).json()).products;
+  expect(products).toEqual(details.map(({ slug, platform, metric, name, tiers }: typeof details[number]) => ({
+    slug, platform, metric, name, tiers: tiers.map(({ public_name, region }: typeof tiers[number]) => ({ public_name, region })),
+  })));
+  expect(products[0].tiers).toHaveLength(3);
+  expect(JSON.stringify(products)).not.toMatch(/IndoSMM|Detailed|private-check|prices/);
+  expect(Buffer.byteLength(JSON.stringify(products))).toBeLessThan(Buffer.byteLength(JSON.stringify(details)) / 8);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("does not touch the catalog when Pedia is disabled", async () => {
+  vi.stubEnv("PEDIA_ENABLED", "false");
+  const prepare = vi.fn();
+  vi.stubGlobal("DB", { prepare });
+  const home = await PediaHome();
+  expect(home.type).toBe("div");
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+it("routes Pedia robots and XML sitemap to real handlers; indexes only public, priceable paths", async () => {
+  const db = await seed();
+  await db.execRun("INSERT INTO pedia_products (slug, platform, metric, target_kind, name, is_active) VALUES ('inactive','x','views','post','Inactive',0),('unpriced','youtube','likes','post','Missing price',1)");
+  for (const path of ["/sitemap.xml", "/robots.txt"]) {
+    const response = await middleware(new NextRequest(`https://pedia.axvara.tech${path}`, { headers: { host: "pedia.axvara.tech" } }));
+    expect(response.headers.get("x-middleware-rewrite")).toBe(`https://pedia.axvara.tech/pedia${path}`);
+  }
+  expect(isMetadataRouteFile("/pedia/sitemap.ts", ["ts", "tsx"], true)).toBe(true);
+  expect(normalizeMetadataPageToRoute(normalizeMetadataRoute("/pedia/sitemap"), false)).toBe("/pedia/sitemap.xml/route");
+  const { default: sitemap } = await import("@/app/pedia/sitemap");
+  const urls = (await sitemap()).map(entry => entry.url);
+  expect(urls.sort()).toEqual(["/", "/bantuan", "/ketentuan", "/layanan", "/o/ig", "/p/instagram"].map(path => `https://pedia.axvara.tech${path}`));
+  const { GET: robots } = await import("@/app/pedia/robots.txt/route");
+  const response = robots();
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toMatch(/^text\/plain/);
+  const body = await response.text();
+  expect(body).toContain("Sitemap: https://pedia.axvara.tech/sitemap.xml");
+  expect(body).toContain("Disallow: /admin\nDisallow: /api/\n");
+  for (const line of body.split("\n").filter(line => line.startsWith("Disallow: "))) {
+    expect(urls.some(url => new URL(url).pathname.startsWith(line.slice(10)))).toBe(false);
+  }
+  const { generateMetadata } = await import("@/app/pedia/pesanan/[code]/layout");
+  expect((await generateMetadata()).robots).toMatchObject({ index: false });
+});
 describe("public catalog safe tier packages", () => {
   it("exposes only the saved public tagline and description, without supplier fields", async () => {
     const db = await seed();

@@ -1,27 +1,13 @@
 // src/app/pedia/page.tsx — Beranda Pedia (PD-01, DESIGN §6.1).
 // SSR katalog (≤60 baris, berindeks) — tanpa fetch client untuk katalog.
-import { headers } from "next/headers";
 import { requestLocale } from "@/lib/i18n/server-locale";
 import { pediaCopy } from "@/lib/pedia/copy";
 import { PediaHomeClient } from "./home-client";
-import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { loadPublicPediaProducts } from "@/lib/pedia/public-catalog";
+import { pediaCatalogSummary } from "@/lib/pedia/catalog-summary";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
-
-async function getCatalog(): Promise<PediaCatalogProduct[]> {
-  try {
-    const h = await headers();
-    const host = h.get("x-forwarded-host") ?? h.get("host") ?? "127.0.0.1:3000";
-    const proto = h.get("x-forwarded-proto") ?? "http";
-    const res = await fetch(`${proto}://${host}/api/pedia/catalog`, { next: { revalidate: 60 } });
-    if (!res.ok) return [];
-    const d = await res.json();
-    return d.products ?? [];
-  } catch {
-    return [];
-  }
-}
 
 export default async function PediaHome() {
   // AC-23: flag mati → halaman "Segera hadir", tanpa error.
@@ -38,6 +24,6 @@ export default async function PediaHome() {
       </div>
     );
   }
-  const products = await getCatalog();
-  return <PediaHomeClient products={products} ordersEnabled={process.env.PEDIA_ORDERS_ENABLED === "true"} />;
+  const products = await loadPublicPediaProducts();
+  return <PediaHomeClient products={products.map(pediaCatalogSummary)} />;
 }

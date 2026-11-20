@@ -6,17 +6,17 @@
 // Cermin HelpSheet: bottom-sheet solid #0B1025, focus trap + Escape +
 // scroll lock via useModalA11y, portal ke document.body.
 //
-// Komunikasi ke katalog lewat CustomEvent `axvara:category` (bukan store
-// baru): home-client mendengarkan event ini agar sheet tetap berfungsi walau
-// dibuka dari rute mana pun, tanpa mengikat nav ke state katalog.
+// Di beranda ubah filter lewat event; dari rute lain pakai deep link katalog.
 import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { IosIcon, categoryIcon } from "@/components/ui/IosIcon";
 import { useModalA11y } from "@/hooks/useModalA11y";
-import { categories as fallbackCategories } from "@/lib/products";
+import { categories as fallbackCategories, resolveCategorySlug } from "@/lib/products";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import { marketCategoryName } from "@/lib/i18n/market-categories";
+import { useSearch } from "@/stores/search";
 
 export const AXVARA_CATEGORY_EVENT = "axvara:category";
 
@@ -28,6 +28,8 @@ export function requestCategory(slug: string) {
 type CategoryItem = { slug: string; name: string; icon?: string | null };
 
 export function CategorySheet({ onClose }: { onClose: () => void }) {
+  const pathname = usePathname();
+  const router = useRouter();
   const locale = useDisplayLocale();
   const t = catalogCopy(locale);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -62,7 +64,12 @@ export function CategorySheet({ onClose }: { onClose: () => void }) {
   }, []);
 
   const pick = (slug: string) => {
-    requestCategory(slug);
+    const category = resolveCategorySlug(slug);
+    if (pathname === "/") requestCategory(category);
+    else {
+      useSearch.getState().setQ("");
+      router.push(category === "semua" ? "/#katalog" : `/?category=${encodeURIComponent(category)}#katalog`);
+    }
     onClose();
   };
 

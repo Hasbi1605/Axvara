@@ -6,7 +6,7 @@ import { pediaPageMetadata } from "@/lib/pedia/metadata";
 export const runtime = "edge";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return pediaPageMetadata(await requestLocale(), "order");
+  return { ...pediaPageMetadata(await requestLocale(), "order"), robots: { index: false, follow: false } };
 }
 
 export default function PediaOrderStatusLayout({ children }: { children: React.ReactNode }) {
