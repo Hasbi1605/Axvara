@@ -6,6 +6,17 @@ import { constantTimeEqual } from "@/lib/security";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+/**
+ * Expiry candidates. The `datetime(expires_at) <= datetime('now')` filter plus
+ * the matching ORDER BY let `idx_orders_expires_dt (status, datetime(expires_at))`
+ * serve both the range and the ordering, so a quiet tick reads no pending row
+ * (audit X23-8). It stays a superset of `isExpiredIso()` (millisecond values are
+ * truncated down, legacy space/offset formats normalize the same way), and the
+ * JS filter below remains the authority for the final decision.
+ */
+export const EXPIRED_ORDER_CANDIDATES_SQL =
+  "SELECT code,items,expires_at FROM orders WHERE status='pending' AND expires_at IS NOT NULL AND datetime(expires_at) <= datetime('now') ORDER BY datetime(expires_at) ASC LIMIT 200";
+
 export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: "CRON_SECRET belum dikonfigurasi" }, { status: 503 });
@@ -24,9 +35,7 @@ export async function POST(request: NextRequest) {
   // transaction row never stays `pending` while its order is kadaluarsa
   // (which would pin the unique amount slot forever); that transition is
   // idempotent, so whichever cron reaches such an order first wins.
-  const expiredCandidates = await queryAll(
-    "SELECT code,items,expires_at FROM orders WHERE status='pending' AND expires_at IS NOT NULL ORDER BY expires_at ASC LIMIT 200",
-  );
+  const expiredCandidates = await queryAll(EXPIRED_ORDER_CANDIDATES_SQL);
   const expiredOrders = expiredCandidates.filter((order) => (
     order.status === undefined || order.status === "pending"
   ) && isExpiredIso(order.expires_at));

@@ -220,6 +220,14 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
 - `publish-scheduled` tetap POST path/header existing setiap5menit, kini masuk
   pipeline outcome sebagai soft. Trigger menit, urutan job lite/order, cadence
   katalog dan heavy hourly tidak berubah; tidak ada env/binding baru.
+- Audit X23-8 (21 Nov 2026, cost): cadence 5menit dipertahankan, tetapi query
+  kandidat expiry kini memakai range `datetime(expires_at) <= datetime('now')`
+  dengan `ORDER BY datetime(expires_at)` yang sama sehingga indeks
+  `idx_orders_expires_dt (status, datetime(expires_at))` melayani range + urutan
+  (SEARCH, tanpa temp sort) dan tick sepi tidak membaca baris pending.
+  `isExpiredIso` tetap filter final (superset SQL aman untuk format ISO/legacy).
+  Perubahan query-only: tanpa env, binding, atau perubahan perilaku. Cache
+  homepage/ISR (X23-9) sengaja tidak diubah karena perlu keputusan owner.
 - Non-2xx membawa field JSON `error` (fallback teks), diringkas maksimal120karakter
   sesudah redaksi bearer/token/key/secret dan secret Worker yang diketahui.
   Error jaringan/KV juga diredaksi. Body sukses tetap hanya menentukan `more`.
