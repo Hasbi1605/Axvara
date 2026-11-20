@@ -10,6 +10,7 @@ import { isVariantsReadEnabled } from "@/lib/catalog";
 import { effectiveVariantStockSql, purchasableStockSql } from "@/lib/catalog-availability";
 import { needsCopyReview, resolveVariantCopyDetailed } from "@/lib/product-copy/resolve";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
 import { displaySoldCountSql, notLoserProductSql } from "@/lib/product-groups";
@@ -334,9 +335,9 @@ export async function POST(req: NextRequest) {
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
-  const parsed = productSchema.safeParse(body);
+  const bounded = await readJsonBody(req, 512_000);
+  if (!bounded.ok) return bounded.response.status === 413 ? bounded.response : NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
+  const parsed = productSchema.safeParse(bounded.data);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const { name, slug, description, whatsappAlias, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder, requireEmail, variants } = parsed.data as z.infer<typeof productSchema> & { comparePrice?: number | null };
 

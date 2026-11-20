@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { execRun, getD1, queryAll } from "@/lib/db";
 import { sortCategoriesForDisplay, type OrderableCategory } from "@/lib/product-order";
@@ -13,7 +14,9 @@ const input = z.object({ categoryId: z.number().int().positive(), direction: z.u
 export async function POST(request: NextRequest) {
   if (!checkRateLimit(request, "categories:reorder")) return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   if (!(await requireAdmin(request))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const parsed = input.safeParse(await request.json().catch(() => null));
+  const bounded = await readJsonBody(request, 64_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = input.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) return NextResponse.json({ error: "Permintaan reorder tidak valid." }, { status: 400 });
   const rows = await queryAll("SELECT id, name, slug, sort_order FROM categories ORDER BY sort_order, name, id") as OrderableCategory[];
   const ordered = sortCategoriesForDisplay(rows);

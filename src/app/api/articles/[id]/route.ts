@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { execRun, queryFirst } from "@/lib/db";
 import {
   ARTICLE_STATUSES,
@@ -49,7 +50,9 @@ export async function PUT(
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const parsed = patchSchema.safeParse(await request.json().catch(() => null));
+  const bounded = await readJsonBody(request, 512_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = patchSchema.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Validasi gagal" },

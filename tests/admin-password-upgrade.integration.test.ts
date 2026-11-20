@@ -9,13 +9,14 @@ import { isLegacyStoredHash, resolveAdminStoredHash } from "@/lib/auth";
 
 const PASSWORD = "fixture-correct-password";
 const LEGACY_HASH = createHash("sha256").update(PASSWORD).digest("hex");
+const JWT_SECRET = "admin-password-upgrade-fixture-secret";
 
 let fx: ReturnType<typeof createD1Fixture>;
 
 beforeEach(() => {
   fx = createD1Fixture();
   vi.stubEnv("NODE_ENV", "test");
-  vi.stubEnv("ADMIN_JWT_SECRET", "admin-password-upgrade-fixture-secret");
+  vi.stubEnv("ADMIN_JWT_SECRET", JWT_SECRET);
   vi.stubEnv("ADMIN_EMAIL", "admin@example.test");
   vi.stubEnv("ADMIN_PASSWORD_SHA256", LEGACY_HASH);
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External calls forbidden in auth fixtures"); }));
@@ -31,6 +32,7 @@ function login(ip: string, password: string) {
 }
 
 const storedOverride = () => fx.sql.prepare("SELECT value FROM store_settings WHERE key='admin_password_hash'").get()?.value as string | undefined;
+const setOverride = (value: string) => fx.sql.prepare("INSERT OR REPLACE INTO store_settings (key,value) VALUES ('admin_password_hash',?)").run(value);
 
 it("legacy hash login succeeds once, upgrades the stored hash to PBKDF2, and records the event", async () => {
   expect(isLegacyStoredHash(LEGACY_HASH)).toBe(true);
@@ -79,6 +81,24 @@ it("GET advertises password mode for a legacy hash without leaking the digest", 
   const res = await GET(new NextRequest("https://axvara.test/api/auth/login"));
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ mode: "password" });
+});
+
+it("a JWT secret rotation or missing HMAC key falls back to the env hash", async () => {
+  expect((await login("203.0.113.27", PASSWORD)).status).toBe(200);
+  expect(await resolveAdminStoredHash()).not.toBe(LEGACY_HASH);
+  vi.stubEnv("ADMIN_JWT_SECRET", "rotated-fixture-key");
+  expect(await resolveAdminStoredHash()).toBe(LEGACY_HASH);
+  vi.stubEnv("ADMIN_JWT_SECRET", undefined);
+  expect(await resolveAdminStoredHash()).toBe(LEGACY_HASH);
+});
+
+it("falls back if an override is malformed or its PBKDF2 value is corrupted", async () => {
+  expect((await login("203.0.113.28", PASSWORD)).status).toBe(200);
+  const record = JSON.parse(storedOverride()!) as { source: string; hash: string };
+  setOverride("{not-json");
+  expect(await resolveAdminStoredHash()).toBe(LEGACY_HASH);
+  setOverride(JSON.stringify({ ...record, hash: record.hash.replace(/.$/, (c) => c === "0" ? "1" : "0") }));
+  expect(await resolveAdminStoredHash()).toBe(LEGACY_HASH);
 });
 
 it("D1 unavailability keeps login working from env alone (no upgrade, no crash)", async () => {
