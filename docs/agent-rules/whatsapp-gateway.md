@@ -37,6 +37,11 @@ untuk order historis. `/api/admin/bot/health` melaporkan
 `whatsapp_discovery/payment/proof_intake=false` + `whatsapp_buyer_flows:"retired"`.
 Data order WhatsApp historis tidak diubah/dibersihkan.
 
+Notifikasi LUNAS order WA historis tetap berbagi klaim Telegram dengan order
+Telegram (FX-3b, lokal): cron hanya mengambil alih status `sending` setelah
+`access_retry_at` kedaluwarsa, bukan berdasarkan umur `updated_at`. Cooldown
+20 menit untuk timeout tercatat tidak berubah; tidak ada perubahan transport WA.
+
 Revisi11November2026 (implementasi lokal, deployment belum diverifikasi): hentikan
 notifikasi pembelian berhasil ke grup, termasuk pending/failed lama. Jangan
 mengaktifkan kembali scanner transaksi. Penggantinya katalog ready09.00/17.00 WIB,

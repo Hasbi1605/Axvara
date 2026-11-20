@@ -52,6 +52,18 @@ function seedPendingQrisOrder(code: string) {
     .run(code, code, new Date(Date.now() + 600_000).toISOString());
 }
 
+async function seedRenewableQrisOrder(code: string) {
+  const { calculateCrc16 } = await import("@/lib/payments/dana-qris");
+  const qr = "00020101021153033605802ID6304";
+  vi.stubEnv("DANA_QRIS_ENABLED", "true");
+  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
+  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture");
+  seedPendingQrisOrder(code);
+  fx.sql.prepare(`UPDATE orders SET expires_at=datetime('now','+10 minutes'),
+    telegram_invoice_sent_at=datetime('now','-5 minutes'), telegram_invoice_attempts=1 WHERE code=?`).run(code);
+  fx.sql.prepare(`UPDATE payment_transactions SET expires_at=datetime('now','-1 minute') WHERE order_code=?`).run(code);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   api.send.mockResolvedValue({ ok: true, result: { message_id: 1 } });
@@ -124,6 +136,49 @@ describe("AU-E2-2 QRIS photo pre-send claim", () => {
       .not.toBeNull();
     expect(Number(fx.sql.prepare("SELECT telegram_invoice_attempts FROM orders WHERE code=?").get(code)?.telegram_invoice_attempts))
       .toBe(1);
+  });
+
+  it("cron does not duplicate the renewed photo while qrenew is sending it", async () => {
+    const code = "AXV-20261118-RACE0002";
+    await seedRenewableQrisOrder(code);
+    const { handleCallback } = await import("@/lib/telegram/handlers/callback");
+    const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+    let enter!: () => void;
+    let finish!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const transport = new Promise<void>(resolve => { finish = resolve; });
+    api.photo.mockImplementationOnce(async () => {
+      enter();
+      await transport;
+      return { ok: true, result: { message_id: 1 } };
+    });
+
+    const renew = handleCallback(`qrenew:${code}`, buyer.id, 5, buyer, "cb-renew-race");
+    await Promise.race([entered, renew.then(() => { throw new Error("Renewal returned without sending a photo"); })]);
+    const cron = retryTelegramInvoiceDelivery(code);
+    const retried = await cron.finally(finish);
+    await renew;
+
+    expect(api.photo).toHaveBeenCalledTimes(1);
+    expect(retried).toBe(false);
+    const order = fx.sql.prepare(`SELECT qris_reissue_count, telegram_invoice_attempts, telegram_invoice_sent_at
+      FROM orders WHERE code=?`).get(code);
+    expect(order).toMatchObject({ qris_reissue_count: 1, telegram_invoice_attempts: 1 });
+    expect(order?.telegram_invoice_sent_at).toBeTruthy();
+  });
+
+  it("a definite renewal photo rejection releases the claim for immediate cron retry", async () => {
+    const code = "AXV-20261118-RENEW001";
+    await seedRenewableQrisOrder(code);
+    const { handleQrisRenew } = await import("@/lib/telegram/handlers/orders");
+    const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+    api.photo.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request" });
+
+    await expect(handleQrisRenew(buyer.id, code)).rejects.toThrow("telegram_invoice_send_failed");
+    expect(await retryTelegramInvoiceDelivery(code)).toBe(true);
+    expect(api.photo).toHaveBeenCalledTimes(2);
+    expect(fx.sql.prepare(`SELECT qris_reissue_count, telegram_invoice_attempts FROM orders WHERE code=?`).get(code))
+      .toMatchObject({ qris_reissue_count: 1, telegram_invoice_attempts: 2 });
   });
 });
 

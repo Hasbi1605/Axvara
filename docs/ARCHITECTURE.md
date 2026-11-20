@@ -2700,7 +2700,8 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
     Telegram (ada `error_code`) yang memakai retry di atas; berlaku juga
     untuk Cek Pembayaran dan perpanjangan QRIS di `handlers/orders.ts`.
     Sejak audit 21 November 2026 (AU-E2-2): SETIAP kiriman foto QRIS
-    (checkout awal, cron retry, Cek Pembayaran/Refresh) memakai SATU
+    (checkout awal, cron retry, Cek Pembayaran/Refresh, dan `qrenew:` setelah
+    ledger QR pengganti tersimpan) memakai SATU
     klaim atomik yang sama dengan teks provider — CAS `telegram_invoice_attempts`
     + stempel `updated_at` (jendela freshness 60 dtk, `claimProviderInvoiceSend`);
     invoice yang belum pernah diklaim boleh diambil langsung. Penolakan
@@ -3077,8 +3078,10 @@ atau retry. Notif Telegram/WA memakai `||` sehingga tetap jalan.
   pernah `sent`) dan `ADMIN_PAID_TIMEOUT_COOLDOWN_SQL` (`src/lib/cron-queues.ts`) menahan
   probe `paid_admin` + retry 20 menit. Sejak audit 21 November 2026 (AU-E2-7) kedua
   pengirim admin memakai KLAIM pre-send pada kunci ledger yang sama (status `sending`,
-  lease 2 menit) SEBELUM transport: kiriman langsung yang lambat tidak bisa diduplikasi
-  pass cron yang membaca marker NULL yang sama. Gagal pasti (ditolak) menghapus baris
+  lease 2 menit) SEBELUM transport: cron yang membaca marker NULL tidak dapat
+  mengambil alih sebelum deadline `access_retry_at`, terlepas dari umur `updated_at`.
+  Setelah lease kedaluwarsa cron dapat memulihkan kiriman worker yang crash.
+  Gagal pasti (ditolak) menghapus baris
   klaim (retry tiap run seperti sebelumnya); timeout menyisakan `failed` untuk cooldown;
   sukses menandai `sent`. Cooldown SQL hanya melihat baris `failed`, jadi klaim `sending`
   yang aktif dipagari CAS klaim, bukan oleh penundaan 20 menit.
