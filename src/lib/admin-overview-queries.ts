@@ -8,6 +8,14 @@ export const OVERVIEW_ATTENTION_SQL = `SELECT COUNT(DISTINCT o.code) AS count FR
 WHERE o.status='lunas' AND o.payment_status='paid'
   AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')`;
 
+export const AGED_MANUAL_REQUIRED_WHERE = `o.fulfillment_status='manual_required'
+  AND datetime(COALESCE(o.paid_at,o.created_at)) < datetime('now','-24 hours')`;
+
+export const OVERVIEW_MANUAL_ATTENTION_SQL = `SELECT
+  (SELECT COUNT(*) FROM orders o WHERE o.status='lunas' AND o.payment_status='paid' AND ${AGED_MANUAL_REQUIRED_WHERE}) AS aged_manual_required,
+  (SELECT COUNT(*) FROM games_order_items i CROSS JOIN orders o ON o.code=i.order_code
+   WHERE i.status='needs_check' AND o.order_kind='games' AND o.status='lunas' AND o.payment_status='paid') AS games_needs_check`;
+
 // SATU definisi "Perlu dicek" untuk Rekonsiliasi dan badge overview
 // (keputusan owner 13 November 2026): event QRIS yang masih menunggu tindakan
 // admin. Event yang sudah ditandai "sudah dicek" (reviewed_by terisi lewat

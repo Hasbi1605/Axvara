@@ -317,7 +317,13 @@ async function dispatchOne(db: Db, item: Row, send: GamesTransactionSender, out:
 }
 
 /** SK: belum/tidak terkirim dengan aman → tunda tanpa menghabiskan attempt. */
-async function deferSkItem(db: Db, orderCode: string, attemptNo: number, reason: string): Promise<void> {
+async function deferSkItem(db: Db, orderCode: string, attemptNo: number, refId: string, reason: string, out: Counters): Promise<void> {
+  const aged = await db.queryFirst(`SELECT 1 FROM games_order_items i JOIN orders o ON o.code=i.order_code
+    WHERE i.order_code=? AND datetime(COALESCE(o.paid_at,i.created_at)) <= datetime('now','-24 hours')`, orderCode);
+  if (aged) {
+    if (await failToNeedsCheck(db, orderCode, attemptNo, refId, `preflight_aged: ${reason}`)) out.needs_check++;
+    return;
+  }
   await db.execRun(
     `UPDATE games_order_items SET status='queued', lease_until=datetime('now','+120 seconds'), last_error=?, updated_at=datetime('now')
       WHERE order_code=? AND attempt_no=? AND supplier='sekalipay' AND status='submitting'`,
@@ -342,7 +348,7 @@ async function skAwaitSameRef(db: Db, orderCode: string, attemptNo: number, refI
 async function handleSkPreflightError(db: Db, orderCode: string, attemptNo: number, refId: string, stage: string, error: unknown, out: Counters): Promise<void> {
   const message = error instanceof Error ? error.message : "unknown";
   if (error instanceof SkNetworkError || (error instanceof SkApiError && (error.status >= 500 || error.status === 429))) {
-    await deferSkItem(db, orderCode, attemptNo, `preflight_${stage}:${message}`);
+    await deferSkItem(db, orderCode, attemptNo, refId, `preflight_${stage}:${message}`, out);
     return;
   }
   if (await failToNeedsCheck(db, orderCode, attemptNo, refId, `preflight_${stage}:${message}`)) out.needs_check++;
@@ -391,12 +397,12 @@ async function dispatchSkAfterClaim(db: Db, item: Row, refId: string, out: Count
   // Status/stock live: off/stock0 → tunda backoff, bukan needs_check.
   const liveStatus = detail.status == null ? null : String(detail.status).trim().toLowerCase();
   if (liveStatus !== null && liveStatus !== "on") {
-    await deferSkItem(db, orderCode, attemptNo, `live status ${liveStatus || "kosong"}`);
+    await deferSkItem(db, orderCode, attemptNo, refId, `live status ${liveStatus || "kosong"}`, out);
     return;
   }
   const liveStock = Number(detail.stock);
   if (!Number.isFinite(liveStock) || (liveStock !== -1 && liveStock < 1)) {
-    await deferSkItem(db, orderCode, attemptNo, `live stock tidak tersedia (${String(detail.stock)})`);
+    await deferSkItem(db, orderCode, attemptNo, refId, `live stock tidak tersedia (${String(detail.stock)})`, out);
     return;
   }
   if (detail.min_order !== null && detail.min_order !== undefined
@@ -412,7 +418,7 @@ async function dispatchSkAfterClaim(db: Db, item: Row, refId: string, out: Count
   }
   const liveCost = Math.ceil(Number(detail.price));
   if (!Number.isSafeInteger(liveCost) || liveCost <= 0) {
-    await deferSkItem(db, orderCode, attemptNo, "harga SK tidak terbaca");
+    await deferSkItem(db, orderCode, attemptNo, refId, "harga SK tidak terbaca", out);
     return;
   }
   if (liveCost > Number(item.max_price) || liveCost > Number(item.unit_price)) {
@@ -426,7 +432,7 @@ async function dispatchSkAfterClaim(db: Db, item: Row, refId: string, out: Count
     return handleSkPreflightError(db, orderCode, attemptNo, refId, "balance", error, out);
   }
   if (!Number.isFinite(Number(balance.balance)) || Number(balance.balance) < liveCost) {
-    await deferSkItem(db, orderCode, attemptNo, `saldo SK kurang (${Number(balance.balance) || 0}<${liveCost})`);
+    await deferSkItem(db, orderCode, attemptNo, refId, `saldo SK kurang (${Number(balance.balance) || 0}<${liveCost})`, out);
     return;
   }
 

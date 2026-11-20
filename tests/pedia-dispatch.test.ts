@@ -103,6 +103,7 @@ describe("dispatch exactly-once AC-10/11/12", () => {
     expect(Number(item?.submit_attempts)).toBe(1);
     // Tick ke-7 (sudah needs_check) TIDAK memanggil add lagi.
     expect(adds).toBe(1);
+    expect(await db.queryFirst(`SELECT COUNT(*) AS n FROM buyer_notice_log WHERE idempotency_key='pedia-manual:AXP-T1'`)).toMatchObject({n:1});
   });
 
   it("AC-12: dua tick paralel tidak mengirim dobel (klaim lease atomik)", async () => {

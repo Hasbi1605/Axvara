@@ -1,5 +1,9 @@
 # DESIGN.md — AXVARA Design System
 
+## Status pesanan Games — FX-11 (lokal)
+
+- Refund supplier menampilkan judul “Top up gagal”, badge “Refund oleh admin”, petunjuk refund manual dan tombol WhatsApp existing. Tampilan `needs_check` biasa, kerangka kartu dan token warna tidak berubah. Ringkasan admin menampilkan dua hitungan tindakan terpisah hanya bila lebih dari nol.
+
 ## Status pengiriman Market saat checkout — 20 November 2026 (SB-PAY-FIX, lokal)
 
 - Kartu kuning **Made By Order** hanya tampil bila quote berisi varian antrean. Supplier StoreBat/AIVault/Mirai/TUNVN eligible mengikuti badge pengiriman otomatis di katalog, bukan kartu antrean. Jaspay tetap punya notis proses otomatis terpisah; tidak ada perubahan layout.

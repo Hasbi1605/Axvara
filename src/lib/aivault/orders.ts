@@ -49,7 +49,11 @@ async function settle(db: DatabaseAccess, link: Row, status: string, error: stri
     completed_at=CASE WHEN ?='completed' THEN datetime('now') ELSE completed_at END,updated_at=datetime('now')
     WHERE id=? AND lease_owner=? AND status!='completed'`,status,error,status,status,link.id,link.lease_owner);
   if (!result.changes) return;
-  if (status === "needs_admin") await db.execRun("UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL WHERE aivault_link_id=? AND status NOT IN ('delivered','sending') AND delivered_ciphertext IS NULL AND delivered_iv IS NULL AND EXISTS(SELECT 1 FROM aivault_order_links WHERE id=? AND status='needs_admin' AND lease_owner IS NULL)",link.id,link.id);
+  if (status === "needs_admin") {
+    await db.execRun("UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL WHERE aivault_link_id=? AND status NOT IN ('delivered','sending') AND delivered_ciphertext IS NULL AND delivered_iv IS NULL AND EXISTS(SELECT 1 FROM aivault_order_links WHERE id=? AND status='needs_admin' AND lease_owner IS NULL)",link.id,link.id);
+    const { escalateSupplierManual } = await import("@/lib/fulfillment/supplier-escalation");
+    await escalateSupplierManual(db,String(link.order_code),"aivault",link.id);
+  }
 }
 /** Pre-send failures (no POST yet): auto re-preflight 5x over ~30 min (2,4,8,16 min) before needs_admin; attempt_count untouched. */
 async function retryPreflight(db: DatabaseAccess, link: Row, error: string) {

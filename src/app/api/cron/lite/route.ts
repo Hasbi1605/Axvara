@@ -151,8 +151,8 @@ export async function POST(request: NextRequest) {
     }
     else if (job === "expiry") Object.assign(result, await runExpiry(db));
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db, deadline));
-    else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
-    else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
+    else if (job === "wr_orders") Object.assign(result, await runWrOrders(db, failedCore));
+    else if (job === "sk_orders") Object.assign(result, await runSkOrders(db, failedCore));
     else if (job === "aivault_orders") Object.assign(result, await runAivaultOrders(db, deadline));
     else if (job === "aivault_catalog") {
       const { isAivaultConfigured,isAivaultSyncEnabled }=await import("@/lib/aivault/client");
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
     else if (job === "notify_a") Object.assign(result, await runNotifyA(db, deadline, failedCore));
     else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline, failedCore));
     else if (job === "notify") Object.assign(result, await runNotify(db, deadline, failedCore));
-    else if (job === "cleanup") Object.assign(result, await runCleanup(db));
+    else if (job === "cleanup") Object.assign(result, await runCleanup(db, failedCore));
     else if (job === "games_catalog") {
       // docs/GAMES.md §12.5: katalog baru = Sekalipay Game; Digiflazz tidak lagi
       // dipanggil untuk price-list. Throttle/no-op ada di dalam sync.
@@ -438,13 +438,27 @@ async function runFulfillment(db: Db, deadline: number) {
   return { stale_locks_released: released, due_jobs_processed: processed };
 }
 
-async function runWrOrders(db: Db) {
+function monitorRecovery(db: Db, job: string, out: Record<string, unknown>, failedCore: string[]) {
+  return async <T,>(name: string, run: () => Promise<T>, fallback: T): Promise<T> => {
+    try { return await run(); } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      failedCore.push(name);
+      out.recovery_failed = Number(out.recovery_failed ?? 0) + 1;
+      const { recordSyncError, sanitizeSyncError } = await import("@/lib/sync-status");
+      await recordSyncError(db, `${job}_recovery`, `${name}: ${sanitizeSyncError(error)}`);
+      return fallback;
+    }
+  };
+}
+
+async function runWrOrders(db: Db, failedCore: string[]) {
   const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
   if (!isWrEnabled()) return { skipped: "disabled" };
   const order = await import("@/lib/warung-rebahan/order");
   const out: Record<string, unknown> = {};
-  await order.recoverStaleClaims(db).catch(() => 0);
-  await order.reconcileBlockedBalance(db).catch(() => 0);
+  const recover = monitorRecovery(db, "wr_orders", out, failedCore);
+  await recover("stale_claims", () => order.recoverStaleClaims(db), 0);
+  await recover("blocked_balance", () => order.reconcileBlockedBalance(db, { reportLookupFailure: true }), 0);
   if (process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true") {
     // 2026-10-09 (kasus AXV-20261009-DA1ACF56): link WR tidak pernah dibuat
     // webhook + COUNT due = 0 → `processWrPendingOrders` tidak dipanggil →
@@ -452,13 +466,13 @@ async function runWrOrders(db: Db) {
     // selamanya. Probe yatim WAJIB jalan duluan tanpa gate due (murah: 1
     // SELECT indeks lunas + INSERT OR IGNORE idempoten), hasilnya ikut
     // menentukan gate proses di bawah.
-    const orphanHealed = await order.reconcileMissingWrLinks(db).catch(() => ({ orders: 0, links: 0 }));
+    const orphanHealed = await recover("missing_links", () => order.reconcileMissingWrLinks(db), { orders: 0, links: 0 });
     if (orphanHealed.links > 0) out.orphan_links_healed = orphanHealed.links;
-    const due = await db.queryFirst(
+    const due = await recover("due_lookup", () => db.queryFirst(
       `SELECT COUNT(*) AS n FROM wr_order_links
         WHERE status IN ('pending','retry') AND attempt_count < max_attempts
           AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
-    ).catch(() => null);
+    ), null);
     // Link yatim yang baru dibuat SELALU due (next_attempt_at=now), tapi gate
     // ikut dibuka eksplisit agar tak bergantung pada asumsi itu + hemat 1
     // COUNT berikutnya bila tick ini hanya menyembuhkan.
@@ -476,29 +490,22 @@ async function runWrOrders(db: Db) {
     // secepat SK terasa tanpa menunggu route besar per jam. Gerbang
     // 20 dtk/order di store_settings menjaga biaya tetap; vendor dibaca
     // sekali per tarikan.
-    try {
+    await recover("supplier_refresh", async () => {
       const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
       const fresh = await refreshDueSupplierOrders(db, { limit: 12 });
       if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
-    } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-    }
+    }, undefined);
     // 2 menit, bukan 1 jam (2026-10-10): webhook WR yang hilang/terputus
     // tidak lagi menahan kredensial varian instan sampai route besar jalan.
-    out.reconciled = await order.reconcileStuckWrOrders(db, { minAgeMinutes: 2 }).catch((error) => {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      return 0;
-    });
+    out.reconciled = await recover("stuck_links", () => order.reconcileStuckWrOrders(db, { minAgeMinutes: 2, reportLookupFailure: true }), 0);
     // WR3 Jaspay (bounded, di job wr_orders yang sama — bukan cron baru):
     // link Jaspay ambigu => exact-ref identik / poll invoice dikenal.
     // Premium tak tersentuh; lease existing tetap.
-    try {
+    await recover("jaspay_recovery", async () => {
       const healed = await order.reconcileJaspayAmbiguous(db, 12);
       if (healed.exactRef > 0) out.jaspay_exact_ref = healed.exactRef;
       if (healed.polled > 0) out.jaspay_polled = healed.polled;
-    } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-    }
+    }, undefined);
   }
   const { processDueCredentialDeliveries, requeueOrphanCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
   // Kredensial completed yang tidak pernah diantrekan (completion terputus).
@@ -527,13 +534,17 @@ async function runWrOrders(db: Db) {
   return out;
 }
 
-async function runSkOrders(db: Db) {
+async function runSkOrders(db: Db, failedCore: string[]) {
   const { isSkEnabled } = await import("@/lib/sekalipay/client");
   if (!isSkEnabled()) return { skipped: "disabled" };
   const order = await import("@/lib/sekalipay/order");
   const out: Record<string, unknown> = {};
-  await order.recoverStaleSkClaims(db).catch(() => 0);
-  await order.reconcileBlockedSkBalance(db).catch(() => 0);
+  const recover = monitorRecovery(db, "sk_orders", out, failedCore);
+  // Read-only watchdog is independent of the purchase flag or saturated queue.
+  const aging = await recover("aging_alert", () => order.alertAgingSkOrders(db), 0);
+  if (aging) out.aging_alerted = aging;
+  await recover("stale_claims", () => order.recoverStaleSkClaims(db, { reportLookupFailure: true }), 0);
+  await recover("blocked_balance", () => order.reconcileBlockedSkBalance(db, { reportLookupFailure: true }), 0);
   if (process.env.SEKALIPAY_AUTO_ORDER_ENABLED === "true") {
     // Existing due purchases get first use of the budget. Probe orphans once,
     // independently of queue size. If no buys ran, dispatch healed links now;
@@ -541,10 +552,9 @@ async function runSkOrders(db: Db) {
     const processed = await order.processSkPendingOrders(db, { skipOrphanProbe: true });
     out.processed = processed.processed;
     out.succeeded = processed.succeeded;
-    const orphanHealed = await order.reconcileMissingSkLinks(db).catch((error) => {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      return { orders: 0, links: 0 };
-    });
+    const exhausted = await recover("exhausted_retries", () => order.settleExhaustedSkRetries(db), 0);
+    if (exhausted) out.exhausted_settled = exhausted;
+    const orphanHealed = await recover("missing_links", () => order.reconcileMissingSkLinks(db), { orders: 0, links: 0 });
     if (orphanHealed.links > 0) out.orphan_links_healed = orphanHealed.links;
     if (orphanHealed.links > 0 && processed.processed === 0) {
       const healed = await order.processSkPendingOrders(db, { skipOrphanProbe: true });
@@ -553,14 +563,12 @@ async function runSkOrders(db: Db) {
     }
     // Penjamin status segar bersama (cermin WR di atas): SK yang webhook-nya
     // terlambat ikut tertarik di sini, bukan hanya di route besar.
-    try {
+    await recover("supplier_refresh", async () => {
       const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
       const fresh = await refreshDueSupplierOrders(db, { limit: 12 });
       if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
-    } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-    }
-    out.reconciled = await order.reconcileStuckSkOrders(db).catch(() => 0);
+    }, undefined);
+    out.reconciled = await recover("stuck_links", () => order.reconcileStuckSkOrders(db, { reportLookupFailure: true }), 0);
   }
   // Paid plan: cek saldo SK maks tiap 10 menit (sebelumnya 60 menit hanya di cron/operations :00).
   if (db.canSpend(5)) {
@@ -808,6 +816,14 @@ async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
     }
   };
   const hasTime = (ms: number) => Date.now() + ms <= deadline;
+  // cleanup has no Worker alarm; feed its durable failure into the monitored
+  // notify step without delaying either buyer lane or sending another alert.
+  await guard("maintenance_cleanup", async () => {
+    if (await db.queryFirst(`SELECT 1 FROM store_settings WHERE key='cleanup_recovery_last_error'`)) {
+      throw new Error("maintenance_cleanup_failed");
+    }
+    return "ok";
+  }, true);
   // Protect both buyer lanes from Telegram. PIN gets up to 18s; WA runs next
   // and only claims when the send and its existing anti-ban delay fit.
   const pinDeadline = Math.min(deadline, Date.now() + 18_000);
@@ -851,9 +867,12 @@ async function runNotify(db: Db, deadline: number, failedCore: string[]) {
 
 // cleanup: baris kedaluwarsa (sesi WA, inbox WA 7 hari, event bayar tuntas 30 hari,
 // revokasi sesi admin). Murah dan idempoten.
-async function runCleanup(db: Db) {
+async function runCleanup(db: Db, failedCore: string[]) {
   const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");
-  const cleanup = await runMaintenanceCleanup(db);
+  const out: Record<string, unknown> = {};
+  const recover = monitorRecovery(db, "cleanup", out, failedCore);
+  const cleanup = await recover("maintenance_cleanup", () => runMaintenanceCleanup(db), null);
+  if (cleanup && db.canSpend(1)) await db.execRun(`DELETE FROM store_settings WHERE key='cleanup_recovery_last_error'`);
   // Hourly maintenance uses at most 10 statements. Give the watchdog first
   // access to the remaining budget before the optional recurring/group work.
   let staleness: Record<string, unknown>;
@@ -867,7 +886,7 @@ async function runCleanup(db: Db) {
     const { materializeRecurring } = await import("@/lib/finance/expenses");
     await materializeRecurring(db);
   }
-  if (!db.canSpend(3)) return { ...cleanup, ...staleness };
+  if (!db.canSpend(3)) return { ...out, ...cleanup, ...staleness };
   // Drain WR-only changes and failed VPS pair requests on the existing cron.
   // Critical order work has its own jobs; this drain is bounded and resumable.
   const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
@@ -881,7 +900,7 @@ async function runCleanup(db: Db) {
     } catch { copy.copy_review = { checked: false, error: "check_failed" }; }
   }
   const market = await runCryptoMarketRefresh(db);
-  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...copy, ...market, ...staleness };
+  return { ...out, ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...copy, ...market, ...staleness };
 }
 
 /**

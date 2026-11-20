@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { buyerOrderAccessMatches, newOrderAccessFailure, requiresOrderAccessCode } from "@/lib/order-access";
 import { gamesGameForBrand } from "@/lib/games/registry";
-import { gamesBuyerStatus } from "@/lib/games/status";
+import { gamesBuyerStatus, isGamesManualRefundRequired } from "@/lib/games/status";
 import { gamesPaymentBlock, gamesQrisBlock, loadGamesOrder, maskedContact } from "@/lib/games/lookup";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
 import { gamesVariantName } from "@/lib/games/display-name";
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
         const refreshed = await db.queryFirst("SELECT status,payment_status,paid_at FROM orders WHERE code=?", clean);
         if (refreshed) Object.assign(order, refreshed);
-        const refreshedItem = await db.queryFirst("SELECT status,sn,supplier_message FROM games_order_items WHERE order_code=?", clean);
+        const refreshedItem = await db.queryFirst("SELECT status,sn,supplier_message,last_error FROM games_order_items WHERE order_code=?", clean);
         if (refreshedItem) Object.assign(item, refreshedItem);
       }
     } catch { /* Saved view remains available; cron recovers interrupted work. */ }
@@ -130,6 +130,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       subtotal: order.subtotal,
       status: order.status,
       games_status: status,
+      manual_refund_required: isGamesManualRefundRequired(order, item),
       games_status_raw: item.status,
       sn: success && item.sn != null ? String(item.sn) : null,
       supplier_message: success && item.supplier_message != null ? String(item.supplier_message) : null,

@@ -186,6 +186,16 @@ describe("SK dispatch", () => {
     expect(item(`AXG-20261112-STOCK${String(stock).replace("-", "N")}`).status).toBe("needs_check");
     expect(attempt(`AXG-20261112-STOCK${String(stock).replace("-", "N")}`)[0].request_sent_at).toBeNull();
   });
+  it("FX-11: aged live-stock preflight deferral escalates without a POST", async () => {
+    const code = "AXG-20261112-OLDSTOCK";
+    seedOrder(code, {itemStatus:"queued"});
+    fx.sql.exec("UPDATE orders SET paid_at=datetime('now','-25 hours'); UPDATE games_order_items SET created_at=datetime('now','-25 hours')");
+    stubSk({detail: () => ({id:101, status:"on", price:10000, stock:0, order_process:"h2h"})});
+    await processGamesPaidOrders();
+    expect(item(code).status).toBe("needs_check");
+    expect(attempt(code)[0].request_sent_at).toBeNull();
+    expect(notify).toHaveBeenCalledOnce();
+  });
 
   it("never POSTs twice after a timeout; polls the same ref and marks 404-missing after grace", async () => {
     seedOrder("AXG-20261112-SK000002");

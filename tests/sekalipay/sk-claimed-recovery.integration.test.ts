@@ -405,6 +405,35 @@ describe("SK sent claim recovery — incident 23 October", () => {
       expect(fx.sql.prepare("SELECT status,request_sent_at FROM sk_order_links").get()).toEqual({status:"retry",request_sent_at:null});
     } finally {fx.close();}
   });
+  it("FX-11: three definite temporary rejections fail the paid order",async()=>{
+    const {fx,db}=setup("pending");
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET attempt_count=0");
+      const post=vi.fn(async()=>Response.json({message:"PRODUCT_TEMPORARILY_UNAVAILABLE"},{status:503}));
+      stubFetch(post);
+      for(let i=0;i<4;i++) {
+        fx.sql.exec("UPDATE sk_order_links SET next_attempt_at=datetime('now','-1 minute')");
+        await processSkPendingOrders(db,{skipOrphanProbe:true});
+      }
+      expect(post).toHaveBeenCalledTimes(3);
+      expect(fx.sql.prepare("SELECT status,attempt_count,request_sent_at FROM sk_order_links").get())
+        .toEqual({status:"failed",attempt_count:3,request_sent_at:null});
+      expect(fx.sql.prepare("SELECT fulfillment_status FROM orders").get()?.fulfillment_status).toBe("failed");
+    } finally {fx.close();}
+  });
+  it("FX-11: ages an unresolved SK link without changing status or fence", async () => {
+    const {fx,db}=setup("submitted");
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET request_sent_at=datetime('now','-14 hours')");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED","true");vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID","123");vi.stubEnv("TELEGRAM_BOT_TOKEN","fixture");
+      const send=vi.fn(async()=>Response.json({ok:true,result:{message_id:1}}));
+      vi.stubGlobal("fetch",send);
+      const sk = await import("@/lib/sekalipay/order");
+      await sk.alertAgingSkOrders?.(db);await sk.alertAgingSkOrders?.(db);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(fx.sql.prepare("SELECT status,request_sent_at FROM sk_order_links").get()).toMatchObject({status:"submitted",request_sent_at:expect.any(String)});
+    } finally {fx.close();}
+  });
   it("paid background work binds SK ownership before generic manual fulfillment can settle the item",async()=>{
     const {fx,code}=setup();
     try {

@@ -11,7 +11,7 @@ import { GatewayPaymentPanel } from "@/components/storefront/GatewayPaymentPanel
 import { QrisImage, sameOriginQris } from "@/components/storefront/QrisImage";
 import { InlineSpinner, PediaOrderSkeleton } from "@/components/storefront/Skeletons";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
-import { fillGames, gamesOrderCopy, rememberGamesDeviceOrder } from "@/lib/games/order-copy";
+import { fillGames, gamesManualRefundCopy, gamesOrderCopy, rememberGamesDeviceOrder } from "@/lib/games/order-copy";
 import { readPediaContact, rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 import { normalizePaymentView, paymentMethodLabel } from "@/lib/payment-ui";
@@ -20,7 +20,7 @@ import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { SITE, supportTelegramLink, waHubLink } from "@/lib/site";
 
 type GamesStatus = "awaiting_payment" | "processing" | "success" | "needs_admin" | "expired";
-type Order = { code: string; games_status: GamesStatus; game: { name: string; slug: string } | null; product_name: string; customer_no: string; customer_nickname: string | null; total: number; payment_method: string; sn: string | null; supplier_message: string | null; paid_at?: string | null; payment: unknown; qris: { image_url: string; payable_amount: number; unique_code: number | null; expires_at: string; status: string } | null };
+type Order = { code: string; games_status: GamesStatus; manual_refund_required?: boolean; game: { name: string; slug: string } | null; product_name: string; customer_no: string; customer_nickname: string | null; total: number; payment_method: string; sn: string | null; supplier_message: string | null; paid_at?: string | null; payment: unknown; qris: { image_url: string; payable_amount: number; unique_code: number | null; expires_at: string; status: string } | null };
 const STATUSES: GamesStatus[] = ["awaiting_payment", "processing", "success", "needs_admin", "expired"];
 const terminal = (status: GamesStatus) => status === "success" || status === "expired";
 const pollMs = (status: GamesStatus) => status === "awaiting_payment" ? 5000 : status === "processing" ? 10000 : status === "needs_admin" ? 30000 : null;
@@ -93,6 +93,7 @@ export function GameStatus({ code }: { code: string }) {
   if (!order) return error ? <div className="pt-10 text-center"><p role="alert" className="text-sm text-red-300">{error}</p><button type="button" onClick={() => void load()} className="mt-4 rounded-full bg-[#00E5FF] px-5 py-3 text-sm font-semibold text-[#070a1e]">{t.refresh}</button></div> : <PediaOrderSkeleton label={t.checking} />;
 
   const s = order.games_status;
+  const refund = s === "needs_admin" && order.manual_refund_required === true ? gamesManualRefundCopy[locale] : null;
   const awaiting = s === "awaiting_payment"; const expired = s === "expired"; const paid = !awaiting && !expired;
   const payment = normalizePaymentView(order.payment); const qris = order.qris;
   const qrExpired = Boolean(qris) && (["expired", "failed"].includes(String(qris?.status)) || (parseExpiry(qris?.expires_at ?? "") ?? 0) <= now);
@@ -108,7 +109,7 @@ export function GameStatus({ code }: { code: string }) {
   const timeline = [
     { label: t.steps[0], done: true, active: awaiting },
     { label: t.steps[1], done: paid, active: false },
-    { label: t.steps[2], done: paid, active: s === "processing" || s === "needs_admin" },
+    { label: refund?.title ?? t.steps[2], done: paid && !refund, active: !refund && (s === "processing" || s === "needs_admin") },
     { label: t.steps[3], done: s === "success", active: false },
   ];
   const codeButton = (cls: string) => <button type="button" onClick={() => void copy(order.code)} aria-label={t.copyCode} className={cls}><span className="break-all">{order.code}</span>{copied === order.code ? <Check size={11} aria-hidden="true" className="ml-1 inline" /> : <Copy size={11} aria-hidden="true" className="ml-1 inline opacity-70" />}</button>;
@@ -143,13 +144,13 @@ export function GameStatus({ code }: { code: string }) {
               <img src={visual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: visual.filter }} draggable={false} />
             </span>
           </div>
-          <h1 className="mt-4 font-display text-2xl font-bold text-white">{t.titles[s]}</h1>
+          <h1 className="mt-4 font-display text-2xl font-bold text-white">{refund?.title ?? t.titles[s]}</h1>
           <div className="mt-2">{codeButton("font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]")}</div>
           <div role="status" aria-live="polite" className="mt-3">
-            <span className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${PILL[s]}`}>{t.pills[s]}</span>
+            <span className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${PILL[s]}`}>{refund?.pill ?? t.pills[s]}</span>
             {paid && paidAt && <p className="mt-1.5 text-[11px] text-white/50">{fillGames(t.paidAt, { time: paidAt })}</p>}
           </div>
-          {s !== "awaiting_payment" && <p className="mt-4 text-sm leading-6 text-white/60">{t.leads[s]}</p>}
+          {s !== "awaiting_payment" && <p className="mt-4 text-sm leading-6 text-white/60">{refund?.text ?? t.leads[s]}</p>}
         </>}
 
         {compact && qris && (
@@ -207,7 +208,7 @@ export function GameStatus({ code }: { code: string }) {
 
         {s === "needs_admin" && (
           <div className="mt-6 rounded-2xl border border-violet-400/25 bg-violet-400/[0.06] p-4 text-left text-sm text-white/75">
-            <p className="font-semibold text-white">{t.needsAdminTitle}</p>
+            <p className="font-semibold text-white">{refund?.pill ?? t.needsAdminTitle}</p>
             <a href={help(t.supportMessage)} className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-[#00E5FF] px-4 text-sm font-bold text-[#080C1E]">{t.adminWhatsApp}</a>
           </div>
         )}
@@ -228,7 +229,7 @@ export function GameStatus({ code }: { code: string }) {
               <div className="min-w-0 flex-1"><p className={`text-sm font-semibold ${step.done ? "text-white" : "text-white/45"}`}>{step.label}</p>
                 {i === 0 && <p className="mt-1 text-xs leading-5 text-white/50">{t.stepCodeHint}</p>}
                 {i === 2 && s === "processing" && <p className="mt-1 text-xs leading-5 text-white/50">{t.stepProcessing}</p>}
-                {i === 2 && s === "needs_admin" && <p className="mt-1 text-xs leading-5 text-violet-200/80">{t.stepNeedsAdmin}</p>}
+                {i === 2 && s === "needs_admin" && !refund && <p className="mt-1 text-xs leading-5 text-violet-200/80">{t.stepNeedsAdmin}</p>}
               </div>
             </li>)}
           </ol>

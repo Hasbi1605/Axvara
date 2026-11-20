@@ -9,7 +9,7 @@ import {
 } from "@/lib/order-access";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { gamesGameForBrand } from "./registry";
-import { gamesBuyerStatus } from "./status";
+import { gamesBuyerStatus, isGamesManualRefundRequired } from "./status";
 import { gamesVariantName } from "./display-name";
 
 const QRIS_PROVIDERS = new Set(["dana", "gopay", "klikqris"]);
@@ -106,6 +106,7 @@ export async function lookupGamesOrder(code: string, contactRaw: string, request
       paid_at: order.paid_at != null ? String(order.paid_at) : null,
       status: order.status,
       games_status: status,
+      manual_refund_required: isGamesManualRefundRequired(order, item),
       games_status_raw: item.status,
       game: gameSlug ? { slug: gameSlug, name: gameName, publisher: game?.publisher ?? "" } : null,
       customer_no: String(item.customer_no ?? ""),

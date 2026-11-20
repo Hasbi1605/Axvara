@@ -1,5 +1,11 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 
+export function pediaManualResolutionText(code: string, locale: unknown) {
+  return locale === "en"
+    ? `Pedia order ${code} needs manual resolution. Contact admin with the order code via https://axvara.tech/wa. You do not need to place a new order.`
+    : `Pesanan Pedia ${code} memerlukan penyelesaian manual. Hubungi admin dengan kode pesanan melalui https://axvara.tech/wa. Tidak perlu membuat pesanan ulang.`;
+}
+
 /** A work queue, never a customer balance or a claim that money was refunded.
  * Terminal state and its follow-up commit together; retries preserve resolution.
  */
@@ -48,9 +54,7 @@ export async function notifyPendingPediaFollowups(db: DatabaseAccess) {
     if (buyer.changes === 1) {
       const { sendPediaBuyerMessage } = await import("./notify-channel");
       // Pesan pembeli mengikuti locale order tersimpan; notis admin di atas tetap ID.
-      const text = String(row.locale) === "en"
-        ? `Pedia order ${row.order_code} needs manual resolution. Contact admin with the order code via https://axvara.tech/wa. You do not need to place a new order.`
-        : `Pesanan Pedia ${row.order_code} memerlukan penyelesaian manual. Hubungi admin dengan kode pesanan melalui https://axvara.tech/wa. Tidak perlu membuat pesanan ulang.`;
+      const text = pediaManualResolutionText(String(row.order_code), row.locale);
       await sendPediaBuyerMessage(db, String(row.order_code), text).catch(() => {});
     }
   }

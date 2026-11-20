@@ -1,5 +1,11 @@
 # ARCHITECTURE.md — AXVARA
 
+## Eskalasi order dan recovery cron — FX-11 (lokal)
+
+- `fulfillment/supplier-escalation.ts`: setelah CAS supplier menang, item `manual_required` tetap terminal; agregat paid berubah ketika semua item settled, dan job terminal diantrekan kembali agar manifest diperiksa. Satu klaim `buyer_notice_log` per alarm; timeout Telegram ambigu tidak dikirim ulang. Ringkasan admin menampilkan `aged_manual_required` (>24 jam sejak lunas) dan `games_needs_check`, terpisah dari antrean Market.
+- `cron/lite`: recovery WR/SK yang gagal menambah `recovery_failed` + `failed_subjobs`, menyimpan `*_recovery_last_error` tersanitasi, lalu menjawab 503 tanpa heartbeat sukses. Yield budget bukan error. Kegagalan maintenance tersimpan sebagai `cleanup_recovery_last_error` dan diteruskan ke alarm soft `notify_b` sampai cleanup berhasil; tidak menambah jadwal atau pengiriman Telegram sendiri.
+- API Games status/lookup memberi flag `manual_refund_required` hanya setelah bukti akses pembeli, tanpa mengirim error mentah supplier. Tidak ada refund otomatis.
+
 ## Koreksi storefront FX-4 — 21 November 2026 (lokal)
 
 - Market `/sitemap.xml` dan `/llms.txt` memakai `src/lib/catalog-index.ts`: kecualikan produk arsip/nonaktif, varian yang ditahan kebijakan jual WR, dan slug yang dialihkan PDP ke winner aktif nonarsip. Sitemap tetap memuat produk habis yang tampil; harga AI memakai stok efektif (termasuk inventory unik) dan minimum pembelian. D1 gagal: jangan pakai seed.

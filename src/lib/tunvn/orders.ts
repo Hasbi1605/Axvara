@@ -93,7 +93,11 @@ async function settle(db:DatabaseAccess,link:Row,status:"completed"|"processing"
   const settled=await db.execRun(`UPDATE tunvn_order_links SET status=?,last_error=?,lease_owner=NULL,lease_expires_at=NULL,next_attempt_at=datetime('now',CASE WHEN ?='needs_admin' THEN '+3 minutes' ELSE '+1 minute' END),updated_at=datetime('now'),completed_at=CASE WHEN ?='completed' THEN datetime('now') ELSE completed_at END
     WHERE id=? AND lease_owner=? AND status!='completed'`,status,error,status,status,link.id,link.lease_owner);
   if (!settled.changes) return;
-  if (status==="needs_admin") await db.execRun(`UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL WHERE tunvn_link_id=? AND status NOT IN ('delivered','sending')`,link.id);
+  if (status==="needs_admin") {
+    await db.execRun(`UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL WHERE tunvn_link_id=? AND status NOT IN ('delivered','sending') AND EXISTS(SELECT 1 FROM tunvn_order_links WHERE id=? AND status='needs_admin' AND lease_owner IS NULL)`,link.id,link.id);
+    const { escalateSupplierManual } = await import("@/lib/fulfillment/supplier-escalation");
+    await escalateSupplierManual(db,String(link.order_code),"tunvn",link.id);
+  }
 }
 
 async function preflight(link:Row):Promise<number> {

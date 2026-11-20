@@ -11,6 +11,7 @@ afterEach(() => {
   vi.doUnmock("@/lib/whatsapp/outbox");
   vi.doUnmock("@/lib/whatsapp/promo-digest");
   vi.doUnmock("@/lib/product-copy/review-alert");
+  vi.doUnmock("@/lib/maintenance-cleanup");
   vi.doUnmock("@/lib/payments/market-snapshot-refresh");
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -29,6 +30,38 @@ async function callLite(job: string) {
 }
 
 describe("/api/cron/lite A3-6 core vs optional subjobs and budget yield", () => {
+  it("FX-11: failed maintenance signals the monitored notify job until cleanup recovers", async () => {
+    const fx=createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET","s");
+      const cleanup=vi.fn(async () => { throw new Error("fixture maintenance failure"); });
+      vi.doMock("@/lib/maintenance-cleanup", () => ({ runMaintenanceCleanup: cleanup }));
+      const res=await callLite("cleanup");
+      expect(res.status).toBe(503);
+      expect((await callLite("notify_b")).body).toMatchObject({ok:false,failed_subjobs:["maintenance_cleanup"]});
+      cleanup.mockResolvedValueOnce({} as never);
+      expect((await callLite("cleanup")).status).toBe(200);
+      expect((await callLite("notify_b")).status).toBe(200);
+    } finally {fx.close();}
+  });
+  it("FX-11: reports failed WR/SK recovery while later probes still run", async () => {
+    const fx=createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET","s");
+      for(const [job,prefix,table] of [["wr_orders","WARUNG_REBAHAN","wr_order_links"],["sk_orders","SEKALIPAY","sk_order_links"]]) {
+        vi.stubEnv(`${prefix}_ENABLED`,"true");vi.stubEnv(`${prefix}_AUTO_ORDER_ENABLED`,"false");
+        const original = fx.db.prepare;
+        fx.db.prepare = sql => {
+          if (sql.includes(`UPDATE ${table}`) && sql.includes("stale_claim_recovered")) throw new Error("fixture D1 busy");
+          return original(sql);
+        };
+        const res=await callLite(job);
+        fx.db.prepare=original;
+        expect(res.status).toBe(503);
+        expect(res.body).toMatchObject({ok:false,recovery_failed:1,failed_subjobs:["stale_claims"]});
+      }
+    } finally {fx.close();}
+  });
   it("payments: core NOWPayments pass exception still runs Sekalipay pass and returns 503 without ok heartbeat", async () => {
     const fx = createD1Fixture();
     try {

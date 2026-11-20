@@ -17,7 +17,7 @@ import {
   type ReportSelection,
 } from "@/lib/revenue";
 import { emptySelectedReport, readOverviewFinancialReport, readSelectedFinancialReport, selectedReportFromFinancial } from "@/lib/dashboard-report";
-import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL, PAYMENT_ATTENTION_SQL } from "@/lib/admin-overview-queries";
+import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL, OVERVIEW_MANUAL_ATTENTION_SQL, PAYMENT_ATTENTION_SQL } from "@/lib/admin-overview-queries";
 import { FINANCIAL_SNAPSHOT_TTL_MS } from "@/lib/admin-report-cache";
 import { financeCacheRevision } from "@/lib/finance/payment-fees";
 import { readAdminOverviewSnapshot } from "@/lib/admin-overview-cache";
@@ -61,6 +61,8 @@ const zero = {
   pending_proofs: 0,
   payment_attention: 0,
   fulfillment_attention: 0,
+  aged_manual_required: 0,
+  games_needs_check: 0,
   low_stock: 0,
   top_product: null as null | { name: string; sold_count: number },
   profit_by_supplier: {
@@ -219,7 +221,7 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
   const inWeek = `${paidWeekWib}='${weekWib}'`;
   const inMonth = `${paidMonthWib}='${monthWib}'`;
   const financialPromise = readOverviewFinancialReport(now);
-  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, itemAttention, stock, topProduct, channelRows, financial, selected, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
+  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, manualAttention, itemAttention, stock, topProduct, channelRows, financial, selected, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
     safeFirst(`SELECT
       COUNT(*) AS total_orders,
       SUM(CASE WHEN o.status='pending' THEN 1 ELSE 0 END) AS pending_orders,
@@ -243,6 +245,7 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
     // Satu order dihitung SEKALI walau punya 1 job + N item bermasalah.
     // Item delivered/sending/queued tepat waktu TIDAK dihitung.
     safeFirst(OVERVIEW_ATTENTION_SQL),
+    safeFirst(OVERVIEW_MANUAL_ATTENTION_SQL),
     safeAll(`SELECT fi.status AS status, COUNT(*) AS count FROM fulfillment_items fi INDEXED BY idx_fulfillment_items_next
       CROSS JOIN orders o ON o.code=fi.order_code
       WHERE fi.status IN ('manual_required','retry','failed','queued','sending')
@@ -339,7 +342,9 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
     // delivered tidak pernah dihitung — query di atas hanya memilih status
     // aksi). Rincian per status tersedia di fulfillment_attention_by_status.
     // fulfillment_jobs_raw dipertahankan untuk diagnosis (bukan angka utama).
-    fulfillment_attention: Number(fulfillmentOrdersNeedingAction?.count || 0),
+    fulfillment_attention: Number(fulfillmentOrdersNeedingAction?.count || 0) + Number(manualAttention?.games_needs_check || 0),
+    aged_manual_required: Number(manualAttention?.aged_manual_required || 0),
+    games_needs_check: Number(manualAttention?.games_needs_check || 0),
     fulfillment_jobs_attention: Number(fulfillmentJobsRaw?.count || 0),
     fulfillment_attention_by_status: Object.fromEntries(
       (Array.isArray(itemAttention) ? itemAttention : []).map((row) => [

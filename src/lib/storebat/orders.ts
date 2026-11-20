@@ -52,8 +52,12 @@ async function settle(db: DatabaseAccess, l: Row, status: string, error: string 
   const r = await db.execRun(`UPDATE storebat_order_links SET status=?,last_error=?,lease_owner=NULL,lease_expires_at=NULL,
     next_attempt_at=datetime('now','+'||?||' seconds'),completed_at=CASE WHEN ?='completed' THEN datetime('now') ELSE completed_at END,updated_at=datetime('now')
     WHERE id=? AND lease_owner=? AND status='claimed' AND datetime(lease_expires_at)>datetime('now')`,status,error,delay,status,l.id,l.lease_owner);
-  if (r.changes && status === "needs_admin") await db.execRun(`UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL
-    WHERE storebat_link_id=? AND status NOT IN ('delivered','sending') AND EXISTS(SELECT 1 FROM storebat_order_links WHERE id=? AND status='needs_admin' AND lease_owner IS NULL)`,l.id,l.id);
+  if (r.changes && status === "needs_admin") {
+    await db.execRun(`UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL
+      WHERE storebat_link_id=? AND status NOT IN ('delivered','sending') AND EXISTS(SELECT 1 FROM storebat_order_links WHERE id=? AND status='needs_admin' AND lease_owner IS NULL)`,l.id,l.id);
+    const { escalateSupplierManual } = await import("@/lib/fulfillment/supplier-escalation");
+    await escalateSupplierManual(db,String(l.order_code),"storebat",l.id);
+  }
 }
 const backoff = (l: Row, r?: StorebatRaw) => Math.max(Number(l.attempt_count) <= 1 ? 120 : 240, r?.retryAfter ?? 0);
 const REVIEW = new Set([400,401,402,403,404,409,422]);

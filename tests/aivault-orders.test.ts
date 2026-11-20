@@ -73,6 +73,18 @@ it("stock recovering during auto-retry completes the order without admin",async(
 it("insufficient balance stays an immediate needs_admin without preflight retries",async()=>{
   insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;await tick();expect(link()).toMatchObject({status:"needs_admin",last_error:"insufficient_balance",preflight_attempts:0});
 });
+it("FX-11: a terminal supplier item repairs a delivered aggregate and pages once", async () => {
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});
+  f.sql.exec("UPDATE orders SET fulfillment_status='delivered'");
+  fundable=false;
+  vi.stubEnv("TELEGRAM_BOT_ENABLED","true");vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID","123");vi.stubEnv("TELEGRAM_BOT_TOKEN","fixture");
+  const send=vi.fn(async()=>Response.json({ok:true,result:{message_id:1}}));
+  const original=vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async(url,init)=>String(url).includes("api.telegram.org") ? send() : original(url,init));
+  await tick();await tick();
+  expect(f.sql.prepare("SELECT fulfillment_status FROM orders").get()?.fulfillment_status).toBe("manual_required");
+  expect(send).toHaveBeenCalledTimes(1);
+});
 it("concurrent admin retry queues only the supplier-settled winner",async()=>{
   insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;await tick();fundable=true;
   f.sql.prepare("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')").run();queued.mockClear();

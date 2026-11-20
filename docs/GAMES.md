@@ -993,6 +993,12 @@ webhook tersimpan (`dana_webhook_events` provider `sekalipay_games`).
 
 ### 15.2 Status transaksi SK `refunded`/`cancelled`/`expired` = gagal (18 November 2026, lokal → CI)
 
+FX-11 (lokal): preflight SK yang masih tertunda pada umur paid 24 jam →
+`needs_check` tanpa POST; Ringkasan admin menunjukkan jumlah order paid
+`needs_check` walau notifikasi gagal. Untuk transaksi `refunded`, halaman
+pesanan paid memberi instruksi refund oleh admin via WhatsApp dengan kode
+pesanan. Refund supplier bukan bukti refund pembeli; refund tidak otomatis.
+
 Dipicu order produksi `AXG-20261118-5E9974F2` (ML Weekly Diamond Pass tipe Membership,
 akun region Indonesia): Sekalipay membalas `status: refunded` tanpa hasil H2H/alasan, tetapi
 AXVARA tetap `pending` karena parser hanya mengenali `failed`. Kini `parseSkH2hOutcome`

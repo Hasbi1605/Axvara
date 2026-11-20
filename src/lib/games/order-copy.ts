@@ -92,6 +92,11 @@ const copy = {
 
 export type GamesOrderCopy = (typeof copy)["id"];
 export function gamesOrderCopy(locale: Locale): GamesOrderCopy { return copy[locale]; }
+
+export const gamesManualRefundCopy = {
+  id: { title: "Top up gagal", text: "Pembayaranmu akan dikembalikan oleh admin. Hubungi admin via WhatsApp dan sertakan kode pesanan untuk bantuan refund.", pill: "Refund oleh admin" },
+  en: { title: "Top up failed", text: "An admin will refund your payment. Contact support on WhatsApp with your order code for help with the refund.", pill: "Manual refund" },
+} as const;
 export const fillGames = (text: string, values: Record<string, string | number>) => text.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ""));
 
 /** Riwayat lokal Games (pola Pedia `axp-orders`/`axp-track-recent`). */

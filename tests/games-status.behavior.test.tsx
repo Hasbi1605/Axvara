@@ -57,6 +57,14 @@ describe("Games status and help", () => {
     expect(await screen.findByText("DANA", { selector: "dd" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Hubungi admin via WhatsApp" }).getAttribute("href")).toContain(code);
   });
+  it("FX-11: explains the manual refund and links admin with the order code", async () => {
+    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: "needs_admin", manual_refund_required: true } }) })));
+    render(<GameStatus code={code} />);
+    expect(await screen.findByRole("heading", { name: "Top up gagal" })).toBeTruthy();
+    expect(screen.getByText(/pembayaranmu akan dikembalikan oleh admin/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Hubungi admin via WhatsApp" }).getAttribute("href")).toContain(code);
+  });
   it("shows the crypto asset and its network", async () => {
     sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: "success", payment_method: "nowpayments:usdtbsc", payment: { kind: "crypto", state: "paid", label: "USDT", symbol: "USDT", network_label: "BSC" } } }) })));

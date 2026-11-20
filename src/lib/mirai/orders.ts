@@ -142,6 +142,8 @@ async function settle(
       link.id,
       link.id,
     );
+    const { escalateSupplierManual } = await import("@/lib/fulfillment/supplier-escalation");
+    await escalateSupplierManual(db,String(link.order_code),"mirai",link.id);
   }
 }
 

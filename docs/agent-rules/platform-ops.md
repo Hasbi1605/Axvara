@@ -9,7 +9,12 @@
 - Mode manual memakai jumlah unit unik dalam manifest, bukan jumlah baris
   keranjang; materialisasi bertahap tidak mengirim produk. Perbaikan agregat
   Market hanya untuk manifest lengkap dan seluruh item `delivered`, dengan CAS
-  order + job. Tidak ada backfill produksi atau eskalasi aged-manual baru.
+  order + job. Tidak ada backfill produksi. FX-11 (lokal) menampilkan paid
+  `manual_required` >24 jam dan Games `needs_check` di Ringkasan, bukan ping berulang.
+- FX-11: failure recovery WR/SK di lite masuk alarm hard existing (503 dengan
+  `failed_subjobs`/`recovery_failed` dan `*_recovery_last_error` tersanitasi).
+  Maintenance cleanup melanjutkan subjob independen, mencatat kegagalan dan
+  meneruskan sinyalnya via alarm soft `notify_b` hingga cleanup berhasil.
 
 ### Workers Logs `axvara-mcp` + runbook log Pages — 20 November 2026 (keputusan owner; berlaku setelah rilis CI)
 

@@ -292,6 +292,7 @@ backup dahulu, pertahankan `.env`, snapshot dan direktori idempotensi durable.
 Tes transport memakai MockAgent tanpa jaringan; tidak menambah retry pembelian.
 
 ## Keandalan dispatch supplier — 25 Oktober 2026
+- FX-11 (lokal): penolakan eksplisit SK `PRODUCT_TEMPORARILY_UNAVAILABLE` terakhir → `failed`, eskalasi admin/pembeli; retry lama yang habis hanya disapu bila alasan tersebut tersimpan dan tidak memiliki invoice/sent-fence. Link paid `submitted`/`ordering`/`processing` >13 jam diperingatkan sekali tanpa mengubah status. GET 404/timeout tetap bukan izin replay.
 - Setelah KlikQRIS paid, pekerjaan segera memakai `payments/paid-fulfillment.ts` + Cloudflare `ctx.waitUntil`; jangan mengikat POST supplier pada umur request browser. Materialisasi dan bind WR/SK mendahului fulfillment umum; immediate hanya order yang baru lunas, satu link/supplier, sisanya cron existing.
 - HTTP5xx generik dan receipt tanpa order_id/invoice atau ref SK yang berbeda adalah ambigu: request_sent_at/ref_id dipertahankan, hanya rekonsiliasi. Hanya penolakan eksplisit SK PRODUCT_TEMPORARILY_UNAVAILABLE yang boleh retry biasa. Jangan mengubah404/timeout menjadi izin membeli ulang otomatis.
 - Proxy WR/SK mengembalikan marker `wr_proxy_unreadable_response: network_error` / `sk_proxy_unreadable_response: network_error` untuk respons tulis2xx tak terbaca; kata network mempertahankan kompatibilitas Pages lama saat rollout. Sinkronkan kontrak di AGENTS proxy, README dan ARCHITECTURE.

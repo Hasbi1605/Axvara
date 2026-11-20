@@ -50,6 +50,8 @@ export type AdminOverviewData = {
   pending_proofs: number;
   payment_attention: number;
   fulfillment_attention: number;
+  aged_manual_required?: number;
+  games_needs_check?: number;
   low_stock: number;
   top_product: null | { name: string; sold_count: number };
   channels: { web: number; telegram: number; whatsapp: number };
@@ -255,6 +257,10 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
   const exportActions = !loading && !error && data.selected_report && selection ? (renderReportActions ? renderReportActions({ report: data.selected_report, disabled: false }) : <ReportExportActions report={data.selected_report} disabled={false} />) : null;
   return <div className="mt-4 space-y-6"><PageHeader title="Ringkasan"
     actions={(onRecordExpense || exportActions) ? <div className="flex flex-wrap items-center gap-2">{onRecordExpense && <Button type="button" onClick={onRecordExpense} className="min-h-9 rounded-xl px-3 text-xs font-semibold">+ Catat pengeluaran</Button>}{exportActions}</div> : undefined} />
+    {(Boolean(data.aged_manual_required) || Boolean(data.games_needs_check)) && <section aria-label="Pesanan perlu tindakan" className="text-sm text-admin-muted">
+      {Boolean(data.aged_manual_required) && <p>{data.aged_manual_required} pesanan lunas perlu penanganan manual lebih dari 24 jam.</p>}
+      {Boolean(data.games_needs_check) && <p>{data.games_needs_check} pesanan Games lunas perlu pengecekan di antrean Games.</p>}
+    </section>}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <Tabs value={custom || typeof active !== "string" ? "custom" : active} onValueChange={value => { setCustom(value === "custom"); if (value !== "custom") choose(value as Period); }}><TabsList aria-label="Periode laporan" className="h-auto flex-wrap">
         {(Object.keys(PERIOD_LABEL) as Period[]).map((key) => (

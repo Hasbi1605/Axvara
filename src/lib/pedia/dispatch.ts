@@ -97,11 +97,13 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
   // bersamaan). Bila tidak ada yang terklaim, lanjut ke poll — JANGAN
   // return awal (poll submitted/in_progress tetap harus jalan).
   // A crashed add is ambiguous, even after the proxy dedupe window expires.
-  const recovered = await db.execRun(
+  const recovered = await db.queryAll(
     `UPDATE pedia_order_items SET status='needs_check', last_error='submit interrupted; reconcile before retry', lease_until=NULL
-      WHERE status='submitting' AND (lease_until IS NULL OR datetime(lease_until)<=datetime('now'))`,
+      WHERE order_code IN (SELECT order_code FROM pedia_order_items WHERE status='submitting'
+        AND (lease_until IS NULL OR datetime(lease_until)<=datetime('now')) LIMIT 5) RETURNING order_code, last_error`,
   );
-  out.needsCheck += Number(recovered.changes) || 0;
+  out.needsCheck += recovered.length;
+  for (const item of recovered) await notifyPlainNeedsCheck(db, String(item.order_code), String(item.last_error));
   // Recent missing paid notices are independent of supplier success; existing
   // ledger rows are retried by the bounded sweep below.
   if (db.canSpend(6)) {
@@ -216,13 +218,13 @@ async function dispatchOne(
   db: Db, item: Item, call: ProxyCaller, onPediaCatalogChanged?: () => void,
 ): Promise<"dispatched" | "polled" | "needs_check" | "skipped"> {
   if (!isPediaProvider(item.supplier)) {
-    await toNeedsCheck(db, item.order_code, "invalid_provider");
+    await toNeedsCheck(db, item.order_code, "invalid_provider", item.status);
     return "needs_check";
   }
   const rate = await serviceRate(db, item.supplier, item.supplier_service_id);
   const info = await tierInfo(db, item.tier_id);
   if (rate === null || !info) {
-    await toNeedsCheck(db, item.order_code, "layanan supplier tidak tersedia");
+    await toNeedsCheck(db, item.order_code, "layanan supplier tidak tersedia", "queued");
     return "needs_check";
   }
   // Guard margin di jalur cron (PD-32): hitung dari harga tersimpan (unit)
@@ -246,7 +248,7 @@ async function dispatchOne(
         await bumpCatalogRevision("pedia", db);
       }
     }
-    await toNeedsCheck(db, item.order_code, "margin di bawah minimum (rate naik)");
+    await toNeedsCheck(db, item.order_code, "margin di bawah minimum (rate naik)", "queued");
     return "needs_check";
   }
   // Persist before network I/O. A competing tick cannot submit this item.
@@ -270,15 +272,15 @@ async function dispatchOne(
     // api_error (saldo kurang, quantity invalid dari supplier, dsb) →
     // MANUSIA yang menangani; ambiguous transport failures also stop here.
     if (kind === "api_error") {
-      await toNeedsCheck(db, item.order_code, String(res.supplierMessage || "supplier menolak order").slice(0, 200));
+      await toNeedsCheck(db, item.order_code, String(res.supplierMessage || "supplier menolak order").slice(0, 200), "submitting");
       return "needs_check";
     }
-    await toNeedsCheck(db, item.order_code, `submit ${kind}; reconcile before retry`);
+    await toNeedsCheck(db, item.order_code, `submit ${kind}; reconcile before retry`, "submitting");
     return "needs_check";
   }
   const supplierOrderId = String((res.data as Record<string, unknown>)?.order ?? "");
   if (!supplierOrderId) {
-    await toNeedsCheck(db, item.order_code, "supplier tidak mengembalikan ID order");
+    await toNeedsCheck(db, item.order_code, "supplier tidak mengembalikan ID order", "submitting");
     return "needs_check";
   }
   // Durable successful-submission receipt: status + supplier_order_id persist
@@ -317,7 +319,7 @@ async function pollOne(
 ): Promise<"polled" | "skipped"> {
   if (!item || !(item as unknown as Record<string, unknown>).supplier_order_id) return "skipped";
   if (!isPediaProvider(item.supplier)) {
-    await toNeedsCheck(db, item.order_code, "invalid_provider");
+    await toNeedsCheck(db, item.order_code, "invalid_provider", item.status);
     return "skipped";
   }
   const row = item as unknown as Record<string, unknown>;
@@ -449,14 +451,30 @@ function parseStartCount(raw: unknown): number | null {
   return Number.isSafeInteger(num) && num >= 0 ? num : null;
 }
 
-async function toNeedsCheck(db: Db, orderCode: string, reason: string): Promise<void> {
-  await db.execRun(
+async function toNeedsCheck(db: Db, orderCode: string, reason: string, from: string): Promise<void> {
+  const change = await db.execRun(
     `UPDATE pedia_order_items SET status='needs_check', lease_until=NULL,
-       last_error=?, updated_at=datetime('now') WHERE order_code=?`,
-    reason, orderCode,
-  ).catch(() => null);
+       last_error=?, updated_at=datetime('now') WHERE order_code=? AND status=?`,
+    reason, orderCode, from,
+  );
+  if (change.changes) await notifyPlainNeedsCheck(db, orderCode, reason);
+}
+
+async function notifyPlainNeedsCheck(db: Db, orderCode: string, reason: string) {
   try {
     const { notifyPediaNeedsCheck } = await import("@/lib/pedia/notify");
     await notifyPediaNeedsCheck(db, orderCode, reason).catch(() => null);
   } catch { /* notif best-effort */ }
+  if (!db.canSpend(3)) return;
+  try {
+    // Claim before sending; ambiguous mail acknowledgment must not resend.
+    const claimed = await db.queryFirst(`INSERT INTO buyer_notice_log(idempotency_key,order_code,channel,status)
+      SELECT 'pedia-manual:'||code,code,'email','sending' FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'
+      ON CONFLICT(idempotency_key) DO NOTHING RETURNING order_code`, orderCode);
+    if (!claimed) return;
+    const order = await db.queryFirst("SELECT locale FROM orders WHERE code=?", orderCode);
+    const { pediaManualResolutionText } = await import("./followup");
+    const { sendPediaBuyerMessage } = await import("./notify-channel");
+    await sendPediaBuyerMessage(db, orderCode, pediaManualResolutionText(orderCode, order?.locale));
+  } catch { /* The manual status remains visible even if notice delivery fails. */ }
 }

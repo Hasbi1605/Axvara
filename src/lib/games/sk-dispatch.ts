@@ -347,7 +347,8 @@ export async function applySkTransactionDetail(
   const reason = outcome.message || outcome.kind;
   return markNeedsCheck(db, {
     orderCode, attemptNo, refId: context.refId, message: outcome.message,
-    reason: `${outcome.kind}: ${reason}`, invoice: detailInvoice, actualCost: cost.value, sn: null,
+    reason: outcome.kind === "failed" && lower(detail.status) === "refunded" ? "supplier_refunded" : `${outcome.kind}: ${reason}`,
+    invoice: detailInvoice, actualCost: cost.value, sn: null,
     dispatchStatus: outcome.kind === "mismatch" ? null : outcome.dispatchStatus,
     unitsJson: outcome.kind === "mismatch" ? null : outcome.unitsJson,
     notifyReason: `${outcome.kind}: ${reason}`,

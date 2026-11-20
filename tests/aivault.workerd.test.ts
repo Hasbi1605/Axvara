@@ -35,7 +35,7 @@ it("native workerd D1 batches catalog families, fences concurrent dispatch, and 
     // Compact dispatch fixture: actual AIVault migration/table semantics, no buyer/provider services.
     await db.batch([
       db.prepare("CREATE TABLE orders(id INTEGER PRIMARY KEY,code TEXT UNIQUE,items TEXT,status TEXT DEFAULT 'lunas',payment_status TEXT DEFAULT 'paid',sales_channel TEXT DEFAULT 'web',order_kind TEXT DEFAULT 'apps',supplier_purchase_disabled INTEGER DEFAULT 0)"),
-      db.prepare("CREATE TABLE fulfillment_items(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,product_id INTEGER,variant_id INTEGER,qty INTEGER DEFAULT 1,fulfillment_mode TEXT DEFAULT 'manual',status TEXT DEFAULT 'queued',wr_link_id INTEGER,sk_link_id INTEGER,tunvn_link_id INTEGER,inventory_id INTEGER,aivault_link_id INTEGER,delivered_ciphertext TEXT,delivered_iv TEXT,last_error TEXT,locked_until TEXT)"),
+      db.prepare("CREATE TABLE fulfillment_items(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,product_id INTEGER,variant_id INTEGER,qty INTEGER DEFAULT 1,fulfillment_mode TEXT DEFAULT 'manual',status TEXT DEFAULT 'queued',wr_link_id INTEGER,sk_link_id INTEGER,tunvn_link_id INTEGER,inventory_id INTEGER,aivault_link_id INTEGER,storebat_link_id INTEGER,mirai_link_id INTEGER,delivered_ciphertext TEXT,delivered_iv TEXT,last_error TEXT,locked_until TEXT)"),
       db.prepare("CREATE TABLE fulfillment_jobs(order_code TEXT,status TEXT,attempt_count INTEGER,next_attempt_at TEXT,locked_until TEXT)"),
       db.prepare(String((fixture.sql.prepare("SELECT sql FROM sqlite_master WHERE name='aivault_order_links'").get() as {sql:string}).sql)),
       db.prepare("UPDATE products SET is_active=1"),db.prepare("UPDATE product_variants SET is_active=1"),
