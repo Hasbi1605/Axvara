@@ -918,4 +918,68 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
       { channel: "telegram", status: "unknown", last_error: "delivery_interrupted" },
     ]);
   });
+
+  // AU-E2-6: the queue origin read provider_id BEFORE taking the dispatch
+  // lease. If another dispatcher sent chunk 1 and returned the row to pending
+  // inside that window, the stale snapshot restarted the sender at chunk 0.
+  it("re-reads delivery progress after the lease so accepted chunks are never resent", async () => {
+    vi.useFakeTimers();
+    const t0 = Date.parse("2026-11-19T02:05:00.000Z");
+    vi.setSystemTime(t0);
+
+    const templateId = "88888888-8888-4888-8888-888888888888";
+    const campaignId = "99999999-9999-4999-8999-999999999999";
+    fx.sql
+      .prepare("INSERT INTO broadcast_templates(id,name,title,body,cta_label,cta_url) VALUES(?,?,?,?,?,?)")
+      .run(templateId, "T", "Judul", "Isi", "", "");
+    seedTelegramUsers(1, 931);
+    await launchBroadcast(
+      { id: campaignId, templateId, revision: 1, channels: ["telegram"] },
+      "admin@axvara.tech",
+      createDatabaseAccess(fx.db),
+    );
+    const deliveryId = Number((fx.sql.prepare("SELECT id FROM broadcast_deliveries WHERE campaign_id=?").get(campaignId) as { id: number }).id);
+    const snapshot = JSON.parse(String((fx.sql.prepare("SELECT snapshot_json FROM broadcast_campaigns WHERE id=?").get(campaignId) as { snapshot_json: string }).snapshot_json));
+    snapshot.promo = {
+      kind: "telegram_promo", businessDate: "2026-11-19", slot: "morning",
+      bannerUrl: "https://axvara.tech/banners/ready-promo.jpg", bannerMode: "link_preview",
+      captionHtml: "", messagesHtml: ["<b>Chunk one</b>", "<b>Chunk two</b>"],
+      expiresAt: new Date(t0 + 3_600_000).toISOString(),
+    };
+    fx.sql.prepare("UPDATE broadcast_campaigns SET snapshot_json=? WHERE id=?").run(JSON.stringify(snapshot), campaignId);
+
+    // The competing dispatcher finishes chunk 1 exactly between our pre-lease
+    // read and the lease acquisition (stored as JSON promo progress).
+    let advanced = false;
+    fx.control.beforeRun = async (sql) => {
+      if (advanced || !sql.includes("UPDATE broadcast_dispatch_control SET worker_token")) return;
+      advanced = true;
+      fx.sql.prepare("UPDATE broadcast_deliveries SET provider_id=?, attempts=attempts+1, updated_at=? WHERE id=?")
+        .run(JSON.stringify({ sentChunks: 1, lastMessageId: "m-1" }), new Date(t0).toISOString(), deliveryId);
+    };
+
+    const texts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown, init?: RequestInit) => {
+        const target = String(url);
+        if (!target.includes("api.telegram.org")) throw new Error(`Unexpected fetch: ${target}`);
+        const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+        texts.push(String(body.text ?? ""));
+        return Response.json({ ok: true, result: { message_id: texts.length } });
+      }),
+    );
+
+    const resPromise = postOrigin({ v: 1, kind: "broadcast_deliveries", campaignId, deliveryIds: [deliveryId], attempt: 1 });
+    await vi.runAllTimersAsync();
+    const res = await (await resPromise).json();
+
+    expect(advanced).toBe(true);
+    expect(res).toMatchObject({ ok: true });
+    // Fresh progress: chunk one already accepted → only chunk two is sent.
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain("Chunk two");
+    expect(texts.join("\n")).not.toContain("Chunk one");
+    expect((fx.sql.prepare("SELECT status FROM broadcast_deliveries WHERE id=?").get(deliveryId) as { status: string }).status).toBe("sent");
+  });
 });

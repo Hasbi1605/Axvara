@@ -10,7 +10,7 @@ import type { Locale } from "@/lib/i18n/locale";
 import type { InlineKeyboardMarkup, InlineKeyboardButton } from "@/lib/telegram/types";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
-import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
+import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
 import { SITE } from "@/lib/site";
 import { marketWarrantyClaim, marketWarrantyClaimEn, warrantyClaimRules } from "@/lib/warranty-policy";
 import { escapeHtml, invoiceItemSummary } from "@/lib/telegram/messages/format";
@@ -276,23 +276,32 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
     && order.qris_url && !order.telegram_invoice_sent_at
     && Date.parse(String(order.invoice_expires_at)) > Date.now()) {
     try {
-      const photo = await sendPhoto({
-        chat_id: chatId,
-        photo: String(order.qris_url),
-        caption: invoiceMessage({
-          orderCode,
-          productName: invoiceItemSummary(order.items, locale === "en"),
-          payableAmount: Number(order.payable_amount ?? order.subtotal),
-          expiresAt: String(order.invoice_expires_at),
-          paymentMethod: "qris",
-        }, { locale, chargeNote: true }),
-        parse_mode: "HTML",
-        reply_markup: qrisInvoiceKeyboard(orderCode, { locale }),
-      });
-      // Timeout/jaringan = foto mungkin tetap mendarat; tandai terkirim
-      // agar Cek Pembayaran/cron tidak menggandakan QRIS.
-      if (!photo.ok && !isAmbiguousSendResult(photo)) throw new Error("telegram_invoice_send_failed");
-      await markInvoiceSent(orderCode);
+      // AU-E2-2: Refresh tidak boleh bersaing dengan cron retry untuk foto yang
+      // sama — klaim atomik dulu; "busy" berarti pengirim lain memegangnya.
+      const claim = await claimProviderInvoiceSend(orderCode, { allowFresh: true });
+      if (claim === "claimed") {
+        const photo = await sendPhoto({
+          chat_id: chatId,
+          photo: String(order.qris_url),
+          caption: invoiceMessage({
+            orderCode,
+            productName: invoiceItemSummary(order.items, locale === "en"),
+            payableAmount: Number(order.payable_amount ?? order.subtotal),
+            expiresAt: String(order.invoice_expires_at),
+            paymentMethod: "qris",
+          }, { locale, chargeNote: true }),
+          parse_mode: "HTML",
+          reply_markup: qrisInvoiceKeyboard(orderCode, { locale }),
+        });
+        // Timeout/jaringan = foto mungkin tetap mendarat; tandai terkirim
+        // agar Cek Pembayaran/cron tidak menggandakan QRIS.
+        if (!photo.ok && !isAmbiguousSendResult(photo)) {
+          // Definitif: lepas stempel klaim agar tap berikutnya boleh langsung.
+          await releaseInvoiceSendClaim(orderCode);
+          throw new Error("telegram_invoice_send_failed");
+        }
+        await markInvoiceSent(orderCode);
+      }
     } catch { invoiceFailed = true; }
   }
 
@@ -397,6 +406,8 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
     // Ledger sudah diperbarui; foto gagal = lempar agar Telegram redelivery
     // dan cron menyapu invoice pending lewat jalur retry yang sudah ada.
     await markInvoicePending(orderCode);
+    // AU-E2-2: penolakan pasti → retry berikutnya boleh langsung (bukan 60 dtk).
+    await releaseInvoiceSendClaim(orderCode);
     throw new Error(`telegram_invoice_send_failed:${photo.description || "unknown"}`);
   }
   await markInvoiceSent(orderCode);
@@ -814,25 +825,50 @@ export async function handlePendingWarrantyClaimInput(
     body ? `${locale === "en" ? "Issue" : "Kendala"}: ${escapeHtml(body).slice(0, 1500)}` : (locale === "en" ? "Issue: (screenshot only)" : "Kendala: (hanya screenshot)"),
   ].filter(Boolean);
 
+  // AU-E2-1: Bot API rejections and timeouts return {ok:false} instead of
+  // throwing. Only a CONFIRMED admin delivery may consume the claim: keep
+  // `wclaim:` and write no ledger row (no quota burn) so the buyer can retry.
+  const cannotForward = () => sendMessage({
+    chat_id: chatId,
+    text: locale === "en"
+      ? "Claim was not delivered to admin. Try again or contact admin."
+      : "Klaim belum terkirim ke admin. Coba lagi atau hubungi admin.",
+    parse_mode: "HTML",
+    reply_markup: warrantyClaimKeyboard(code, { locale }),
+  });
+  let textDelivery: { ok: boolean };
   try {
-    await sendMessage({
+    textDelivery = await sendMessage({
       chat_id: adminChatId,
       text: lines.join("\n"),
       parse_mode: "HTML",
     });
-    if (photoFileId) {
-      const { sendPhoto } = await import("@/lib/telegram/api");
-      await sendPhoto({ chat_id: adminChatId, photo: photoFileId, caption: `<code>${escapeHtml(ref)}</code>`, parse_mode: "HTML" });
-    }
   } catch {
-    await sendMessage({ chat_id: chatId, text: locale === "en" ? "Claim could not be forwarded. Try again or contact admin." : "Klaim gagal diteruskan. Coba lagi atau hubungi admin.", parse_mode: "HTML", reply_markup: warrantyClaimKeyboard(code, { locale }) });
+    textDelivery = { ok: false };
+  }
+  if (!textDelivery.ok) {
+    await cannotForward().catch(() => undefined);
     return true;
+  }
+  // Text reached admin. A rejected screenshot is a PARTIAL claim, recorded
+  // distinctly so the ledger never claims a fully delivered submission.
+  let photoDelivered = true;
+  if (photoFileId) {
+    try {
+      const { sendPhoto } = await import("@/lib/telegram/api");
+      const photo = await sendPhoto({ chat_id: adminChatId, photo: photoFileId, caption: `<code>${escapeHtml(ref)}</code>`, parse_mode: "HTML" });
+      photoDelivered = photo.ok === true;
+    } catch {
+      photoDelivered = false;
+    }
   }
   // Record one row per submission (rate limit + audit trail).
   await execRun(
     `INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status, error)
-     VALUES (?, ?, 'telegram', 'sent', 'warranty_claim') ON CONFLICT(idempotency_key) DO NOTHING`,
+     VALUES (?, ?, 'telegram', ?, ?) ON CONFLICT(idempotency_key) DO NOTHING`,
     `tg-wclaim:${code}:${crypto.randomUUID()}`, code,
+    photoDelivered ? "sent" : "failed",
+    photoDelivered ? "warranty_claim" : "warranty_claim_partial",
   ).catch(() => undefined);
   await clearState();
 
@@ -842,7 +878,9 @@ export async function handlePendingWarrantyClaimInput(
       locale === "en" ? "<b>✅ Claim submitted</b>" : "<b>✅ Klaim terkirim</b>",
       `<code>${escapeHtml(ref)}</code>`,
       "",
-      locale === "en" ? "Admin processes claims in 1–3 days. Keep this reference." : "Admin memproses klaim 1–3 hari. Simpan referensi ini.",
+      ...(photoDelivered
+        ? [locale === "en" ? "Admin processes claims in 1–3 days. Keep this reference." : "Admin memproses klaim 1–3 hari. Simpan referensi ini."]
+        : [locale === "en" ? "⚠️ Screenshot was not delivered — resend it via WhatsApp admin." : "⚠️ Screenshot gagal terkirim — kirim ulang lewat WhatsApp admin."]),
     ].join("\n"),
     parse_mode: "HTML",
     reply_markup: {

@@ -330,6 +330,50 @@ async function recordAdminPaidTimeout(database: DatabaseAccess, orderCode: strin
   ).catch(() => undefined);
 }
 
+/** Klaim SEBELUM transport untuk SATU pesan Lunas admin per order (AU-E2-7).
+ *
+ * Membaca `telegram_paid_admin_notified_at IS NULL` saja tidak memagari kiriman
+ * langsung yang lambat dari cron: dua pembaca bisa sama-sama mengirim. Klaim
+ * memakai kunci ledger yang sama dengan timeout (`admin-paid-timeout:<kode>`)
+ * berstatus `sending`. Klaim basi (>2 menit = worker mati) boleh diambil alih;
+ * cooldown timeout 20 menit (status `failed`) dihormati semua pemanggil. */
+const ADMIN_PAID_CLAIM_STALE_SQL = "-2 minutes";
+
+async function claimAdminPaidSend(database: DatabaseAccess, orderCode: string): Promise<{ lease: string } | null> {
+  const lease = crypto.randomUUID();
+  const claimed = await database.execRun(
+    `INSERT INTO buyer_notice_log AS b
+       (idempotency_key, order_code, channel, status, access_attempts, access_lease, access_retry_at)
+     SELECT ?, code, 'telegram', 'sending', 1, ?, datetime('now','+2 minutes')
+     FROM orders WHERE code=? AND sales_channel IN ('telegram','whatsapp')
+       AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL
+     ON CONFLICT(idempotency_key) DO UPDATE SET
+       status='sending', access_attempts=b.access_attempts+1, access_lease=excluded.access_lease,
+       access_retry_at=excluded.access_retry_at, error=NULL, updated_at=datetime('now')
+     WHERE (b.status='sending' AND (b.access_lease IS NULL OR julianday(b.updated_at) <= julianday('now',?)))
+        OR (b.status='failed' AND julianday(b.updated_at) <= julianday('now','-20 minutes'))`,
+    `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, lease, orderCode, ADMIN_PAID_CLAIM_STALE_SQL,
+  ).catch(() => ({ changes: 0 }));
+  return claimed.changes ? { lease } : null;
+}
+
+async function settleAdminPaidClaim(database: DatabaseAccess, orderCode: string, lease: string): Promise<void> {
+  await database.execRun(
+    `UPDATE buyer_notice_log SET status='sent', access_lease=NULL, updated_at=datetime('now')
+     WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
+    `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, lease,
+  ).catch(() => undefined);
+}
+
+/** Gagal pasti (ditolak Telegram): lepas pagar agar run berikutnya mengulang
+ * seperti sebelumnya (cooldown 20 menit hanya untuk timeout). */
+async function releaseAdminPaidClaim(database: DatabaseAccess, orderCode: string, lease: string): Promise<void> {
+  await database.execRun(
+    `DELETE FROM buyer_notice_log WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
+    `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, lease,
+  ).catch(() => undefined);
+}
+
 /** Announce a paid WhatsApp order to the admin group (separate from order-created). */
 export async function notifyWhatsAppPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
   const { queryFirst, execRun } = database;
@@ -352,6 +396,10 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
   const member = String(order.channel_member_id || order.customer_wa || "");
   const paymentMethod = String(order.payment_method || "qris");
   const summary = await adminDeliverySummary(order, database);
+  // AU-E2-7: klaim SEBELUM transport — kiriman langsung yang lambat tidak bisa
+  // diduplikasi oleh pass cron yang membaca marker NULL yang sama.
+  const claim = await claimAdminPaidSend(database, orderCode);
+  if (!claim) return false;
   const sent = await sendMessage({
     chat_id: adminChatId,
     text: adminWhatsAppOrderPaidMessage({
@@ -372,13 +420,20 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
       paidMarket: order.order_kind === "apps",
     }),
   });
-  if (!sent.ok) { await recordAdminPaidTimeout(database, orderCode, sent.description); return false; }
+  if (!sent.ok) {
+    await recordAdminPaidTimeout(database, orderCode, sent.description);
+    if (String(sent.description ?? "") !== "Request timeout") {
+      await releaseAdminPaidClaim(database, orderCode, claim.lease);
+    }
+    return false;
+  }
 
   await execRun(
     `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
      WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
     orderCode,
   );
+  await settleAdminPaidClaim(database, orderCode, claim.lease);
   return true;
 }
 
@@ -402,6 +457,9 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
   const username = String(order.username || "").replace(/^@/, "");
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
   const summary = await adminDeliverySummary(order, database);
+  // AU-E2-7: klaim SEBELUM transport (lihat notifyWhatsAppPaidAdmin).
+  const claim = await claimAdminPaidSend(database, orderCode);
+  if (!claim) return false;
   const sent = await sendMessage({
     chat_id: adminChatId,
     text: adminTelegramOrderPaidMessage({
@@ -423,13 +481,20 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
       paidMarket: order.order_kind === "apps",
     }),
   });
-  if (!sent.ok) { await recordAdminPaidTimeout(database, orderCode, sent.description); return false; }
+  if (!sent.ok) {
+    await recordAdminPaidTimeout(database, orderCode, sent.description);
+    if (String(sent.description ?? "") !== "Request timeout") {
+      await releaseAdminPaidClaim(database, orderCode, claim.lease);
+    }
+    return false;
+  }
 
   await execRun(
     `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
      WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
     orderCode,
   );
+  await settleAdminPaidClaim(database, orderCode, claim.lease);
   return true;
 }
 

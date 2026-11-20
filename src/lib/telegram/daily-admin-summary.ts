@@ -920,7 +920,14 @@ export async function sendDueDailyAdminSummary(
   try {
     data = await collectDailyAdminSummaryData(db, now);
   } catch (error) {
-    if (error instanceof QueryBudgetExceeded) throw error;
+    // CV-3-N1: collect failure must release the claim too (same CAS release as
+    // the send-failure path below). Without it each failed tick burns the 120s
+    // TTL and a persistent query error silently suppresses the whole
+    // 07:00–11:59 WIB window. The error still propagates so cron reports it.
+    if (!(error instanceof QueryBudgetExceeded) && db.canSpend(1)) {
+      const releaseValue = parsed.sent_date ? JSON.stringify({ sent_date: parsed.sent_date }) : "";
+      await casSummaryState(db, claimValue, releaseValue).catch(() => undefined);
+    }
     throw error;
   }
 

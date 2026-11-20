@@ -184,3 +184,74 @@ describe("warranty claim flow (claim → claimstart → forward)", () => {
     expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer))?.pending_action).toBeNull();
   });
 });
+
+// AU-E2-1: Bot API rejections/timeouts are {ok:false}, not throws. Only a
+// confirmed admin delivery may consume the claim or count against the quota.
+describe("warranty claim forward delivery outcome", () => {
+  const claimRows = (code: string) =>
+    fx.sql.prepare("SELECT COUNT(*) AS n FROM buyer_notice_log WHERE idempotency_key LIKE ?").get(`tg-wclaim:${code}:%`)?.n;
+
+  async function startClaim(code: string) {
+    const { handleWarrantyClaimStart } = await import("@/lib/telegram/handlers/orders");
+    insertOrder(code, { status: "lunas", payment: "paid", fulfillment: "delivered" });
+    await handleWarrantyClaimStart(buyer, 1, code, { id: buyer, first_name: "B" });
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer))?.pending_action).toBe(`wclaim:${code}`);
+    api.send.mockClear();
+  }
+  const buyerTexts = () => api.send.mock.calls
+    .filter(([p]) => String(p.chat_id) === String(buyer))
+    .map(([p]) => String(p.text));
+
+  it("definitive rejection keeps the claim retryable (no ledger row, state kept)", async () => {
+    const { handlePendingWarrantyClaimInput } = await import("@/lib/telegram/handlers/orders");
+    const code = "AXV-20261118-CLAM0010";
+    await startClaim(code);
+    api.send.mockImplementation(async (p: { chat_id: string | number }) => String(p.chat_id) === "999"
+      ? { ok: false, error_code: 403, description: "Forbidden: bot was blocked by the user" }
+      : { ok: true, result: { message_id: 1 } });
+
+    expect(await handlePendingWarrantyClaimInput("Akun tidak bisa login", buyer, { id: buyer, first_name: "B" })).toBe(true);
+    expect(claimRows(code)).toBe(0);
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer))?.pending_action).toBe(`wclaim:${code}`);
+    expect(buyerTexts().some((t) => t.includes("belum terkirim"))).toBe(true);
+    expect(api.photo).not.toHaveBeenCalled();
+  });
+
+  it("accepted text + rejected photo records a PARTIAL claim, never full sent", async () => {
+    const { handlePendingWarrantyClaimInput } = await import("@/lib/telegram/handlers/orders");
+    const code = "AXV-20261118-CLAM0011";
+    await startClaim(code);
+    api.photo.mockResolvedValue({ ok: false, error_code: 400, description: "Bad Request: wrong file identifier" });
+
+    expect(await handlePendingWarrantyClaimInput("Bukti error", buyer, { id: buyer, first_name: "B" }, "photo-file-id")).toBe(true);
+    const row = fx.sql.prepare("SELECT status, error FROM buyer_notice_log WHERE idempotency_key LIKE ?").get(`tg-wclaim:${code}:%`);
+    expect(row).toMatchObject({ status: "failed", error: "warranty_claim_partial" });
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer))?.pending_action).toBeNull();
+    expect(buyerTexts().some((t) => t.includes("Screenshot gagal terkirim"))).toBe(true);
+  });
+
+  it("timeout is ambiguous: not counted as sent and the claim stays retryable", async () => {
+    const { handlePendingWarrantyClaimInput } = await import("@/lib/telegram/handlers/orders");
+    const code = "AXV-20261118-CLAM0012";
+    await startClaim(code);
+    api.send.mockImplementation(async (p: { chat_id: string | number }) => String(p.chat_id) === "999"
+      ? { ok: false, description: "Request timeout" }
+      : { ok: true, result: { message_id: 1 } });
+
+    expect(await handlePendingWarrantyClaimInput("Kendala timeout", buyer, { id: buyer, first_name: "B" })).toBe(true);
+    expect(claimRows(code)).toBe(0);
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer))?.pending_action).toBe(`wclaim:${code}`);
+    expect(buyerTexts().some((t) => t.includes("Klaim terkirim") && !t.includes("belum terkirim"))).toBe(false);
+  });
+
+  it("fully delivered claim still records sent and clears the state", async () => {
+    const { handlePendingWarrantyClaimInput } = await import("@/lib/telegram/handlers/orders");
+    const code = "AXV-20261118-CLAM0013";
+    await startClaim(code);
+    expect(await handlePendingWarrantyClaimInput("Bukti lengkap", buyer, { id: buyer, first_name: "B" }, "photo-file-id")).toBe(true);
+    expect(fx.sql.prepare("SELECT status, error FROM buyer_notice_log WHERE idempotency_key LIKE ?").get(`tg-wclaim:${code}:%`))
+      .toMatchObject({ status: "sent", error: "warranty_claim" });
+    expect(api.photo).toHaveBeenCalledTimes(1);
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer))?.pending_action).toBeNull();
+  });
+});

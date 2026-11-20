@@ -220,6 +220,10 @@ export async function sendQrisExpiryNotifications(
         || (!row.provider && /^(nowpayments|sekalipay_gateway):/.test(String(row.payment_method ?? "")))) {
         // R3: gateway/crypto terminal order — generic localized notice, no QRIS
         // copy, no renew button/photo/details. The log row is the sent marker.
+        // RV-1: this notice is its own Telegram send (claim + send + settle); in
+        // notify_b it runs BEFORE reminders/restock, so re-check the phase
+        // deadline right here instead of starting a send that would overrun.
+        if (options.hasTime && !options.hasTime()) break;
         if (!await sendNewRailTerminalNotice(database, row)) continue;
         sent++;
         continue;

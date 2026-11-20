@@ -353,3 +353,43 @@ describe("cart snapshot cleanup and payment-safe compensation", () => {
     expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM operation_guards").get()?.n).toBe(0);
   });
 });
+
+// AU-E2-8: the relative ±1 write happens BEFORE rendering the cart screen. A
+// transient render failure makes the update retryable; the redelivered update
+// must not apply the same delta twice (journal keyed by update_id).
+describe("cart control idempotency per Telegram update", () => {
+  const qty = () => fixture.sql.prepare("SELECT qty FROM telegram_carts WHERE variant_id=1").get()?.qty;
+
+  it("a redelivered cinc applies the increment once and a new tap still works", async () => {
+    const { handleCartAdjust } = await import("@/lib/telegram/handlers/cart");
+    seedVariant(1);
+    await addToCart("42", 1, 1, 1);
+
+    vi.mocked(safeEditOrSend).mockResolvedValueOnce({ ok: false, error_code: 502, description: "Bad Gateway" } as never);
+    await expect(handleCartAdjust(42, 7, buyer, 1, +1, { updateId: "700001" }))
+      .rejects.toThrow(/telegram_send_failed/);
+    expect(qty()).toBe(2);
+
+    // Redelivery of the SAME update: renders again, does not increment again.
+    await handleCartAdjust(42, 7, buyer, 1, +1, { updateId: "700001" });
+    expect(qty()).toBe(2);
+
+    // A genuinely new tap is applied.
+    await handleCartAdjust(42, 7, buyer, 1, +1, { updateId: "700002" });
+    expect(qty()).toBe(3);
+    expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM buyer_notice_log WHERE idempotency_key LIKE 'tg-cart:%'").get()?.n).toBe(2);
+  });
+
+  it("a redelivered cdec does not decrement twice", async () => {
+    const { handleCartAdjust } = await import("@/lib/telegram/handlers/cart");
+    seedVariant(1);
+    await addToCart("42", 1, 1, 3);
+
+    vi.mocked(safeEditOrSend).mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
+    await expect(handleCartAdjust(42, 7, buyer, 1, -1, { updateId: "700003" }))
+      .rejects.toThrow(/telegram_send_failed/);
+    expect(qty()).toBe(2);
+    await handleCartAdjust(42, 7, buyer, 1, -1, { updateId: "700003" });
+    expect(qty()).toBe(2);
+  });
+});
