@@ -697,6 +697,15 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
   non-arsip di luar grup, atau `10` jika kosong), mengabaikan `sortOrder` payload, dan
   menyebarkan `category_id` + `sort_order` ke seluruh anggota grup. Sync WR/SK/TUNVN/AIVault
   tidak pernah menulis ulang `category_id`/`sort_order` produk existing (hanya saat INSERT baru).
+- Migrasi0152 (21 Nov 2026, audit AU-G2-3): `drizzle/migrations/0152_product_group_member_update_guard.sql`
+  (selaras `drizzle/schema.sql`) menambah trigger `pg_member_valid_update`
+  (`BEFORE UPDATE OF product_id`, `WHEN NEW.product_id IS NOT OLD.product_id`)
+  yang mencerminkan guard INSERT: produk arsip/tidak ada → `invalid_group_product`.
+  Sebelumnya hanya INSERT yang dijaga sehingga UPDATE anggota bisa menunjuk
+  produk arsip. Aplikasi mengubah keanggotaan lewat delete+insert
+  (`src/lib/product-groups.ts`), jadi tidak ada alur admin yang bergantung pada
+  UPDATE tanpa guard; mengarsipkan produk anggota tetap boleh (mengubah
+  `products`, bukan anggota) dan baris anggota arsip tetap difilter logika winner.
 - Migrasi menyalin 33 pasangan lama, prefer/winner lama ke ID produk, lalu
   mengganti MBO→Jaspay di grup: Zoom15→113, Express VPN20→121, Wink25→115,
   Meitu26→114. Guard ID+nama kedua produk dan keanggotaan mencegah salah target.
@@ -2532,7 +2541,7 @@ R2 bucket: axvara-assets
 ### Jalur CI/CD
 
 1. `npx wrangler d1 create axvara-db`
-2. Database baru: `npx wrangler d1 execute axvara-db --file=./drizzle/schema.sql --remote`; database lama jalankan migrasi `0002`, `0003_checkout_integrity.sql`, lalu `0004_categories_newsletter.sql`
+2. Database baru: `npx wrangler d1 execute axvara-db --file=./drizzle/schema.sql --remote`, lalu tandai baseline lewat `node scripts/d1-fresh-init.cjs --print-baseline`/`--emit-sql` (lihat §Bootstrap di bawah); database lama jalankan migrasi `0002`, `0003_checkout_integrity.sql`, lalu `0004_categories_newsletter.sql`
 3. `npx wrangler r2 bucket create axvara-assets`
 4. Push ke `main` (kecuali commit yang hanya menyentuh `docs/**`/`*.md`, dilewati `paths-ignore`; runner = repo variable `CI_RUNS_ON` JSON atau `ubuntu-latest`, timeout 30 mnt); `.github/workflows/ci.yml` menjalankan test → type-check → build Pages → `wrangler d1 migrations apply` → deploy Pages → deploy MCP Worker
 5. GitHub Actions menggunakan Secrets `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, dan `CLOUDFLARE_ACCOUNT_ID`; Git integration bawaan Pages tidak menjalankan deployment agar CI/CD tidak ganda
@@ -2541,6 +2550,43 @@ R2 bucket: axvara-assets
 8. Secrets Pages: `ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256`, `ADMIN_JWT_SECRET`, `CRON_SECRET`, dan `WHATSAPP_WEBHOOK_TOKEN`; URL service Baileys disimpan sebagai `WHATSAPP_GATEWAY_URL`. Nilai `ADMIN_PASSWORD_SHA256` memakai format PBKDF2/SHA-256; satu pasang quote pembungkus dari paste shell/JSON dinormalisasi sebelum verifikasi. Pada hash PBKDF2, browser membentuk proof HMAC atas challenge JWT berlaku 5 menit; Pages memverifikasi proof secara ringan tanpa menjalankan derivasi PBKDF2 berat.
    - Audit AU-B1-1 (21 Nov 2026): hash legacy SHA-256 diterima, tetapi login sukses pertama (jalur password) menggantinya dengan PBKDF2 dan menyimpan `{source,hash}` di D1 `store_settings.admin_password_hash`; `resolveAdminStoredHash` memakainya bila `source` cocok dengan `ADMIN_PASSWORD_SHA256` saat ini. Rotasi secret env tetap menang. Detail di `docs/agent-rules/admin-security.md`.
    - Audit AU-B1-2 (21 Nov 2026): `authenticateWebhook` (WA) header-only (`x-webhook-token`/Bearer); token query/body dihapus. AU-B1-3: seluruh route `src/app/api/admin/**` memakai `readJsonBody`/`readTextBody` dengan cap per kelas (2–8 KB, 64 KB batch, 512 KB import) → oversize 413. Detail di `docs/agent-rules/{admin-security,whatsapp-gateway}.md`.
+
+### Bootstrap database baru — schema.sql + baseline ledger (audit AU-G2-1, 21 Nov 2026)
+
+Dua jalur skema tidak saling menggantikan. Migrasi historis **tidak** dapat
+diputar ulang pada DB kosong (`0002_editorial_agent.sql` mengasumsikan tabel
+dasar yang mendahului repo; beberapa migrasi lain sengaja non-idempoten —
+`0139_storebat_supplier.sql` satu-satunya `CREATE TABLE`/`INDEX`/`TRIGGER`
+tanpa `IF NOT EXISTS`, jadi jangan pernah diedit atau di-replay, cukup dicakup
+ledger). `drizzle/schema.sql` adalah satu-satunya bootstrap DB baru.
+
+DB hasil bootstrap terlihat "kosong" bagi ledger Wrangler (`d1_migrations`
+belum ada), sehingga `wrangler d1 migrations apply` akan mencoba memutar
+`0002..` dan gagal. Handoff eksplisit:
+
+- `drizzle/bootstrap-baseline.json` — manifest checked-in berisi nama file
+  migrasi yang sudah terwakili `schema.sql` (sampai `schema_through`) + sha256
+  `schema.sql`. Regenerasi hanya dengan `node scripts/d1-fresh-init.cjs
+  --print-baseline` setelah sengaja mengubah schema/migrasi.
+- `scripts/d1-fresh-init.cjs` — initializer DB **baru** saja: `--db <file>
+  --check` (dry-run), `--db <file> --apply` (schema.sql + validasi
+  FK/integritas/objek kritis, lalu menulis baris baseline ke `d1_migrations`),
+  `--emit-sql <file>` (skrip SQL untuk `wrangler d1 execute --file`),
+  `--print-baseline`. Menolak (fail closed) bila DB tidak kosong atau ledger
+  sudah berisi baris; manifest yang tidak cocok dengan file/sha256 juga menolak.
+- Hasil terverifikasi lokal (wrangler `--local`): setelah init `wrangler d1
+  migrations list` = "No migrations to apply!"; file sintetis berikutnya muncul
+  sebagai satu-satunya pending, `d1 migrations apply` menjalankannya tepat satu
+  kali, dan run berikutnya no-op.
+- `tests/d1-bootstrap-fresh.test.ts` (jalan di `npm test`/CI) mem-bootstrap
+  `schema.sql` ke SQLite baru dan menguji `foreign_key_check` kosong,
+  `integrity_check` ok, objek kritis, paritas riwayat migrasi vs `schema.sql`
+  untuk tabel/kolom/index/trigger (kecuali tabel dasar pra-repo
+  `categories/products/admins/payment_methods/articles/banners` dan artefak
+  rebuild `pedia_tiers_*0062` yang terdokumentasi), serta perilaku initializer.
+  Jumlah objek adalah sanity lantai, bukan angka beku.
+- Restore penuh: pertahankan dan verifikasi ledger milik backup itu sendiri;
+  JANGAN memakai seed baseline schema untuk DB hasil restore.
 
 ### Aset statis di luar worker (2026-10-10)
 
