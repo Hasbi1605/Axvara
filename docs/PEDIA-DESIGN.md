@@ -1,6 +1,8 @@
 # PEDIA-DESIGN.md — Panduan Desain & Style AXVARA PEDIA
 
-Beranda hanya meneruskan slug, platform, metrik, nama, serta label dan wilayah tier ke `PlatformCatalog`; kartu dan pencarian tetap sama. Detail layanan dimuat di halaman pilihan layanan.
+Beranda dan `/layanan` hanya meneruskan slug, platform, metrik, nama, serta label dan wilayah tier ke `PlatformCatalog`. Detail layanan dimuat di halaman pilihan layanan.
+
+FX-4b (lokal): pencarian tetap langsung memfilter di katalog; dari halaman lain Enter membuka `/layanan` setelah selesai mengetik. Hapus pencarian memiliki target 44×44px. Daftar lintas produk mengurutkan harga dengan basis katalog yang sama; nominal paket yang belum dihitung live bertanda “Estimasi”.
 
 > **1 November 2026:** chip label drop (No Drop hijau, Less Drop kuning, High Drop merah), chip Refill N Days/No Refill, kartu "Info layanan" + "Arti istilah", halaman `/refill` gaya Bantuan. Lihat [spec](pedia/indosmm-catalog-refill-2026-11-01.md).
 

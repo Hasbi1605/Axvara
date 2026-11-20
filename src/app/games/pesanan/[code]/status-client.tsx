@@ -12,7 +12,6 @@ import { QrisImage, sameOriginQris } from "@/components/storefront/QrisImage";
 import { InlineSpinner, PediaOrderSkeleton } from "@/components/storefront/Skeletons";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import { fillGames, gamesManualRefundCopy, gamesOrderCopy, rememberGamesDeviceOrder } from "@/lib/games/order-copy";
-import { readPediaContact, rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 import { normalizePaymentView, paymentMethodLabel } from "@/lib/payment-ui";
 import { parseExpiry } from "@/lib/expiry";
@@ -50,7 +49,7 @@ export function GameStatus({ code }: { code: string }) {
   const notFound = t.trackNotFound; const loadFailed = t.trackConnection;
   const load = useCallback(async (override = "", wake = false) => {
     if (pending.current) return;
-    const value = (override || proof.current || readOrderContact(code) || readPediaContact(code)).trim();
+    const value = (override || proof.current || readOrderContact(code)).trim();
     if (!isValidOrderContact(value)) { setNeedsContact(true); return; }
     pending.current = true; setBusy(true);
     try {
@@ -59,7 +58,7 @@ export function GameStatus({ code }: { code: string }) {
       if (!res.ok) { if ([401, 404].includes(res.status)) { setNeedsContact(true); throw new Error(notFound); } throw new Error(data.error || loadFailed); }
       if (!data.order || !STATUSES.includes(data.order.games_status)) throw new Error(loadFailed);
       if (active.current) {
-        proof.current = value; rememberPediaContact(code, value); rememberOrderContact(code, value);
+        proof.current = value; rememberOrderContact(code, value);
         const next = data.order as Order;
         rememberGamesDeviceOrder(code, [next.game?.name, next.product_name].filter(Boolean).join(" — ") || code);
         setOrder(next); setNeedsContact(false); setError(""); setCheckedAt(new Date());
@@ -79,7 +78,7 @@ export function GameStatus({ code }: { code: string }) {
     return () => { clearInterval(timer); document.removeEventListener("visibilitychange", visible); };
   }, [load, status]);
   useEffect(() => { if (status !== "awaiting_payment") return; setNow(Date.now()); const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [status]);
-  const consent = usePaymentConsent({ code, locale, resolveContact: (input) => input.trim() || proof.current, refresh: () => load("", true), onAccepted: (value) => { proof.current = value; rememberPediaContact(code, value); } });
+  const consent = usePaymentConsent({ code, locale, resolveContact: (input) => input.trim() || proof.current, refresh: () => load("", true), onAccepted: (value) => { proof.current = value; rememberOrderContact(code, value); } });
   const copy = async (value: string) => { try { await navigator.clipboard.writeText(value); setCopied(value); } catch { /* teks tetap bisa disalin manual */ } };
 
   if (needsContact && !order) return <form onSubmit={(event) => { event.preventDefault(); if (isValidOrderContact(contact)) void load(contact.trim()); else setError(t.trackContactBad); }} className="mx-auto max-w-md space-y-4 px-4 py-10">

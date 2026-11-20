@@ -97,7 +97,7 @@ export function Navbar() {
           <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label={t.searchToggle} aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
-          <nav className="hidden xl:flex items-center gap-1 text-sm text-white/70">
+          <nav aria-label={displayLocale === "en" ? "Market navigation" : "Navigasi Market"} className="hidden xl:flex items-center gap-1 text-sm text-white/70">
             <Link prefetch={false} href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">{t.navCatalog}</Link>
             <Link prefetch={false} href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">{t.navTrack}</Link>
             <Link prefetch={false} href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">{t.navArticles}</Link>

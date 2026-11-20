@@ -762,7 +762,7 @@ export default function OrderSuccessPage() {
                 </div>
                 <div className="min-w-0">
                 <span className="mb-2 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">{ui.qris.pending}</span>
-                <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">{ui.qris.totalPay}</p>
+                <p className="text-[10px] uppercase tracking-[0.12em] text-white/65">{ui.qris.totalPay}</p>
                 <p className="font-display text-2xl font-bold leading-8 text-white">{formatRupiah(payableAmount)}</p>
                 <p className="text-[11px] text-white/50">{ui.qris.uniqueIncluded(String(order.qris.unique_code))}</p>
                 <div className="mt-1 flex items-center justify-center gap-1.5 text-[11px] text-[#FFB800]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#FFB800]" />{ui.qris.validFor(countdown(order.qris.expires_at, now))}</div>
@@ -829,13 +829,13 @@ export default function OrderSuccessPage() {
                   <div className="ax-skeleton h-4 w-[85%] rounded-full" />
                   <div className="ax-skeleton h-10 w-full rounded-xl" />
                 </div>
-                <p className="mt-3 flex items-center gap-2 text-[11px] text-white/40"><InlineSpinner className="h-3 w-3" />{ui.delivery.preparingStatus}</p>
+                <p className="mt-3 flex items-center gap-2 text-[11px] text-white/65"><InlineSpinner className="h-3 w-3" />{ui.delivery.preparingStatus}</p>
               </>
             ) : (
               <>
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{delivery.title}</p>
                 <p className="mt-2 text-xs leading-5 text-white/55">{delivery.lead}</p>
-                <p className="mt-2 text-[11px] leading-5 text-white/40">{delivery.note}</p>
+                <p className="mt-2 text-[11px] leading-5 text-white/65">{delivery.note}</p>
               </>
             )}
           </section>
@@ -903,14 +903,14 @@ export default function OrderSuccessPage() {
           </div>
         )}
         <div className={compactPayment ? "mt-4 border-t border-white/10 pt-3" : "mt-3"}>
-          <p className="text-center text-[11px] text-white/35">{oc.help}</p>
+          <p className="text-center text-[11px] text-white/65">{oc.help}</p>
           <div className={compactPayment ? "mt-2 flex items-center justify-center gap-3" : "mt-2 grid grid-cols-2 gap-2.5"}>
             <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
             <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
           </div>
         </div>
 
-        <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : "mt-4 text-[11px] leading-5"} text-center text-white/35`}>{oc.note}<Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.terms}</Link>.</p>
+        <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : "mt-4 text-[11px] leading-5"} text-center text-white/65`}>{oc.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.terms}</Link>.</p>
       </div>
     </div>
   );

@@ -1,12 +1,11 @@
 // src/app/pedia/p/[platform]/page.tsx — Halaman per platform (PD-03).
 // Header ikon 40px + segmented filter jenis + grid ProductCard.
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { requestLocale } from "@/lib/i18n/server-locale";
 import { pediaPageMetadata } from "@/lib/pedia/metadata";
 import { notFound } from "next/navigation";
 import { pediaPlatform } from "@/lib/pedia/platforms";
-import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { loadPublicPediaProducts } from "@/lib/pedia/public-catalog";
 import { PlatformPageClient } from "./platform-client";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -20,13 +19,6 @@ export default async function PediaPlatformPage({ params }: { params: Promise<{ 
   const { platform } = await params;
   const config = pediaPlatform(platform);
   if (!config) notFound();
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "127.0.0.1:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  let products: PediaCatalogProduct[] = [];
-  try {
-    const res = await fetch(`${proto}://${host}/api/pedia/catalog`, { next: { revalidate: 60 } });
-    if (res.ok) products = ((await res.json()).products ?? []).filter((p: PediaCatalogProduct) => p.platform === platform);
-  } catch { /* kosong di bawah */ }
+  const products = (await loadPublicPediaProducts()).filter((p) => p.platform === platform);
   return <PlatformPageClient platform={platform} name={config.label} products={products} ordersEnabled={process.env.PEDIA_ORDERS_ENABLED === "true"} />;
 }

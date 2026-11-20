@@ -129,6 +129,7 @@ export async function publicPediaCatalogResponse() {
 }
 
 export async function loadPublicPediaProducts(): Promise<PediaCatalogProduct[]> {
+  if (process.env.PEDIA_ENABLED !== "true") return [];
   try {
     const res = await publicPediaCatalogResponse();
     if (res.ok) return ((await res.json()) as { products: PediaCatalogProduct[] }).products;

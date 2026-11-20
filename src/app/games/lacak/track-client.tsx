@@ -9,7 +9,6 @@ import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { isValidOrderContact, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
-import { rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { fillGames, GAMES_CODE_RE, GAMES_DEVICE_KEY, GAMES_RECENT_KEY, gamesOrderCopy } from "@/lib/games/order-copy";
 
 type SavedOrder = { code: string; name: string };
@@ -46,6 +45,7 @@ export function GamesTrack() {
   const [saved, setSaved] = useState<SavedOrder[]>([]);
   const [recent, setRecent] = useState<RecentEntry[]>([]);
   const busy = useRef(false);
+  const contactInput = useRef<HTMLInputElement>(null);
   const request = useRef<AbortController | null>(null);
   const loadingStage = useLoadingStage(loading, [SLOW_MS]);
   const codeValid = GAMES_CODE_RE.test(normalizeCode(code));
@@ -90,7 +90,7 @@ export function GamesTrack() {
       if (controller.signal.aborted) return;
       const next = [{ code: cleanCode, contact: cleanContact, savedAt: Date.now() }, ...recent.filter((entry) => entry.code !== cleanCode)].slice(0, 5);
       setRecent(next); persist(GAMES_RECENT_KEY, next);
-      rememberPediaContact(cleanCode, cleanContact); rememberOrderContact(cleanCode, cleanContact);
+      rememberOrderContact(cleanCode, cleanContact);
       router.push(`/games/pesanan/${cleanCode}`);
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error && !(cause instanceof TypeError) ? cause.message : t.trackConnection);
@@ -114,7 +114,7 @@ export function GamesTrack() {
         <input id="games-track-code" value={code} disabled={loading} onChange={(event) => { setCode(event.target.value.toUpperCase()); setError(null); }} onBlur={() => setTouched((value) => ({ ...value, code: true }))} autoCapitalize="characters" autoComplete="off" spellCheck={false} maxLength={32} placeholder="AXG-20261116-AB12CD34" aria-invalid={touched.code && !codeValid} aria-describedby="games-code-hint" className="mt-1.5 h-12 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 font-mono text-sm font-semibold tracking-[0.06em] text-white outline-none placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-white/55 focus:border-[#00E5FF]/50 disabled:opacity-60" />
         <p id="games-code-hint" className={touched.code && !codeValid ? "mt-1.5 text-[11px] text-red-300" : "mt-1.5 text-[11px] text-white/65"}>{touched.code && !codeValid ? t.trackCodeBad : t.trackCodeHint}</p>
         <label htmlFor="games-track-contact" className="mt-4 block text-xs font-medium text-white/60">{t.trackContact}</label>
-        <input id="games-track-contact" value={contact} disabled={loading} onChange={(event) => { setContact(event.target.value); setError(null); }} onBlur={() => setTouched((value) => ({ ...value, contact: true }))} autoComplete="off" maxLength={254} placeholder={t.trackContactPlaceholder} aria-invalid={touched.contact && !contactValid} aria-describedby="games-contact-hint" className="mt-1.5 h-12 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none placeholder:text-white/55 focus:border-[#00E5FF]/50 disabled:opacity-60" />
+        <input ref={contactInput} id="games-track-contact" value={contact} disabled={loading} onChange={(event) => { setContact(event.target.value); setError(null); }} onBlur={() => setTouched((value) => ({ ...value, contact: true }))} autoComplete="off" maxLength={254} placeholder={t.trackContactPlaceholder} aria-invalid={touched.contact && !contactValid} aria-describedby="games-contact-hint" className="mt-1.5 h-12 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none placeholder:text-white/55 focus:border-[#00E5FF]/50 disabled:opacity-60" />
         <p id="games-contact-hint" className={touched.contact && !contactValid ? "mt-1.5 text-[11px] text-red-300" : "mt-1.5 text-[11px] text-white/65"}>{touched.contact && !contactValid ? t.trackContactBad : t.trackContactHint}</p>
         {error && <p role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-xs leading-5 text-red-200">{error}</p>}
         <button type="submit" disabled={loading} className="mt-4 flex h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-[#00E5FF] text-base font-bold text-[#080C1E] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60">
@@ -127,7 +127,12 @@ export function GamesTrack() {
           <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{t.recentTitle}</h2>
           <div className="mt-3 space-y-2">{recent.map((entry) => (
             <div key={entry.code} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
-              <button type="button" disabled={loading} onClick={() => { const proof = readOrderContact(entry.code) || entry.contact; setCode(entry.code); setContact(proof); if (proof) void lookup(entry.code, proof); }} className="min-w-0 flex-1 text-left disabled:opacity-60">
+              <button type="button" disabled={loading} onClick={() => {
+                const proof = readOrderContact(entry.code) || entry.contact;
+                setCode(entry.code); setContact(proof); setError(null);
+                if (proof) void lookup(entry.code, proof);
+                else { setTouched({ code: true, contact: true }); contactInput.current?.focus(); }
+              }} className="min-w-0 flex-1 text-left disabled:opacity-60">
                 <span className="block break-all font-mono text-xs font-semibold text-[#00E5FF]">{entry.code}</span>
                 <span className="mt-0.5 block break-all text-[11px] text-white/40">{entry.contact ? maskContact(entry.contact) : t.fillContact}</span>
               </button>

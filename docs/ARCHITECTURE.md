@@ -11,6 +11,8 @@
 
 - Market `/sitemap.xml` dan `/llms.txt` memakai `src/lib/catalog-index.ts`: kecualikan produk arsip/nonaktif, varian yang ditahan kebijakan jual WR, dan slug yang dialihkan PDP ke winner aktif nonarsip. Sitemap tetap memuat produk habis yang tampil; harga AI memakai stok efektif (termasuk inventory unik) dan minimum pembelian. D1 gagal: jangan pakai seed.
 - Rewrite Pedia memakai route `/pedia/sitemap.xml` dan `/pedia/robots.txt`; URL dalam sitemap tanpa prefix `/pedia`. Beranda dan sitemap membaca katalog publik dari `src/lib/pedia/public-catalog.ts` lewat cache revisi yang sama dengan API. Beranda meneruskan ringkasan kartu/pencarian saja; API detail tetap utuh.
+- FX-4b: `/pedia/layanan`, `/pedia/o/[slug]`, dan `/pedia/p/[platform]` memakai loader yang sama, tanpa HTTP ke host sendiri. Loader berhenti sebelum mengakses cache bila Pedia nonaktif. `/layanan` mengirim ringkasan, halaman pemesanan hanya mengirim produk platform terkait. `/lacak` dan `/refill` Pedia boleh dirayapi agar crawler melihat `noindex,nofollow`.
+- Root `not-found.tsx` memberi tautan kembali. Detail Games berbagi pembacaan per request antara metadata dan render; slug hilang tidak mewarisi canonical beranda. JSON-LD artikel memakai waktu terbit ISO UTC bila tanggal valid.
 - Footer Games menautkan panduan ke `/bantuan` di host Games. Dialog cabut token agent, hapus satu stok, hapus exclusion WR/SK, dan cabut tautan refund mengunci permintaan selama proses; endpoint dan otorisasi tidak berubah.
 
 ## Telegram TG-POLISH-B — 20 November 2026 (lokal)

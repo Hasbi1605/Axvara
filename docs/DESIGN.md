@@ -1,5 +1,10 @@
 # DESIGN.md — AXVARA Design System
 
+## Aksesibilitas storefront — FX-4b (lokal)
+
+- Copy sekunder yang sebelumnya terlalu redup di footer, lacak/status, dan harga PDP memakai white/65. Tombol hapus pencarian Games/Pedia memiliki target 44×44px; Escape menutup pencarian mobile dan mengembalikan fokus. PDP menaruh heading produk sebelum heading deskripsi pada kedua ukuran layar; thumbnail menyatakan nama dan status pilihan.
+- Checkout kosong/gagal tetap mempunyai judul. Dialog perubahan harga/stok memindahkan fokus ke opsi batal, menjaga Tab di dalam dialog, dan mengembalikan fokus saat ditutup. Ringkasan untung admin mempertahankan pasangan istilah/nilai dengan aksi berupa tombol native.
+
 ## Status pesanan Games — FX-11 (lokal)
 
 - Refund supplier menampilkan judul “Top up gagal”, badge “Refund oleh admin”, petunjuk refund manual dan tombol WhatsApp existing. Tampilan `needs_check` biasa, kerangka kartu dan token warna tidak berubah. Ringkasan admin menampilkan dua hitungan tindakan terpisah hanya bila lebih dari nol.

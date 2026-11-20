@@ -91,16 +91,18 @@ export function ServicePicker({ product, products, tierId, onSelect, onClear, qt
     { id: "norefill", label: "No Refill" },
   ] : [];
   const filtersActive = !!category;
+  const crossProduct = (products?.length ?? 0) > 1;
   const validQuantity = useCallback((tier: PediaCatalogTier) => qty != null && Number.isSafeInteger(qty) && qty >= (tier.min_qty ?? 1) && qty <= (tier.max_qty ?? Infinity) && qty % (tier.quantity_step ?? product.step) === 0, [qty, product.step]);
   const relevant = useMemo(() => {
     const list = tiers.filter((tier) => matches(tier, category));
     // 2026-11-01: dikelompokkan Refill (bergaransi) lalu No Refill, masing-masing termurah dulu.
-    const price = (tier: PediaCatalogTier) => (qty != null && validQuantity(tier) ? prices[tier.id] ?? tier.prices[String(qty)] : undefined) ?? tier.price_per_1k ?? Math.min(...Object.values(tier.prices), Infinity);
+    // Rank cross-product rows on a common stored basis. Live totals cover only the selected product.
+    const price = (tier: PediaCatalogTier) => (qty != null && validQuantity(tier) ? (crossProduct ? undefined : prices[tier.id]) ?? tier.prices[String(qty)] : undefined) ?? tier.price_per_1k ?? Math.min(...Object.values(tier.prices), Infinity);
     return [...list].sort((a, b) => Number(b.refill_days > 0) - Number(a.refill_days > 0)
       || Number(validQuantity(b)) - Number(validQuantity(a))
       || price(a) - price(b));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tiers, category, validQuantity, qty, prices]);
+  }, [tiers, category, validQuantity, qty, prices, crossProduct]);
   const picked = tiers.find((tier) => tier.id === tierId);
   // Cross-product variants need stable, distinct labels beyond their chips.
   const nameOf = (tier: PediaCatalogTier) => names?.get(tier.id) ?? shortServiceName(product.name, product.metric, tier, locale);
@@ -156,7 +158,8 @@ export function ServicePicker({ product, products, tierId, onSelect, onClear, qt
         const reason = qty != null && !valid ? incompatReason(tier, owner, qty, locale) : "";
         const selected = tier.id === tierId;
         const ref = qty == null && tier.price_ref && tier.price_ref.price > 0 ? tier.price_ref : null;
-        const priceText = ref ? money(ref.price) : qty != null ? !valid ? t.qtyUnavailable : exact != null ? money(exact) : pricesSettled ? t.priceUnavailable : t.priceChecking : benchmarkValid && tier.price_per_1k != null && tier.price_per_1k > 0 ? money(tier.price_per_1k) : cheapest ? `${t.priceFrom} ${money(cheapest.price)}` : t.seePrice;
+        const estimated = crossProduct && qty != null && exact != null && prices[tier.id] == null;
+        const priceText = ref ? money(ref.price) : qty != null ? !valid ? t.qtyUnavailable : exact != null ? `${estimated ? (locale === "en" ? "Est. " : "Estimasi ") : ""}${money(exact)}` : pricesSettled ? t.priceUnavailable : t.priceChecking : benchmarkValid && tier.price_per_1k != null && tier.price_per_1k > 0 ? money(tier.price_per_1k) : cheapest ? `${t.priceFrom} ${money(cheapest.price)}` : t.seePrice;
         const priceNote = ref ? fill(t.forComments, { qty: pediaNumber(ref.qty, locale) }) : qty != null && valid ? fill(t.forQty, { qty: pediaNumber(qty, locale) }) : qty != null ? t.changeQty : benchmarkValid && tier.price_per_1k != null && tier.price_per_1k > 0 ? t.per1kNote : cheapest ? fill(t.minimumQty, { qty: pediaNumber(cheapest.qty, locale) }) : fill(t.minQty, { qty: pediaNumber(tier.min_qty ?? 1, locale) });
         return <Fragment key={tier.id}>{showGroup && <p className={`${index ? "pt-3" : ""} text-[12px] font-semibold uppercase tracking-[0.08em] text-white/50`}>{group}</p>}<label style={{ animationDelay: `${Math.min(index, 6) * 35}ms` }} className={`pedia-service-row pedia-rise ax-liquid relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 rounded-[14px] px-3.5 py-3 transition sm:flex sm:items-center duration-200 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF] ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:-translate-y-0.5"} ${selected ? "pedia-tier-selected" : "ax-glass-card ax-glass-cyan"}`}>
           <input type="radio" name="pedia-tier" value={tier.id} checked={selected} disabled={disabled} onChange={() => { if (disabled || locked) return; if (products) onSelect(tier.id, owner.slug); else onSelect(tier.id); setCompare(false); setShowAll(false); }} className="sr-only" aria-describedby={[reason ? `pedia-tier-${tier.id}-reason` : "", selected && info ? `pedia-tier-${tier.id}-info` : ""].filter(Boolean).join(" ") || undefined} />

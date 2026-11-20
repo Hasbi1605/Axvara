@@ -4,7 +4,7 @@ import { pediaPageMetadata } from "@/lib/pedia/metadata";
 
 // Halaman lacak adalah client component, jadi metadata-nya dipasang lewat layout (2026-11-01).
 export async function generateMetadata(): Promise<Metadata> {
-  return pediaPageMetadata(await requestLocale(), "track", "/lacak");
+  return { ...pediaPageMetadata(await requestLocale(), "track", "/lacak"), robots: { index: false, follow: false } };
 }
 
 export default function PediaTrackLayout({ children }: { children: React.ReactNode }) {

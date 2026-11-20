@@ -10,7 +10,9 @@ import { gamesMetadata } from "@/lib/games/metadata";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = gamesCopy(await requestLocale());
-  return gamesMetadata("/", t.title, t.description);
+  const metadata = gamesMetadata("/", t.title, t.description);
+  const images = [{ url: "/og/axvara-og.png", width: 1200, height: 630, alt: "AXVARA" }];
+  return { ...metadata, openGraph: { ...metadata.openGraph, images: images }, twitter: { card: "summary_large_image", title: t.title, description: t.description, images: images } };
 }
 
 export default async function GamesLayout({ children }: { children: React.ReactNode }) {

@@ -16,7 +16,7 @@ import { gamesItemIcon } from "@/lib/games/item-icons";
 import type { GamesCatalogGame, GamesDetail, GamesDetailProduct } from "@/lib/games/catalog";
 import { GAMES_CATEGORY_ORDER, cleanGamesFieldLabel, regionCodeFromNickname, regionFlagEmoji, splitNicknameRegion } from "@/lib/games/variant-kind";
 import { parsePayOptions, type PayOption } from "@/lib/payment-ui";
-import { rememberPediaContact } from "@/lib/pedia/buyer-session";
+import { rememberOrderContact } from "@/lib/order-access-client";
 import { rememberGamesDeviceOrder } from "@/lib/games/order-copy";
 import { SITE, waHubLink } from "@/lib/site";
 
@@ -179,7 +179,7 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
     if (attempted.current) return;
     setQuote(null); setMethod(null); setQuoteBusy(false);
     if (!orderingOpen || !valid || !selected || !selected.available) return;
-    const controller = new AbortController(); setQuoteBusy(true);
+    const controller = new AbortController(); setQuoteBusy(true); setError("");
     const timer = setTimeout(async () => {
       try {
         const res = await fetch("/api/games/quote", { method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal, body: JSON.stringify({ slug: game.slug, buyer_sku_code: selected.buyer_sku_code, fields: JSON.parse(valuesKey), ...(nickname.state === "ok" ? { nickname: nickname.value } : {}), locale }) });
@@ -244,13 +244,13 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
       const res = await fetch("/api/games/orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote_token: payload.token, payment_method: payload.method, whatsapp: payload.wa, email: payload.email }) });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status >= 500 && typeof data.code === "string" && /^AXG-\d{8}-[A-Z0-9]{8}$/.test(data.code)) { setRecoveryCode(data.code); rememberPediaContact(data.code, payload.email); }
+        if (res.status >= 500 && typeof data.code === "string" && /^AXG-\d{8}-[A-Z0-9]{8}$/.test(data.code)) { setRecoveryCode(data.code); rememberOrderContact(data.code, payload.email); }
         if (res.status === 503 && data.error_code === "payment_method_unavailable") { attempted.current = null; setFailedMethod({ key: quoteKey, id: payload.method }); setQuote(null); setMethod(null); setRetry((n) => n + 1); }
         else if (res.status < 500 && ![408, 429].includes(res.status)) { attempted.current = null; if (["quote_expired", "quote_stale"].includes(data.error_code ?? data.error ?? data.code)) { setQuote(null); setMethod(null); setRetry((n) => n + 1); } }
         throw new Error(data.message || data.error || t.orderError);
       }
       if (typeof data.code !== "string" || !/^AXG-\d{8}-[A-Z0-9]{8}$/.test(data.code)) throw new Error(t.orderError);
-      rememberPediaContact(data.code, payload.email); rememberGamesDeviceOrder(data.code, [game.name, selected?.name].filter(Boolean).join(" — ")); router.push(`/games/pesanan/${data.code}`);
+      rememberOrderContact(data.code, payload.email); rememberGamesDeviceOrder(data.code, [game.name, selected?.name].filter(Boolean).join(" — ")); router.push(`/games/pesanan/${data.code}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : t.orderError); }
     finally { inFlight.current = false; setBusy(false); }
   };

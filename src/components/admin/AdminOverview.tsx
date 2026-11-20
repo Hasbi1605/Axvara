@@ -157,12 +157,11 @@ function NetProfitCard({ bucket, label, onOpenExpenses }: { bucket: FinanceView;
             <span className="truncate" title={row.hint}>{row.label}</span>
           </dt>
           <dd className={cn("flex shrink-0 items-center gap-1 tabular-nums", row.strong ? "font-semibold text-admin-fg" : "text-admin-fg")}>
-            {formatRupiah(row.value)}{row.action && <span aria-hidden="true" className="text-admin-muted">›</span>}
+            {row.action ? <Button type="button" variant="ghost" onClick={row.action} className="absolute inset-0 h-full w-full rounded-lg" aria-label={`${row.label} ${formatRupiah(row.value)}, lihat rincian di Pengeluaran`} /> : null}
+            <span className={row.action ? "pointer-events-none relative" : undefined}>{formatRupiah(row.value)}</span>{row.action && <span aria-hidden="true" className="pointer-events-none relative text-admin-muted">›</span>}
           </dd>
         </>;
-        return row.action
-          ? <Button key={row.label} type="button" variant="ghost" onClick={row.action} className="-mx-2 flex h-auto w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-sm font-normal" aria-label={`${row.label} ${formatRupiah(row.value)}, lihat rincian di Pengeluaran`}>{content}</Button>
-          : <div key={row.label} className="flex items-center justify-between gap-3 py-2">{content}</div>;
+        return <div key={row.label} className="relative flex items-center justify-between gap-3 py-2">{content}</div>;
       })}
     </dl>
     {hasFinance && <p className="mt-3 text-xs leading-5 text-admin-muted">Pengeluaran dihitung pada tanggal dibayar.</p>}

@@ -85,7 +85,7 @@ export default function GaransiReplacePage() {
   const locale = useDisplayLocale();
   const t = locale === "en" ? EN_COPY : ID_COPY;
   const claim = locale === "en" ? marketWarrantyClaimEn : marketWarrantyClaim;
-  return <main className="mx-auto max-w-[920px] px-4 py-10 sm:px-6 sm:py-14">
+  return <div className="mx-auto max-w-[920px] px-4 py-10 sm:px-6 sm:py-14">
     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/75">{t.eyebrow}</p>
     <h1 className="mt-2 text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">{t.title}</h1>
     <p className="mt-3 max-w-[68ch] text-sm leading-6 text-white/55">{t.lead}</p>
@@ -126,5 +126,5 @@ export default function GaransiReplacePage() {
 
     <div className="mt-6 rounded-[20px] border border-[#FFB800]/20 bg-[#FFB800]/[0.06] p-4 text-sm leading-6 text-white/60">{t.warning}</div>
     <div className="mt-8 flex flex-wrap gap-3"><StoreWhatsAppLink message={t.wa} className="inline-flex h-11 items-center rounded-full bg-white px-6 text-sm font-bold text-[#080C1E]">{t.claim}</StoreWhatsAppLink><Link prefetch={false} href="/cara-order" className="inline-flex h-11 items-center rounded-full border border-white/10 bg-white/[0.06] px-6 text-sm font-semibold text-white">{t.how}</Link></div>
-  </main>;
+  </div>;
 }
