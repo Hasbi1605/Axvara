@@ -72,6 +72,8 @@ migrasi0077) + snapshot kampanye atomik; tujuan grup WA terverifikasi/subscriber
 email active/user Telegram pribadi non-blokir/non-opt-out. Worker cron lite existing
 maks8/tick, hasil ambigu unknown tanpa kirim ulang; opt-out email token acak dan
 Telegram /stop. Sambutan hanya dari event group add via /api/whatsapp/group-events
-→ outbox group_welcome dedupe SHA256 harian; chat biasa tidak lagi menyapa/mencari
+→ inbox PG, lalu outbox group_welcome dedupe SHA256 menurut hari event UTC;
+tidak bergantung callback status, dan tak dikirim setelah 30 menit atau jika
+grup/identitas tidak cocok saat admission. Chat biasa tidak lagi menyapa/mencari
 produk. Gateway /send-broadcast//send-welcome namespace key terpisah. Rincian di
 gateway/AGENTS.md, ARCHITECTURE §16.13, issue/broadcasts-welcome-2026-10-24.md.

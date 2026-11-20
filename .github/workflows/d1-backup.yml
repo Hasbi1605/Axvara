@@ -29,3 +29,8 @@ jobs:
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Report backup failure
+        if: ${{ failure() }}
+        run: |
+          echo '::error title=D1 backup failed::Check the last successful backup before relying on restore coverage.'
+          printf '%s\n' '### D1 backup failed' 'Check the last successful backup in the private backup bucket and rerun this workflow after fixing the failure.' >> "$GITHUB_STEP_SUMMARY"

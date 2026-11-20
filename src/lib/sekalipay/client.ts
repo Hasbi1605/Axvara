@@ -327,6 +327,7 @@ type SkRequestOptions = {
   /** Query string untuk GET (diteruskan ke proxy). */
   query?: Record<string, string | number>;
   body?: Record<string, unknown>;
+  sliceBudgetMs?: number;
 };
 
 /**
@@ -367,7 +368,9 @@ export async function skFetch<T>(path: string, options: SkRequestOptions = {}): 
     bodyText = JSON.stringify(options.body);
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SK_API_TIMEOUT_MS);
+  const timeoutMs = proxyUrl && endpoint === "GET catalog-slice" ? Math.min(35_000, options.sliceBudgetMs ?? Infinity) : SK_API_TIMEOUT_MS;
+  if (timeoutMs <= 0) throw new SkNetworkError("sk_request_timeout", endpoint);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { method, headers, body: bodyText, signal: controller.signal });
     const json = (await res.json().catch(() => null)) as unknown;
@@ -487,12 +490,13 @@ export async function fetchSkCatalogSlice(params: {
   category: string;
   offset: number;
   limit: number;
+  budgetMs?: number;
 }): Promise<SkCatalogSlice | null> {
   if (!getSkProxyUrl()) return null;
   try {
     const res = await skFetch<{ rows?: unknown; server_time?: unknown; meta?: Record<string, unknown> }>(
       "catalog-slice",
-      { query: { category: params.category, offset: params.offset, limit: params.limit } },
+      { query: { category: params.category, offset: params.offset, limit: params.limit }, sliceBudgetMs: params.budgetMs },
     );
     const meta = res.meta ?? {};
     if (!Array.isArray(res.rows) || typeof meta.in_scope_n !== "number") return null;

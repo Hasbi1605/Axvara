@@ -14,6 +14,7 @@ import { sendTextMessage } from "./gateway";
 
 export const WA_OUTBOX_RETRY_DELAYS_MINUTES = [1, 5, 15, 60];
 export const WA_OUTBOX_MAX_ATTEMPTS = WA_OUTBOX_RETRY_DELAYS_MINUTES.length + 1;
+export const WELCOME_TTL_MS = 30 * 60_000;
 // Batas operasional antar kirim dalam satu run: default 6 dtk +
 // jitter ≤3 dtk; override via env untuk test. Berlaku juga untuk cooldown
 // per destinasi (satu nomor tidak dihujani pesan berurutan).
@@ -255,15 +256,22 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     message = payload.message;
     botIdentity = { botNumber: payload.botNumber, botRevision: payload.botRevision };
   }
+  let welcomeExpiresAt: number | undefined;
   if (fresh.message_type === "group_welcome") {
     try {
       const payload = JSON.parse(message);
       const { normalizeBotNumber, validBotRevision } = await import("./bot-number");
       if (typeof payload.message !== "string" || !payload.message || normalizeBotNumber(payload.botNumber) !== payload.botNumber || !validBotRevision(payload.botRevision)) throw new Error("invalid_welcome");
+      const createdAt = String(fresh.created_at ?? "");
+      welcomeExpiresAt = payload.expiresAt ?? Date.parse(createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z") + WELCOME_TTL_MS;
       message = payload.message;
       botIdentity = { botNumber: payload.botNumber, botRevision: payload.botRevision };
     } catch {
       await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='invalid_welcome_payload' WHERE id=? AND worker_id=?", id, workerId);
+      return true;
+    }
+    if (typeof welcomeExpiresAt !== "number" || !Number.isFinite(welcomeExpiresAt) || welcomeExpiresAt <= Date.now()) {
+      await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='welcome_expired',updated_at=datetime('now') WHERE id=? AND worker_id=?", id, workerId);
       return true;
     }
   }
@@ -274,6 +282,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     promoNotification: fresh.message_type === "promo_digest",
     ...(promoBot ? { promoBotNotification: true } : {}),
     welcomeNotification: fresh.message_type === "group_welcome",
+    ...(welcomeExpiresAt !== undefined ? { welcomeExpiresAt } : {}),
     ...botIdentity,
   });
   if (result.ok) {
@@ -291,8 +300,8 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
     return true;
   }
-  if (fresh.message_type === "group_welcome" && result.error === "bot_configuration_changed") {
-    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='bot_configuration_changed' WHERE id=? AND worker_id=?", id, workerId);
+  if (fresh.message_type === "group_welcome" && ["bot_configuration_changed", "notification_group_mismatch", "welcome_expired"].includes(String(result.error))) {
+    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
     return true;
   }
   const nextAttempts = attempts + 1;

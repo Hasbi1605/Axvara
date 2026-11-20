@@ -1,5 +1,18 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Kontrak katalog VPS–Pages — 21 November 2026 (lokal)
+
+- Hanya potongan `/wr/products-slice` dan `/sk/catalog-slice` mendapat batas
+  Pages `min(35 dtk, sisa budget sweep)`: proxy punya 30 dtk upstream, dan
+  cron menyisakan 8 dtk dari deadline 45 dtk. Timeout bukan fallback atau bukti
+  stok hilang; 404/405 proxy lama tetap fallback. Timeout order tetap 12 dtk.
+- `/api/supplier-sync` saat supplier mati → `409 {ok:false,applied:false,error:"supplier_disabled",supplier}`.
+  Proxy lama tidak mengakui 409 sebagai tersimpan tapi masih mengulang. Revisi
+  VPS terpisah: jeda per supplier (mis. 5 menit, terkonfigurasi dan berbatas),
+  jangan ubah snapshot/tombstone atau ukuran batch pada respons ini; supplier
+  lain tetap berjalan. `pairs` yang gagal transient tetap 503 dengan cron
+  cleanup sebagai backstop, tanpa perubahan kontrak write.
+
 ## Perbaikan audit H2 — 21 November 2026 (lokal)
 
 - Refresh topup SK setelah kegagalan baca channel (create berakhir `unknown` tanpa status/rentang tervalidasi) kini memanggil `fetchSkTopupChannels()` lagi dan menolak `channel_unavailable`/`amount_out_of_range` sebelum `POST v1/balance`, tidak lagi langsung repost. Status: implementasi lokal + test.

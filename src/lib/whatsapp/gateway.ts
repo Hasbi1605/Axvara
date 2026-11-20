@@ -39,6 +39,7 @@ export type SendMessageParams = {
   idempotencyKey?: string;
   broadcastNotification?: boolean;
   welcomeNotification?: boolean;
+  welcomeExpiresAt?: number;
   promoNotification?: boolean;
   promoBotNotification?: boolean;
   botNumber?: string;
@@ -250,7 +251,7 @@ async function callGateway(path: string, payload: Record<string, unknown>, timeo
 }
 
 export function sendTextMessage(params: SendMessageParams): Promise<WhatsAppSendResult> {
-  return callGateway(params.promoBotNotification ? "/promo-bot/send-promo" : params.promoNotification ? "/send-promo" : params.welcomeNotification ? "/send-welcome" : params.broadcastNotification ? "/send-broadcast" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...((params.broadcastNotification || params.welcomeNotification || params.promoNotification || params.promoBotNotification) ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}) }, 15_000);
+  return callGateway(params.promoBotNotification ? "/promo-bot/send-promo" : params.promoNotification ? "/send-promo" : params.welcomeNotification ? "/send-welcome" : params.broadcastNotification ? "/send-broadcast" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...((params.broadcastNotification || params.welcomeNotification || params.promoNotification || params.promoBotNotification) ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}), ...(params.welcomeNotification ? { welcomeExpiresAt: params.welcomeExpiresAt } : {}) }, 15_000);
 }
 
 /** Admin control plane. Never return gateway tokens to a browser. */

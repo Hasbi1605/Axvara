@@ -13,8 +13,8 @@
 //         | { supplier: "sk", rows: SkFlatVariant[], removed_variant_ids: string[] }
 //         | { supplier: "sk", action: "pairs" }   (hitung ulang pemenang WR vs SK)
 //         | { source: "indosmm", services: PediaService[], removed_service_ids: number[], heartbeat?: true }
-//   2xx = TERSIMPAN (VPS baru memajukan snapshot-nya); selain itu VPS
-//   mengirim ulang (penerapan idempoten).
+//   2xx = TERSIMPAN (VPS baru memajukan snapshot-nya). 409 supplier_disabled
+//   = tidak diterapkan; VPS baru harus menunda supplier itu tanpa memajukan snapshot.
 // Batas per request: 10 produk WR / 30 baris SK / 200 id dihapus /
 // 100 layanan IndoSMM.
 
@@ -30,6 +30,10 @@ export const runtime = "edge";
 const MAX_WR_PRODUCTS = 10;
 const MAX_SK_ROWS = 30;
 const MAX_REMOVED = 200;
+const supplierDisabled = (supplier: "wr" | "sk") => NextResponse.json(
+  { ok: false, applied: false, error: "supplier_disabled", supplier },
+  { status: 409 },
+);
 
 export async function POST(request: NextRequest) {
   const expected = process.env.SUPPLIER_SYNC_TOKEN || "";
@@ -102,8 +106,8 @@ export async function POST(request: NextRequest) {
   const db = createDatabaseAccess();
 
   if (body.supplier === "wr") {
-    const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
-    if (!isWrEnabled()) return NextResponse.json({ error: "warung_rebahan_disabled" }, { status: 503 });
+    const { isWrSyncEnabled } = await import("@/lib/warung-rebahan/client");
+    if (!isWrSyncEnabled()) return supplierDisabled("wr");
     const products = Array.isArray(body.products) ? body.products : null;
     if (!products) return NextResponse.json({ error: "invalid_products" }, { status: 400 });
     if (products.length > MAX_WR_PRODUCTS) return NextResponse.json({ error: "too_many_products" }, { status: 413 });
@@ -122,8 +126,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const { isSkEnabled } = await import("@/lib/sekalipay/client");
-  if (!isSkEnabled()) return NextResponse.json({ error: "sekalipay_disabled" }, { status: 503 });
+  const { isSkEnabled, isSkSyncEnabled } = await import("@/lib/sekalipay/client");
+  if (!isSkEnabled()) return supplierDisabled("sk");
   if (body.action === "pairs") {
     // Request terpisah agar biaya CPU-nya tidak menumpuk dengan penerapan diff.
     const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
@@ -134,6 +138,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "pair_update_failed" }, { status: 503 });
     }
   }
+  if (!isSkSyncEnabled()) return supplierDisabled("sk");
   const rows = Array.isArray(body.rows) ? body.rows : null;
   if (!rows) return NextResponse.json({ error: "invalid_rows" }, { status: 400 });
   if (rows.length > MAX_SK_ROWS) return NextResponse.json({ error: "too_many_rows" }, { status: 413 });

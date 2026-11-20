@@ -1746,6 +1746,8 @@ pertama, chat, emoji, reaksi, stiker, promote atau remove. Bingkai garis dan jud
 “🎉 SELAMAT DATANG DI AXVARA! 🎉” dipertahankan, sapaan Pagi/Siang/Sore/Malam WIB,
 nama jika tersedia (fallback Kak), deskripsi “Tools & Apps premium, Optimasi Media
 Sosial, Topup Games! 🚀”, lalu Order via website, Order via Telegram, Bantuan Admin.
+Revisi lokal 21 November: gangguan status gateway tidak menghilangkan sambutan;
+retry terbatas hanya untuk grup dan sesi asal, paling lama 30 menit.
 Instruksi ketik list/garansi dihapus dari sambutan. Percakapan biasa tidak lagi
 auto-search; perintah pencarian legacy harus `cari <produk>`, tetap mengikuti flag.
 Commerce WA tetap mengikuti flag existing dan tidak diaktifkan oleh fitur ini.
