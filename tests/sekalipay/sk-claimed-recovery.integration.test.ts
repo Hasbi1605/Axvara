@@ -421,6 +421,75 @@ describe("SK sent claim recovery — incident 23 October", () => {
       expect(fx.sql.prepare("SELECT fulfillment_status FROM orders").get()?.fulfillment_status).toBe("failed");
     } finally {fx.close();}
   });
+  it.each(["unbound", "bound"])("FX-11b: historical exhausted %s retry lacks proof of the last POST and only pages admin", async binding => {
+    const { fx, db } = setup("retry");
+    try {
+      fx.sql.exec(`UPDATE sk_order_links SET request_sent_at=NULL,lease_expires_at=NULL,attempt_count=max_attempts,
+        last_error='PRODUCT_TEMPORARILY_UNAVAILABLE',created_at=datetime('now','-14 hours')`);
+      if (binding === "unbound") fx.sql.exec("DELETE FROM fulfillment_items");
+      else {
+        fx.sql.exec("UPDATE sk_order_links SET fulfillment_item_id=(SELECT id FROM fulfillment_items),last_claim_at=datetime('now','-13 hours'); UPDATE fulfillment_items SET sk_link_id=(SELECT id FROM sk_order_links)");
+      }
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
+      vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "123");
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture");
+      const send = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        expect(String(url)).toContain("api.telegram.org");
+        expect(JSON.parse(String(init?.body)).text).toContain("lebih dari 13 jam");
+        return Response.json({ ok: true, result: { message_id: 1 } });
+      });
+      vi.stubGlobal("fetch", send);
+      const before = await db.queryAll("SELECT status,last_error FROM fulfillment_items");
+      const order = await db.queryFirst("SELECT fulfillment_status FROM orders");
+      const sk = await import("@/lib/sekalipay/order");
+      expect(await sk.settleExhaustedSkRetries(db)).toBe(0);
+      expect(await sk.alertAgingSkOrders(db)).toBe(1);
+      expect(await sk.alertAgingSkOrders(db)).toBe(0);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(await db.queryFirst("SELECT status,request_sent_at,sk_invoice FROM sk_order_links"))
+        .toEqual({ status: "retry", request_sent_at: null, sk_invoice: null });
+      expect(await db.queryAll("SELECT status,last_error FROM fulfillment_items")).toEqual(before);
+      expect(await db.queryFirst("SELECT fulfillment_status FROM orders")).toEqual(order);
+      expect(await db.queryAll("SELECT idempotency_key FROM buyer_notice_log")).toEqual([{ idempotency_key: "admin:sk-aging:1" }]);
+    } finally { fx.close(); }
+  });
+
+  it("FX-11b: a proven final rejection waits for binding, then atomically fails and notifies once", async () => {
+    const { fx, db } = setup("pending");
+    try {
+      fx.sql.exec(`DELETE FROM fulfillment_items; UPDATE sk_order_links SET attempt_count=max_attempts-1;
+        UPDATE orders SET customer_email='buyer@example.test'`);
+      vi.stubEnv("RESEND_API_KEY", "fixture");
+      vi.stubEnv("FORWARD_FROM_EMAIL", "noreply@example.test");
+      const network = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).endsWith("/v1/trx")) return Response.json({ message: "PRODUCT_TEMPORARILY_UNAVAILABLE" }, { status: 503 });
+        expect(String(url)).toBe("https://api.resend.com/emails");
+        expect(JSON.parse(String(init?.body)).subject).toContain("bermasalah");
+        return Response.json({ id: "fixture-notice" });
+      });
+      stubFetch(network);
+      const sk = await import("@/lib/sekalipay/order");
+      expect(await processSkPendingOrders(db, { skipOrphanProbe: true })).toMatchObject({ failed: 0 });
+      expect(await db.queryFirst("SELECT status,request_sent_at FROM sk_order_links")).toEqual({ status: "retry", request_sent_at: null });
+      expect(await sk.settleExhaustedSkRetries(db)).toBe(0);
+      expect(network).toHaveBeenCalledTimes(1);
+
+      fx.sql.exec(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,recipient_channel,status)
+        SELECT code,0,1,1,1,'manual','web','queued' FROM orders`);
+      fx.sql.exec("UPDATE sk_order_links SET request_sent_at=datetime('now')");
+      expect(await sk.settleExhaustedSkRetries(db)).toBe(0);
+      fx.sql.exec("UPDATE sk_order_links SET request_sent_at=NULL,sk_invoice='RECONCILE-ME'");
+      expect(await sk.settleExhaustedSkRetries(db)).toBe(0);
+      expect(await db.queryFirst("SELECT status FROM fulfillment_items")).toEqual({ status: "queued" });
+      fx.sql.exec("UPDATE sk_order_links SET sk_invoice=NULL");
+      expect((await Promise.all([sk.settleExhaustedSkRetries(db), sk.settleExhaustedSkRetries(db)])).sort()).toEqual([0, 1]);
+      expect(await db.queryFirst("SELECT status FROM sk_order_links")).toEqual({ status: "failed" });
+      expect(await db.queryFirst("SELECT status,last_error FROM fulfillment_items")).toEqual({ status: "failed", last_error: "sk_attempts_exhausted" });
+      expect(await db.queryFirst("SELECT fulfillment_status FROM orders")).toEqual({ fulfillment_status: "failed" });
+      expect(await sk.settleExhaustedSkRetries(db)).toBe(0);
+      expect(network).toHaveBeenCalledTimes(2);
+    } finally { fx.close(); }
+  });
   it("FX-11: ages an unresolved SK link without changing status or fence", async () => {
     const {fx,db}=setup("submitted");
     try {
