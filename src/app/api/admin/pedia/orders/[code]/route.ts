@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { callPediaProxy, isPediaProvider } from "@/lib/pedia/proxy";
 import { canResubmit } from "../../_shared";
@@ -30,7 +31,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { code } = await params;
-  const parsed = schema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 4_000);
+  if (!body.ok) return body.response;
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "invalid_action" }, { status: 400 });
   if (parsed.data.action === "cancel_credit") return NextResponse.json({ error: "credits_retired", message: "Penerbitan kredit dihentikan. Gunakan tindak lanjut manual." }, { status: 410 });
   const db = createDatabaseAccess();

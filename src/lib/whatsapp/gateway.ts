@@ -93,37 +93,21 @@ export function timingSafeEqual(a: string, b: string): boolean {
 
 export function authenticateWebhook(
   request: NextRequest,
-  payload?: unknown,
+  _payload?: unknown,
 ): { ok: boolean; reason?: string } {
   const expectedSecret = process.env.WHATSAPP_WEBHOOK_TOKEN;
   if (!expectedSecret || expectedSecret.trim() === "") {
     return { ok: false, reason: "webhook_not_configured" };
   }
 
-  // Check header tokens first
+  // Header-only (audit AU-B1-2). The canonical gateway sends `x-webhook-token`
+  // (gateway/src/index.ts:201,327). Query-string/body secrets would be logged
+  // by edge/proxy and leak the shared token, so they are no longer accepted.
   const headerToken =
     request.headers.get("x-webhook-token") ||
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
     "";
-
-  // Check query param fallback
-  const queryToken =
-    request.nextUrl.searchParams.get("token") ||
-    request.nextUrl.searchParams.get("secret") ||
-    "";
-
-  // Payload secret remains supported for local fixtures; the production
-  // Baileys gateway uses x-webhook-token.
-  const body = payload && typeof payload === "object"
-    ? payload as Record<string, unknown>
-    : undefined;
-  const payloadToken = typeof body?.secret === "string"
-    ? body.secret
-    : typeof body?.webhook_secret === "string"
-      ? body.webhook_secret
-      : "";
-
-  const tokenToTest = headerToken.trim() || queryToken.trim() || payloadToken.trim();
+  const tokenToTest = headerToken.trim();
   if (!tokenToTest) {
     return { ok: false, reason: "missing_token" };
   }

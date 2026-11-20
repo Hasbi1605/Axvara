@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { findMissingFulfillmentLines, recordManualHandoverDetailed } from "@/lib/fulfillment/deliver";
 import { orderLineLabel } from "@/lib/fulfillment/delivery/buyer-email";
 import { renderHandoverTemplate } from "@/lib/fulfillment/handover-template";
@@ -79,12 +80,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: "pedia_not_handover", message: "Pesanan Pedia tidak memakai serah terima manual. Tindak lanjut via Admin → Pedia → Pesanan." }, { status: 409 });
   }
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
-  }
+  const bounded = await readJsonBody(req, 8_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data;
   const parsed = handoverSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
 

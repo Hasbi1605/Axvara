@@ -1,6 +1,7 @@
 import { DANA_AMOUNT_REUSED_SQL } from "@/lib/payments/dana-history";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { execRun, isD1Mode, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import { isFutureIso } from "@/lib/expiry";
 import { activeQrisProvider, isCausallyPlausiblePayment } from "@/lib/payments/dana-qris";
@@ -58,7 +59,9 @@ export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!isD1Mode()) return NextResponse.json({ error: "d1_required" }, { status: 503 });
-  const body = await request.json().catch(() => null) as { event_id?: number; action?: string; order_code?: string; review_note?: string; note?: string; verified?: boolean } | null;
+  const bounded = await readJsonBody(request, 8_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data as { event_id?: number; action?: string; order_code?: string; review_note?: string; note?: string; verified?: boolean } | null;
   const eventId = Number(body?.event_id || 0);
   if (body?.action === "mark_reviewed") return markReviewed(admin.email, eventId, body?.note ?? body?.review_note);
   const manual = body?.action === "confirm_match";

@@ -1,5 +1,14 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
+Auth webhook header-only 21 November 2026 (audit AU-B1-2, lokal): `authenticateWebhook`
+(`src/lib/whatsapp/gateway.ts`) HANYA menerima token dari header `x-webhook-token`
+(atau `Authorization: Bearer`) yang dikirim gateway kanonis
+(`gateway/src/index.ts:201,327`). Fallback query `?token=`/`?secret=` dan body
+`secret`/`webhook_secret` dihapus; token query bocor ke access log/proxy/referrer.
+Token salah/kosong tetap 401 (`missing_token`/`invalid_token`), compare tetap
+constant-time, dan gate fail-closed bila `WHATSAPP_WEBHOOK_TOKEN` kosong. Jangan
+menambahkan kembali jalur query/body; pemanggil wajib header.
+
 Promo otomatis Telegram 19 November 2026 (lokal): promo pagi/sore 09.00 dan 17.00 WIB yang selama ini ke grup WA kini juga dikirim ke seluruh pengguna bot Telegram yang eligible (`is_blocked=0`, `broadcast_opt_out=0`, chat pribadi) lewat `broadcast_campaigns`/`broadcast_deliveries` (`src/lib/telegram/promo-broadcast.ts`) menggunakan banner JPEG `public/banners/ready-promo.jpg` (revisi 20 Nov 2026: pratinjau tautan besar di atas teks dalam satu bubble, tanpa `sendPhoto`/caption terpisah; snapshot lama tetap foto + caption) + daftar HTML bold (`promoMessages(slot, products).full`) + footer `/stop` + expiry di 12.00/20.00 WIB. Promo digest admin lama ke `TELEGRAM_ADMIN_CHAT_ID` (`sendDueAdminPromoDigest`, dua bubble salin-tempel) dihapus; `TELEGRAM_PROMO_DIGEST_ENABLED` tidak lagi dibaca. Perilaku promo WA (`promo-digest.ts`, `promo-bot.ts`, `ready-promo.webp`) tidak berubah.
 
 Urutan kategori digest 19 November 2026 (lokal): `loadPromoProducts` (`src/lib/telegram/promo-digest.ts`, dipakai bersama `promo-digest.ts` dan `promo-bot.ts` WA serta digest Telegram) kini mengurutkan kategori lebih dulu sesuai urutan web (`categories.sort_order`, tie-break nama/id, tanpa kategori terakhir), baru `p.sort_order` dan `p.id`, sehingga produk baru/ber-`sort_order` kecil di kategori akhir tidak lagi menggeser kategori tersebut ke baris paling atas.

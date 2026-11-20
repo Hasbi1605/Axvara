@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun, getD1, D1Statement } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
+import { readJsonBody } from "@/lib/http-body";
 import {
   AIVAULT_BULK_MANAGED_MESSAGE,
   bulkConfigDiffersFromStored,
@@ -171,7 +172,9 @@ async function POSTImpl(request: NextRequest) {
   const authed = await requireAdmin(request);
   if (!authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const raw = await request.json().catch(() => null);
+  const body = await readJsonBody(request, 512_000);
+  if (!body.ok) return body.response;
+  const raw = body.data as Record<string, unknown> | null;
   if (!raw) return NextResponse.json({ error: "invalid_json" }, { status: 400 });
 
   // Handle batch save
@@ -555,7 +558,9 @@ async function PUTImpl(request: NextRequest) {
   const id = request.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id_required" }, { status: 400 });
 
-  const body = await request.json();
+  const bounded = await readJsonBody(request, 32_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data;
   const parsed = SingleVariantSchema.partial().safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "validation_failed", details: parsed.error.flatten() }, { status: 400 });

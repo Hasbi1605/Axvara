@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OrderTransitionError, queryFirst, transitionPendingOrder, transitionPendingPaymentToPaid } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
 
 export const runtime = "edge";
@@ -33,12 +34,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { code } = await params;
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
-  }
+  const bounded = await readJsonBody(req, 8_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data;
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const row = (await queryFirst("SELECT code, status, sales_channel, items, payment_method, payment_status FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;

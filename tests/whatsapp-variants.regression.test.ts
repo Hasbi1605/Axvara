@@ -528,22 +528,24 @@ describe("Webhook Authentication & Timing-Safe Check (P0.2)", () => {
     expect(auth.ok).toBe(true);
   });
 
-  it("authenticates valid token from query parameter", () => {
+  it("rejects a token supplied only as a query param (header-only, AU-B1-2)", () => {
     const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook?token=super_secret_webhook_token_123", {
       method: "POST",
     });
     const auth = authenticateWebhook(req);
-    expect(auth.ok).toBe(true);
+    expect(auth.ok).toBe(false);
+    expect(auth.reason).toBe("missing_token");
   });
 
-  it("authenticates a compatible payload secret for local fixtures", () => {
+  it("rejects a payload-body secret (header-only, AU-B1-2)", () => {
     const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook", {
       method: "POST",
     });
     const auth = authenticateWebhook(req, {
       secret: "super_secret_webhook_token_123",
     });
-    expect(auth.ok).toBe(true);
+    expect(auth.ok).toBe(false);
+    expect(auth.reason).toBe("missing_token");
   });
 
   it("rejects missing token with 401 reason", () => {

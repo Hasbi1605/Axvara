@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { callPediaProxy, isPediaProvider, PEDIA_PROVIDERS } from "@/lib/pedia/proxy";
 import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
@@ -102,7 +103,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const parsed = resyncSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 2_000);
+  if (!body.ok) return body.response;
+  const parsed = resyncSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "invalid_action" }, { status: 400 });
   const supplier = parsed.data.supplier;
   try {

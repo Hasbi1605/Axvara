@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
+import { readJsonBody } from '@/lib/http-body';
 import { createDatabaseAccess } from '@/lib/db-access';
 import { listBroadcasts, reviewBroadcast, launchBroadcast, BroadcastError } from '@/lib/broadcasts/store';
 import { templateSchema,targetSchema } from '@/lib/broadcasts/validation';
@@ -12,17 +13,22 @@ export async function GET(req:NextRequest){
  const db=createDatabaseAccess();if(!db.getD1())return json({error:'Database siaran belum tersedia.'},503);
  return json(await listBroadcasts(db));
 }
+type BroadcastBody = {
+  action?: string; id?: string; revision?: number; archived?: boolean; content?: unknown;
+  templateId?: string; channels?: unknown; waIdentity?: unknown;
+};
 export async function POST(req:NextRequest){
  const admin=await requireAdmin(req);if(!admin)return json({error:'Unauthorized'},401);
  const db=createDatabaseAccess(),d1=db.getD1();if(!d1)return json({error:'Database siaran belum tersedia.'},503);
- const body=await req.json().catch(()=>null);
+ const bounded=await readJsonBody(req,64_000);if(!bounded.ok)return bounded.response;
+ const body=(bounded.data??{}) as BroadcastBody;
  try{
   if(body?.action==='save'){
    const data=templateSchema.safeParse(body.content);
    if(!data.success)return json({error:data.error.issues[0]?.message||'Isi template tidak valid.'},400);
    const v=data.data;
-   if(body.id){
-    if(!UUID.test(body.id)||!Number.isSafeInteger(body.revision)||body.revision<1)return json({error:'Template tidak valid.'},400);
+   if(typeof body.id==='string'){
+    if(!UUID.test(body.id)||!Number.isSafeInteger(body.revision)||(body.revision as number)<1)return json({error:'Template tidak valid.'},400);
     const result=await db.execRun(`UPDATE broadcast_templates SET name=?,title=?,body=?,cta_label=?,cta_url=?,revision=revision+1,updated_at=datetime('now') WHERE id=? AND revision=? AND archived=0`,v.name,v.title,v.body,v.cta_label,v.cta_url,body.id,body.revision);
     if(!result.changes)return json({error:'Template berubah atau diarsipkan. Muat ulang sebelum menyimpan.'},409);
     return json({ok:true,id:body.id});
@@ -33,12 +39,12 @@ export async function POST(req:NextRequest){
    return json({ok:true,id},201);
   }
   if(body?.action==='archive'){
-   if(!UUID.test(body.id)||!Number.isSafeInteger(body.revision)||typeof body.archived!=='boolean')return json({error:'Template tidak valid.'},400);
+   if(typeof body.id!=='string'||!UUID.test(body.id)||!Number.isSafeInteger(body.revision)||typeof body.archived!=='boolean')return json({error:'Template tidak valid.'},400);
    const result=await db.execRun("UPDATE broadcast_templates SET archived=?,revision=revision+1,updated_at=datetime('now') WHERE id=? AND revision=?",body.archived?1:0,body.id,body.revision);
    return result.changes?json({ok:true}):json({error:'Template berubah. Muat ulang.'},409);
   }
   if(body?.action==='cancel'){
-   if(!UUID.test(body.id))return json({error:'Siaran tidak valid.'},400);
+   if(typeof body.id!=='string'||!UUID.test(body.id))return json({error:'Siaran tidak valid.'},400);
    await d1.batch([
     d1.prepare("UPDATE broadcast_campaigns SET status='canceled' WHERE id=? AND status='queued'").bind(body.id),
     d1.prepare("UPDATE broadcast_deliveries SET status='canceled',updated_at=datetime('now') WHERE campaign_id=? AND status='pending' AND EXISTS(SELECT 1 FROM broadcast_campaigns c WHERE c.id=campaign_id AND c.status='canceled')").bind(body.id),
