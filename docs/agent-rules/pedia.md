@@ -1,5 +1,10 @@
 # Aturan agent — Pedia (SMM)
 
+## Simpan harga kurasi dari admin — 21 November 2026 (lokal)
+
+- POST tier menyimpan `input_kind`, `drop_label`, `speed_per_day` dan harga paket pada INSERT yang sama; bila tidak ada paket yang dapat dihargai, gagal tanpa menulis tier. Custom Comments memakai batas jumlah yang sama dengan quote.
+- PUT menyimpan edit tier bersama harganya; edit paket/step produk dan reprice semua tier memakai satu batch D1. Gagal tulis berarti rollback, bukan `saved:true`; naikkan revisi katalog hanya setelah berhasil.
+
 ## Expiry tanpa restock lintas katalog — 18 November 2026 (lokal)
 
 Guard SQL apps/legacy NULL kini berlaku di **kedua** helper bersama,

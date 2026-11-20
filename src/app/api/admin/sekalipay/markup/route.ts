@@ -5,9 +5,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { queryAll, queryFirst, execRun } from "@/lib/db";
+import { queryAll, queryFirst } from "@/lib/db";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { computeVariantLiveStatus, loadProductGroupLosers } from "@/lib/product-live-status";
 import { calculateSkSellPrice } from "@/lib/sekalipay/sync";
+import { saveSupplierMarkup } from "@/lib/supplier/admin-markup";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -95,38 +97,17 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "validation_failed" }, { status: 400 });
   }
   const { sk_variant_id, markup_percent, markup_fixed } = parsed.data;
-  const row = await queryFirst(
-    `SELECT sk_price, axvara_variant_id FROM sk_products WHERE sk_variant_id=?`,
-    sk_variant_id,
-  );
-  if (!row) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
-  const sellPrice = calculateSkSellPrice(Number(row.sk_price), markup_percent, markup_fixed);
-  const now = new Date().toISOString();
-  await execRun(
-    `UPDATE sk_products SET markup_percent=?, markup_fixed=?, axvara_sell_price=?,
-      last_synced_at=?, updated_at=? WHERE sk_variant_id=?`,
-    markup_percent,
-    markup_fixed,
-    sellPrice,
-    now,
-    now,
-    sk_variant_id,
-  );
-  // Harga katalog ikut markup baru (milik SK — admin pegang sisanya).
-  // Harga coret milik admin: NULL-kan bila tak lagi membentuk diskon valid
-  // agar CHECK compare_price > price tidak menolak UPDATE harga (insiden
-  // Alight/Viu 2026-10-06: PUT markup 200 OK, registry berubah, katalog macet
-  // di harga lama karena .catch menelan error D1).
-  const axvaraVariantId = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
-  if (axvaraVariantId > 0) {
-    await execRun(
-      `UPDATE product_variants SET price=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now') WHERE id=?`,
-      sellPrice,
-      sellPrice,
-      axvaraVariantId,
-    ).catch(() => undefined);
+  const db = createDatabaseAccess();
+  if (!db.d1) return NextResponse.json({ error: "update_failed" }, { status: 503 });
+  try {
+    const row = await db.queryFirst(`SELECT sk_price FROM sk_products WHERE sk_variant_id=?`, sk_variant_id);
+    if (!row) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
+    const sellPrice = calculateSkSellPrice(Number(row.sk_price), markup_percent, markup_fixed);
+    await saveSupplierMarkup(db.d1, "sekalipay", sk_variant_id, markup_percent, markup_fixed, sellPrice, new Date().toISOString());
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-    await bumpCatalogRevision("market");
+    await bumpCatalogRevision("market", db);
+    return NextResponse.json({ ok: true, sk_variant_id, sell_price: sellPrice });
+  } catch {
+    return NextResponse.json({ error: "update_failed" }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, sk_variant_id, sell_price: sellPrice });
 }

@@ -6,6 +6,7 @@
 
 ## Deposit saldo TUNVN dari admin — keputusan owner 20 November 2026 (lokal)
 
+- Kuota 3 invoice non-terminal direservasi atomik sebelum panggilan deposit. Refresh yang selesai belakangan tidak dapat menimpa `paid`; invoice `expired` tetap bisa dikonfirmasi lunas setelahnya.
 - **Menggantikan** aturan setup "`POST /api/deposit` sengaja tidak diimplementasikan" hanya untuk scope ini: admin boleh membuat **invoice deposit saldo TUNVN** dari AXVARA. AXVARA hanya membuat invoice + melacak status; owner transfer sendiri. **Tidak ada auto payout, tidak ada dana dikirim AXVARA**, dan tidak ada deposit untuk QA.
 - `callTunvnDeposit(amountUsdt)` = `POST /api/deposit {amount,currency:"usdt"}`; `callTunvnDepositStatus(code)` = `GET /api/deposit/status?code=<encoded>`. Tanpa retry, redirect manual, key hanya di header (pola `callTunvnRead`); 401/403 = config, 429/5xx = ambigu.
 - Parser menolak invoice yang tidak sesuai: `wallet_transfer.network` wajib `BEP20`, address `0x` + 40 hex, dan `exact_amount >= nominal diminta && < nominal+1` (owner wajib transfer PERSIS nominal). `paid===true` atau `status==="confirmed"` = lunas. Invoice menyimpan `payment_json` non-secret `{address,network,exact_amount,instruction}` saja.
