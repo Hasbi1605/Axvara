@@ -638,7 +638,7 @@ export const WEB_PAID_ADMIN_PENDING_WHERE = `o.sales_channel='web' AND o.status=
  */
 export async function retryPendingTelegramNotifications(limit = 50, only?: {
   created?: boolean; paid?: boolean; paidAdmin?: boolean; paidAdminWeb?: boolean;
-}, database: DatabaseAccess = createDatabaseAccess()): Promise<{
+}, database: DatabaseAccess = createDatabaseAccess(), hasTime = (_ms: number) => true): Promise<{
   created: number;
   paid: number;
   paidAdmin: number;
@@ -685,7 +685,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
       max,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaid) {
-      if (!database.canSpend(6)) break;
+      if (!database.canSpend(6) || !hasTime(11_000)) break;
       try {
         if (await notifyTelegramBuyerPaid(String(order.code), database)) paid++;
       } catch { /* Retry the same durable marker on the next cron run. */ }
@@ -701,7 +701,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
       max,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaidAdmin) {
-      if (!database.canSpend(7)) break;
+      if (!database.canSpend(7) || !hasTime(11_000)) break;
       try {
         const ok = String(order.sales_channel || "telegram") === "whatsapp"
           ? await notifyWhatsAppPaidAdmin(String(order.code), database)
@@ -718,7 +718,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
       max,
     ).catch(() => [] as Row[]);
     for (const order of pendingWeb) {
-      if (!database.canSpend(7)) break;
+      if (!database.canSpend(7) || !hasTime(21_000)) break;
       try {
         if (await notifyWebPaidAdmin(String(order.code), database)) paidAdminWeb++;
       } catch { /* Ledger tetap failed/sending; run berikutnya mencoba lagi. */ }
@@ -749,7 +749,7 @@ const reminderDue = `o.sales_channel='telegram' AND o.status='pending'
   AND (o.telegram_reminder_sent_at IS NULL OR
     ${msBetween("clock.now_jd", "julianday(o.telegram_reminder_sent_at)")} >= MAX(600000, ${reminderLifetime} / 3.0))`;
 
-export async function sendPendingOrderReminders(limit = 50, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+export async function sendPendingOrderReminders(limit = 50, database: DatabaseAccess = createDatabaseAccess(), hasTime = (_ms: number) => true): Promise<number> {
   const { queryAll, execRun } = database;
   if (!telegramNotificationsConfigured()) return 0;
   const pending = await queryAll(
@@ -765,7 +765,7 @@ export async function sendPendingOrderReminders(limit = 50, database: DatabaseAc
   );
   let sent = 0;
   for (const order of pending) {
-    if (!database.canSpend(1)) break;
+    if (!database.canSpend(1) || !hasTime(11_000)) break;
     const code = String(order.code);
     const chatId = String(order.telegram_chat_id || "");
     const expiresMs = parseExpiry(order.expires_at);

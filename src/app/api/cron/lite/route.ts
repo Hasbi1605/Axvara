@@ -13,7 +13,7 @@
 // pending + outbox WhatsApp). Latar: 09:50 WIB 4 langkah lite 503 bareng;
 // `notify` satu-satunya job yang mengipas 5 sub-kerjaan (5 dynamic import)
 // dalam 1 request (~1,9 dtk antrean kosong). `job=notify` LAMA tetap hidup
-// sebagai alias gabungan A→B (kompat pemanggil lama + heavy tick) — Worker
+// sebagai alias gabungan (kompat pemanggil lama + heavy tick) — Worker
 // memanggil a/b terpisah agar tiap request lebih ringan.
 //
 // Cakupan sengaja inti (yang menyentuh pembeli); sisanya tetap di route besar
@@ -37,7 +37,7 @@
 //                 admin + worker siaran bounded
 //   notify_a    — retry kabar order Telegram + invoice tertunda (separuh notify)
 //   notify_b    — kabar QRIS kedaluwarsa + pengingat pending + outbox WA
-//   notify      — alias gabungan notify_a lalu notify_b (kompat lama)
+//   notify      — alias gabungan notify_b lalu notify_a (kompat lama)
 // Kontrak: header `authorization: Bearer <CRON_SECRET>`; 200 {ok,job,...};
 // 400 job tak dikenal; 401 secret salah. Worker: `mcp-worker/src/cron.ts`.
 
@@ -84,16 +84,25 @@ export async function POST(request: NextRequest) {
   const failedCore: string[] = [];
   try {
     if (job === "payments") {
+      // A status GET has a 10s timeout. Reserve an extra 10s if reconciliation
+      // can send an inline admin review notice, plus time to settle the row.
+      const pollReserve = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_ADMIN_CHAT_ID ? 21_000 : 11_000;
+      result.payments_deferred = 0;
+      const admit = (remaining: number) => {
+        if (Date.now() + pollReserve <= deadline) return true;
+        result.payments_deferred = Number(result.payments_deferred) + remaining;
+        return false;
+      };
       // Bounded (Paid 300-budget): KlikQRIS (limit 20) + NOWPayments (limit 20,
       // shared budget/CAS, incl. known-id initializing for manual review)
       // + late known-id (limit 20, 6h recheck, no revive/fulfill) + Sekalipay gateway (12/4/5).
       // NOWPayments passes read key only => run saved-invoice flag-off (key
       // present => readable; key absent => passes quietly return zeros).
       const { reconcileDueKlikQrisPayments } = await import("@/lib/payments/klikqris-reconcile");
-      Object.assign(result, await reconcileDueKlikQrisPayments(db));
+      Object.assign(result, await reconcileDueKlikQrisPayments(db, admit));
       try {
         const { reconcileDueNowpaymentsPayments, reconcileLateKnownNowpaymentsPayments } = await import("@/lib/payments/payment-view");
-        const now = await reconcileDueNowpaymentsPayments(db);
+        const now = await reconcileDueNowpaymentsPayments(db, admit);
         (result as Record<string, unknown>).nowpayments_checked = now.payments_checked;
         (result as Record<string, unknown>).nowpayments_confirmed = now.payments_confirmed;
         (result as Record<string, unknown>).nowpayments_manual_review = now.manual_review;
@@ -104,7 +113,7 @@ export async function POST(request: NextRequest) {
         (result as Record<string, unknown>).payments_failed =
           Number(result.payments_failed ?? 0) + now.payments_failed;
         if (db.canSpend(6)) {
-          const late = await reconcileLateKnownNowpaymentsPayments(db);
+          const late = await reconcileLateKnownNowpaymentsPayments(db, admit);
           (result as Record<string, unknown>).nowpayments_late_checked = late.late_checked;
           (result as Record<string, unknown>).nowpayments_late_manual_review = late.late_manual_review;
         }
@@ -116,7 +125,7 @@ export async function POST(request: NextRequest) {
       if (db.canSpend(6)) {
         try {
           const { reconcileDueSekalipayGatewayPayments } = await import("@/lib/payments/payment-view");
-          Object.assign(result, await reconcileDueSekalipayGatewayPayments(db));
+          Object.assign(result, await reconcileDueSekalipayGatewayPayments(db, admit));
         } catch (error) {
           if (error instanceof QueryBudgetExceeded) throw error;
           result.gateway_error = "pass_failed";
@@ -126,7 +135,7 @@ export async function POST(request: NextRequest) {
       if (db.canSpend(4)) {
         try {
           const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
-          Object.assign(result, await reconcileStaleSekalipayGatewayPayments(db));
+          Object.assign(result, await reconcileStaleSekalipayGatewayPayments(db, { admit }));
         } catch (error) {
           if (error instanceof QueryBudgetExceeded) throw error;
           result.gateway_stale_error = "pass_failed";
@@ -235,7 +244,7 @@ export async function POST(request: NextRequest) {
       if (!synced.errors.length) await drainDirtyGroupsIfBudget(db, result);
     }
     else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db, failedCore));
-    else if (job === "notify_a") Object.assign(result, await runNotifyA(db, failedCore));
+    else if (job === "notify_a") Object.assign(result, await runNotifyA(db, deadline, failedCore));
     else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline, failedCore));
     else if (job === "notify") Object.assign(result, await runNotify(db, deadline, failedCore));
     else if (job === "cleanup") Object.assign(result, await runCleanup(db));
@@ -297,6 +306,7 @@ async function drainDirtyGroupsIfBudget(db: Db, result: Record<string, unknown>)
 async function runExpiry(db: Db) {
   const { transitionPendingPaymentOrder, transitionPendingOrder } = await import("@/lib/db");
   const { isExpiredIso } = await import("@/lib/expiry");
+  const { STALE_INITIALIZING_SQL } = await import("@/lib/payments/stale-initializing");
   let staleInitializing = 0;
   let expired = 0;
   let marketRestocked = false;
@@ -327,15 +337,14 @@ async function runExpiry(db: Db) {
   const stale = await db.queryAll(
     `SELECT pt.order_code, o.items FROM payment_transactions pt
        JOIN orders o ON o.code=pt.order_code
-      WHERE pt.status='initializing' AND pt.created_at < datetime('now', '-5 minutes')
-        AND NOT (pt.provider='nowpayments' AND pt.provider_payment_id IS NOT NULL)
-        AND pt.provider!='sekalipay_gateway'
+      WHERE ${STALE_INITIALIZING_SQL} AND o.status='pending'
       LIMIT ?`,
     EXPIRY_PER_RUN,
   );
   for (const tx of stale) {
     const changed = await transitionPendingPaymentOrder({
       orderCode: String(tx.order_code), expectedTransactionStatus: "initializing",
+      staleInitializingOnly: true,
       transactionStatus: "failed", orderStatus: "dibatalkan", paymentStatus: "failed",
       items: parseItems(tx.items), lastError: "stale_initializing",
     }, db.d1, expiryOpts).catch(() => false);
@@ -766,7 +775,7 @@ async function runPromo(db: Db) {
 // `notify_b` = qris_expiry + reminders + whatsapp_outbox (3 import). `notify`
 // = alias gabungan A lalu B. Hasil digabung dengan kunci yang sama sehingga
 // pemantau lama (alarm Worker, dashboard) tidak berubah bentuk respons.
-async function runNotifyA(db: Db, failedCore: string[]) {
+async function runNotifyA(db: Db, deadline: number, failedCore: string[]) {
   const out: Record<string, unknown> = {};
   const guard = async (key: string, fn: () => Promise<unknown>, core = false) => {
     try { out[key] = await fn(); } catch (error) {
@@ -775,14 +784,17 @@ async function runNotifyA(db: Db, failedCore: string[]) {
       if (core) failedCore.push(key);
     }
   };
-  await guard("telegram_retry", async () => {
-    const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
-    return retryPendingTelegramNotifications(50, undefined, db);
-  }, true);
   await guard("invoice_retry", async () => {
     const { retryInvoicePendingTelegramInvoices } = await import("@/lib/telegram/invoice-retry");
-    return retryInvoicePendingTelegramInvoices(25, db);
+    // At most one slow photo plus ambiguity notice, or one slow text retry,
+    // before yielding. Stop if this is the combined job and time is short.
+    const invoiceDeadline = Math.min(deadline, Date.now() + 37_000);
+    return retryInvoicePendingTelegramInvoices(25, db, ms => Date.now() + ms <= invoiceDeadline);
   });
+  await guard("telegram_retry", async () => {
+    const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
+    return retryPendingTelegramNotifications(50, undefined, db, ms => Date.now() + ms <= deadline);
+  }, true);
   return out;
 }
 
@@ -795,6 +807,16 @@ async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
       if (core) failedCore.push(key);
     }
   };
+  const hasTime = (ms: number) => Date.now() + ms <= deadline;
+  // Protect both buyer lanes from Telegram. PIN gets up to 18s; WA runs next
+  // and only claims when the send and its existing anti-ban delay fit.
+  const pinDeadline = Math.min(deadline, Date.now() + 18_000);
+  await guard("checkout_pin_emails", async () => {
+    if (!db.canSpend(10)) return { skipped: "query_budget" };
+    const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
+    return processCredentialAccessEmails(db, 15, undefined, { hasTime: ms => Date.now() + ms <= pinDeadline });
+  });
+  // Promo only enqueues in D1; keep it ahead of the outbox drain for the same tick.
   await guard("whatsapp_promo", async () => {
     const { enqueueWhatsAppPromo } = await import("@/lib/whatsapp/promo-digest");
     return enqueueWhatsAppPromo(db);
@@ -803,50 +825,31 @@ async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
     const { enqueueWhatsAppPromoBot } = await import("@/lib/whatsapp/promo-bot");
     return enqueueWhatsAppPromoBot(db);
   });
+  await guard("whatsapp_outbox", async () => {
+    const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
+    return processDueWhatsAppOutbox(4, db, hasTime);
+  }, true);
   await guard("qris_expiry_notices", async () => {
     const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
-    return sendQrisExpiryNotifications(15, db, { hasTime: () => Date.now() + 9_000 <= deadline });
+    return sendQrisExpiryNotifications(15, db, { hasTime: () => hasTime(11_000) });
   });
   await guard("pending_reminders", async () => {
     const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
-    return sendPendingOrderReminders(50, db);
+    return sendPendingOrderReminders(50, db, hasTime);
   });
-  // Item 13: kirim alert restok per produk (langganan pembeli, bukan broadcast).
   await guard("restock_alerts", async () => {
     const { processDueRestockAlerts } = await import("@/lib/telegram/restock-alerts");
-    return processDueRestockAlerts(db, 50);
+    return processDueRestockAlerts(db, 50, hasTime);
   });
-  // B2: jalankan PIN checkout SEBELUM whatsapp_outbox agar jeda anti-ban WA
-  // (6-9 dtk x 4 pesan) tidak pernah membuat email PIN kehabisan deadline.
-  await guard("checkout_pin_emails", async () => {
-    if (!db.canSpend(10)) return { skipped: "query_budget" };
-    const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
-    return processCredentialAccessEmails(db, 15, undefined, { hasTime: (needMs) => Date.now() + needMs <= deadline });
-  });
-  await guard("whatsapp_outbox", async () => {
-    const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
-    return processDueWhatsAppOutbox(4, db);
-  }, true);
   return out;
 }
 
 async function runNotify(db: Db, deadline: number, failedCore: string[]) {
-  const out: Record<string, unknown> = {};
-  try {
-    Object.assign(out, await runNotifyA(db, failedCore));
-  } catch (error) {
-    // Budget habis di paruh A = sisa kerja dilanjutkan tick berikut.
-    if (error instanceof QueryBudgetExceeded) throw error;
-  }
-  try {
-    Object.assign(out, await runNotifyB(db, deadline, failedCore));
-  } catch (error) {
-    if (error instanceof QueryBudgetExceeded) throw error;
-  }
-  return out;
+  const out = await runNotifyB(db, deadline, failedCore);
+  return Object.assign(out, await runNotifyA(db, deadline, failedCore));
 }
 
-// cleanup: baris kedaluwarsa (sesi WA, inbox WA 7 hari, event DANA 30 hari,
+// cleanup: baris kedaluwarsa (sesi WA, inbox WA 7 hari, event bayar tuntas 30 hari,
 // revokasi sesi admin). Murah dan idempoten.
 async function runCleanup(db: Db) {
   const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");

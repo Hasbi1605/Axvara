@@ -4,6 +4,17 @@
 export const MAX_UNIQUE_UNITS_PER_ORDER = 10;
 export type DeliveryLine = Record<string, unknown>;
 
+// SQL prefilter for cron selectors (order alias o). Checkout writes tagged
+// unique quantities as integers; ordinary/legacy cart quantities stay one row.
+export const DELIVERY_LINE_COUNT_SQL = `(SELECT COALESCE(SUM(CASE WHEN line.type='object' THEN
+  CASE WHEN json_type(line.value,'$.unique_units')='true'
+    AND json_extract(line.value,'$.fulfillment_mode')='unique'
+    AND json_type(line.value,'$.qty')='integer'
+    AND json_extract(line.value,'$.qty') BETWEEN 1 AND ${MAX_UNIQUE_UNITS_PER_ORDER}
+    THEN json_extract(line.value,'$.qty') ELSE 1 END ELSE 1 END),0)
+  FROM json_each(CASE WHEN json_valid(o.items) THEN
+    CASE WHEN json_type(o.items)='array' THEN o.items ELSE '[]' END ELSE '[]' END) line)`;
+
 export function markUniqueUnitLines<T extends { variant_id?: unknown; qty?: unknown }>(items: T[], uniqueIds: ReadonlySet<number>): T[] {
   const total = items.reduce((n, item) => n + (uniqueIds.has(Number(item.variant_id)) ? Number(item.qty) : 0), 0);
   if (!Number.isSafeInteger(total) || total > MAX_UNIQUE_UNITS_PER_ORDER) throw new Error("unique_quantity_limit");

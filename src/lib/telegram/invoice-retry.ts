@@ -282,7 +282,7 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
  * Batasan per panggilan agar tunduk pada budget cron. Mengembalikan jumlah
  * foto yang akhirnya terkirim pada panggilan ini.
  */
-export async function retryInvoicePendingTelegramInvoices(limit = 25, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+export async function retryInvoicePendingTelegramInvoices(limit = 25, database: DatabaseAccess = createDatabaseAccess(), hasTime = (_ms: number) => true): Promise<number> {
   const { queryAll } = database;
   if (process.env.TELEGRAM_BOT_ENABLED !== "true") return 0;
   if (!database.canSpend(1)) return 0;
@@ -300,7 +300,9 @@ export async function retryInvoicePendingTelegramInvoices(limit = 25, database: 
   ).catch(() => [] as Record<string, unknown>[]);
   let sent = 0;
   for (const row of pending) {
-    if (!database.canSpend(["nowpayments", "sekalipay_gateway"].includes(String(row.provider)) ? 8 : 5)) break;
+    const providerText = ["nowpayments", "sekalipay_gateway"].includes(String(row.provider));
+    // Reserve the primary send and a possible ambiguity notice before claim.
+    if (!database.canSpend(providerText ? 8 : 5) || !hasTime(providerText ? 21_000 : 36_000)) break;
     try {
       if (await retryTelegramInvoiceDelivery(String(row.code), database)) sent++;
     } catch { /* cron berikutnya retry */ }

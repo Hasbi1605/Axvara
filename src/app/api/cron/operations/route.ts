@@ -1,4 +1,6 @@
 import { operationQueueProbeSql } from "@/lib/cron-queues";
+import { FAST_EXPIRY_RAILS_SQL, STALE_INITIALIZING_SQL } from "@/lib/payments/stale-initializing";
+import { DELIVERY_LINE_COUNT_SQL } from "@/lib/fulfillment/units";
 // POST /api/cron/operations — Reconciliation cron for payments and fulfillment
 // Called by MCP Worker cron every 5 minutes. Handles:
 // 1. Stale initializing payments
@@ -584,7 +586,7 @@ export async function POST(request: NextRequest) {
         staleInit = await queryAll(
           `SELECT pt.order_code, o.items FROM payment_transactions pt
            JOIN orders o ON o.code=pt.order_code
-           WHERE pt.status='initializing' AND pt.created_at < datetime('now', '-5 minutes')
+           WHERE ${STALE_INITIALIZING_SQL} AND o.status='pending'
            LIMIT ?`,
           EXPIRY_PER_RUN,
         );
@@ -619,6 +621,7 @@ export async function POST(request: NextRequest) {
             const changed = await rawTransitionPendingPaymentOrder({
               orderCode: String(tx.order_code),
               expectedTransactionStatus: "initializing",
+              staleInitializingOnly: true,
               transactionStatus: "failed",
               orderStatus: "dibatalkan",
               paymentStatus: "failed",
@@ -681,11 +684,12 @@ export async function POST(request: NextRequest) {
       const expirySpent = staleTransitions + expiredTransitions;
       if (expiryListed && expirySpent < EXPIRY_PER_RUN && budget.fits(1)) {
         strandedCandidates = await queryAll(
-          `SELECT pt.order_code, pt.status AS tx_status, o.items
+          `SELECT pt.order_code, pt.status AS tx_status
            FROM payment_transactions pt
            JOIN orders o ON o.code=pt.order_code
            WHERE pt.status IN ('pending','initializing')
              AND o.status IN ('kadaluarsa','dibatalkan')
+             AND ${FAST_EXPIRY_RAILS_SQL}
            LIMIT ?`,
           EXPIRY_PER_RUN,
         );
@@ -696,35 +700,20 @@ export async function POST(request: NextRequest) {
       // Deklarasi dipulihkan (terpotong saat edit RR4-06): loop stranded di bawah.
       let repairedLegacy = 0;
       for (const row of strandedCandidates) {
-        if (!budget.fits(expiryCost(row.items))) break;
+        if (!budget.fits(1)) break;
         try {
-          const items = JSON.parse(String(row.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
-
-          const changed = await rawTransitionPendingPaymentOrder({
-            orderCode: String(row.order_code),
-            expectedTransactionStatus: String(row.tx_status) === "initializing" ? "initializing" : "pending",
-            transactionStatus: String(row.tx_status) === "initializing" ? "failed" : "expired",
-            orderStatus: "kadaluarsa",
-            paymentStatus: "expired",
-            items,
-            lastError: "legacy_expiry_repair",
-          }, database.d1, expiryOpts);
-          // transitionPendingPaymentOrder guards on a pending order, so for
-          // already-terminal orders close just the stranded ledger row: its
-          // status is still non-terminal, therefore still pinning the amount.
-          if (!changed) {
-            const closed = await execRun(
-              `UPDATE payment_transactions
+          // Never touch stock for a terminal order. Recheck the rail and order
+          // under the write; known charges stay available for late review.
+          const closed = await execRun(
+            `UPDATE payment_transactions AS pt
                SET status=?, last_error='legacy_expiry_repair', updated_at=datetime('now')
-               WHERE order_code=? AND status=?`,
-              String(row.tx_status) === "initializing" ? "failed" : "expired",
-              String(row.order_code),
-              String(row.tx_status),
-            );
-            if (closed.changes) repairedLegacy++;
-          } else {
-            repairedLegacy++;
-          }
+               WHERE order_code=? AND status=? AND ${FAST_EXPIRY_RAILS_SQL}
+                 AND EXISTS(SELECT 1 FROM orders o WHERE o.code=pt.order_code AND o.status IN ('kadaluarsa','dibatalkan'))`,
+            String(row.tx_status) === "initializing" ? "failed" : "expired",
+            String(row.order_code),
+            String(row.tx_status),
+          );
+          if (closed.changes) repairedLegacy++;
         } catch { /* keep the repair best-effort; next run retries */ }
       }
       results.repaired_legacy_expiry = repairedLegacy;
@@ -896,16 +885,17 @@ export async function POST(request: NextRequest) {
             catch { deferredOut.push("fulfillment"); }
           }
         }
-        if (budget.fits(5)) results.fulfillment_aggregates_repaired = await reconcileSettledJobs(2, database);
+        if (budget.fits(6)) results.fulfillment_aggregates_repaired = await reconcileSettledJobs(2, database);
         if (budget.fits(1)) {
           const jobs = process.env.AUTO_FULFILLMENT_ENABLED === "true"
             ? await getDueJobs(FULFILLMENT_PER_RUN, database)
             : await queryAll(
               `SELECT fj.* FROM fulfillment_jobs fj JOIN orders o ON o.code=fj.order_code
                WHERE fj.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid'
+                 AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')
                  AND (fj.locked_until IS NULL OR datetime(fj.locked_until)<datetime('now'))
                  AND (SELECT COUNT(*) FROM fulfillment_items fi WHERE fi.order_code=o.code)
-                   < json_array_length(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END)
+                   < ${DELIVERY_LINE_COUNT_SQL}
                ORDER BY fj.created_at ASC, fj.id ASC LIMIT ?`, FULFILLMENT_PER_RUN,
             );
           for (const job of jobs) {

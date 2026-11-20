@@ -1,5 +1,16 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Cron pembayaran, notifikasi dan fulfillment — 21 November 2026 (lokal)
+
+- Deadline 45 dtk adalah batas admission per item: sebelum klaim cek ruang
+  untuk timeout transport dan settlement. `payments_deferred` bukan failure;
+  tidak mengubah urutan core atau cadence. `notify_b` mendahulukan PIN dan
+  outbox WA dari Telegram; pertahankan pacing dan lease WA.
+- Mode manual memakai jumlah unit unik dalam manifest, bukan jumlah baris
+  keranjang; materialisasi bertahap tidak mengirim produk. Perbaikan agregat
+  Market hanya untuk manifest lengkap dan seluruh item `delivered`, dengan CAS
+  order + job. Tidak ada backfill produksi atau eskalasi aged-manual baru.
+
 ### Workers Logs `axvara-mcp` + runbook log Pages — 20 November 2026 (keputusan owner; berlaku setelah rilis CI)
 
 - **Keputusan owner:** aktifkan Workers Logs persisten (retensi 7 hari, dashboard Observability) di Worker `axvara-mcp` dengan invocation logs otomatis **ON**. Konfigurasi di `mcp-worker/wrangler.toml`: `[observability] enabled = true`, `head_sampling_rate = 1`, dan `[observability.logs] invocation_logs = true`. Sampling 1 agar kegagalan langka (queue/cron) tidak terlewat; turunkan hanya bila pemakaian bersama menuntut.

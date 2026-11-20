@@ -69,6 +69,14 @@ const schema = z.object({
   quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
 });
 
+function closedCheckoutResponse(status: unknown, locale: "en" | "id") {
+  if (!["dibatalkan", "kadaluarsa"].includes(String(status))) return null;
+  return NextResponse.json({
+    error: locale === "en" ? "This order is closed. Get a new quote to continue." : "Pesanan ini sudah ditutup. Ambil harga terbaru untuk lanjut.",
+    error_code: "checkout_order_closed",
+  }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
+}
+
 async function existingCheckoutResponse(existing: Record<string, unknown>) {
   // Saved retry SELALU baca ulang status + locale terbaru dari DB (snapshot
   // stale tidak pernah dikembalikan): fresh row di sini untuk reuse decision
@@ -78,9 +86,11 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
     existing.code,
   ).catch(() => null);
   const live = (fresh ?? existing) as Record<string, unknown>;
+  const locale = live.locale === "en" ? "en" : "id";
+  const closed = closedCheckoutResponse(live.status, locale);
+  if (closed) return closed;
   const buyer_access_session = await createBuyerAccessSession(live);
   const checkout_credential_grant = await createCheckoutCredentialGrant(live);
-  const locale = live.locale === "en" ? "en" : "id";
   // Saved retry: resolves BEFORE new-order flags/FX checks — same order, same
   // provider binding, access-safe recovery. Never reserve again; never POST
   // blind; never switch provider (reconcile known id via GET only).
@@ -93,7 +103,9 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
     if (tx?.provider === "klikqris") {
       try {
         const inv = await createActiveQrisInvoice(String(live.code), Number(tx.requested_amount));
-        return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: live.status, buyer_access_session, checkout_credential_grant, reused: true, locale, qris: {
+        const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
+        const status = current?.status ?? live.status;
+        return closedCheckoutResponse(status, locale) ?? NextResponse.json({ code: live.code, subtotal: live.subtotal, status, buyer_access_session, checkout_credential_grant, reused: true, locale, qris: {
           payable_amount: inv.payableAmount, unique_code: inv.uniqueCode,
           image_url: inv.qrisUrl, expires_at: inv.expiresAt,
         } }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
@@ -114,7 +126,8 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
         const payment = await buildNowpaymentsPaymentView(String(live.code)).catch(() => null);
         if (payment) {
           const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
-          return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: current?.status ?? live.status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
+          const status = current?.status ?? live.status;
+          return closedCheckoutResponse(status, locale) ?? NextResponse.json({ code: live.code, subtotal: live.subtotal, status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
         }
       } catch { /* fall through to generic reuse below */ }
       return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code }, { status: 503 });
@@ -143,7 +156,8 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
       }
       if (!payment || payment.state === "initializing") return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
       const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
-      return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: current?.status ?? live.status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
+      const status = current?.status ?? live.status;
+      return closedCheckoutResponse(status, locale) ?? NextResponse.json({ code: live.code, subtotal: live.subtotal, status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
     }
   }
   return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: live.status, buyer_access_session, checkout_credential_grant, reused: true, locale }, { status: 200, headers: { "Cache-Control": "private, no-store" } });

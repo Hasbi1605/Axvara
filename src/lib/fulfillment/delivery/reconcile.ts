@@ -5,12 +5,13 @@
 // Mereka berbagi disiplin fence (order yang sudah settled tidak dibangkitkan
 // ulang) dan budget request-scoped. Mengumpulkannya memisahkan jalur pemulihan
 // batch dari jalur pembayaran langsung, sehingga aturan idempotensi/fence mudah
-// ditinjau. NOL perubahan perilaku: SQL, limit, dan urutan identik.
+// ditinjau.
 
 import { queryFirst, queryAll } from "@/lib/db";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import type { Row } from "./types";
-import { allItemsDelivered, allItemsSettled, fulfillmentLineMismatches, parseOrderItems } from "./manifest";
+import { allItemsDelivered, fulfillmentLineMismatches, parseOrderItems } from "./manifest";
+import { DELIVERY_LINE_COUNT_SQL } from "../units";
 import { createFulfillmentJob } from "./claim";
 import { ensureFulfillmentItems } from "./inventory-binding";
 import { ensureFulfillmentForPaidOrder } from "./ensure";
@@ -34,29 +35,52 @@ export async function reconcileOrphanLight(orderCode: string, database: Database
 
 /** Repair historical job/order splits without sending credentials again. */
 export async function reconcileSettledJobs(limit = 2, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
-  if (!database.canSpend(1)) return 0;
+  const d1 = database.d1;
+  if (!d1 || !database.canSpend(1)) return 0;
+  const deliveredItems = `NOT EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=o.code AND fi.status<>'delivered')`;
   const orders = await database.queryAll(
-    `SELECT o.*, fj.id AS job_id FROM orders o JOIN fulfillment_jobs fj ON fj.order_code=o.code
-     WHERE o.status='lunas' AND o.payment_status='paid' AND fj.status='delivered'
+    `SELECT o.code,o.items,o.fulfillment_status,fj.id AS job_id,fj.status AS job_status
+     FROM orders o JOIN fulfillment_jobs fj ON fj.order_code=o.code
+     WHERE o.status='lunas' AND o.payment_status='paid' AND fj.status IN ('delivered','manual_required','failed')
        AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')
-       AND COALESCE(o.fulfillment_status,'none') NOT IN ('delivered','manual_required') LIMIT ?`, limit,
+       AND (o.fulfillment_status IS NOT 'delivered' OR fj.status<>'delivered')
+       AND ${deliveredItems}
+       AND (SELECT COUNT(*) FROM fulfillment_items fi WHERE fi.order_code=o.code) = ${DELIVERY_LINE_COUNT_SQL}
+       AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=o.code)
+     LIMIT ?`, limit,
   );
   let repaired = 0;
   for (const order of orders) {
-    if (!database.canSpend(4)) break;
-    const rows = await database.queryAll(`SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, order.code);
-    const complete = fulfillmentLineMismatches(order.items, rows).length === 0;
-    const aggregate = complete && allItemsDelivered(rows) ? "delivered" : "manual_required";
-    const d1 = database.d1;
-    if (d1) await d1.batch([
-      d1.prepare(`UPDATE orders SET fulfillment_status=?,updated_at=datetime('now') WHERE code=?
-        AND COALESCE(fulfillment_status,'none') NOT IN ('delivered','manual_required')
-        AND EXISTS(SELECT 1 FROM fulfillment_jobs WHERE id=? AND status='delivered')`).bind(aggregate, order.code, order.job_id),
-      d1.prepare(`UPDATE fulfillment_jobs SET status=?,last_error=?,updated_at=datetime('now') WHERE id=? AND status='delivered'`)
-        .bind(complete && allItemsSettled(rows) ? "delivered" : "manual_required", complete ? null : "fulfillment_manifest_mismatch", order.job_id),
-    ]);
-    else await database.execRun(`UPDATE orders SET fulfillment_status=? WHERE code=?`, aggregate, order.code);
-    repaired++;
+    if (!database.canSpend(5)) break;
+    const rows = await database.queryAll(`SELECT item_index,product_id,variant_id,qty,status FROM fulfillment_items WHERE order_code=?`, order.code);
+    if (!allItemsDelivered(rows) || fulfillmentLineMismatches(order.items, rows).length) continue;
+    const manifest = JSON.stringify(rows);
+    const guardId = `${order.code}:fulfillment-settlement:${crypto.randomUUID()}`;
+    // D1 rolls the whole batch back on a CAS loss, including both aggregates.
+    try {
+      await d1.batch([
+        d1.prepare(`INSERT INTO operation_guards (operation_id,valid) SELECT ?, EXISTS(
+          SELECT 1 FROM orders o JOIN fulfillment_jobs fj ON fj.order_code=o.code
+          WHERE o.code=? AND o.status='lunas' AND o.payment_status='paid'
+            AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')
+            AND o.fulfillment_status IS ? AND o.items IS ? AND fj.id=? AND fj.status=?
+            AND ${deliveredItems}
+            AND (SELECT COUNT(*) FROM fulfillment_items fi WHERE fi.order_code=o.code)=?
+            AND NOT EXISTS(SELECT 1 FROM json_each(?) expected WHERE NOT EXISTS(
+              SELECT 1 FROM fulfillment_items fi
+              WHERE fi.order_code=o.code AND fi.item_index=expected.value->>'item_index'
+                AND fi.product_id=expected.value->>'product_id' AND fi.variant_id IS (expected.value->>'variant_id')
+                AND fi.qty=expected.value->>'qty'
+            )))`).bind(guardId, order.code, order.fulfillment_status, order.items, order.job_id, order.job_status, rows.length, manifest),
+        d1.prepare(`UPDATE orders SET fulfillment_status='delivered',updated_at=datetime('now') WHERE code=?`).bind(order.code),
+        d1.prepare(`UPDATE fulfillment_jobs SET status='delivered',last_error=NULL,locked_until=NULL,next_attempt_at=NULL,
+          item_cursor=NULL,updated_at=datetime('now') WHERE id=?`).bind(order.job_id),
+        d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
+      ]);
+      repaired++;
+    } catch (error) {
+      if (!(error instanceof Error) || !/operation_guards|CHECK constraint failed: valid/i.test(error.message)) throw error;
+    }
   }
   return repaired;
 }

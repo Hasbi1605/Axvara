@@ -560,6 +560,12 @@ function CheckoutInner() {
         await fetchQuote(quoteRequestItems);
         throw new Error(j.message || "Harga produk berubah. Periksa harga terbaru lalu lanjutkan.");
       }
+      if (r.status === 409 && j.error_code === "checkout_order_closed") {
+        setQuoteToken(null);
+        setQuoteAccepted(false);
+        setQuoteError("checkout_order_closed");
+        return;
+      }
       // Gateway/crypto gagal/ambigu: order + klaim lama dibiarkan expire (tidak
       // dibatalkan), tetapi quote lama TIDAK boleh dipakai untuk metode lain
       // (reuse orders.quote_id akan mengembalikan order lama). Kosongkan
@@ -646,8 +652,8 @@ function CheckoutInner() {
         </div>
       ) : quoteError ? (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2">
-          <p className="text-sm text-red-300">{message(quoteError)}</p>
-          <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">{text("Coba lagi", "Try again")}</button>
+          <p className="text-sm text-red-300" role="alert">{quoteError === "checkout_order_closed" ? text("Pesanan ini sudah ditutup.", "This order is closed.") : message(quoteError)}</p>
+          <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">{quoteError === "checkout_order_closed" ? text("Ambil harga terbaru", "Get a new quote") : text("Coba lagi", "Try again")}</button>
         </div>
       ) : (
         <>

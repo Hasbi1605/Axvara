@@ -1,5 +1,6 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import { parseExpiry } from "@/lib/expiry";
+import { PAYMENT_ATTENTION_WHERE } from "@/lib/admin-overview-queries";
 
 /** Lite + heavy share one completion marker. Expiry/fulfillment do not use
  * this throttle; only already-expired housekeeping records are removed here. */
@@ -12,7 +13,8 @@ export async function runMaintenanceCleanup(db: DatabaseAccess) {
   }
   const sessions = await db.execRun("DELETE FROM whatsapp_sessions WHERE datetime(expires_at)<datetime('now','-1 day')");
   const inbox = await db.execRun("DELETE FROM whatsapp_inbox_events WHERE created_at<datetime('now','-7 days')");
-  const events = await db.execRun("DELETE FROM dana_webhook_events WHERE created_at<datetime('now','-30 days')");
+  const events = await db.execRun(`DELETE FROM dana_webhook_events WHERE julianday(created_at)<julianday('now','-30 days')
+    AND NOT (${PAYMENT_ATTENTION_WHERE})`);
   const revoked = await db.execRun("DELETE FROM admin_session_revocations WHERE datetime(expires_at)<datetime('now')");
   // Quote validity is at most one hour. Keep admission keys for a day and
   // bound housekeeping so abuse cannot create an unbounded cleanup request.

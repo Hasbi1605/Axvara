@@ -504,7 +504,7 @@ export const SEKALIPAY_GATEWAY_STALE_LIMIT = 5;
  */
 export async function reconcileStaleSekalipayGatewayPayments(
   db: DatabaseAccess = createDatabaseAccess(),
-  options?: { limit?: number },
+  options?: { limit?: number; admit?: (remaining: number) => boolean },
 ): Promise<{ gateway_stale_checked: number; gateway_stale_closed: number; gateway_stale_manual_review: number }> {
   const out = { gateway_stale_checked: 0, gateway_stale_closed: 0, gateway_stale_manual_review: 0 };
   if (!db.canSpend(2)) return out;
@@ -553,7 +553,8 @@ export async function reconcileStaleSekalipayGatewayPayments(
     await alertGatewayManualReviewOnce(orderCode, reason, db);
     out.gateway_stale_manual_review++;
   };
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
+    if (options?.admit && !options.admit(rows.length - index)) break;
     const orderCode = String(row.order_code);
     const hasProviderInvoiceId = typeof row.provider_payment_id === "string" && row.provider_payment_id.trim().length > 0;
     const providerOrderRef = typeof row.provider_order_id === "string" && row.provider_order_id.trim().length > 0

@@ -325,7 +325,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
  * `paused` = sisa antrean yang TIDAK diproses karena auto-pause lunak
  * (3 sinyal bahaya berurutan — gateway mati / 401 / 403).
  */
-export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAccess = createDatabaseAccess()): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number; paused?: number }> {
+export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAccess = createDatabaseAccess(), hasTime = (_ms: number) => true): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number; paused?: number }> {
   const { queryFirst, execRun } = database;
   if (!database.canSpend(2)) return { sent: 0, dead: 0, recovered: 0, claimErrors: 0 };
   const recovered = await recoverStaleWhatsAppLeases(database);
@@ -353,9 +353,10 @@ export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAcce
       continue; // lewati baris ini run ini; due lagi run berikut.
     }
     // Pacing manusiawi antar kirim (bukan sleep sebelum baris pertama).
-    if (attempted > 0) {
-      await new Promise((r) => setTimeout(r, paceDelayMsLive()));
-    }
+    const delay = attempted > 0 ? paceDelayMsLive() : 0;
+    if (!hasTime(delay + 16_000)) break;
+    if (attempted > 0) await new Promise((r) => setTimeout(r, delay));
+    if (!hasTime(16_000)) break;
     attempted++;
     let done = false;
     try {

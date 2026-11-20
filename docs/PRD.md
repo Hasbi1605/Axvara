@@ -133,6 +133,11 @@ Perbaikan reservasi stok mengatasi HTTP 500 saat pembeli menekan **Bayar**
 karena query melebihi batas kedalaman ekspresi D1. Quote yang sama tetap dapat
 dipakai untuk melanjutkan pesanan yang sudah tersimpan.
 
+Koreksi 21 November 2026 (lokal): quote lama untuk pesanan batal/kedaluwarsa
+tidak membuka halaman bayar. Keranjang tetap utuh; pembeli dapat mengambil
+harga terbaru lalu menekan Bayar kembali. Pemulihan klaim yang masih hidup
+tetap tidak membuat pesanan atau tagihan duplikat.
+
 ## A-S: kesehatan checkout tanpa transaksi — 18 November 2026 (lokal)
 
 Tiga probe per tick menit memeriksa home/katalog/quote sebelum pekerjaan order.
