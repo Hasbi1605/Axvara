@@ -5,7 +5,6 @@ import userEvent from "@testing-library/user-event";
 import { PediaHomeClient } from "@/app/pedia/home-client";
 import { PediaNavbar } from "@/components/pedia/PediaNavbar";
 import { PlatformCatalog } from "@/components/pedia/PlatformCatalog";
-import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { catalogCard, ProductCard } from "@/components/pedia/PlatformGrid";
 import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
@@ -201,21 +200,6 @@ describe("Pedia platform-first storefront", () => {
     expect(screen.getAllByRole("link", { name: "Layanan Instagram" })).toHaveLength(1);
     expect(document.body.textContent).toContain("1 platform");
     expect(document.body.textContent).not.toMatch(/Terlaris|Paling dipilih/);
-  });
-
-  it("handles unmatched and invalid links without suggesting verification", async () => {
-    render(<LinkPasteHero suggestionsFor={() => []} />);
-    fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "https://tiktok.com/@customer/video/123456" } });
-    expect(await screen.findByText(/Belum ada layanan untuk jenis link ini/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "invalid-link" } });
-    expect(await screen.findByText(/Gunakan link lengkap/)).toBeTruthy();
-  });
-
-  it("does not suggest reel-only services for post links rejected by the quote contract", async () => {
-    render(<LinkPasteHero suggestionsFor={() => []} />);
-    fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "https://instagram.com/p/ABC/" } });
-    expect(await screen.findByText(/Belum ada layanan untuk jenis link ini/)).toBeTruthy();
-    expect(screen.queryByRole("link", { name: /Followers Instagram mulai/ })).toBeNull();
   });
 
   it("selects a service kind directly on the platform page and supports switching", () => {

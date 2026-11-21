@@ -24,7 +24,6 @@ import { computePediaPrice, pediaMargin } from "@/lib/pedia/pricing";
 import { pediaMinOrderRp } from "@/lib/pedia/ops-config";
 import { generateOrderCode } from "@/lib/security";
 import { isPediaProvider } from "@/lib/pedia/proxy";
-import { isPediaSaleProvider, PEDIA_SALE_RETIRED } from "@/lib/pedia/sales-policy";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { transitionPendingOrder } from "@/lib/db";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
@@ -128,19 +127,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: pick(locale, "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout.", "The checkout quote is invalid or expired. Reload checkout.") }, { status: 409 });
   }
   const db = createDatabaseAccess();
-  // INDO-POLICY-20: the existing-checkout lookup runs FIRST. An already
-  // persisted order retry (same quote_id) returns the existing order as
-  // before — including orders of a supplier this build no longer sells. Only
-  // unreserved retired-provider quotes are rejected below, before any DB tier
-  // checks, debit/reservation, or invoice.
+  // After token verification, look up the persisted checkout by quote_id
+  // before credit, tier and other new-order guards. Retries use the saved order.
   const reused = await db.queryFirst(`SELECT code, subtotal, status, payment_method, buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
   if (reused) return checkoutResponse(db, reused, true, locale);
   // Persisted retries above retain their original payable, including legacy
   // credits. An unreserved old quote cannot debit or redeem a credit now.
   if (quote.credit_used !== 0 || quote.credit_code_hash) return NextResponse.json({ error: "credits_retired", message: pick(locale, "Muat ulang harga. Kode kredit tidak lagi digunakan; kode lama ditangani admin.", "Reload the price. Credit codes are no longer used; old codes are handled by admin.") }, { status: 409 });
-  if (!isPediaSaleProvider(quote.supplier)) {
-    return NextResponse.json({ ...PEDIA_SALE_RETIRED, message: pick(locale, String(PEDIA_SALE_RETIRED.message ?? ""), "This service is no longer sold. Choose another available service.") }, { status: 409 });
-  }
   const minOrderRp = pediaMinOrderRp();
 
   // Hitung ulang dari DB (JANGAN percaya angka client/quote — pola orders):

@@ -169,13 +169,6 @@ describe("F-Medium: Payment proof — upload strict", () => {
     expect(checkMagicBytes(jpg, "image/png")).toBe(false); // mismatch
   });
 
-  it("src/app/api/proof/upload/route.ts ditutup 503 selama maintenance jalur manual", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/proof/upload/route.ts"), "utf-8");
-    // Maintenance 2026-09-17: upload bukti WEB disembunyikan + endpoint 503 (QRIS saja).
-    expect(src).toContain("503");
-    expect(src).toContain("Upload bukti sedang dinonaktifkan");
-  });
-
   it("checkout page: jalur manual pensiun, metode hanya dari ID quote", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/checkout/page.tsx"), "utf-8");
     expect(src).not.toContain("MANUAL_PAYMENTS_MAINTENANCE");
@@ -338,17 +331,6 @@ describe("BUG-12: community destinations remain live and centralized", () => {
     expect(bar).toContain('target="games"');
     const site = fs.readFileSync(path.join(process.cwd(), "src/lib/site.ts"), "utf-8");
     expect(site).toContain('`https://t.me/${SITE.adminTelegram}?start=beli`');
-  });
-});
-
-describe("BUG-13: Proof upload extension sesuai tipe (bukan selalu .webp)", () => {
-  it("proof upload route ditutup 503 selama maintenance (implementasi normal diarsipkan)", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/proof/upload/route.ts"), "utf-8");
-    // Maintenance 2026-09-17: POST selalu 503. Revert: hapus early-return
-    // 503 dan kembalikan blok validasi magic-bytes + extension per tipe
-    // (const ext = type === "image/png" ? "png" : ... + `bukti/...${ext}`).
-    expect(src).toContain("503");
-    expect(src).toContain("Upload bukti sedang dinonaktifkan");
   });
 });
 

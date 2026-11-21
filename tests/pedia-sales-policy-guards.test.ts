@@ -25,7 +25,7 @@ describe("Pedia sale policy (INDO-POLICY-20)", () => {
     }
   });
 
-  it("exposes the exact retired-provider rejection payload consumed by quotes/orders/admin", () => {
+  it("exposes the exact retired-provider rejection payload consumed by admin products", () => {
     expect(PEDIA_SALE_RETIRED).toEqual({
       error: "provider_retired",
       message: "Layanan ini sudah tidak dijual. Muat ulang katalog dan pilih layanan lain.",

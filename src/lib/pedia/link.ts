@@ -22,7 +22,7 @@ export type PediaLinkDetect = {
   targetKind: PediaTargetKind;
   /** URL kanonis (untuk guard ganda + kirim supplier). */
   normalized: string;
-  /** Username tampilan tersamar (mis. @ma***a) — untuk chip & ticker. */
+  /** Username tampilan tersamar (mis. @ma***a). */
   displayUser: string | null;
 };
 
@@ -32,13 +32,6 @@ function maskUser(user: string): string {
   const clean = user.replace(/^@/, "");
   if (clean.length <= 4) return `@${clean.slice(0, 2)}***`;
   return `@${clean.slice(0, 2)}***${clean.slice(-1)}`;
-}
-
-/** Samarkan target untuk ticker publik (tanpa data palsu). */
-export function maskTargetForTicker(target: string): string {
-  const m = target.match(/(?:@)([\w.]+)/);
-  if (m) return maskUser(m[1]);
-  return target.slice(0, 12) + "***";
 }
 
 /** Normalisasi input mentah: trim, tambah https bila bare, buang query umum. */
@@ -260,14 +253,6 @@ export const PEDIA_PLATFORM_LABEL: Record<PediaPlatform, string> = {
   instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", facebook: "Facebook",
   threads: "Threads", shopee: "Shopee", spotify: "Spotify", x: "X", telegram: "Telegram",
   github: "GitHub", website: "Website", linkedin: "LinkedIn", pinterest: "Pinterest", discord: "Discord", twitch: "Twitch", soundcloud: "SoundCloud",
-};
-
-/** Label jenis target bahasa pembeli. */
-export const PEDIA_TARGET_KIND_LABEL: Record<PediaTargetKind, string> = {
-  profile: "Profil", post: "Postingan", video: "Video", reel: "Reel",
-  live: "Live", channel: "Channel", playlist: "Playlist", shop: "Toko", track: "Lagu",
-  repository: "Repository", website: "Website", company: "Perusahaan", board: "Board", invite: "Undangan server",
-  artist: "Artis", short: "Shorts", album: "Album", story: "Story", group: "Grup",
 };
 
 export function pediaTargetMatches(need: string, detected: PediaTargetKind, context?: { platform: string; metric: string }) {

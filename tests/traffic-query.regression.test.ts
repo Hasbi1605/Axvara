@@ -36,15 +36,13 @@ describe("Issue #14 — proteksi trafik aktual, bukan klaim", () => {
   it("rate-limit terpusat: quote/order/upload/login memakai helper yang sama", () => {
     expect(read("src/app/api/checkout/quote/route.ts")).toContain("checkRateLimit");
     expect(read("src/app/api/orders/route.ts")).toContain("checkRateLimit");
-    expect(read("src/app/api/proof/upload/route.ts")).toContain("checkRateLimit");
     expect(read("src/app/api/upload/route.ts")).toContain("checkRateLimit");
     expect(read("src/app/api/auth/login/route.ts")).toContain("checkRateLimit");
     expect(read("src/app/api/orders/[code]/route.ts")).toContain("GET as getOrder");
     expect(read("src/app/api/orders/route.ts")).toContain("checkRateLimit");
-    // Tidak ada lagi salinan Map lokal per-route untuk 4 endpoint yang dimigrasi.
+    // Tidak ada lagi salinan Map lokal per-route untuk 3 endpoint berikut.
     for (const f of [
       "src/app/api/orders/route.ts",
-      "src/app/api/proof/upload/route.ts",
       "src/app/api/auth/login/route.ts",
       "src/app/api/orders/[code]/route.ts",
     ]) {
@@ -56,7 +54,6 @@ describe("Issue #14 — proteksi trafik aktual, bukan klaim", () => {
     expect(RATE_LIMITS["auth:login"]).toBe(5);
     expect(RATE_LIMITS["checkout:orders"]).toBe(10);
     expect(RATE_LIMITS["checkout:quote"]).toBe(20);
-    expect(RATE_LIMITS["proof:upload"]).toBe(5);
     // Security test lama memakai rateLimit mentah — perilaku dipertahankan.
     const ip = `10.9.0.${Math.floor(Math.random() * 200) + 10}`;
     for (let i = 0; i < 20; i++) expect(rateLimit(`lookup:${ip}`, 20)).toBe(true);
