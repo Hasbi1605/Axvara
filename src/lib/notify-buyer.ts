@@ -221,7 +221,7 @@ export async function sendToBuyer(
   orderCode: string,
   notice: Notice,
   database: DatabaseAccess,
-  options: { whatsappFallback?: boolean; emailOnly?: boolean } = {},
+  options: { emailOnly?: boolean } = {},
 ): Promise<boolean> {
   const { queryFirst } = database;
   const order = await queryFirst(
@@ -247,12 +247,7 @@ export async function sendToBuyer(
     const email = String(order.customer_email || "").trim();
     if (email) return await sendEmailNotice(database, orderCode, email, notice, locale);
   }
-
-  if (options.whatsappFallback === false) return false;
-  const target = String(order.customer_wa || "").trim();
-  if (!target) return false;
-  const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
-  return await enqueueWhatsAppMessage(waOutboxKey("text", notice.refKey), target, chatText).catch(() => false);
+  return false;
 }
 
 /** Accepted supplier work only; never replay processing mail for terminal/manual orders. */
@@ -275,7 +270,7 @@ export async function notifyBuyerTunvnProcessing(orderCode:string,linkId:number,
         : (en ? "Your product is being prepared automatically." : "Produkmu sedang disiapkan otomatis."),
       en ? "We will email you when it is complete. You can check the latest status on your order page." : "Kami akan mengabari lewat email setelah selesai. Status terbaru dapat dilihat di halaman pesanan.",
     ]},refKey:`tunvn-processing:${orderCode}:${linkId}`,
-  },database,{whatsappFallback:false}).catch(()=>false);
+  },database).catch(()=>false);
 }
 
 /** Noncredential completion: never include the supplied invite code. */
@@ -287,7 +282,7 @@ export async function notifyBuyerBuffCompleted(orderCode:string,itemIndex:number
     body:en ? "Your Muse token top-up is complete." : "Isi ulang token Muse selesai diproses.",
     email:{ title:en ? "Top-up Complete" : "Isi Ulang Selesai",subtitle:en ? "Your Muse tokens have been credited." : "Token Muse sudah ditambahkan.",paragraphs:[en ? "No account credentials are needed for this top-up." : "Isi ulang ini tidak memerlukan kredensial akun."] },
     refKey:`buff-completed:${orderCode}:${itemIndex}`,
-  },database,{ whatsappFallback:false });
+  },database);
 }
 
 /** Manual handover uses the same private ready-email/Telegram pipeline. */
@@ -366,7 +361,7 @@ export async function notifyBuyerHandover(
       // Isi kredensial TIDAK boleh masuk outbox WA (disimpan teks polos dan
       // bot WA mati): order web tanpa email = pembeli tidak dikabari, dan
       // admin melihat peringatan "pembeli belum dikabari".
-    }, database, { whatsappFallback: false });
+    }, database);
   } catch {
     return false;
   }
@@ -559,7 +554,7 @@ export async function notifyBuyerSkProcessing(
       ],
     },
     refKey: `sk-processing:${orderCode}:${invoice}`,
-  }, database, { whatsappFallback: false }).catch(() => false);
+  }, database).catch(() => false);
 }
 
 /**
@@ -617,5 +612,5 @@ export async function notifyBuyerPaymentReceived(
       ],
     },
     refKey: `payment-received:${orderCode}`,
-  }, database, { whatsappFallback: false, emailOnly: options.emailOnly }).catch(() => false);
+  }, database, { emailOnly: options.emailOnly }).catch(() => false);
 }

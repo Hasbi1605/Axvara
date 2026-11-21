@@ -116,10 +116,10 @@ describe("overview memakai pengukuran + system_details", () => {
 });
 
 describe("notifikasi penting retry idempoten via whatsapp_outbox", () => {
-  it("webhook DANA antre (idempoten) lalu coba kirim; cron memproses due", () => {
+  it("DANA keeps internal paid admin notice; cron still drains shared WA transport", () => {
     const webhook = read("src/app/api/webhook/dana/route.ts");
-    expect(webhook).toContain("enqueueWhatsAppMessage");
-    expect(webhook).toContain('waOutboxKey("payment_detected"');
+    expect(webhook).not.toContain("enqueueWhatsAppMessage");
+    expect(webhook).toContain("notifyWhatsAppPaidAdmin");
     expect(webhook).not.toContain("Buyer notification is best-effort");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(cron).toContain("processDueWhatsAppOutbox");

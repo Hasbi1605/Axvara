@@ -1,5 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { OrbitHero } from "@/components/storefront/OrbitHero";
 import { ScrollRope } from "@/components/storefront/ScrollRope";
 import { CategoryPills } from "@/components/storefront/CategoryPills";
@@ -30,7 +31,8 @@ const PER_PAGE = 16;
  */
 export function HomeClient({ initialProducts, initialCategories, initialRevision }: { initialProducts?: Product[]; initialCategories?: OrderableCategory[]; initialRevision?: string | null }) {
   const hasInitial = Array.isArray(initialProducts);
-  const [activeCat, setActiveCat] = useState("semua");
+  const requestedCategory = resolveCategorySlug(useSearchParams()?.get("category")) || "semua";
+  const [activeCat, setActiveCat] = useState(requestedCategory);
   // Pagination 2 tahap (keputusan owner 2026-10-01): 16 awal (grid pas —
   // 4×4 desktop, 8×2 mobile), lalu SEKALIGUS semua. Tanpa batch 12+12+…
   // berulang yang melelahkan untuk ~90 produk.
@@ -111,21 +113,13 @@ export function HomeClient({ initialProducts, initialCategories, initialRevision
     setShowAll(false);
   };
 
+  useEffect(() => { setActiveCat(requestedCategory); }, [requestedCategory]);
+
   useEffect(() => {
-    const requestedCategory = new URLSearchParams(window.location.search).get("category");
-    // Slug lama (?category= bookmark pra-migrasi 0046) dipetakan ke slug baru.
-    if (requestedCategory) setActiveCat(resolveCategorySlug(requestedCategory));
-    // Sheet Kategori bottom nav (2026-10-03): pilih kategori dari rute mana
-    // pun → filter katalog + gulir ke #katalog. Dari home: langsung terapkan;
-    // dari rute lain: pindah ke / dulu, lalu terapkan setelah navigasi.
     const onCategory = (event: Event) => {
       const slug = resolveCategorySlug(String((event as CustomEvent<string>).detail ?? "semua"));
       setActiveCat(slug);
       setShowAll(false);
-      if (window.location.pathname !== "/") {
-        window.location.href = `/?category=${encodeURIComponent(slug)}`;
-        return;
-      }
       // Katalog sudah di halaman ini: cukup gulir ke daftarnya.
       window.setTimeout(() => {
         document.getElementById("katalog")?.scrollIntoView({ behavior: "smooth", block: "start" });

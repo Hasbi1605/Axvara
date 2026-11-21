@@ -1,5 +1,14 @@
 # DESIGN.md — AXVARA Design System
 
+## Aksesibilitas storefront — FX-4b (lokal)
+
+- Copy sekunder yang sebelumnya terlalu redup di footer, lacak/status, dan harga PDP memakai white/65. Tombol hapus pencarian Games/Pedia memiliki target 44×44px; Escape menutup pencarian mobile dan mengembalikan fokus. PDP menaruh heading produk sebelum heading deskripsi pada kedua ukuran layar; thumbnail menyatakan nama dan status pilihan.
+- Checkout kosong/gagal tetap mempunyai judul. Dialog perubahan harga/stok memindahkan fokus ke opsi batal, menjaga Tab di dalam dialog, dan mengembalikan fokus saat ditutup. Ringkasan untung admin mempertahankan pasangan istilah/nilai dengan aksi berupa tombol native.
+
+## Status pesanan Games — FX-11 (lokal)
+
+- Refund supplier menampilkan judul “Top up gagal”, badge “Refund oleh admin”, petunjuk refund manual dan tombol WhatsApp existing. Tampilan `needs_check` biasa, kerangka kartu dan token warna tidak berubah. Ringkasan admin menampilkan dua hitungan tindakan terpisah hanya bila lebih dari nol.
+
 ## Status pengiriman Market saat checkout — 20 November 2026 (SB-PAY-FIX, lokal)
 
 - Kartu kuning **Made By Order** hanya tampil bila quote berisi varian antrean. Supplier StoreBat/AIVault/Mirai/TUNVN eligible mengikuti badge pengiriman otomatis di katalog, bukan kartu antrean. Jaspay tetap punya notis proses otomatis terpisah; tidak ada perubahan layout.
@@ -83,6 +92,7 @@
 
 - Entri pertama dropdown **Supplier**. `PageHeader` dan tujuh `Card` memakai token `admin-*`: nominal tabular dengan mata uang asli, Skeleton serta retry per supplier. Riwayat 20 tagihan memakai `Badge` status dan susunan bertumpuk di HP.
 - `Dialog` Sekalipay menonjolkan total bayar, saldo masuk, biaya, dan QR/link; TUNVN menonjolkan nominal USDT persis dan alamat BEP20 yang bisa disalin. Hitung mundur tidak diumumkan setiap detik. Fokus kembali ke tombol pembuka atau judul riwayat jika aksi baris sudah hilang.
+- Baris gagal dengan referensi supplier menawarkan **Cek status**, bukan **Lihat topup**. Dialog hanya mengecek kredit; instruksi bayar dan aksi buat ulang tetap tersembunyi.
 
 ## Panel supplier admin terpadu (6 supplier) — 19 November 2026 (V3, lokal)
 
@@ -991,6 +1001,7 @@ Detail lengkap: `docs/GAMES.md` §4–§7. Ringkasan:
 - E-Wallet menampilkan kanal `SHOPEEPAY` biasa dengan label server "ShopeePay" dan (sejak sore 7 November 2026) `DANA_REALTIME` dengan label "DANA" (tanpa kata "Realtime"). `SHOPEEPAY_REALTIME` tetap tidak dirender (dikecualikan exact-ID dengan flag `i`); tidak ada fallback dua arah untuk ShopeePay. Label historis realtime hanya dipakai saat membaca invoice lama.
 - Urutan E-Wallet tidak berubah: ShopeePay → DANA → GoPay → OVO (ditentukan LABEL tampilan, bukan kode kanal), lalu sisanya urut server. Kanal tersembunyi tidak ikut dalam urutan/chip logo.
 - Copy gangguan untuk kegagalan/ambigu/initializing invoice gateway/crypto di checkout: "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain." / "This payment method is having problems. Please try another payment method." Gaya teks mengikuti komponen error existing; copy persiapan QRIS tidak berubah.
+- Koreksi replay order tertutup (21 November 2026, lokal): pakai panel error harga existing dengan pesan “Pesanan ini sudah ditutup.” / “This order is closed.” dan tombol “Ambil harga terbaru” / “Get a new quote”; keranjang dan data pembeli tidak dihapus.
 
 ## Hierarki panel pembayaran pending gateway & crypto (7 November 2026, lokal; verifikasi browser belum dilakukan)
 - Menyamakan gateway/crypto pending dengan blok QRIS: header halaman ringkas (ikon jam 32/40px berputar saat pending dengan role=status/aria-label sama seperti QRIS, judul "Pembayaran <label>"/"Pembayaran Crypto", kode pesanan mono cyan, tepat satu h1, container `max-w-[760px]`), tanpa ikon 64px/h1 besar/lencana/paragraf lead. State consent/initializing/confirming/preparing tetap memakai header penuh.
@@ -1422,7 +1433,7 @@ Revisi visual info layanan order Pedia 3 November 2026 (implementasi lokal untuk
 
 Revisi judul daftar layanan Pedia 3 November 2026 (implementasi lokal untuk publikasi CI): hitungan hasil pindah ke baris judul secara redup — "Pilih layanan · 11 layanan", saat filter aktif "· 4 dari 11 layanan" diikuti Reset filter; "· harga untuk N" dan "Kembali ke pilihan" di baris yang sama. Filter Semua/Global/Indonesia/Refill/No Refill tetap di kanan judul (desktop) dan di bawah judul (mobile). Teks "Harga acuan ditampilkan per layanan…" dihapus. Menggantikan "Hitungan … dan Reset filter berada di atas daftar" (1 November) yang dulunya baris terpisah.
 
-Revisi nama layanan Pedia 2 November 2026 (implementasi lokal untuk publikasi CI): nama seragam [Metrik] [Wilayah] [Kualitas], mis. Followers Indonesia Real, Likes Post Global HQ, Views Reels Global; keterangan bermakna (durasi Live, Referrer, Akun berpostingan) ditambahkan sesudah "·". Refill/No Refill dan drop hanya chip; "Ekonomis", "Max N", "Mulai N" dihapus; nama kembar tidak lagi diberi akhiran refill. Migrasi0089 (generator `scripts/curate-pedia-names-20261102.py`, manifest `src/lib/pedia/names-20261102.json`) mengganti nama dengan guard nama lama dan menonaktifkan layanan kembar: satu per (wilayah, masa refill, kualitas, keterangan), pemenang success rate terukur → jumlah order → modal termurah; 431→280 layanan aktif. Produk komentar menampilkan harga nyata untuk 10 komentar (`price_ref`, rumus quote) alih-alih per 1.000. Harga kartu lain tetap per 1.000: harga 100 unit terkena minimum order Rp1.000 pada 156 dari 408 layanan sehingga tidak bisa dibandingkan.
+Revisi nama layanan Pedia 2 November 2026 (implementasi lokal untuk publikasi CI): nama seragam [Metrik] [Wilayah] [Kualitas], mis. Followers Indonesia Real, Likes Post Global HQ, Views Reels Global; keterangan bermakna (durasi Live, Referrer, Akun berpostingan) ditambahkan sesudah "·". Refill/No Refill dan drop hanya chip; "Ekonomis", "Max N", "Mulai N" dihapus; nama kembar tidak lagi diberi akhiran refill. Migrasi0089 (generator `scripts/curate-pedia-names-20261102.py` hanya di riwayat Git; manifest `src/lib/pedia/names-20261102.json` tetap) mengganti nama dengan guard nama lama dan menonaktifkan layanan kembar: satu per (wilayah, masa refill, kualitas, keterangan), pemenang success rate terukur → jumlah order → modal termurah; 431→280 layanan aktif. Produk komentar menampilkan harga nyata untuk 10 komentar (`price_ref`, rumus quote) alih-alih per 1.000. Harga kartu lain tetap per 1.000: harga 100 unit terkena minimum order Rp1.000 pada 156 dari 408 layanan sehingga tidak bisa dibandingkan.
 
 Revisi filter layanan Pedia 1 November 2026 (implementasi lokal untuk publikasi CI): filter kini Semua/Global/Indonesia/Refill/No Refill. Pilihan layanan yang tidak termasuk filter baru dilepas, tanpa disematkan di atas daftar; teks "Pilihanmu tetap disimpan di atas…" dihapus. Hitungan "N dari M layanan" dan Reset filter berada di atas daftar. Menggantikan aturan 22 Oktober "pemilihan kategori tidak mengganti layanan" dan "hitungan sesudah daftar", serta "pilihan aktif tetap terlihat saat difilter" 27 Oktober.
 
@@ -1469,7 +1480,7 @@ Rekonsiliasi admin menambahkan label **KlikQRIS** dan panduan signature + konfir
 
 ## Pemberitahuan maintenance pembayaran — 2026-10-18
 
-✅ Diimplementasikan, publikasi melalui CI. Banner statis di bawah navbar Market/Pedia memakai latar putih 4%, garis putih 10%, teks putih 80% dan CTA putih **Order manual via WhatsApp**; tanpa titik/pill kuning, animasi, overlay atau countdown. Container 1280px, padding 16px mobile/24–32px desktop, teks dan tombol bertumpuk di mobile dan sejajar mulai `sm`, tap target ≥44px dan fokus cyan. Checkout menampilkan judul **Pembayaran sedang maintenance**, CTA WA serta petunjuk bagi pembeli yang sudah membayar; formulir pembayaran disembunyikan. Pedia tetap mempertahankan daftar jenis layanan dan mengganti formulir sesudah pilihan produk. Banner dan panel menggunakan komponen bersama `shared/PaymentMaintenanceNotice.tsx`; tautan absolut menuju hub WA terpusat agar benar pada kedua host. Bot menampilkan copy yang sama beserta tombol order manual, katalog dan Pesanan saya. Tidak mencantumkan estimasi pemulihan yang belum diketahui.
+✅ Diimplementasikan, publikasi melalui CI. Banner statis di bawah navbar Market/Pedia memakai latar putih 4%, garis putih 10%, teks putih 80% dan CTA putih **Hubungi admin**; tanpa titik/pill kuning, animasi, overlay atau countdown. Container 1280px, padding 16px mobile/24–32px desktop, teks dan tombol bertumpuk di mobile dan sejajar mulai `sm`, tap target ≥44px dan fokus cyan. Checkout menampilkan judul **Pembayaran sedang maintenance**, CTA bantuan via `/wa` serta petunjuk bagi pembeli yang sudah membayar; formulir pembayaran disembunyikan. Pedia tetap mempertahankan daftar jenis layanan dan mengganti formulir sesudah pilihan produk. Banner dan panel menggunakan komponen bersama `shared/PaymentMaintenanceNotice.tsx`; tautan absolut menuju hub WA terpusat agar benar pada kedua host. Bot menampilkan copy bantuan dwibahasa beserta tombol hubungi admin, katalog dan Pesanan saya. Tidak mencantumkan estimasi pemulihan yang belum diketahui.
 
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
@@ -2069,8 +2080,9 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
   hidden di PDP/checkout). Susunan: Beranda · Kategori · Pesanan · Bantuan.
   Tab Kategori = `CategorySheet.tsx` (cermin HelpSheet: solid `#0B1025`,
   focus trap + Escape + scroll lock) berisi Semua + 6 taksonomi (fallback
-  lokal, lalu `/api/categories`); pilih → event `axvara:category` →
-  home-client filter + scroll `#katalog` (dari rute lain via `/?category=`).
+  lokal, lalu `/api/categories`); di beranda pilih → event `axvara:category` →
+  filter + gulir tanpa navigasi. Dari rute lain buka `/?category=<slug>#katalog`
+  (Semua Produk: `/#katalog`).
   Keranjang tetap milik navbar (badge Gold tidak berubah).
 - **Link di artikel bisa diklik (2026-10-03, laporan owner + screenshot).**
   URL di artikel Netflix tampil sebagai `<code>` biru tapi tidak bisa diklik
@@ -2277,6 +2289,9 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
 - **Dialog selalu bertema.** `confirm()`/`alert()` bawaan browser dilarang di
   panel admin — pakai `ConfirmDialog` (hapus) atau toast (error). Dialog OS
   putih-abu di atas panel midnight adalah cacat visual, bukan pilihan.
+  Cabut token agent, tarik satu kredensial, hapus aturan exclusion WR/SK, dan
+  cabut link refund menyebut target tanpa menyalin rahasia; kegagalan tampil
+  dalam dialog agar bisa dicoba ulang tanpa memilih target lagi.
 - **Modal = dialog yang sah.** Setiap overlay wajib `role="dialog"` +
   `aria-modal="true"` + tutup dengan Escape + `body` scroll-lock, mengikuti
   `ConfirmDialog` dan `ProductEditorModal`.
@@ -2489,8 +2504,7 @@ JavaScript atau permintaan API. Latar Midnight #080C1E dengan glow cyan statis,
 kartu maksimal 560px/radius 28px, logo prism putih dari geometri mark existing,
 judul “Kami sedang maintenance” langsung setelah brand tanpa pill status atau
 titik kuning (revisi 2026-10-17). Kartu estimasi cyan menampilkan 07.00–08.00 WIB dan tanggal kalender WIB berikutnya
-sesuai reset UTC. Teks “pagi nanti” menghindari ambiguitas hari setelah tengah
-malam. Tombol utama putih “Order manual via WhatsApp” menuju hub /wa; tombol
+sesuai reset UTC. Teks mengarahkan pemesanan ke bot Telegram atau web setelah maintenance. Tombol utama putih “Hubungi admin” menuju hub /wa (dukungan, bukan pemesanan); tombol
 kedua “Coba buka toko lagi” memuat beranda. Catatan menyebut estimasi dan bantuan
 bagi yang sudah membayar. Hub saat maintenance menampilkan hanya nomor aktif
 dari registri kontak existing, support Telegram dan jam layanan; konteks pesan
@@ -2577,7 +2591,8 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   klik/tap men-scroll halus ke "Metode pembayaran" (block start, kontak ikut terlihat), navigasi
   keyboard tidak men-scroll.
 - **Koreksi owner 14 Nov 2026 (larut malam, lokal):** (1) kartu lintas layanan beranda Pedia =
-  AXVARA Market + AXVARA Games (kartu Bot Telegram dihapus; Telegram tetap di footer); (2) overlay
+  AXVARA Market + AXVARA Games (kartu Bot Telegram dihapus; Telegram tetap di footer).
+  Kartu aktif `CrossServicePromo` tetap; gaya khusus arsip LaunchCards sudah dihapus. (2) overlay
   `CrossAppTransition` (logo tujuan + cincin putar + "Memuat AXVARA …") kini juga untuk tujuan/asal
   Games dan terpasang di layout Games; (3) "Cara top up" dihapus juga dari halaman detail game
   (komponen `HowToTopUp` + copy langkah dihapus); (4) "Game lainnya" = karusel horizontal

@@ -300,6 +300,7 @@ export async function POST(request: NextRequest) {
         isPhoto: Boolean(cq.message?.photo && cq.message.photo.length > 0),
         isCatalogPhoto: isCatalogCallbackMessage(cq.message as Record<string, unknown> | undefined),
         isProtected: isProtectedCallbackMessage(cq.message as Record<string, unknown> | undefined),
+        updateId,
       };
 
       if (cq.data === "soldout") {

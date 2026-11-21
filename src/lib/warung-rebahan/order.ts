@@ -319,11 +319,7 @@ export async function reconcileMissingWrLinks(
                WHERE l.order_code = o.code AND l.wr_variant_id = pv.wr_variant_id))
        ORDER BY o.id DESC LIMIT ?`,
       Math.max(1, Math.min(limit, 8)),
-    )
-    .catch((error) => {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      return [] as Row[];
-    });
+    );
   for (const candidate of candidates) {
     if (!db.canSpend(4)) break;
     const code = String(candidate.code || "");
@@ -336,7 +332,7 @@ export async function reconcileMissingWrLinks(
       continue;
     }
     out.orders++;
-    const made = await createWrOrderLink(code, items, db).catch(() => 0);
+    const made = await createWrOrderLink(code, items, db);
     out.links += made;
   }
   return out;
@@ -1102,6 +1098,7 @@ async function handleInsufficientBalance(
  */
 export async function reconcileBlockedBalance(
   database?: DatabaseAccess,
+  options: { reportLookupFailure?: boolean } = {},
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isWrEnabled() || !isWrAutoOrderEnabled()) return 0;
@@ -1116,18 +1113,19 @@ export async function reconcileBlockedBalance(
            WHERE fi.order_code=l.order_code AND (fi.wr_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.wr_variant_id=l.wr_variant_id)
              AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
        ORDER BY l.id ASC LIMIT 8`,
-    )
-    .catch(() => [] as Row[]);
+    );
   if (!blocked.length) return 0;
   const { fetchBalance } = await import("./client");
   let balance: number;
   try {
     const raw = (await fetchBalance()).balance;
-    if ((typeof raw !== 'number' && typeof raw !== 'string') || String(raw).trim() === '') return 0;
-    balance = Number(raw);
-    if (!Number.isFinite(balance) || balance < 0) return 0;
-    balance = Math.floor(balance);
-  } catch {
+    const numeric = Number(raw);
+    if ((typeof raw !== 'number' && typeof raw !== 'string') || String(raw).trim() === '' || !Number.isFinite(numeric) || numeric < 0) {
+      throw new Error("invalid_wr_balance");
+    }
+    balance = Math.floor(numeric);
+  } catch (error) {
+    if (options.reportLookupFailure) throw error;
     return 0;
   }
   let revived = 0;
@@ -1146,8 +1144,7 @@ export async function reconcileBlockedBalance(
                AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
          Number(row.id),
          balance,
-      )
-      .catch(() => ({ changes: 0 as number | undefined }));
+      );
     if (Number(res.changes ?? 0) > 0) revived++;
   }
   return revived;
@@ -1172,12 +1169,12 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 300);
 }
 
-async function notifyAdmin(html: string): Promise<void> {
+export async function notifyAdmin(html: string) {
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || process.env.TELEGRAM_BOT_ENABLED !== "true") return;
   try {
     const { sendMessage } = await import("@/lib/telegram/api");
-    await sendMessage({ chat_id: adminChatId, text: html, parse_mode: "HTML" });
+    return await sendMessage({ chat_id: adminChatId, text: html, parse_mode: "HTML" });
   } catch {
     /* best-effort */
   }
@@ -1201,7 +1198,7 @@ export async function handleWrOrderProcessing(
 // menambah kandidat tidak menambah panggilan upstream.
 export async function reconcileStuckWrOrders(
   database?: DatabaseAccess,
-  options: { minAgeMinutes?: number } = {},
+  options: { minAgeMinutes?: number; reportLookupFailure?: boolean } = {},
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isWrEnabled()) return 0;
@@ -1217,8 +1214,7 @@ export async function reconcileStuckWrOrders(
          AND COALESCE(wr_variant_id,'') NOT LIKE 'jaspay:%'
          AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-${minAge} minutes')
        ORDER BY RANDOM() LIMIT 12`,
-    )
-    .catch(() => [] as Row[]);
+    );
   if (!stuck.length) return 0;
   return reconcileWrLinksByTransactions(
     stuck.map((row) => ({
@@ -1227,6 +1223,8 @@ export async function reconcileStuckWrOrders(
       order_code: String(row.order_code || ""),
     })),
     db,
+    fetchTransactions,
+    options.reportLookupFailure,
   );
 }
 
@@ -1309,6 +1307,7 @@ async function reconcileWrLinksByTransactions(
   links: { id: number; wr_order_id: string; order_code: string }[],
   db: DatabaseAccess,
   getTransactions: () => Promise<WrTransaction[]> = fetchTransactions,
+  reportLookupFailure = false,
 ): Promise<number> {
   if (!links.length || !db.canSpend(1)) return 0;
   let loaded = false;
@@ -1325,7 +1324,10 @@ async function reconcileWrLinksByTransactions(
     if (!orderId) continue; // Correlation requires an admin-selected invoice, never time/name guesses.
     if (!loaded) {
       let transactions: WrTransaction[];
-      try { transactions = await getTransactions(); } catch { return reconciled; }
+      try { transactions = await getTransactions(); } catch (error) {
+        if (reportLookupFailure) throw error;
+        return reconciled;
+      }
       for (const tx of transactions) {
         if (!tx || typeof tx.order_id !== "string" || !tx.order_id.trim()) continue;
         const group = byId.get(tx.order_id) ?? [];
@@ -1558,8 +1560,7 @@ export async function recoverStaleClaims(database?: DatabaseAccess): Promise<num
        WHERE status='claimed' AND request_sent_at IS NULL
          AND lease_expires_at IS NOT NULL
          AND datetime(lease_expires_at) <= datetime('now')`,
-    )
-    .catch(() => ({ changes: 0 as number | undefined }));
+    );
   return Number(res.changes ?? 0);
 }
 

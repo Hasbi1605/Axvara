@@ -10,6 +10,7 @@ import { isVariantsReadEnabled } from "@/lib/catalog";
 import { effectiveVariantStockSql, purchasableStockSql } from "@/lib/catalog-availability";
 import { needsCopyReview, resolveVariantCopyDetailed } from "@/lib/product-copy/resolve";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
 import { displaySoldCountSql, notLoserProductSql } from "@/lib/product-groups";
@@ -175,13 +176,14 @@ async function readProducts(req: NextRequest) {
   const copyReviewRawByProduct = new Map<string, number>();
   if (isAdminRequest && isD1Mode()) {
     const copyRows = await queryAll(
-      `SELECT pv.product_id, pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
+      `SELECT pv.product_id, pv.admin_terms, pv.admin_activation, pv.admin_terms_en, pv.admin_activation_en, pv.admin_copy_fingerprint,
                wv.wr_terms, wv.wr_delivery_terms, sp.sk_description, sp.sk_seller_note
          FROM product_variants pv
           LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
           LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
         WHERE pv.is_active=1
-          AND (wv.wr_variant_id IS NOT NULL OR sp.sk_variant_id IS NOT NULL OR pv.admin_terms IS NOT NULL OR pv.admin_activation IS NOT NULL)`,
+          AND (wv.wr_variant_id IS NOT NULL OR sp.sk_variant_id IS NOT NULL OR pv.admin_terms IS NOT NULL OR pv.admin_activation IS NOT NULL
+               OR pv.admin_terms_en IS NOT NULL OR pv.admin_activation_en IS NOT NULL)`,
     ).catch(() => [] as Record<string, unknown>[]);
     for (const row of copyRows) {
       const resolution = resolveVariantCopyDetailed(
@@ -190,6 +192,8 @@ async function readProducts(req: NextRequest) {
         {
           terms: row.admin_terms as string | null,
           activation: row.admin_activation as string | null,
+          termsEn: row.admin_terms_en as string | null,
+          activationEn: row.admin_activation_en as string | null,
           fingerprint: row.admin_copy_fingerprint == null ? null : String(row.admin_copy_fingerprint),
         },
       );
@@ -331,9 +335,9 @@ export async function POST(req: NextRequest) {
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
-  const parsed = productSchema.safeParse(body);
+  const bounded = await readJsonBody(req, 512_000);
+  if (!bounded.ok) return bounded.response.status === 413 ? bounded.response : NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
+  const parsed = productSchema.safeParse(bounded.data);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const { name, slug, description, whatsappAlias, price, comparePrice, categorySlug, imageUrl, images, badge, soldCount, stock, isActive, sortOrder, requireEmail, variants } = parsed.data as z.infer<typeof productSchema> & { comparePrice?: number | null };
 

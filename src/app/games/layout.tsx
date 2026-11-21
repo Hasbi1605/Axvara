@@ -10,12 +10,14 @@ import { gamesMetadata } from "@/lib/games/metadata";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = gamesCopy(await requestLocale());
-  return gamesMetadata("/", t.title, t.description);
+  const metadata = gamesMetadata("/", t.title, t.description);
+  const images = [{ url: "/og/axvara-og.png", width: 1200, height: 630, alt: "AXVARA" }];
+  return { ...metadata, openGraph: { ...metadata.openGraph, images: images }, twitter: { card: "summary_large_image", title: t.title, description: t.description, images: images } };
 }
 
 export default async function GamesLayout({ children }: { children: React.ReactNode }) {
   const games = await getGamesCatalog();
   return <DisplayPreferencesProvider><div className="min-h-screen overflow-x-clip bg-[#080C1E] text-[#F1F5FF]">
-    <GamesNavbar games={games} /><main className="pb-10">{children}</main><Footer pediaLayout /><GamesBottomNav games={games} /><CrossAppTransition />
+    <GamesNavbar games={games} /><main className="pb-10">{children}</main><Footer gamesLayout /><GamesBottomNav games={games} /><CrossAppTransition />
   </div></DisplayPreferencesProvider>;
 }

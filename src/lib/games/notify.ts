@@ -54,7 +54,7 @@ async function notifyGamesBuyer(db: DatabaseAccess, orderCode: string, phase: "p
       subject, body: `${escapeHtml(title)}\n${escapeHtml(orderCode)}\n${escapeHtml(subtitle)}\n${escapeHtml(orderUrl)}`,
       email: { title, subtitle, paragraphs: [subtitle] },
       emailOverride: { subject, ...rendered }, refKey: `games-${phase}:${orderCode}`,
-    }, db, { whatsappFallback: false });
+    }, db);
   } catch { return false; }
 }
 

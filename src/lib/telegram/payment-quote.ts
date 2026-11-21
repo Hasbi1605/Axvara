@@ -5,6 +5,7 @@
 // no status/provider writes. Financials come verbatim from
 // buildMethodOptions; this module never reprices or invents fees/FX.
 import { execRun, isD1Mode, queryFirst } from "@/lib/db";
+import { isValidWaNumber } from "@/lib/order-contact";
 import { buildMethodOptions } from "@/lib/payments/method-options";
 import { isCanonicalMethodOption } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/locale";
@@ -161,7 +162,7 @@ export function parsePayq1State(raw: unknown): Payq1State | null {
   const contact = v.contact as { email?: unknown; phone?: unknown } | null;
   if (!contact || (contact.email !== null && typeof contact.email !== "string")) return null;
   if (contact.phone !== null && typeof contact.phone !== "string") return null;
-  if (contact.phone !== null && !/^\+?[0-9]{8,20}$/.test(contact.phone)) return null;
+  if (contact.phone !== null && !isValidWaNumber(contact.phone)) return null;
   if (v.st === "creating") {
     if (typeof v.orderCode !== "string" || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(v.orderCode)) return null;
     if (typeof v.idempotencyKey !== "string" || !v.idempotencyKey || (v.idempotencyKey as string).length > 128) return null;

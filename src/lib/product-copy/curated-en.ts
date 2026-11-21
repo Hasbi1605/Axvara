@@ -701,7 +701,7 @@ export const CURATED_VARIANT_COPY_EN: Record<string, CuratedVariantCopyEn> = {
       "Cannot be renewed",
       "Extension choices: .rocks, .ninja, .games, .codes, .systems, .studio, .email, .works, .software, .engineer, .live, .app, .dev, .page, .foo",
     ],
-    langkah: ["Check domain name availability at axvara.tech/go/cek-domain", "Send your chosen domain name to the admin via WhatsApp"],
+    langkah: ["Check domain name availability at axvara.tech/go/cek-domain", "Order on the website or Telegram bot. Then contact WhatsApp support at axvara.tech/wa with your order code and chosen domain name"],
   },
   "1my1m0jqwjj": {
     paket: ["Fresh account with a $250 balance", UPCLOUD_VPS],

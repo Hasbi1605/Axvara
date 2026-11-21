@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { buildCredentialsTxtFile, credentialMessages, credentialsTxtFilename } from "@/lib/telegram/messages/credential";
-import { deliveryMessage } from "@/lib/telegram/messages";
 import { marketWarrantyClaim } from "@/lib/warranty-policy";
 import type { VariantCopy } from "@/lib/product-copy/format";
 
@@ -71,7 +70,7 @@ describe("pesan kredensial Telegram dengan panduan pasca-bayar", () => {
   });
 
   it("format stok sendiri tetap memiliki hint salin dan tidak menyebut larangan refund lama", () => {
-    const html = deliveryMessage("account:password");
+    const html = credentialMessages({ plaintext: "account:password", secretTag: "code" }).join("\n\n");
     expect(html).toContain("<code>account:password</code>");
     expect(html).toContain("Ketuk untuk menyalin");
     expect(html).toContain(marketWarrantyClaim.notes[1]);

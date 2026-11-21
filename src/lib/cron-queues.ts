@@ -1,8 +1,13 @@
+import { STALE_INITIALIZING_SQL } from "@/lib/payments/stale-initializing";
+
 /** Notif admin "Lunas" Telegram/WhatsApp yang timeout baru diulang setelah 20 menit
- * (lihat recordAdminPaidTimeout di order-notifications). */
+ * (lihat recordAdminPaidTimeout di order-notifications). Hanya baris `failed`
+ * (timeout tercatat) yang menahan antrean; klaim `sending` dipagari CAS klaim
+ * pre-send, dan baris `sent` berarti sudah dikirim (AU-E2-7). */
 export const ADMIN_PAID_TIMEOUT_PREFIX = "admin-paid-timeout:";
 export const ADMIN_PAID_TIMEOUT_COOLDOWN_SQL = `NOT EXISTS(SELECT 1 FROM buyer_notice_log bt
   WHERE bt.idempotency_key='${ADMIN_PAID_TIMEOUT_PREFIX}' || orders.code
+    AND bt.status='failed'
     AND julianday(bt.updated_at) > julianday('now','-20 minutes'))`;
 
 /** A forced phase needs only its own probes. The legacy rotation still reads
@@ -11,7 +16,7 @@ export function operationQueueProbeSql(phase: string | null, qrisWhere: string, 
   const probes: [string, string][] = [
     ["expiry", "(SELECT COUNT(*) FROM payment_transactions WHERE status='pending') AS expiry"],
     ["notify", `(SELECT COUNT(*) FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code WHERE ${qrisWhere}) AS qris_notice`],
-    ["expiry", "(SELECT COUNT(*) FROM payment_transactions WHERE status='initializing' AND created_at < datetime('now', '-5 minutes')) AS expiry_init"],
+    ["expiry", `(SELECT COUNT(*) FROM payment_transactions pt WHERE ${STALE_INITIALIZING_SQL}) AS expiry_init`],
     ["expiry", `(SELECT COUNT(*) FROM orders WHERE sales_channel='whatsapp' AND status='pending' AND expires_at IS NOT NULL
       AND datetime(expires_at) <= datetime('now')
       AND NOT EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=orders.code)) AS expiry_manual_wa`],

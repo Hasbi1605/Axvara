@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { execRun, queryAll } from "@/lib/db";
 import { DEFAULT_STORE_SETTINGS, storeSettingsFromRows } from "@/lib/site";
 
@@ -15,7 +16,7 @@ const settingsSchema = z.object({
   supportHours: z.string().trim().min(5, "Jam layanan wajib diisi").max(60),
   footerText: z.string().trim().min(10, "Keterangan footer minimal 10 karakter").max(300),
   logoUrl: z.string().trim().max(600).refine(
-    (value) => value === "" || value.startsWith("/") || /^https:\/\//i.test(value),
+    (value) => value === "" || (value.startsWith("/") && !value.startsWith("//")) || /^https:\/\//i.test(value),
     "Logo harus berupa path situs atau URL HTTPS",
   ),
 });
@@ -47,7 +48,9 @@ export async function PUT(request: NextRequest) {
   if (!(await requireAdmin(request))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const parsed = settingsSchema.safeParse(await request.json().catch(() => null));
+  const bounded = await readJsonBody(request, 8_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = settingsSchema.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }

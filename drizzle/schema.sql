@@ -2176,6 +2176,12 @@ CREATE TRIGGER IF NOT EXISTS pg_member_valid_insert BEFORE INSERT ON product_gro
   SELECT CASE WHEN (SELECT COUNT(*) FROM product_group_members WHERE group_id=NEW.group_id)>=10
     THEN RAISE(ABORT,'group_full') END;
 END;
+-- 0152: the INSERT guard above left the UPDATE path unguarded (audit AU-G2-3).
+CREATE TRIGGER IF NOT EXISTS pg_member_valid_update BEFORE UPDATE OF product_id ON product_group_members
+WHEN NEW.product_id IS NOT OLD.product_id BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM products WHERE id=NEW.product_id AND archived_at IS NULL)
+    THEN RAISE(ABORT,'invalid_group_product') END;
+END;
 CREATE TRIGGER IF NOT EXISTS pg_prefer_valid_update BEFORE UPDATE OF prefer_product_id ON product_groups
 WHEN NEW.prefer_product_id IS NOT NULL BEGIN
   SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM product_group_members WHERE group_id=NEW.id AND product_id=NEW.prefer_product_id)

@@ -65,7 +65,7 @@ export type VariantSummary = {
   sk_order_process?: string | null;
   /** Deskripsi mentah SK dari sk_products (server-only; dihapus oleh withVariantCopy). */
   sk_description?: string | null;
-  /** Durasi SK turunan render-time saat kolom duration_* kosong (aman dikirim ke browser). */
+  /** Durasi SK turunan saat kolom duration_* kosong (server-only). */
   sk_duration?: string | null;
   /** Toggle email wajib per produk (migrasi 0033, untuk non-WR). */
   require_email: number;
@@ -369,57 +369,9 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
   return mapVariant(row);
 }
 
-// ---- Bot name search (Telegram/WhatsApp) ----
-
-export async function searchProductByName(input: string): Promise<{ exact: ProductSummary | null; candidates: ProductSummary[] }> {
-  const normalized = normalizeInput(input);
-  const products = await listActiveProducts();
-
-  // 1. Exact name match
-  const exactName = products.find(p => normalizeInput(p.name) === normalized);
-  if (exactName) return { exact: exactName, candidates: [] };
-
-  // 2. Exact slug match
-  const exactSlug = products.find(p =>
-    p.slug.toLowerCase() === input.trim().toLowerCase()
-    || normalizeInput(p.slug) === normalized
-  );
-  if (exactSlug) return { exact: exactSlug, candidates: [] };
-
-  // 3. Exact search-keyword alias match
-  const exactAlias = products.find(p => p.aliases.some(a => normalizeInput(a) === normalized));
-  if (exactAlias) return { exact: exactAlias, candidates: [] };
-
-  // 4. WhatsApp display aliases may intentionally be shared by related
-  // products. A unique exact match can open directly; duplicates remain a
-  // candidate list instead of silently selecting the first product.
-  const displayAliasMatches = products.filter(
-    p => p.whatsappAlias && normalizeInput(p.whatsappAlias) === normalized,
-  );
-  if (displayAliasMatches.length === 1) {
-    return { exact: displayAliasMatches[0], candidates: [] };
-  }
-  if (displayAliasMatches.length > 1) {
-    return { exact: null, candidates: displayAliasMatches.slice(0, 5) };
-  }
-
-  // 5. Prefix/contains match (max 5 candidates)
-  const candidates = products.filter(p => {
-    const n = normalizeInput(p.name);
-    return n.includes(normalized) || normalized.includes(n) ||
-      (p.whatsappAlias ? normalizeInput(p.whatsappAlias).includes(normalized) || normalized.includes(normalizeInput(p.whatsappAlias)) : false) ||
-      p.aliases.some(a => {
-        const na = normalizeInput(a);
-        return na.includes(normalized) || normalized.includes(na);
-      });
-  }).slice(0, 5);
-
-  return { exact: null, candidates };
-}
-
 // ---- Format helpers ----
 
-export function formatDuration(v: VariantSummary): string {
+export function formatDuration(v: Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">>): string {
   if (v.duration_label) return v.duration_label;
   if (!v.duration_value || !v.duration_unit) return "";
   const unitMap: Record<string, string> = { day: "Hari", month: "Bulan", year: "Tahun", lifetime: "Selamanya", custom: "" };
@@ -446,37 +398,39 @@ export function formatDuration(v: VariantSummary): string {
  *   semua bila ditempel). Insiden 2026-09-19: helper lama menggabung untuk
  *   semua produk → "Invite Lifetime - 6 Bulan", "Head 1 Bulan - 14 Hari".
  */
-export function formatVariantLabel(
-  v: Pick<VariantSummary, "label">
-    & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit" | "terms" | "sk_description" | "sk_duration">>
-    & { wr_variant_id?: unknown; sk_variant_id?: unknown },
-  locale: Locale = "id",
-): string {
+/** Keluarga supplier dari kolom mentah, tidak ikut diserialisasi. */
+export function supplierVariantOf(v: { wr_variant_id?: unknown; sk_variant_id?: unknown }): "wr" | "sk" | null {
+  if (String(v.wr_variant_id ?? "").trim()) return "wr";
+  return String(v.sk_variant_id ?? "").trim() ? "sk" : null;
+}
+
+type VariantLabelInput = Pick<VariantSummary, "label">
+  & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit" | "terms" | "sk_description" | "sk_duration">>
+  & { wr_variant_id?: unknown; sk_variant_id?: unknown; supplier_variant?: boolean; label_duration?: string | null };
+
+export function variantLabelDuration(v: VariantLabelInput): string | null {
+  if (v.supplier_variant !== undefined) return v.supplier_variant ? v.label_duration ?? null : null;
   const label = String(v.label || "").trim();
-  const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id;
-  if (wrId != null && String(wrId).trim() !== "") {
-    const dur = formatDuration(v as VariantSummary).trim();
-    const composed = !dur || label.toLowerCase().includes(dur.toLowerCase()) ? label : `${label} - ${dur}`;
-    return translateVariantLabel(composed, locale);
-  }
-  const skId = (v as { sk_variant_id?: unknown }).sk_variant_id;
-  if (skId != null && String(skId).trim() !== "") {
+  const kind = supplierVariantOf(v);
+  let duration = "";
+  if (kind === "wr") {
+    duration = formatDuration(v).trim();
+  } else if (kind === "sk" && !labelContainsDuration(label)) {
     const hasAdminDuration =
       (v.duration_label != null && String(v.duration_label).trim() !== "")
       || (v.duration_value != null && Number(v.duration_value) > 0)
       || (v.duration_unit != null && String(v.duration_unit).trim() !== "");
-    const dur = hasAdminDuration
-      ? formatDuration(v as VariantSummary).trim()
-      : (
-          durationFromSupplierText(v.sk_description ?? v.terms ?? null)
-          ?? (v.sk_duration != null ? String(v.sk_duration).trim() : "")
-        );
-    const composed = !dur || labelContainsDuration(label) || label.toLowerCase().includes(dur.toLowerCase())
-      ? label
-      : `${label} - ${dur}`;
-    return translateVariantLabel(composed, locale);
+    duration = hasAdminDuration
+      ? formatDuration(v).trim()
+      : durationFromSupplierText(v.sk_description ?? v.terms ?? null) ?? String(v.sk_duration ?? "").trim();
   }
-  return translateVariantLabel(label, locale);
+  return duration && !label.toLowerCase().includes(duration.toLowerCase()) ? duration : null;
+}
+
+export function formatVariantLabel(v: VariantLabelInput, locale: Locale = "id"): string {
+  const label = String(v.label || "").trim();
+  const duration = variantLabelDuration(v);
+  return translateVariantLabel(duration ? `${label} - ${duration}` : label, locale);
 }
 
 /**
@@ -491,7 +445,14 @@ export function formatVariantLabel(
  */
 export type BuyerDeliveryKind = "instant" | "queued";
 
-export function buyerDeliveryKind(v: { fulfillment_mode?: unknown; wr_delivery_class?: unknown; sk_order_process?: unknown; automatic_delivery?: boolean; wr_variant_id?: unknown; sk_variant_id?: unknown }): BuyerDeliveryKind {
+type BuyerDeliveryInput = {
+  fulfillment_mode?: unknown; wr_delivery_class?: unknown; sk_order_process?: unknown;
+  wr_variant_id?: unknown; sk_variant_id?: unknown; automatic_delivery?: boolean;
+  delivery_kind?: BuyerDeliveryKind; automatic_processing?: boolean; queue_has_eta?: boolean;
+};
+
+export function buyerDeliveryKind(v: BuyerDeliveryInput): BuyerDeliveryKind {
+  if (v.delivery_kind === "instant" || v.delivery_kind === "queued") return v.delivery_kind;
   return isQueuedFulfillment({
     wrVariantId: v.wr_variant_id, wrClass: v.wr_delivery_class,
     skVariantId: v.sk_variant_id, skOrderProcess: v.sk_order_process,
@@ -500,14 +461,15 @@ export function buyerDeliveryKind(v: { fulfillment_mode?: unknown; wr_delivery_c
 }
 
 /** Badge pembeli: "Kirim otomatis" (instan) atau "Made By Order" (antrean). */
-export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0] & { wr_delivery_class?: string | null }): string {
-  const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id == null
-    ? ""
-    : String((v as { wr_variant_id?: unknown }).wr_variant_id).trim();
+export function buyerDeliveryBadge(v: BuyerDeliveryInput): string {
   // WR3 Jaspay: dibuat otomatis (bukan disiapkan admin), tapi tetap antrean
   // (bukan instan/stok). Tanpa brand supplier di copy pembeli.
-  if (wrId.startsWith("jaspay:")) return "Diproses otomatis";
+  if (hasAutomaticProcessing(v)) return "Diproses otomatis";
   return buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Made By Order";
+}
+
+export function hasAutomaticProcessing(v: Pick<BuyerDeliveryInput, "automatic_processing" | "wr_variant_id">): boolean {
+  return v.automatic_processing ?? String(v.wr_variant_id ?? "").trim().startsWith("jaspay:");
 }
 
 /**
@@ -538,7 +500,7 @@ export function buyerDeliveryEtaNonWr(): string {
   return "Made By Order — disiapkan admin setelah pembayaran dikonfirmasi, dikerjakan sesuai antrean pada jam layanan";
 }
 
-export function formatWarranty(v: VariantSummary): string {
+export function formatWarranty(v: Pick<VariantSummary, "warranty_type" | "warranty_value" | "warranty_unit" | "warranty_label">): string {
   // Tipe limited: SELALU bentuk kanonis "Garansi X Unit" dari field
   // terstruktur — JANGAN pulangkan warranty_label mentah ("12 Hari" ambigu:
   // pembeli tak bisa bedakan itu durasi atau garansi). Label mentah hanya
@@ -583,10 +545,6 @@ export function formatRupiah(amount: number): string {
 }
 
 // ---- Internal helpers ----
-
-function normalizeInput(input: string): string {
-  return input.toLowerCase().trim().replace(/\s+/g, " ").replace(/[^\w\s]/g, "");
-}
 
 function parseAliases(raw: unknown): string[] {
   if (!raw) return [];

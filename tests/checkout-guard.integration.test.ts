@@ -216,7 +216,7 @@ describe("route web memakai guard durable", () => {
     } finally { fx.close(); }
   });
 
-  it("order WEB ke-6 dari IP sama (WA/email diputar) → 429, order tersimpan tetap 5, retry order lama tetap 200", async () => {
+  it("order WEB ke-6 dari IP sama (WA/email diputar) → 429, replay order tertutup → 409 bukan 429", async () => {
     const fx = createD1Fixture();
     try {
       const { insertTestProduct } = await import("./helpers/d1-fixture");
@@ -255,7 +255,7 @@ describe("route web memakai guard durable", () => {
         const res = await POST(await makeRequest(n, token));
         // Invoice provider nonaktif di fixture → 503 sesudah order dibuat,
         // yang penting guard mengizinkan pembuatan order baru ini.
-        expect(res.status).not.toBe(429);
+        expect(res.status).toBe(503);
       }
       expect(Number(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()!.n)).toBe(CHECKOUT_LIMITS.ip);
 
@@ -269,10 +269,12 @@ describe("route web memakai guard durable", () => {
       expect(blocked.headers.get("Retry-After")).toBeTruthy();
       expect(Number(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()!.n)).toBe(CHECKOUT_LIMITS.ip);
 
-      // Retry checkout yang sama (quote pertama) tidak diblokir limiter.
+      // Quote pertama tetap lolos limiter, tetapi invoice tidak dapat dibayar:
+      // provider nonaktif menyebabkan order tersebut dibatalkan.
+      expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders WHERE status='dibatalkan'").get()?.n).toBe(CHECKOUT_LIMITS.ip);
       const retry = await POST(await makeRequest(1, tokens[0]));
-      expect(retry.status).toBe(200);
-      expect((await retry.json()).reused).toBe(true);
+      expect(retry.status).toBe(409);
+      expect(await retry.json()).toMatchObject({ error_code: "checkout_order_closed" });
       expect(Number(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()!.n)).toBe(CHECKOUT_LIMITS.ip);
     } finally { fx.close(); }
   });

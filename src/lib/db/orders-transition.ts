@@ -12,6 +12,7 @@ import { OrderTransitionError } from "./errors";
 import type { D1, D1Statement } from "./types";
 import { parseFxTimestamp } from "@/lib/payments/fx";
 import { trackPaidOrder } from "@/lib/analytics/funnel";
+import { STALE_INITIALIZING_SQL } from "@/lib/payments/stale-initializing";
 
 export type CatalogRevisionTransitionOptions = {
   skipRevisionBump?: boolean;
@@ -189,6 +190,8 @@ export async function transitionPendingPaymentOrder(input: {
   lastError?: string | null;
   /** Cron rechecks the deadline inside the same transaction as stock release. */
   expiredOnly?: boolean;
+  /** Fast cron cancellation must lose if a provider invoice ID is attached. */
+  staleInitializingOnly?: boolean;
 }, database?: D1 | null, options?: CatalogRevisionTransitionOptions): Promise<boolean> {
   const productQuantities = new Map<number, number>();
   const variantQuantities = new Map<number, number>();
@@ -213,7 +216,8 @@ export async function transitionPendingPaymentOrder(input: {
         `INSERT INTO operation_guards (operation_id,valid)
          SELECT ?, CASE WHEN
            EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending'))
-           AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status=?)
+           AND EXISTS(SELECT 1 FROM payment_transactions pt WHERE pt.order_code=? AND pt.status=?
+             AND (?=0 OR (${STALE_INITIALIZING_SQL})))
             AND (?=0 OR EXISTS (
               SELECT 1 FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
               WHERE pt.order_code=? AND julianday(COALESCE(
@@ -222,7 +226,7 @@ export async function transitionPendingPaymentOrder(input: {
             ))
          THEN 1 ELSE 0 END`,
       ).bind(guardId, input.orderCode, input.orderCode, input.expectedTransactionStatus,
-        input.expiredOnly ? 1 : 0, input.orderCode),
+        input.staleInitializingOnly ? 1 : 0, input.expiredOnly ? 1 : 0, input.orderCode),
     ];
 
     // Other catalogs never reserved Market stock; numeric item IDs can collide.

@@ -45,6 +45,13 @@ const data = {
   low_stock: 3,
 };
 
+it("shows separate aged-manual and Games needs-check counts", () => {
+  render(<AdminOverview data={{...data,aged_manual_required:2,games_needs_check:1}} loading={false} />);
+  const attention=within(screen.getByRole("region", {name:"Pesanan perlu tindakan"}));
+  expect(attention.getByText("2 pesanan lunas perlu penanganan manual lebih dari 24 jam.")).toBeTruthy();
+  expect(attention.getByText("1 pesanan Games lunas perlu pengecekan di antrean Games.")).toBeTruthy();
+});
+
 it("default periode Minggu: Untung Produk + margin + supplier + grafik tampil", async () => {
   render(<AdminOverview data={data} loading={false} />);
   await act(async () => {});

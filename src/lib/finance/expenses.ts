@@ -53,6 +53,11 @@ async function assertOrder(code: string | null | undefined, db: DatabaseAccess) 
   if (code && !await db.queryFirst("SELECT code FROM orders WHERE code=?", code)) throw new FinanceError("order_not_found");
 }
 const recurringRow = (row: Record<string, unknown>) => ({ ...row, active: Boolean(row.active) }) as RecurringExpense;
+function previousWibMonthString(now = new Date()) {
+  const d = new Date(`${todayWibDateString(now).slice(0,7)}-01T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth()-1);
+  return d.toISOString().slice(0,7);
+}
 export async function listExpenses(params: URLSearchParams, db: DatabaseAccess = createDatabaseAccess(), now = new Date()): Promise<ExpenseListResponse> {
   if (["month","from","to","category"].some(k => params.getAll(k).length > 1)) throw new FinanceError("invalid_range");
   let from: string, to: string;
@@ -100,9 +105,16 @@ export async function deleteExpense(id: number, db: DatabaseAccess = createDatab
   if (!(await db.execRun("DELETE FROM operating_expenses WHERE id=?",id)).changes) throw new FinanceError("not_found",404);
   return { ok: true };
 }
-export async function updateRecurring(id: number, input: RecurringUpdateInput, db: DatabaseAccess = createDatabaseAccess()) {
+export async function updateRecurring(id: number, input: RecurringUpdateInput, db: DatabaseAccess = createDatabaseAccess(), now = new Date()) {
   const v = recurringUpdateSchema.parse(input), entries = Object.entries(v);
-  const result = await db.execRun(`UPDATE expense_recurring SET ${entries.map(([k])=>`${k}=?`).join(",")},updated_at=datetime('now') WHERE id=?`,...entries.map(([,v])=>typeof v === "boolean" ? Number(v) : v),id);
+  // Owner decision 2026-11-21: cash basis. Resuming (active 0→1) moves the
+  // generation cursor to the previous WIB month so paused months are never
+  // backfilled; only the resume month onward is booked. Catch-up for templates
+  // that stayed active is untouched.
+  const resumedCursor = v.active === true ? previousWibMonthString(now) : null;
+  const result = await db.execRun(`UPDATE expense_recurring SET ${entries.map(([k])=>`${k}=?`).join(",")},
+    last_generated_month=CASE WHEN ? IS NOT NULL AND active=0 AND (last_generated_month IS NULL OR last_generated_month<?) THEN ? ELSE last_generated_month END,
+    updated_at=datetime('now') WHERE id=?`,...entries.map(([,v])=>typeof v === "boolean" ? Number(v) : v),resumedCursor,resumedCursor,resumedCursor,id);
   if (!result.changes) throw new FinanceError("not_found",404);
   return { recurring: recurringRow((await db.queryFirst("SELECT * FROM expense_recurring WHERE id=?",id))!) };
 }

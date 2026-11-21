@@ -18,6 +18,8 @@
 // tidak dibuatkan link — sync tidak memberi pasangan katalog untuknya.
 
 import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
+import { alertSupplierAdminOnce } from "@/lib/fulfillment/supplier-escalation";
+import { escapeHtml } from "@/lib/telegram/messages/format";
 import {
   createSkTransaction,
   fetchSkBalance,
@@ -50,6 +52,7 @@ export type SkProcessResult = {
 
 export const SK_RETRY_DELAYS_MINUTES = [1, 5, 15];
 export const SK_MAX_ATTEMPTS = 3;
+const SK_FINAL_REJECTION = "PRODUCT_TEMPORARILY_UNAVAILABLE:final_rejection";
 export const SK_CLAIM_LEASE_SECONDS = 120;
 export const SK_SUBMITTED_STALE_MINUTES = 10;
 /** Umur maksimum link blocked_balance yang boleh auto-revive (jam). */
@@ -285,11 +288,7 @@ export async function reconcileMissingSkLinks(
                WHERE l.order_code = o.code AND l.sk_variant_id = pv.sk_variant_id))
        ORDER BY o.id DESC LIMIT ?`,
       Math.max(1, Math.min(limit, 8)),
-    )
-    .catch((error) => {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      return [] as Row[];
-    });
+    );
   for (const candidate of candidates) {
     if (out.orders >= limit) break;
     if (!db.canSpend(4)) break;
@@ -303,7 +302,7 @@ export async function reconcileMissingSkLinks(
       continue;
     }
     out.orders++;
-    const made = await createSkOrderLink(code, items, db).catch(() => 0);
+    const made = await createSkOrderLink(code, items, db);
     out.links += made;
   }
   return out;
@@ -345,7 +344,7 @@ export async function processSkPendingOrders(
       return [] as Row[];
     });
   for (const link of due) {
-    if (!db.canSpend(6)) throw new QueryBudgetExceeded();
+    if (!db.canSpend(Number(link.attempt_count) + 1 >= Number(link.max_attempts) ? 14 : 6)) throw new QueryBudgetExceeded();
     result.processed++;
     const outcome = await processOneSkLink(link, db);
     if (outcome === "succeeded") result.succeeded++;
@@ -490,13 +489,13 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
     );
     return "succeeded";
   } catch (error) {
-    return handleSkOrderError(id, error, attempt, db);
+    return handleSkOrderError(link, claim.leaseOwner, error, attempt, db);
   }
 }
 
 /** Reconcile link ambigu via GET /v1/trx/{ref_id} (SK punya ref_id idempoten). */
-async function reconcileAmbiguousSkLink(id: number, db: DatabaseAccess): Promise<boolean> {
-  const link = await db.queryFirst(`SELECT * FROM sk_order_links WHERE id=?`, id).catch(() => null);
+async function reconcileAmbiguousSkLink(id: number, db: DatabaseAccess, onLookupFailure?: (error: unknown) => void): Promise<boolean> {
+  const link = await db.queryFirst(`SELECT * FROM sk_order_links WHERE id=?`, id);
   if (!link) return false;
   const qty = Math.max(1, Number(link.quantity || 1));
   const refId = skRefId(String(link.order_code), String(link.sk_variant_id), qty);
@@ -509,6 +508,7 @@ async function reconcileAmbiguousSkLink(id: number, db: DatabaseAccess): Promise
     const reason = error instanceof SkApiError ? `ambiguous_lookup_http_${error.status}` : "ambiguous_lookup_unavailable";
     await db.execRun(`UPDATE sk_order_links SET last_error=?
       WHERE id=? AND status IN ('claimed','submitted','ordering')`, reason, id);
+    if (!(error instanceof SkApiError && error.status === 404)) onLookupFailure?.(error);
     return false;
   }
   const status = String(detail.status || "").toLowerCase();
@@ -542,12 +542,14 @@ async function reconcileAmbiguousSkLink(id: number, db: DatabaseAccess): Promise
 }
 
 async function handleSkOrderError(
-  id: number,
+  link: Row,
+  owner: string,
   error: unknown,
   attempt: number,
   db: DatabaseAccess,
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
+  const id = Number(link.id);
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
   // REF_ID_ALREADY_EXIST = order sudah ada di SK (retry aman): ambil detail,
   // jangan hitung sebagai gagal.
@@ -555,16 +557,20 @@ async function handleSkOrderError(
     await reconcileAmbiguousSkLink(id, db).catch(() => false);
     return "retried";
   }
-  // 503 ditolak di depan (saldo tidak terpotong): retrynormal, bukan failed.
+  // Only this explicit pre-debit rejection may clear the sent fence. All
+  // ambiguous errors keep it, even on the last attempt or after GET 404.
   if (error instanceof SkTemporarilyUnavailableError && message === "PRODUCT_TEMPORARILY_UNAVAILABLE") {
-    await execRun(
+    const exhausted = attempt >= Number(link.max_attempts ?? SK_MAX_ATTEMPTS);
+    const changed = await execRun(
       `UPDATE sk_order_links SET status='retry', last_error=?, request_sent_at=NULL,
          lease_owner=NULL, lease_expires_at=NULL,
-         next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed'`,
-      message,
-      nextAttemptIso(attempt),
-      id,
+         next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed'
+           AND lease_owner=? AND attempt_count=? AND request_sent_at IS NOT NULL AND COALESCE(sk_invoice,'')=''`,
+      exhausted ? SK_FINAL_REJECTION : message,
+      exhausted ? null : nextAttemptIso(attempt),
+      id, owner, attempt,
     );
+    if (exhausted && changed.changes && await settleExhaustedSkRetries(db, id)) return "failed";
     return "retried";
   }
   await execRun(
@@ -574,6 +580,74 @@ async function handleSkOrderError(
     `ambiguous: ${message}`, id,
   );
   return "retried";
+}
+
+// Only the explicit final rejection can write the proof above. A legacy
+// retry error or last_claim_at can describe an earlier attempt (or a claim
+// which never sent). Leave those links to the read-only aging watchdog.
+const EXHAUSTED_SK_CAS = `status='retry' AND attempt_count>=max_attempts AND request_sent_at IS NULL
+  AND COALESCE(sk_invoice,'')='' AND lease_owner IS NULL AND last_error='${SK_FINAL_REJECTION}'`;
+
+export async function settleExhaustedSkRetries(db: DatabaseAccess, linkId?: number): Promise<number> {
+  if (!db.d1 || !db.canSpend(11)) return 0;
+  const link = await db.queryFirst(`SELECT l.id, l.order_code, fi.id AS item_id
+    FROM (SELECT * FROM sk_order_links WHERE ${EXHAUSTED_SK_CAS} ${linkId === undefined ? "" : "AND id=?"}) l
+    JOIN orders o ON o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
+    JOIN fulfillment_items fi ON fi.order_code=l.order_code
+    LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+    WHERE (fi.id=l.fulfillment_item_id OR (l.fulfillment_item_id IS NULL AND pv.sk_variant_id=l.sk_variant_id))
+      AND (fi.sk_link_id IS NULL OR fi.sk_link_id=l.id) AND fi.status NOT IN ('delivered','sending','failed')
+      AND COALESCE(fi.last_error,'') NOT LIKE 'manual_handover:%' AND COALESCE(fi.delivered_message_id,'')!='manual'
+    ORDER BY l.id, fi.item_index LIMIT 1`, ...(linkId === undefined ? [] : [linkId]));
+  if (!link) return 0;
+  const code = String(link.order_code);
+  // Repeat the paid, binding and send fences inside one D1 transaction. No
+  // item transition means no link failure. The aggregate waits for mixed carts.
+  const [item, failed] = await db.d1.batch([
+    db.d1.prepare(`UPDATE fulfillment_items AS fi SET sk_link_id=?,status='failed',last_error='sk_attempts_exhausted',
+      locked_until=NULL,updated_at=datetime('now')
+      WHERE id=? AND order_code=? AND (sk_link_id IS NULL OR sk_link_id=?) AND status NOT IN ('delivered','sending','failed')
+        AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%' AND COALESCE(delivered_message_id,'')!='manual'
+        AND EXISTS(SELECT 1 FROM sk_order_links WHERE id=? AND order_code=fi.order_code AND ${EXHAUSTED_SK_CAS}
+          AND (fulfillment_item_id=fi.id OR (fulfillment_item_id IS NULL
+            AND sk_variant_id=(SELECT pv.sk_variant_id FROM product_variants pv WHERE pv.id=fi.variant_id))))
+        AND EXISTS(SELECT 1 FROM orders WHERE code=fi.order_code AND status='lunas' AND payment_status='paid'
+          AND supplier_purchase_disabled=0)`).bind(link.id, link.item_id, code, link.id, link.id),
+    db.d1.prepare(`UPDATE sk_order_links SET status='failed',fulfillment_item_id=?,next_attempt_at=NULL,updated_at=datetime('now')
+      WHERE id=? AND ${EXHAUSTED_SK_CAS}
+        AND EXISTS(SELECT 1 FROM fulfillment_items WHERE id=? AND order_code=sk_order_links.order_code
+          AND sk_link_id=sk_order_links.id AND status='failed' AND last_error='sk_attempts_exhausted')`).bind(link.item_id, link.id, link.item_id),
+    db.d1.prepare(`UPDATE orders SET fulfillment_status='failed',updated_at=datetime('now')
+      WHERE code=? AND status='lunas' AND payment_status='paid' AND COALESCE(fulfillment_status,'') NOT IN ('delivered','failed')
+        AND EXISTS(SELECT 1 FROM sk_order_links l JOIN fulfillment_items fi ON fi.id=l.fulfillment_item_id
+          WHERE l.id=? AND l.order_code=orders.code AND l.status='failed' AND l.last_error=?
+            AND fi.sk_link_id=l.id AND fi.status='failed' AND fi.last_error='sk_attempts_exhausted')
+        AND NOT EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=orders.code AND status NOT IN ('delivered','manual_required','failed'))`).bind(code, link.id, SK_FINAL_REJECTION),
+  ]);
+  if (!item.meta?.changes || !failed.meta?.changes) return 0;
+  await alertSupplierAdminOnce(db, code, `sk-exhausted:${code}`,
+    `⚠️ <b>Order Sekalipay gagal</b> <code>${escapeHtml(code)}</code>\nPercobaan habis. Cek antrean untuk penyelesaian manual.`).catch(() => false);
+  const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+  await notifyBuyerDeliveryFailed(code, db);
+  return 1;
+}
+
+/** Page once for unresolved premium links, without touching status or fences. */
+export async function alertAgingSkOrders(db: DatabaseAccess): Promise<number> {
+  if (!process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_BOT_ENABLED !== "true" || !db.canSpend(3)) return 0;
+  const rows = await db.queryAll(`SELECT l.id,l.order_code,l.status FROM sk_order_links l JOIN orders o ON o.code=l.order_code
+    WHERE (l.status IN ('submitted','ordering','processing') OR (l.status IN ('pending','retry') AND l.attempt_count>=l.max_attempts))
+      AND o.status='lunas' AND o.payment_status='paid'
+      AND datetime(COALESCE(l.request_sent_at,l.created_at)) <= datetime('now','-13 hours')
+      AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key='admin:sk-aging:'||l.id)
+    ORDER BY l.id LIMIT 3`);
+  let alerted = 0;
+  for (const row of rows) {
+    if (!db.canSpend(2)) break;
+    if (await alertSupplierAdminOnce(db, String(row.order_code), `sk-aging:${row.id}`,
+      `⏳ <b>Order Sekalipay tertahan lebih dari 13 jam</b> <code>${escapeHtml(String(row.order_code))}</code>\nCek link #${Number(row.id)} (${escapeHtml(String(row.status))}) tanpa membeli ulang.`)) alerted++;
+  }
+  return alerted;
 }
 
 /** Kabar best-effort ke PEMBELI saat link SK tertahan saldo (cermin WR). */
@@ -586,6 +660,7 @@ export async function notifySkBlockedBuyer(orderCode: string, database?: Databas
 
 export async function reconcileBlockedSkBalance(
   database?: DatabaseAccess,
+  options: { reportLookupFailure?: boolean } = {},
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isSkAutoOrderEnabled()) return 0;
@@ -601,14 +676,14 @@ export async function reconcileBlockedSkBalance(
            WHERE fi.order_code=l.order_code AND (fi.sk_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.sk_variant_id=l.sk_variant_id)
              AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
        ORDER BY l.id ASC LIMIT 8`,
-    )
-    .catch(() => [] as Row[]);
+    );
   if (!blocked.length) return 0;
   let balance: number;
   try {
     balance = (await fetchSkBalance()).balance;
-    if (typeof balance !== "number" || !Number.isFinite(balance) || balance < 0) return 0;
-  } catch {
+    if (typeof balance !== "number" || !Number.isFinite(balance) || balance < 0) throw new Error("invalid_sk_balance");
+  } catch (error) {
+    if (options.reportLookupFailure) throw error;
     return 0;
   }
   let revived = 0;
@@ -630,8 +705,7 @@ export async function reconcileBlockedSkBalance(
              WHERE fi.order_code=sk_order_links.order_code AND (fi.sk_link_id=sk_order_links.id OR fi.id=sk_order_links.fulfillment_item_id OR pv.sk_variant_id=sk_order_links.sk_variant_id)
                AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
         Number(row.id), String(row.last_error || ""),
-      )
-      .catch(() => ({ changes: 0 as number | undefined }));
+      );
     if (Number(res.changes ?? 0) > 0) revived++;
   }
   return revived;
@@ -700,7 +774,7 @@ export async function reconcileSkInvoiceNow(
 }
 
 /** Sinkronisasi status processing/ambigu menggantung via GET /v1/trx. */
-export async function reconcileStuckSkOrders(database?: DatabaseAccess): Promise<number> {
+export async function reconcileStuckSkOrders(database?: DatabaseAccess, options: { reportLookupFailure?: boolean } = {}): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isSkEnabled()) return 0;
   const stuck = await db
@@ -709,18 +783,19 @@ export async function reconcileStuckSkOrders(database?: DatabaseAccess): Promise
        WHERE status IN ('processing','submitted','ordering')
          AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-1 hour')
        ORDER BY RANDOM() LIMIT 8`,
-    )
-    .catch(() => [] as Row[]);
+    );
   if (!stuck.length) return 0;
   const { handleSkOrderCompleted, handleSkOrderFailed } = await import("./deliver");
   let reconciled = 0;
+  let lookupFailure: unknown;
   for (const row of stuck) {
     const invoice = String(row.sk_invoice || "");
     if (!invoice) continue;
     let detail: SkTrxDetail;
     try {
       detail = await fetchSkTransaction(invoice);
-    } catch {
+    } catch (error) {
+      if (!(error instanceof SkApiError && error.status === 404)) lookupFailure = error;
       continue;
     }
     const status = String(detail.status || "").toLowerCase();
@@ -732,6 +807,7 @@ export async function reconcileStuckSkOrders(database?: DatabaseAccess): Promise
       reconciled++;
     }
   }
+  if (options.reportLookupFailure && lookupFailure) throw lookupFailure;
   return reconciled;
 }
 
@@ -778,7 +854,7 @@ export async function reconcileFreshSkOrders(database?: DatabaseAccess, limit = 
   return reconciled;
 }
 
-export async function recoverStaleSkClaims(database?: DatabaseAccess): Promise<number> {
+export async function recoverStaleSkClaims(database?: DatabaseAccess, options: { reportLookupFailure?: boolean } = {}): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isSkEnabled()) return 0;
   const res = await db
@@ -790,8 +866,7 @@ export async function recoverStaleSkClaims(database?: DatabaseAccess): Promise<n
        WHERE status='claimed' AND request_sent_at IS NULL AND COALESCE(sk_invoice,'')=''
          AND lease_expires_at IS NOT NULL
          AND datetime(lease_expires_at) <= datetime('now')`,
-    )
-    .catch(() => ({ changes: 0 as number | undefined }));
+    );
   // A Worker can die AFTER request_sent_at but BEFORE storing the invoice.
   // Those claims must be read back by stable ref_id, never requeued to buy.
   const ambiguous = await db.queryAll(
@@ -803,6 +878,7 @@ export async function recoverStaleSkClaims(database?: DatabaseAccess): Promise<n
      ORDER BY COALESCE(next_attempt_at, request_sent_at, created_at) ASC, id ASC LIMIT 12`,
   );
   let recovered = Number(res.changes ?? 0);
+  let lookupFailure: unknown;
   for (const row of ambiguous) {
     if (!db.canSpend(17)) throw new QueryBudgetExceeded();
     // Fence concurrent cron runs and rotate failed lookups behind other due
@@ -814,8 +890,9 @@ export async function recoverStaleSkClaims(database?: DatabaseAccess): Promise<n
       Number(row.id),
     );
     if (Number(claimed.changes ?? 0) === 0) continue;
-    if (await reconcileAmbiguousSkLink(Number(row.id), db)) recovered++;
+    if (await reconcileAmbiguousSkLink(Number(row.id), db, error => { lookupFailure = error; })) recovered++;
   }
+  if (options.reportLookupFailure && lookupFailure) throw lookupFailure;
   return recovered;
 }
 

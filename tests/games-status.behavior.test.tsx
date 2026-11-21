@@ -16,14 +16,14 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.cookie = "axv_local
 
 describe("Games status and help", () => {
   it.each([["awaiting_payment", "Selesaikan pembayaran"], ["processing", "Top up sedang diproses"], ["success", "Top up berhasil"], ["needs_admin", "Perlu pengecekan admin"], ["expired", "Pesanan kedaluwarsa"]])("renders honest %s status", async (status, title) => {
-    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    sessionStorage.setItem(`axvara-order-contact:${code}`, "buyer@example.com");
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: status } }) })));
     render(<GameStatus code={code} />);
     expect(await screen.findByRole("heading", { name: new RegExp(title) })).toBeTruthy();
     expect(Boolean(screen.queryByText("SN123"))).toBe(status === "success");
   });
   it("copies success SN and does not schedule terminal polling", async () => {
-    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    sessionStorage.setItem(`axvara-order-contact:${code}`, "buyer@example.com");
     const copy = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: copy } });
     const intervals = vi.spyOn(window, "setInterval");
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: "success" } }) })));
@@ -39,7 +39,7 @@ describe("Games status and help", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("tidak ditemukan");
   });
   it("shows countdown, WIB deadline, QRIS label and never marks success early", async () => {
-    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    sessionStorage.setItem(`axvara-order-contact:${code}`, "buyer@example.com");
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: "awaiting_payment", qris: { image_url: "/qris", payable_amount: 20123, unique_code: 123, expires_at: "2099-11-09T14:45:00Z", status: "pending" } } }) })));
     render(<GameStatus code={code} />);
     expect(await screen.findByRole("heading", { name: "Selesaikan pembayaran" })).toBeTruthy();
@@ -51,14 +51,22 @@ describe("Games status and help", () => {
     expect(screen.queryByRole("button", { name: "Perbarui status" })).toBeNull();
   });
   it("shows human payment label and support link with code", async () => {
-    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    sessionStorage.setItem(`axvara-order-contact:${code}`, "buyer@example.com");
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: "needs_admin", payment_method: "gateway:DANA", payment: { kind: "gateway", state: "pending", label: "DANA Realtime", channel: "DANA", subtotal: 20000 } } }) })));
     render(<GameStatus code={code} />);
     expect(await screen.findByText("DANA", { selector: "dd" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Hubungi admin via WhatsApp" }).getAttribute("href")).toContain(code);
   });
+  it("FX-11: explains the manual refund and links admin with the order code", async () => {
+    sessionStorage.setItem(`axvara-order-contact:${code}`, "buyer@example.com");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: "needs_admin", manual_refund_required: true } }) })));
+    render(<GameStatus code={code} />);
+    expect(await screen.findByRole("heading", { name: "Top up gagal" })).toBeTruthy();
+    expect(screen.getByText(/pembayaranmu akan dikembalikan oleh admin/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Hubungi admin via WhatsApp" }).getAttribute("href")).toContain(code);
+  });
   it("shows the crypto asset and its network", async () => {
-    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    sessionStorage.setItem(`axvara-order-contact:${code}`, "buyer@example.com");
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: "success", payment_method: "nowpayments:usdtbsc", payment: { kind: "crypto", state: "paid", label: "USDT", symbol: "USDT", network_label: "BSC" } } }) })));
     render(<GameStatus code={code} />);
     expect(await screen.findByText("USDT (BSC)", { selector: "dd" })).toBeTruthy();
@@ -76,7 +84,7 @@ describe("Games status and help", () => {
   });
   it("remembers opened orders and lists them under Orders on this device", async () => {
     localStorage.clear();
-    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    sessionStorage.setItem(`axvara-order-contact:${code}`, "buyer@example.com");
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, games_status: "processing", paid_at: "2026-11-16T13:17:36Z" } }) })));
     render(<GameStatus code={code} />);
     expect(await screen.findByRole("heading", { name: "Top up sedang diproses" })).toBeTruthy();
@@ -89,7 +97,7 @@ describe("Games status and help", () => {
     expect(screen.getByText("Pesanan di perangkat ini")).toBeTruthy();
   });
   it("keeps the paid QRIS amount (with unique code) as total after payment", async () => {
-    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    sessionStorage.setItem(`axvara-order-contact:${code}`, "buyer@example.com");
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, total: 15600, games_status: "success", qris: { image_url: "/qris", payable_amount: 15657, unique_code: 57, expires_at: "2026-11-16T13:31:31Z", status: "paid" } } }) })));
     render(<GameStatus code={code} />);
     expect(await screen.findByText("Rp 15.657")).toBeTruthy();

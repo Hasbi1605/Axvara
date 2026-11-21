@@ -318,6 +318,38 @@ describe("sendDueDailyAdminSummary", () => {
     }
   });
 
+  // CV-3-N1: a collect error used to keep the 120s claim, so a persistent
+  // query error silently suppressed the whole 07:00–11:59 WIB window.
+  it("releases the CAS claim when data collection throws so the next tick retries", async () => {
+    const fx = createD1Fixture();
+    try {
+      const { messages } = stubTelegram("true");
+      const at0700Wib = new Date("2026-11-18T00:00:00Z");
+      let injected = false;
+      fx.control.fail = (sql) => {
+        if (!injected && sql.includes("AS paid_orders")) {
+          injected = true;
+          return true;
+        }
+        return false;
+      };
+      await expect(sendDueDailyAdminSummary(createDatabaseAccess(fx.db), { now: at0700Wib }))
+        .rejects.toThrow(/Injected database interruption/);
+      expect(injected).toBe(true);
+      expect(messages).toHaveLength(0);
+
+      // Next tick (one minute later) must attempt again — not report "claimed".
+      fx.control.fail = null;
+      const retried = await sendDueDailyAdminSummary(createDatabaseAccess(fx.db), {
+        now: new Date("2026-11-18T00:01:00Z"),
+      });
+      expect(retried).toMatchObject({ due: true, sent: true, date: "2026-11-18" });
+      expect(messages).toHaveLength(1);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("excludes manually delivered tunvn/aivault/storebat/mirai links from stuck >30m alerts while keeping undelivered needs_admin", async () => {
     const fx = createD1Fixture();
     try {

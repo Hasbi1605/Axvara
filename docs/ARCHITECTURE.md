@@ -1,5 +1,20 @@
 # ARCHITECTURE.md — AXVARA
 
+## Eskalasi order dan recovery cron — FX-11 (lokal)
+
+- `fulfillment/supplier-escalation.ts`: setelah CAS supplier menang, item `manual_required` tetap terminal; agregat paid berubah ketika semua item settled, dan job terminal diantrekan kembali agar manifest diperiksa. Satu klaim `buyer_notice_log` per alarm; timeout Telegram ambigu tidak dikirim ulang. Ringkasan admin menampilkan `aged_manual_required` (>24 jam sejak lunas) dan `games_needs_check`, terpisah dari antrean Market.
+- `cron/lite`: recovery WR/SK yang gagal menambah `recovery_failed` + `failed_subjobs`, menyimpan `*_recovery_last_error` tersanitasi, lalu menjawab 503 tanpa heartbeat sukses. Yield budget bukan error. Kegagalan maintenance tersimpan sebagai `cleanup_recovery_last_error` dan diteruskan ke alarm soft `notify_b` sampai cleanup berhasil; tidak menambah jadwal atau pengiriman Telegram sendiri.
+- FX-11b: settle retry SK membutuhkan bukti penolakan POST terakhir serta item yang masih boleh gagal; batch D1 menyatukan status link/item/agregat. Watchdog 13 jam mencakup retry habis yang belum bisa diselesaikan. Jalur langsung dan recovery Pedia memakai klaim notis per order; cron Pedia mengulang maksimal satu email manual yang due per tick memakai kunci Resend yang sama, tanpa mengulang Telegram admin.
+- API Games status/lookup memberi flag `manual_refund_required` hanya setelah bukti akses pembeli, tanpa mengirim error mentah supplier. Tidak ada refund otomatis.
+
+## Koreksi storefront FX-4 — 21 November 2026 (lokal)
+
+- Market `/sitemap.xml` dan `/llms.txt` memakai `src/lib/catalog-index.ts`: kecualikan produk arsip/nonaktif, varian yang ditahan kebijakan jual WR, dan slug yang dialihkan PDP ke winner aktif nonarsip. Sitemap tetap memuat produk habis yang tampil; harga AI memakai stok efektif (termasuk inventory unik) dan minimum pembelian. D1 gagal: jangan pakai seed.
+- Rewrite Pedia memakai route `/pedia/sitemap.xml` dan `/pedia/robots.txt`; URL dalam sitemap tanpa prefix `/pedia`. Beranda dan sitemap membaca katalog publik dari `src/lib/pedia/public-catalog.ts` lewat cache revisi yang sama dengan API. Beranda meneruskan ringkasan kartu/pencarian saja; API detail tetap utuh.
+- FX-4b: `/pedia/layanan`, `/pedia/o/[slug]`, dan `/pedia/p/[platform]` memakai loader yang sama, tanpa HTTP ke host sendiri. Loader berhenti sebelum mengakses cache bila Pedia nonaktif. `/layanan` mengirim ringkasan, halaman pemesanan hanya mengirim produk platform terkait. `/lacak` dan `/refill` Pedia boleh dirayapi agar crawler melihat `noindex,nofollow`.
+- Root `not-found.tsx` memberi tautan kembali. Detail Games berbagi pembacaan per request antara metadata dan render; slug hilang tidak mewarisi canonical beranda. JSON-LD artikel memakai waktu terbit ISO UTC bila tanggal valid.
+- Footer Games menautkan panduan ke `/bantuan` di host Games. Dialog cabut token agent, hapus satu stok, hapus exclusion WR/SK, dan cabut tautan refund mengunci permintaan selama proses; endpoint dan otorisasi tidak berubah.
+
 ## Telegram TG-POLISH-B — 20 November 2026 (lokal)
 
 - `pmc:<nonce>[:<simbol>|:others]` membaca payq1 milik pembeli yang masih `quoted` dan belum kedaluwarsa; `pmb:<nonce>` kembali ke pemilih metode. Mengetuk jaringan tetap memakai `pm:<nonce>:<indeks asli>`, tanpa mutasi saat navigasi.
@@ -38,7 +53,7 @@
   - Auth constant-time `Bearer ${CRON_SECRET}` (401 sebelum baca body/D1), body ≤ 4096 byte, validasi Zod ketat (400 sebelum D1), memakai DB unbudgeted Paid dengan ~2 statement per penerima pada jalur normal (CAS claim + update final; `is_eligible` dimuat di `SELECT` awal batch dan pacing ditulis ke `broadcast_dispatch_control` sekali pada pelepas lease `finally`, bukan per baris).
   - Menjaga invarian **never double-send, never blind retry**: koordinasi lease global `broadcast_dispatch_control` (60 dtk; bila sibuk → `settled: false, state: "lease_busy", retrySec`) + CAS atomik per delivery (`pending → sending`, lease 90 dtk, verifikasi ulang kampanye `'queued'` dan `eligibleSQL`). Baris `'sending'` aktif, `'sent'`, `'unknown'`, `'failed'`, `'skipped'`, `'canceled'` tidak pernah dikirim ulang; `'sending'` dengan lease kedaluwarsa dikarantina ke `'unknown'` untuk Telegram dan hanya di-retry ke `'pending'` untuk Email dalam jendela dedupe 23 jam.
   - Pacing global Telegram: `TELEGRAM_SAME_CHAT_PACE_MS = 300` ms antarpesan chat yang sama (`sendPhoto` → `sendMessage` dan antar-chunk di `src/lib/broadcasts/sender.ts`) dan `TELEGRAM_RECIPIENT_PACE_MS = 250` ms antarpenerima; Email tetap `EMAIL_RECIPIENT_PACE_MS = 650` ms. Target 388 penerima Telegram selesai dalam ~3,5–5 menit (~3,5 msg/dtk global, jauh di bawah batas 30 msg/dtk Telegram).
-  - Penanganan hasil: `429` (dan deferral retryable) menyimpan `telegram_after`/`email_after` + progres `provider_id` (`photoId`/`sentChunks`), **menghentikan batch seketika**, dan mengembalikan `{ ok: true, settled: false, state: "rate_limited", retrySec }` tanpa mengulang foto saat retry; `403` menyetel `telegram_users.is_blocked = 1`; opt-out/ineligible → `skipped` (`recipient_unsubscribed`); slot promo lewat `expiresAt` → bulk-skip (`promo_slot_expired`, 0 fetch). Deadline internal 38 dtk mengembalikan `settled: false, state: "deadline_yield"` sebelum timeout fetch consumer 45 dtk.
+  - Penanganan hasil: `429` (dan deferral retryable) menyimpan `telegram_after`/`email_after` + progres `provider_id` (`photoId`/`sentChunks`), **menghentikan batch seketika**, dan mengembalikan `{ ok: true, settled: false, state: "rate_limited", retrySec }` tanpa mengulang foto saat retry; `403` menyetel `telegram_users.is_blocked = 1`; opt-out/ineligible → `skipped` (`recipient_unsubscribed`); slot promo lewat `expiresAt` → bulk-skip (`promo_slot_expired`, 0 fetch). Deadline internal 38 dtk mengembalikan `settled: false, state: "deadline_yield"` sebelum timeout fetch consumer 45 dtk. Audit 21 November 2026 (AU-E2-6): snapshot baris delivery dibaca ULANG setelah lease global didapat (bukan hanya saat ada `sending` kedaluwarsa), sehingga progres `provider_id` yang dimajukan dispatcher lain di antara baca-awal dan lease tidak membuat sender mengulang chunk yang sudah diterima.
 - **Cron backstop uncapped (`src/lib/broadcasts/worker.ts` `processBroadcasts` + `src/app/api/cron/lite/route.ts` `runPromo`):**
   - Batas era Free (`Math.min(8, limit)`, cadangan 11 dtk Telegram, batas 20 dtk, budget 40 statement bersama) dihapus. `runPromo` memberi `processBroadcasts` budget terpisah `createBudgetedDatabase(400, 4, unwrapD1(db.getD1()))`, limit 150/tick, dan wall time hingga ~40 dtk.
   - Saat `BROADCAST_QUEUE` tersedia dan `broadcast_queue_mode !== 'off'`, `runPromo` mengaktifkan `queueGraceMs = 120_000` (2 menit) untuk `telegram`/`email` (plus pre-check 1 query agar tick idle tidak menyentuh lease global); `whatsapp` tidak ditunda dan tetap segera diproses.
@@ -476,6 +491,18 @@ Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.
   2026-01-01 ditolak; `order_code` wajib ada (`order_not_found`).
 - **Cron**: job lite `cleanup` (tiap 5 menit, tanpa trigger baru) memanggil
   `materializeRecurring` — idempoten lewat UNIQUE, maks 3 bulan susulan per run, budget-aware.
+  Resume setelah jeda (keputusan owner 21 November 2026): `updateRecurring(active 0→1)`
+  memindahkan `last_generated_month` ke bulan WIB sebelumnya sehingga bulan selagi dijeda
+  tidak dibukukan (cash basis); catch-up template aktif saat cron downtime tetap.
+- **Maintenance cleanup** (`src/lib/maintenance-cleanup.ts`, keputusan owner 21
+  November 2026): prune dibatasi 500 baris/tabel/tick dan admission-gated terhadap
+  statement budget untuk tabel log murni (`wr_sync_log`/`sk_sync_log` >30 hari
+  dengan lantai baris terbaru per `sync_type`+`status`, `wr_saldo_log`/`sk_saldo_log`/
+  `pedia_supplier_balance_log` >30 hari dengan lantai terbaru per source/supplier,
+  `telegram_updates` >14 hari, `broadcast_deliveries` >90 hari hanya campaign
+  `completed`). `security_events` naik ke 90 hari (bounded 500/tick). Ledger
+  uang/order, bukti webhook yang menunggu review, notice/dedupe, `payment_invoice_history`
+  dan lease/klaim aktif tidak pernah disentuh; detail retensi di `platform-ops.md`.
 - **Laporan** `src/lib/dashboard-report.ts`: `PeriodReport` + `ReportPoint`
   menambah `ReportFinance`/`ReportPointFinance`. `payment_fees` = `gateway_fee`
   + MDR × payable per provider QRIS (sekali per order); `unique_code_bonus` =
@@ -682,6 +709,15 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
   non-arsip di luar grup, atau `10` jika kosong), mengabaikan `sortOrder` payload, dan
   menyebarkan `category_id` + `sort_order` ke seluruh anggota grup. Sync WR/SK/TUNVN/AIVault
   tidak pernah menulis ulang `category_id`/`sort_order` produk existing (hanya saat INSERT baru).
+- Migrasi0152 (21 Nov 2026, audit AU-G2-3): `drizzle/migrations/0152_product_group_member_update_guard.sql`
+  (selaras `drizzle/schema.sql`) menambah trigger `pg_member_valid_update`
+  (`BEFORE UPDATE OF product_id`, `WHEN NEW.product_id IS NOT OLD.product_id`)
+  yang mencerminkan guard INSERT: produk arsip/tidak ada → `invalid_group_product`.
+  Sebelumnya hanya INSERT yang dijaga sehingga UPDATE anggota bisa menunjuk
+  produk arsip. Aplikasi mengubah keanggotaan lewat delete+insert
+  (`src/lib/product-groups.ts`), jadi tidak ada alur admin yang bergantung pada
+  UPDATE tanpa guard; mengarsipkan produk anggota tetap boleh (mengubah
+  `products`, bukan anggota) dan baris anggota arsip tetap difilter logika winner.
 - Migrasi menyalin 33 pasangan lama, prefer/winner lama ke ID produk, lalu
   mengganti MBO→Jaspay di grup: Zoom15→113, Express VPN20→121, Wink25→115,
   Meitu26→114. Guard ID+nama kedua produk dan keanggotaan mencegah salah target.
@@ -714,7 +750,7 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
   rate limit existing, JSON maksimum2048byte, no-store. Create memakai D1 batch
   atomik; UNIQUE dan trigger memagari konflik/arsip/kapasitas. Hapus anggota
   membersihkan prefer dan menghapus grup bila tersisa <2, satu batch; hapus grup
-  memakai FK cascade. Endpoint `/api/admin/supplier-pairs*` lama menjawab410.
+  memakai FK cascade. Endpoint `/api/admin/supplier-pairs*` lama dihapus; gunakan `/api/admin/product-groups` dan `/decide` di bawahnya.
 - Filter grup dipakai `/api/products?active=1`, daftar `/api/catalog`, Telegram
   katalog/cari/bestseller/promo serta markup/liveStatus admin. URL PDP pecundang
   redirect ke winner aktif non-Arsip; exception redirect tidak tertelan catch.
@@ -852,7 +888,7 @@ Tombol tambah Kategori/Artikel dimiliki toolbar di atas daftar, bukan header.
 duplikat di `StoreSettingsManager` dihapus. Tidak ada route, env, migrasi atau
 kontrak API baru. Publikasi melalui CI; deployment belum diverifikasi.
 
-## Admin round 2: anatomi seragam, alur pembeli WA pensiun, rekonsiliasi "sudah dicek" (13 November 2026, implementasi lokal)
+## Admin round 2: anatomi seragam, alur pembeli WA pensiun, rekonsiliasi "sudah dicek" (13 November 2026; label awal "implementasi lokal")
 
 Status: **implementasi terintegrasi dan terverifikasi lokal; deployment belum
 diverifikasi.** Seluruh paket round 2 (keputusan owner 13 November 2026) mencakup
@@ -866,6 +902,15 @@ baru di `Panel` bersama (non-blocking). Review visual PM PASS dari tangkapan UI4
 1280/390 + TUNVN 390 terang/gelap) — semuanya fixture browser, **bukan** transaksi
 atau sesi admin produksi. Publishing lewat CI, deployment terverifikasi dan klaim
 live tetap langkah terpisah: jangan menyatakan bagian ini live.
+
+> **Update (audit FX-13, 21 November 2026):** label "implementasi lokal" pada
+> judul di atas adalah snapshot 13 November, BUKAN status deployment. Alur
+> pembeli WA (pensiun) sudah benar-benar DIHAPUS dari kode di `main` —
+> `src/lib/whatsapp/handlers/{catalog,payment,proof}.ts` dan `whatsapp/session.ts`
+> tidak ada; webhook membalas `buyerFlowsRetiredMessage`, dan
+> `GET /api/admin/bot/health` melaporkan `whatsapp_discovery/payment/proof_intake=false`
+> + `whatsapp_buyer_flows:"retired"`. Klaim live per-fitur lain tetap butuh bukti
+> deployment terpisah; jangan memperluas label ini jadi klaim live umum.
 
 ### Kontrak backend (BE, terintegrasi lokal)
 Sudah dirinci di "Status Rollout Produksi WhatsApp" (pensiun pembeli WA + kontrak
@@ -1434,6 +1479,9 @@ memetakan seluruh kategori Top10:2025 beserta batas bukti operasional.
   `unsafe-inline` Next masih residual hardening, bukan bukti XSS pada audit ini.
 - Migrasi0080: security_auth_attempts(client_hash PK,window_id,attempts1..10) dan
   security_events(id,event,subject_hash,route,method,created_at), indeks window/time.
+  Audit baca sensitif mencakup ekspor `GET /api/admin/orders?export=csv` dan
+  `GET /api/admin/orders/[code]` untuk input pembeli, dengan label tetap
+  `/api/admin/sensitive-read`; polling daftar biasa tidak dicatat.
   `login-guard` memakai HMAC terpisah domain login:v1 atas IP kanonis dan satu
   UPSERT kondisional sebelum verifikasi. Maks10 gagal/in-flight per jendela tetap
   15menit lintas isolate; burst5/menit existing tetap. Produksi tanpa D1/error
@@ -2015,12 +2063,12 @@ axvara/
 │   │   ├── agent/               # Content API scoped Bearer token
 │   │   ├── cron/                # Publish artikel + expire order terjadwal
 │   │   │   └── auth/
-│   │   ├── pedia/               # API Pedia (docs/PEDIA-PRD.md §9.7): catalog/ticker/quote/orders/[code]+refill/credits/check, lookup di orders/lookup, admin pedia/*
+│   │   ├── pedia/               # API Pedia (docs/PEDIA-PRD.md §9.7): catalog/quote/orders/[code]+refill, lookup di orders/lookup, admin pedia/*
 │   └── globals.css
 ├── src/components/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast,
 │   │                            # NavigationProgress (bar + skeleton rute + pil koneksi lambat)
-│   ├── storefront/              # Navbar, Hero, ProductCard, CartDrawer, CheckoutForm, QrisDisplay,
+│   ├── storefront/              # Navbar, ProductCard, CartDrawer, CheckoutForm, QrisDisplay,
 │   │                            # MobileBottomNav (Beranda · Kategori · Pesanan · Bantuan) + HelpSheet + CategorySheet,
 │   │                            # DeviceOrders ("Pesanan di perangkat ini" di /lacak-pesanan),
 │   │                            # QuickVariantModal (beli cepat + mode select untuk PDP mobile),
@@ -2031,7 +2079,7 @@ axvara/
 │       ├── PediaManager.tsx     # shell admin Pedia: status strip + 4 tab (Pesanan · Produk · Layanan IndoSMM · Pengaturan); ?tab= lama dipetakan
 │       ├── pedia/               # OrdersPanel/ProductsPanel/ProductEditor/ServicesPanel/SettingsPanel/shared: per-tab loading, payload mutasi tetap
 │   ├── shared/                  # ServicesMenu + CrossServicePromo (Market/Pedia; URL src/lib/site.ts)
-│   ├── pedia/                   # PediaNavbar (client + field cari pill ala Market via usePediaSearch), PediaBottomNav, LinkPasteHero (komponen hidup, tak dipakai beranda sejak 2026-10-12), PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Bot Telegram), PediaWhatsAppLink (CTA Hubungi Admin → hub /wa), OrderTicker (tidak dirender), StatusWidgets
+│   ├── pedia/                   # PediaNavbar (client + field cari pill ala Market via usePediaSearch), PediaBottomNav, PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Games), PediaWhatsAppLink (CTA Hubungi Admin → hub /wa), StatusWidgets
 ├── src/hooks/
 │   ├── useDesktopMotion.ts      # Media query dinamis ≥768px/fine/hover/tanpa reduced motion; shared Spotlight/ScrollRope
 │   ├── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
@@ -2128,7 +2176,7 @@ Notifikasi paid memakai `buyer_notice_log` existing dengan key
 claim CAS, lease basi10menit, maksimal5percobaan/backoff1/5/15/60menit,
 settlement fenced, maksimal4 kandidat dalam budget40statement existing.
 Penerima kredensial/paid hanya ID pribadi kanonis `telegram_user_id`; stored
-chat_id tidak menjadi fallback akun lain. Input WA cadangan hanya saat idle.
+chat_id tidak menjadi fallback akun lain. Kabar lunas tidak lagi meminta nomor WA (keputusan owner 21 November 2026: Telegram tidak memerlukan kontak; input WA opsional hanya bila diinisiasi pembeli).
 Status/resend menyajikan semua item dan error parsial secara eksplisit.
 Semantik transport bounded at-least-once, bukan exactly-once. Tidak ada schema,
 env, trigger cron, integrasi gateway atau UI web baru.
@@ -2372,13 +2420,13 @@ mengubah `games_products`/enabled. Harga jual baru dihitung sinkron berikutnya (
 | POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa (<15 menit). Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 1x/order, rate limit 5/menit/IP | code order |
 | POST | /api/orders/[code]/cancel | Batal mandiri pembeli (2026-10-11): verifikasi kode + WA/email checkout pola lookup (404 generik), hanya pending+unpaid, CAS `transitionPendingOrder` (kalah race vs webhook = 409), stok kembali detik itu juga; tombol di `/pesanan/[code]` + `/lacak-pesanan` | kontak checkout |
 | POST | /api/webhook/dana | Terima notifikasi QRIS Hook, dedup, cocokkan nominal, lunasi order | X-Webhook-Secret |
-| POST | /api/proof/upload | ⏸️ maintenance 2026-09-17: selalu 503 (upload bukti disembunyikan di WEB; QRIS saja) | same-origin |
 | GET | /api/admin/bukti/:key | Preview/download bukti | admin |
 | POST | /api/upload | Upload WebP produk/artikel/banner ke R2 | admin |
 | * | /api/agent/* | Context, artikel, media, dan audit | agent scope |
 | POST | /api/cron/publish-scheduled | Publish artikel dan kedaluwarsakan order jatuh tempo | cron secret |
+| POST | /api/cron/broadcast-dlq | Catat chunk siaran DLQ secara idempoten di `store_settings`; tidak mendispatch ulang (FX-14 lokal) | cron secret |
 | POST | /api/auth/login | Admin login, set cookie | - |
-| GET | /api/admin/overview | KPI, antrean tindakan, dan health flag tanpa secret | admin |
+| GET | /api/admin/overview | KPI, antrean tindakan, health flag, dan `broadcast_dlq_chunks` tanpa secret | admin |
 | GET | /api/admin/orders | List pesanan dengan search/filter/channel/date, pagination, dan CSV | admin |
 | PATCH | /api/admin/orders/:id | Update status (lunas/batal) + admin_note | admin |
 | GET/POST | /api/admin/payments/events | Audit aman QRIS Hook + retry exact-match | admin |
@@ -2445,6 +2493,12 @@ mengelompokkan kondisi snapshot supplier agar pohon ekspresi guard berada di
 bawah batas D1 100 tingkat. Pemeriksaan stok, identitas, dan lease katalog
 tetap dijalankan di batch yang sama dengan pengurangan stok dan insert order.
 
+**Replay Market tertutup (21 November 2026, lokal):** `POST /api/orders`
+mengembalikan `409 checkout_order_closed` untuk quote tersimpan dengan order
+`dibatalkan`/`kadaluarsa`; tidak menerbitkan instruksi bayar atau proof baru
+untuk replay tersebut. Buyer checkout mempertahankan keranjang dan meminta
+quote baru; retry invoice yang masih hidup tetap terikat quote/provider lama.
+
 **Laporan pendapatan (issue #12, review R9 2026-09-08):** sumber waktu kanonis `src/lib/revenue.ts` — `orders.paid_at` (ditulis sekali saat transisi lunas via COALESCE-guard di semua jalur QRIS/manual/admin, dalam batch yang sama dengan flip status) dengan bucket WIB (`datetime(..., '+7 hours')` di SQL, helper `isSameWibDay/isSameWibMonth` di dev-fallback). Hierarki: ledger `paid_at` → `paid_at` order → `reviewed_at` bukti → `updated_at` fallback. Migrasi `0016_revenue_paid_at.sql` membackfill data lama (QRIS dari ledger, manual dari `reviewed_at`, sisa lunas dari `updated_at`, non-lunas tetap NULL, idempoten). Overview menandai `revenue_timezone: Asia/Jakarta` + `revenue_from/to` agar mudah diaudit.
 
 **Dashboard untung (revisi 2026-10-15, implementasi; publikasi via CI):** `src/lib/dashboard-report.ts` membaca satu query agregat CTE dengan fakta per item lunas; respons dibatasi agregat (bukan seluruh order mentah). `orders.paid_at`/ledger pembayaran tetap menentukan kalender WIB. Modal link WR/SK dialokasikan ke baris supplier yang bersangkutan; modal stok sendiri dari snapshot, fallback katalog untuk riwayat tanpa snapshot. Pedia memakai `supplier_charge`, fallback rate snapshot × quantity, dan kelompok supplier tersendiri. TUNVN dan AIVault memakai modal dari link order mereka (`tunvn_order_links.cost_usdt` / `aivault_order_links.cost_usd`, sudah total per baris), fallback snapshot `tunvn_eligibility`/`aivault_eligibility`, lalu harga katalog terkini; kurs IDR-nya kurs katalog terakhir (`tunvn_products.fx_idr_per_usdt` / `aivault_products.fx_idr_per_usd`, fallback `crypto_market_snapshot`), bukan kurs persis saat order. Baris tersebut hanya dikenali sebagai TUNVN/AIVault bila bukan Pedia dan tidak terikat link WR/SK. Biaya supplier dinormalisasi ke rupiah utuh untuk konsistensi tampilan. Pembagian nominal pembayaran/biaya supplier mempertahankan setiap rupiah (sisa pembulatan pada baris terakhir); supplier/channel/Top 5/series memakai fakta yang sama. Item campuran tidak disembunyikan oleh keberadaan link supplier pada item lain. Jumlah pesanan per supplier menghitung pesanan yang mengandung item asal itu; pada keranjang campuran jumlah kelompok tidak dijumlahkan sebagai total order.
@@ -2459,9 +2513,9 @@ Pedia memakai nilai penjualan = pembayaran merchant + kredit digunakan (atau sub
 
 **Snapshot modal pembayaran (0063):** tabel tambahan `order_item_costs(order_code,item_index,product_id,variant_id,source,supplier_variant_id,unit_cost,created_at)` dengan PK `(order_code,item_index)`. `PAID_ORDER_COST_SNAPSHOT_SQL` dijalankan dalam batch transisi lunas QRIS/ACC maupun konfirmasi manual bersama order/outbox; `INSERT OR IGNORE` mempertahankan snapshot pertama. Tautan varian tidak memakai FK agar penghapusan katalog tidak menghapus modal historis; FK order tetap berlaku. Harga supplier link aktual mengungguli snapshot katalog. Snapshot tidak dibackfill sebagai fakta historis: data lama tanpa snapshot tetap memakai estimasi yang dilabeli, supplier nonterminal/charge Pedia belum ada juga estimasi. Migrasi hanya CREATE TABLE IF NOT EXISTS, diterapkan CI sebelum Pages; tanpa rebuild/rename tabel atau eksekusi migrasi produksi manual.
 
-**Checkout invalid (2026-10-15):** handler submit bersama memvalidasi WA/email sebelum membuat order. Sesudah error ter-render, field pertama difokuskan dengan `preventScroll` dan wrapper label/input/hint digulir ke tengah viewport; wrapper memiliki scroll-margin navbar/CTA, reduced motion memakai scroll langsung. Error terhubung lewat aria-describedby, sticky CTA mobile juga menjelaskan perlunya melengkapi data.
+**Checkout invalid (2026-10-15):** handler submit bersama memvalidasi WA/email sebelum membuat order. Koreksi FX-R2 (lokal): `<form noValidate>` mencegah validasi native memotong handler ini saat klik Bayar maupun Enter; validasi quote dan order di server tidak berubah. Sesudah error ter-render, field pertama difokuskan dengan `preventScroll` dan wrapper label/input/hint digulir ke tengah viewport; wrapper memiliki scroll-margin navbar/CTA, reduced motion memakai scroll langsung. Error terhubung lewat aria-describedby, sticky CTA mobile juga menjelaskan perlunya melengkapi data.
 
-**Monitoring & ketahanan notifikasi (issue #13, review R10/R11 2026-09-08):** status layanan jujur empat tingkat di `src/lib/service-health.ts` (`configured/healthy/degraded/unknown`) — overview memakai pengukuran (antrean fulfillment/outbox + usia, kirim terakhir, event QRIS 7 hari) dan mengembalikan `system_details` berdetail di samping boolean kompatibel; `last_match` mencakup event `matched`, kesehatan fulfillment membaca `fulfillment_items` + usia antrean tertua via `evaluateQueue` (macet = degraded; `manual_required` = needsAction → degraded langsung tanpa menunggu usia, review R11 lanjutan), dan `fulfillment_attention` = JUMLAH ORDER butuh tindakan (COUNT DISTINCT, tanpa hitung ganda job+item; rincian `fulfillment_attention_by_status`, `fulfillment_jobs_attention` untuk diagnosis); kartu Kesehatan sistem tiga warna (hijau/kuning/merah) + tooltip + legenda. Bot health memaparkan usia antrean tertua + event QRIS. Notifikasi penting WhatsApp ("Pembayaran Diterima") masuk `whatsapp_outbox` idempoten (`UNIQUE idempotency_key`, klaim lease `sending` + `worker_id`/`locked_until`, backoff 1-5-15-60, `dead`, migrasi 0019 rebuild CHECK prod), recovery lease basi oleh runtime (bukan hanya cron, review R10 lanjutan) + `claimErrors` terpisah, dan diproses cron operations 5-menit. Serah terima manual: `POST /api/admin/orders/[code]/handover` (item_index+note, admin-only, 90-hari TTL bukti, review R3 lanjutan) + tombol "Serahkan manual" di OrdersManager. Kesehatan sesi Baileys dinyatakan eksplisit sebagai milik gateway Heroku eksternal (dilaporkan endpoint `/health` gateway), bukan diklaim hijau dari Pages.
+**Monitoring & ketahanan notifikasi (issue #13, review R10/R11 2026-09-08):** status layanan jujur empat tingkat di `src/lib/service-health.ts` (`configured/healthy/degraded/unknown`) — overview memakai pengukuran (antrean fulfillment/outbox + usia, kirim terakhir, event QRIS 7 hari) dan mengembalikan `system_details` berdetail di samping boolean kompatibel; `last_match` mencakup event `matched`, kesehatan fulfillment membaca `fulfillment_items` + usia antrean tertua via `evaluateQueue` (macet = degraded; `manual_required` = needsAction → degraded langsung tanpa menunggu usia, review R11 lanjutan), dan `fulfillment_attention` = JUMLAH ORDER butuh tindakan (COUNT DISTINCT, tanpa hitung ganda job+item; rincian `fulfillment_attention_by_status`, `fulfillment_jobs_attention` untuk diagnosis); kartu Kesehatan sistem tiga warna (hijau/kuning/merah) + tooltip + legenda. Bot health memaparkan usia antrean tertua + event QRIS. Notifikasi penting WhatsApp ("Pembayaran Diterima") masuk `whatsapp_outbox` idempoten (`UNIQUE idempotency_key`, klaim lease `sending` + `worker_id`/`locked_until`, backoff 1-5-15-60, `dead`, migrasi 0019 rebuild CHECK prod), recovery lease basi oleh runtime (bukan hanya cron, review R10 lanjutan) + `claimErrors` terpisah, dan diproses cron operations 5-menit. Audit 21 November 2026: klaim yang crash pada percobaan TERAKHIR dipulihkan ke terminal `dead` (`lease_recovered_exhausted:delivery_outcome_unknown`) — dulu berhenti di `failed` yang tak pernah due karena query due mensyaratkan `attempt_count < 5`; tick yang kehabisan waktu sebelum baris pertama melaporkan sisa antrean di `paused` (bukan diam). Serah terima manual: `POST /api/admin/orders/[code]/handover` (item_index+note, admin-only, 90-hari TTL bukti, review R3 lanjutan) + tombol "Serahkan manual" di OrdersManager. Kesehatan sesi Baileys dinyatakan eksplisit sebagai milik gateway Heroku eksternal (dilaporkan endpoint `/health` gateway), bukan diklaim hijau dari Pages.
 
 **Panel QRIS pending ringkas (2026-10-15, implementasi; publikasi CI):** halaman `/pesanan/[code]` memilih layout compact hanya saat `order.status=pending`, ada invoice QRIS dan order belum kedaluwarsa. Header kecil, container 760px, QR frame 224/240px dan layout dua kolom mulai `sm`; judul/kode dipusatkan pada semua ukuran dengan grid kolom penyeimbang ikon (32px mobile/40px desktop), satu pill pending di atas Total bayar pada mobile maupun desktop (status QR hangus tetap di header semua ukuran); kotak gambar/placeholder tetap persegi dan download tetap `order.qris.image_url`. Info bayar memakai payable_amount/kode unik/expiry yang sama. Ringkasan direuse pada `MobileCollapsible` tertutup untuk pending dan kartu terbuka setelah lunas. CTA berganti label Simpan QRIS/Cek Pembayaran dengan handler/download existing; status polling tetap live, timestamp dipertahankan untuk pembaca layar. Navigasi sekunder dipadatkan, Lacak Status hanya pada status lain. Gate qrisExpired/reissueAllowed, pembatalan berkontak/konfirmasi, interval polling serta panel akun/garansi/auto-scroll tidak diganti; tanpa route/env/migrasi baru.
 
@@ -2508,13 +2562,52 @@ R2 bucket: axvara-assets
 ### Jalur CI/CD
 
 1. `npx wrangler d1 create axvara-db`
-2. Database baru: `npx wrangler d1 execute axvara-db --file=./drizzle/schema.sql --remote`; database lama jalankan migrasi `0002`, `0003_checkout_integrity.sql`, lalu `0004_categories_newsletter.sql`
+2. Database baru: `npx wrangler d1 execute axvara-db --file=./drizzle/schema.sql --remote`, lalu tandai baseline lewat `node scripts/d1-fresh-init.cjs --print-baseline`/`--emit-sql` (lihat §Bootstrap di bawah); database lama jalankan migrasi `0002`, `0003_checkout_integrity.sql`, lalu `0004_categories_newsletter.sql`
 3. `npx wrangler r2 bucket create axvara-assets`
 4. Push ke `main` (kecuali commit yang hanya menyentuh `docs/**`/`*.md`, dilewati `paths-ignore`; runner = repo variable `CI_RUNS_ON` JSON atau `ubuntu-latest`, timeout 30 mnt); `.github/workflows/ci.yml` menjalankan test → type-check → build Pages → `wrangler d1 migrations apply` → deploy Pages → deploy MCP Worker
 5. GitHub Actions menggunakan Secrets `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, dan `CLOUDFLARE_ACCOUNT_ID`; Git integration bawaan Pages tidak menjalankan deployment agar CI/CD tidak ganda
 6. Setelah push berhasil, agent berhenti tanpa polling workflow. `npm run deploy`/`deploy:mcp` hanya jalur recovery manual atas instruksi eksplisit
 7. Custom domain `axvara.tech` dan `www.axvara.tech` aktif melalui CNAME proxied; `www` memiliki redirect 308 ke apex. DNSSEC Cloudflare aktif dan memerlukan publikasi DS di registrar
 8. Secrets Pages: `ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256`, `ADMIN_JWT_SECRET`, `CRON_SECRET`, dan `WHATSAPP_WEBHOOK_TOKEN`; URL service Baileys disimpan sebagai `WHATSAPP_GATEWAY_URL`. Nilai `ADMIN_PASSWORD_SHA256` memakai format PBKDF2/SHA-256; satu pasang quote pembungkus dari paste shell/JSON dinormalisasi sebelum verifikasi. Pada hash PBKDF2, browser membentuk proof HMAC atas challenge JWT berlaku 5 menit; Pages memverifikasi proof secara ringan tanpa menjalankan derivasi PBKDF2 berat.
+   - Audit AU-B1-1 (21 Nov 2026): hash legacy SHA-256 diterima, tetapi login sukses pertama (jalur password) menyimpan override PBKDF2 `{source,hash}` di D1 `store_settings.admin_password_hash`. `source` mengikat hash env dan PBKDF2 dengan HMAC-SHA256 berkunci `ADMIN_JWT_SECRET`; pembandingan timing-safe. Override hilang, rusak, atau tidak cocok → pakai hash env. Format FX-6 lama belum dideploy; tidak perlu migrasi. Detail di `docs/agent-rules/admin-security.md`.
+   - Audit AU-B1-2 (21 Nov 2026): `authenticateWebhook` (WA) header-only (`x-webhook-token`/Bearer); token query/body dihapus. AU-B1-3: mutasi JSON berprivilege, termasuk route campuran di luar `src/app/api/admin/**`, memakai `readJsonBody`/`readTextBody` → oversize 413. Cap 128 KB untuk variant-copy, 512 KB untuk editor produk/artikel dan varian bulk, 1 MB untuk import fulfillment. Detail di `docs/agent-rules/{admin-security,whatsapp-gateway}.md`.
+
+### Bootstrap database baru — schema.sql + baseline ledger (audit AU-G2-1, 21 Nov 2026)
+
+Dua jalur skema tidak saling menggantikan. Migrasi historis **tidak** dapat
+diputar ulang pada DB kosong (`0002_editorial_agent.sql` mengasumsikan tabel
+dasar yang mendahului repo; beberapa migrasi lain sengaja non-idempoten —
+`0139_storebat_supplier.sql` satu-satunya `CREATE TABLE`/`INDEX`/`TRIGGER`
+tanpa `IF NOT EXISTS`, jadi jangan pernah diedit atau di-replay, cukup dicakup
+ledger). `drizzle/schema.sql` adalah satu-satunya bootstrap DB baru.
+
+DB hasil bootstrap terlihat "kosong" bagi ledger Wrangler (`d1_migrations`
+belum ada), sehingga `wrangler d1 migrations apply` akan mencoba memutar
+`0002..` dan gagal. Handoff eksplisit:
+
+- `drizzle/bootstrap-baseline.json` — manifest checked-in berisi nama file
+  migrasi yang sudah terwakili `schema.sql` (sampai `schema_through`) + sha256
+  `schema.sql`. Regenerasi hanya dengan `node scripts/d1-fresh-init.cjs
+  --print-baseline` setelah sengaja mengubah schema/migrasi.
+- `scripts/d1-fresh-init.cjs` — initializer DB **baru** saja: `--db <file>
+  --check` (dry-run), `--db <file> --apply` (schema.sql + validasi
+  FK/integritas/objek kritis, lalu menulis baris baseline ke `d1_migrations`),
+  `--emit-sql <file>` (skrip SQL untuk `wrangler d1 execute --file`),
+  `--print-baseline`. Menolak (fail closed) bila DB tidak kosong atau ledger
+  sudah berisi baris; manifest yang tidak cocok dengan file/sha256 juga menolak.
+- Hasil terverifikasi lokal (wrangler `--local`): setelah init `wrangler d1
+  migrations list` = "No migrations to apply!"; file sintetis berikutnya muncul
+  sebagai satu-satunya pending, `d1 migrations apply` menjalankannya tepat satu
+  kali, dan run berikutnya no-op.
+- `tests/d1-bootstrap-fresh.test.ts` (jalan di `npm test`/CI) mem-bootstrap
+  `schema.sql` ke SQLite baru dan menguji `foreign_key_check` kosong,
+  `integrity_check` ok, objek kritis, paritas riwayat migrasi vs `schema.sql`
+  untuk tabel/kolom/index/trigger (kecuali tabel dasar pra-repo
+  `categories/products/admins/payment_methods/articles/banners` dan artefak
+  rebuild `pedia_tiers_*0062` yang terdokumentasi), serta perilaku initializer.
+  Jumlah objek adalah sanity lantai, bukan angka beku.
+- Restore penuh: pertahankan dan verifikasi ledger milik backup itu sendiri;
+  JANGAN memakai seed baseline schema untuk DB hasil restore.
 
 ### Aset statis di luar worker (2026-10-10)
 
@@ -2575,7 +2668,7 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
     `ip.src` saja). Verifikasi: GET entrypoint `http_ratelimit` = 1 rule enabled.
   - In-memory `src/lib/rateLimit.ts` hanyalah lapis kedua (defense in depth
     per isolate, bukan proteksi DDoS global): checkout:orders 10/mnt,
-    checkout:quote 20/mnt, proof:upload 5/mnt, upload:admin 20/mnt,
+    checkout:quote 20/mnt, upload:admin 20/mnt,
     orders:lookup 20/mnt, auth:login 5/mnt, newsletter:subscribe 5/mnt, semua
     429 + `Retry-After: 60`. IP anti-spoof: `cf-connecting-ip` utama,
     fallback hanya `x-real-ip`; `x-forwarded-for` TIDAK dipakai (spoofable).
@@ -2675,6 +2768,15 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
     dikirim (`settleAmbiguousInvoiceSend`). Hanya penolakan pasti
     Telegram (ada `error_code`) yang memakai retry di atas; berlaku juga
     untuk Cek Pembayaran dan perpanjangan QRIS di `handlers/orders.ts`.
+    Sejak audit 21 November 2026 (AU-E2-2): SETIAP kiriman foto QRIS
+    (checkout awal, cron retry, Cek Pembayaran/Refresh, dan `qrenew:` setelah
+    ledger QR pengganti tersimpan) memakai SATU
+    klaim atomik yang sama dengan teks provider — CAS `telegram_invoice_attempts`
+    + stempel `updated_at` (jendela freshness 60 dtk, `claimProviderInvoiceSend`);
+    invoice yang belum pernah diklaim boleh diambil langsung. Penolakan
+    PASTI melepas stempel klaim (`releaseInvoiceSendClaim`) sehingga retry
+    berikutnya boleh langsung, sedangkan hasil AMBIGU tidak pernah melepas
+    (foto bisa tetap mendarat).
   - Handover manual dan agregasi (RR5-01/04/05/07/08):
     `fulfillmentLineMismatches` memeriksa item_index, product_id, variant_id,
     serta qty integer positif yang harus persis sama, termasuk qty berlebih.
@@ -2817,10 +2919,10 @@ Trigger MCP Worker existing `* * * * *` menjalankan `runOperationsTick`; `/api/c
 **Revisi 2026-10-04 pagi (insiden 02:00–05:20 WIB: request fase WR/SK gabungan order+sync masih `exceededResources`, 24–30/jam):**
 
 - Fase WR/SK dibelah `part=orders` (recover klaim, teruskan order lunas, reconcile, kirim kredensial/email, saldo; respons `*_sync_skipped="part_orders"`) dan `part=sync` (katalog saja + watchdog sync basi; pemenang pasangan WR vs SK dihitung sekali saat sweep SK tuntas). `part` lain / fase lain → 400 `invalid_part`. Urutan Worker per tick: `expiry → fulfillment → WR orders → SK orders → notify → WR sync (potongan) → SK sync (potongan) → cleanup` — order lunas tetap diteruskan walau sync kena limit.
-- **Potongan katalog dari proxy VPS (tanpa state):** mode `?phase=` memanggil `syncProducts`/`syncSkProducts` dengan `useProxySlices`. Proxy `POST /wr/products-slice` dan `GET /sk/catalog-slice` mengambil katalog penuh, mengurutkan dengan aturan yang SAMA dengan sync Pages, lalu mengembalikan potongan (WR ~13 KB vs 71 KB; SK ~26 KB vs 93 KB). SK mode potongan selalu scope penuh kategori (tanpa delta `updated_since`). Potongan terakhir membawa `meta.all_variant_ids` (seluruh id varian upstream/scope saat itu) → zero-missing kini berjalan aman di akhir sweep berpotongan (sejak 3 Okt malam sweep berpotongan tidak pernah zero-missing). Proxy lama/mode langsung (404/405) → fallback fetch penuh. Kontrak proxy: `axvara-wr-proxy/AGENTS.md`.
+- **Potongan katalog dari proxy VPS (tanpa state):** mode `?phase=` memanggil `syncProducts`/`syncSkProducts` dengan `useProxySlices`. Proxy `POST /wr/products-slice` dan `GET /sk/catalog-slice` mengambil katalog penuh, mengurutkan dengan aturan yang SAMA dengan sync Pages, lalu mengembalikan potongan (WR ~13 KB vs 71 KB; SK ~26 KB vs 93 KB). SK mode potongan selalu scope penuh kategori (tanpa delta `updated_since`). Potongan terakhir membawa `meta.all_variant_ids` (seluruh id varian upstream/scope saat itu) → zero-missing kini berjalan aman di akhir sweep berpotongan (sejak 3 Okt malam sweep berpotongan tidak pernah zero-missing). Proxy lama/mode langsung (404/405) → fallback fetch penuh. Revisi lokal 21 Nov: deadline slice Pages maks 35 dtk (proxy upstream 30 dtk), dibatasi sisa budget sweep; timeout bukan fallback/zero-missing. Kontrak proxy: `axvara-wr-proxy/AGENTS.md`.
 - **Penanda langkah:** mode `?phase=` menulis `console.log("[cron] <fase>[:part][:cont] step=<langkah> t=<ms>")` (auth_ok, phase_state, watchdog_done, queues_counted, wr_import_*, wr_recover_done, wr_orders_done, wr_sync_done, wr_tail_done, sk_*, phases_done) tanpa D1. Request yang dibunuh: `wrangler pages deployment tail <deployment-id> --project-name axvara --format json` memperlihatkan langkah terakhir yang sempat jalan.
 - **Alarm ber-state (Workers KV `axvara-cron-state`, binding `CRON_STATE`, key `cron_alarm_v1`; revisi18November2026 lokal/F1):** counter disimpan per label step (`steps`), hard mulai setelah2 dan soft setelah6 eksekusi gagal beruntun step itu. Tick non-due/step absen tidak mengubah counter; sukses step lain dan campuran hard/soft tidak mereset step yang gagal. Satu pesan mulai per episode; reminder6jam mencakup kegagalan baru sejak pesan terakhir walau sudah pulih sebelum reminder (`pendingFailures`). Recovery setelah setiap step terdampak sukses3kali beruntun; riwayat tidak dipotong8step. Non-2xx menyertakan ringkasan field JSON `error` atau teks (maks120karakter sesudah redaksi bearer/token/key/secret dan secret Worker yang diketahui), contoh `lite:tunvn_catalog: HTTP 500 — D1_ERROR: UNIQUE constraint failed…`; error jaringan/KV juga diredaksi, body sukses hanya membaca `more`.
-- **Ketahanan state alarm (lokal/F1, revisi P2):** KV ditulis ketika counter/episode/detail atau watermark per-step berubah (tick sehat ~1440 write/hari; KV bukan D1). Watermark waktu jadwal bertahan setelah sukses/recovery; baca ulang KV sebelum commit/ack Telegram menjaga state tick baru dari hasil tick lama. KV eventual tanpa CAS masih memiliki race get/put pendek yang diterima PM. Write counter diperiksa sebelum kirim; ack pesan ditulis sesudah Telegram berhasil, sehingga start/reminder/recovery yang gagal kirim dicoba lagi. Binding hilang, payload korup, get/put gagal dicatat tersanitasi lalu memakai fallback stateless **hard dan soft** pada :00/:30. Key baru/kosong (`get` null) bukan storage error; saat KV pulih stateful dilanjutkan. Payload agregat lama tanpa `steps` memulai counter baru sekali karena atribusi lama tidak diketahui (tanpa recovery palsu); ambang2/6 tetap berlaku. Ack KV yang gagal setelah Telegram sukses dapat membuat pesan ulang pada tick berikut, bukan jaminan exactly-once lintas layanan. Kontrak HTTP Pages, cadence step/trigger dan env tetap; watchdog "Sync basi" tetap cadangan. Belum dipublikasikan/deployment belum diverifikasi.
+- **Ketahanan state alarm (lokal/F1, revisi P2):** KV ditulis ketika counter/episode/detail atau watermark per-step berubah (tick sehat ~1440 write/hari; KV bukan D1). Watermark waktu jadwal bertahan setelah sukses/recovery; baca ulang KV sebelum commit/ack Telegram menjaga state tick baru dari hasil tick lama. KV eventual tanpa CAS masih memiliki race get/put pendek yang diterima PM. Write counter diperiksa sebelum kirim; ack pesan ditulis sesudah Telegram berhasil, sehingga start/reminder/recovery yang gagal kirim dicoba lagi. Binding hilang, payload korup, get/put gagal dicatat tersanitasi lalu memakai fallback stateless **hard dan soft** hanya pada tick 00:00 UTC (FX-14, lokal). Key baru/kosong (`get` null) bukan storage error; saat KV pulih stateful dilanjutkan. Payload agregat lama tanpa `steps` memulai counter baru sekali karena atribusi lama tidak diketahui (tanpa recovery palsu); ambang2/6 tetap berlaku. Ack KV yang gagal setelah Telegram sukses dapat membuat pesan ulang pada tick berikut, bukan jaminan exactly-once lintas layanan. Cadence step/trigger dan env tetap; watchdog "Sync basi" tetap cadangan. Belum dipublikasikan/deployment belum diverifikasi.
 
 **Sync katalog DIFF dari VPS (live 2026-10-04 siang).** Penanda langkah 4 Okt 10.15 WIB membuktikan potongan 10 produk tetap dibunuh `exceededCpu` saat platform ketat: `warung_rebahan:sync` mati SETELAH `phases_done` (route cron raksasa ±1 dtk hanya untuk menyala + kerja per produk), `sekalipay:sync` mati di tengah sweep. Kontrak baru:
 
@@ -2844,7 +2946,7 @@ Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-o
 - **Notifikasi Telegram:** order Telegram mengirim notifikasi grup `TELEGRAM_ADMIN_CHAT_ID` segera setelah ledger QRIS terbentuk. Kolom marker idempoten pada `orders` mencegah duplikat. Setelah QRIS Hook mengubah order menjadi `paid`, buyer otomatis menerima pesan berhasil tanpa menekan cek status; untuk fulfillment manual pesan yang sama baru meminta nomor WA dan menampilkan kontak admin.
 - **Menu perintah, bahasa & mata uang (2026-11-12, implementasi lokal):** `setMyCommands` (`src/lib/telegram/api.ts`) mendaftarkan `/start`, `/katalog`, `/cari`, `/cart`, `/orders`, `/pesanan`, `/bantuan`, `/garansi`, `/bahasa`, dan `/currency`. `/chatid` dihapus sehingga bot tidak lagi membalas ID grup. `/bahasa` dan tombol **🌐 Bahasa / Language** pada `homeKeyboard` membuka pemilih `lang:id`/`lang:en` existing lewat callback `langmenu`; pemilihan memakai callback `lang:` lama. `/currency` tanpa argumen dan tombol **💱 Mata Uang / Currency** membuka `currencyKeyboard` lewat callback `curmenu`, menampilkan nilai tersimpan secara jujur (`null` = belum dipilih; render-prefs tetap memakai IDR), dan pemilihan memakai callback `cur:` lama. Locale dan display currency independen: `cur:` tidak mengubah locale, `lang:` tidak mengubah currency, dan keduanya tidak mengubah total/charge order. Membuka atau menyimpan pemilih tidak mengubah `pending_action`/sesi order. Refresh registry dapat memakai `POST /api/admin/telegram/setup` atau operasi admin `setMyCommands` langsung. Pada 12 November 2026, registry produksi diperbarui langsung dan `getMyCommands` mengembalikan 10 perintah identik termasuk `/currency`, tanpa `/chatid`; URL webhook tetap, tanpa pesan dikirim. Bukti registry bukan bukti deployment handler/pemilih baru.
 
-- **Paritas pengiriman Telegram = Web (2026-10-04, laporan owner Prime Video SK):** pesan lunas Telegram memakai profil per order `telegramPaidDeliveryProfile` (`src/lib/telegram/order-notifications.ts`, dari varian tiap baris lewat `buyerDeliveryKind` — BUKAN snapshot `fulfillment_mode`, yang selalu `manual` untuk WR/SK): `instant` (stok sendiri shared/unique, WR restock, SK auto) → "dikirim otomatis ke chat ini"; `queued` (WR MBO / SK non-auto) → pesan tunggu Made By Order maks 12 jam + janji kirim OTOMATIS ke chat ini; `manual` (baris diserahkan admin) → teks lama + minta WA cadangan (HANYA untuk baris manual lokal). Kredensial supplier ke chat pribadi pembeli memakai satu template `supplierCredentialMessage` (`messages/status.ts`): WR via `deliverTelegramCredential` (pipeline `wr_order_links.delivery_*` lama), SK via `deliverSkCredentialToBuyer` → `sendSkCredentialTelegram` (`src/lib/sekalipay/deliver.ts`, idempoten `telegram:sk-credential:<order>:<item>` di `buyer_notice_log`) — dipanggil `handleSkOrderCompleted` + reconcile cron `reconcilePendingSkCredentialEmails` (kini juga Telegram; baris yang pasti tak terkirim — web tanpa email / Telegram tanpa chat pribadi — tidak dipungut). Private-only tetap: order dari grup tanpa START tidak pernah dikirimi kredensial ke id grup; saat pembeli START, `ensurePrivateRecipient` mengantrekan ulang delivery WR `no_private_telegram_chat` (attempt di-reset) dan reconcile SK mengirim di run berikutnya. Webhook miss: SK punya `reconcileFreshSkOrders` (link processing 2 mnt–1 jam, maks 3/run, cron fase SK langkah 3a); WR fresh dibatasi <1 jam (maks 6), reconcile stuck WR/SK `ORDER BY RANDOM()` agar antrean MBO panjang tidak menyumbat. `notifyBuyerSkProcessing` tidak dikirim ke Telegram (dulu bocor kata "Pemasok" + "email ini") dan dilewati bila item SK sudah terkirim; kabar saldo habis WR/SK tidak lagi menyebut pemasok.
+- **Paritas pengiriman Telegram = Web (2026-10-04, laporan owner Prime Video SK):** pesan lunas Telegram memakai profil per order `telegramPaidDeliveryProfile` (`src/lib/telegram/order-notifications.ts`, dari varian tiap baris lewat `buyerDeliveryKind` — BUKAN snapshot `fulfillment_mode`, yang selalu `manual` untuk WR/SK): `instant` (stok sendiri shared/unique, WR restock, SK auto) → "dikirim otomatis ke chat ini"; `queued` (WR MBO / SK non-auto) → pesan tunggu Made By Order maks 12 jam + janji kirim OTOMATIS ke chat ini; `manual` (baris diserahkan admin) → teks lama + minta WA cadangan (HANYA untuk baris manual lokal). Kredensial supplier ke chat pribadi pembeli memakai satu renderer `credentialMessages` (`messages/credential.ts`): WR via `deliverTelegramCredential` (pipeline `wr_order_links.delivery_*` lama), SK via `deliverSkCredentialToBuyer` → `sendSkCredentialTelegram` (`src/lib/sekalipay/deliver.ts`, idempoten `telegram:sk-credential:<order>:<item>` di `buyer_notice_log`) — dipanggil `handleSkOrderCompleted` + reconcile cron `reconcilePendingSkCredentialEmails` (kini juga Telegram; baris yang pasti tak terkirim — web tanpa email / Telegram tanpa chat pribadi — tidak dipungut). Private-only tetap: order dari grup tanpa START tidak pernah dikirimi kredensial ke id grup; saat pembeli START, `ensurePrivateRecipient` mengantrekan ulang delivery WR `no_private_telegram_chat` (attempt di-reset) dan reconcile SK mengirim di run berikutnya. Webhook miss: SK punya `reconcileFreshSkOrders` (link processing 2 mnt–1 jam, maks 3/run, cron fase SK langkah 3a); WR fresh dibatasi <1 jam (maks 6), reconcile stuck WR/SK `ORDER BY RANDOM()` agar antrean MBO panjang tidak menyumbat. `notifyBuyerSkProcessing` tidak dikirim ke Telegram (dulu bocor kata "Pemasok" + "email ini") dan dilewati bila item SK sudah terkirim; kabar saldo habis WR/SK tidak lagi menyebut pemasok.
 - **Salinan email pembeli Telegram (2026-11-04, keputusan owner):** `telegramEmailCopyTarget` (`src/lib/telegram/email-copy.ts`) mengembalikan `orders.customer_email` hanya untuk order `sales_channel='telegram'` non-Pedia dengan email valid DAN minimal satu baris wajib email (`needsEmailForVariant`, data sama dengan `readCheckoutEmail`); gagal baca = null. Bila berhak, setelah DM Telegram sukses jalur kirim juga mengirim email yang sama dengan web: non-WR `sendItem` → `sendWebDeliveryEmail` (kunci `email:fulfillment-item:<id>`), WR `processCredentialDelivery` → `deliverWebCredentialViaEmail`, SK `deliverSkCredentialToBuyer` → `sendSkCredentialEmail`; `sendToBuyer` (notify-buyer) mengirim salinan `email:<refKey>` untuk semua kabar (serah terima, gagal kirim, bukti) dan opsi `emailOnly`; `ensureFulfillmentForPaidOrder` → `followUpTelegramEmail` mengirim tanda terima email-only bila tidak semua baris terkirim otomatis + emailnya terkirim (DM lunas tetap `notifyTelegramBuyerPaid`, tanpa ping admin web). DM tetap otoritatif: kegagalan email tidak mengubah status/retry DM; belum ada retry cron khusus email salinan non-WR/SK.
 - **Self-heal kredensial WR lama (2026-10-04, F111FD64):** cron fase WR `repairUnboundCompletedWrLinks` memungut link `completed` yang belum terikat item (≤14 hari, maks 2/run), menarik ulang `/transactions` dan memanggil `handleWrOrderCompleted` (formatter baru + bind + settle) tanpa kirim ulang; tidak ada di upstream → `last_error=repair_tx_missing` (tidak dipungut lagi).
 - **Fallback kredensial Telegram (2026-10-04, permintaan owner; revisi 2026-11-19 UX P0):** WR + SK + tombol ambil ulang memakai `src/lib/telegram/credential-delivery.ts`: `sendTelegramCredential` mencoba target berurutan `telegram_users.chat_id` → `orders.telegram_user_id` (jalur yang sama dengan produk stok sendiri) → `orders.telegram_chat_id` bila pribadi, sampai satu berhasil; id grup tidak pernah dipakai; semua gagal → throw (WR backoff 1/5/15/60 mnt, SK reconcile dengan backoff 10 mnt). Tombol **📦 Ambil Detail Produk** / **📦 Ambil Ulang Produk** (callback `cred:<kode>`, ownerBound: pemilik + chat pribadi) di pesan lunas + status order lunas mengirim ulang semua `fulfillment_items.delivered_ciphertext` (WR/SK/stok sendiri/serah terima admin) ke chat bot; belum siap → pesan tunggu dengan `orderTerminalKeyboard`; jika data terenkripsi permanen tidak tersimpan (order lama/legacy pra-0043 atau delivered tanpa item) membalas copy jujur (ID/EN) dengan `credentialResendOutcomeKeyboard(..., "permanent")` (`WhatsApp Admin` + `Detail Pesanan`), sedangkan kegagalan baca/kirim sementara memakai mode `"transient"` (`Coba lagi` + `WhatsApp Admin` + `Detail Pesanan`). Interaksi pribadi pembeli (`ensurePrivateRecipient`) mengantrekan ulang SEMUA delivery WR Telegram yang `failed` (attempt reset) dan melepas backoff kirim SK yang gagal.
@@ -2897,8 +2999,8 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
 | POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dari baris Pesanan dan otorisasi pembayaran manual |
 | POST | `/api/cron/lite?job=expiry\|fulfillment\|wr_orders\|sk_orders\|tunvn_orders\|aivault_orders\|pedia_orders\|promo\|notify_a\|notify_b\|notify\|tg_webhook\|cleanup` | Bearer `CRON_SECRET` | Langkah cron INTI ramping (2026-10-05, Workers Free ~10 ms CPU): impor minimal + modul dinamis per job, budget 40 statement, penanda `store_settings.cron_lite_<job>_ok_at`. Dipanggil Worker SEBELUM route besar `/api/cron/operations` (yang tetap jalan sebagai pelengkap; idempoten). Alarm Telegram: langkah lite inti = hard (2 tick), `lite:promo` (enqueue idempoten promo Telegram ke `broadcast_campaigns`/`broadcast_deliveries` + ringkasan harian admin + worker siaran bounded) + `notify_a`/`notify_b`/`tg_webhook` = soft (6 tick), langkah route besar lain tidak dialarmkan | **Revisi 5 Okt malam:** job `notify` (alarm soft) + `cleanup` (tanpa alarm) ikut lite; route besar `/api/cron/operations` hanya dipanggil Worker di tick menit :00 UTC (sekali per jam, `isHeavyTick`) sebagai pelengkap (stranded ledger, manual-WA, saldo, watchdog, sync cadangan). Tradeoff: fallback sync saat diff VPS berhenti jadi per jam (bukan 15 mnt). Latar: 583/589 request `exceededResources` 24 jam = route besar tiap 5 mnt. **Revisi 9 Okt pagi (insiden 09:50 WIB: 4 langkah lite 503 bareng, pulih sendiri ~30 mnt):** `notify` dipecah `notify_a` (retry Telegram + invoice) + `notify_b` (QRIS + reminder + WA outbox) — satu-satunya job yang mengipas 5 sub-kerjaan/5 import dalam 1 request; `job=notify` lama tetap sebagai alias gabungan A→B. Worker memanggil a/b terpisah + jeda `STEP_DELAY_MS` 2 dtk antar langkah lite (8+ request sedetik saat cold = berebut CPU isolate yang sama). Throttle saldo SMM disamakan WR/SK: 6 jam ATAU turun Rp5.000, state `amount|ms` di `pedia_balance_alert_at` (dulu tiap 1 jam → spam 9×/8 jam saat saldo Rp 0). **Revisi 9 Okt sore (kasus AXV-20261009-DA1ACF56):** probe yatim lunas-tanpa-link (reconcileMissingWrLinks/SkLinks) jalan TANPA gate due di lite wr/sk_orders (hasil ikut buka gate proses + kunci orphan_links_healed) dan fase route besar (wr/sk_orphan_links_healed) — SK cermin WR. **Revisi 17 Nov 2026:** `tunvn_orders` dan `aivault_orders` menjalankan cek saldo rendah (`src/lib/supplier-balance-alert.ts`) dalam `db.canSpend(5)` dengan checkpoint 30 menit + throttle Telegram admin CAS 6 jam atau turun 1 unit (lihat §16.51). **Revisi 20 Nov 2026:** `tg_webhook` (`src/lib/telegram/webhook-guard.ts`, `alarm: "soft"`, `group: "notify"`, tiap 1 menit) memantau `getWebhookInfo`, mereset `deleteWebhook(drop_pending_updates:false)` + `setWebhook(kanonis, drop_pending_updates:false)` maks 1×/5 mnt saat tertahan (`pending_update_count >= 3` & `last_error_date <= 180 dtk`) atau URL salah, mengirim alert admin maks 1×/30 mnt + notifikasi pulih saat antrean 0 (timeout `sendMessage` dihitung terkirim agar tidak dobel). |
-| GET | `/go/:slug` | publik | Shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056): redirect 307 ke destination + `click_count`/`last_clicked_at`; 404 bila slug tak ada/nonaktif/format salah; `X-Robots-Tag: noindex` (tak masuk sitemap) |
-| GET/POST/PUT/DELETE | `/api/admin/supplier-links` | admin | CRUD tabel `supplier_links` (tab admin "Link Supplier"): slug lowercase-dash (min 2, reserved: admin/api/go/produk/artikel/…), destination URL/path internal, toggle `is_active`; POST duplikat → 409 |
+| GET | `/go/:slug` | publik | Shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056): redirect 307 ke destination tersimpan (HTTP lama tetap berfungsi) + `click_count`/`last_clicked_at`; 404 bila slug tak ada/nonaktif/format salah; `X-Robots-Tag: noindex` (tak masuk sitemap) |
+| GET/POST/PUT/DELETE | `/api/admin/supplier-links` | admin | CRUD tabel `supplier_links` (tab admin "Link Supplier"): slug lowercase-dash (min 2, reserved: admin/api/go/produk/artikel/…), tujuan baru/yang diubah harus HTTPS atau path internal (bukan `//host`), toggle `is_active`; POST duplikat → 409 |
 
 **Tambahan lokal 17 November 2026 — tinjauan S&K:** job lite `cleanup` lima
 menitan juga menjalankan `checkCopyReviewChanges` setelah drain grup, sebelum
@@ -2921,9 +3023,10 @@ TELEGRAM_BOT_ENABLED, TELEGRAM_PROMO_DIGEST_ENABLED, DANA_QRIS_ENABLED, AUTO_FUL
 ```
 
 `TELEGRAM_ADMIN_CHAT_ID` adalah satu tujuan untuk seluruh notifikasi admin yang berasal
-dari order web, order Telegram saat invoice dibuat, order WhatsApp saat dibuat
-(`Order Baru — WhatsApp`) dan saat lunas (`Lunas — WhatsApp` via QRIS Hook /
-retry admin / approve bukti), serta kegagalan delivery. Grup privat
+dari order web, order Telegram saat invoice dibuat, order WhatsApp historis saat
+lunas (`Pembayaran diterima — WhatsApp` via QRIS Hook / retry admin / approve
+bukti), serta kegagalan delivery. Notif "Order Baru — WhatsApp" dihapus 21 Nov 2026
+(order WA dipensiunkan FX-15). Grup privat
 wajib memakai ID numerik negatif (`-100...`), bukan link undangan. Bot tidak lagi
 menyediakan `/chatid` (dihapus 12 November 2026); ambil ID grup dari klien Telegram
 atau metadata update webhook yang tersedia bagi admin, lalu simpan sebagai secret tersebut. Username
@@ -3043,7 +3146,15 @@ atau retry. Notif Telegram/WA memakai `||` sehingga tetap jalan.
   `telegram_paid_admin_notified_at`, tanpa ledger) memakai cooldown yang sama: timeout
   dicatat di `buyer_notice_log` kunci `admin-paid-timeout:<kode>` (status `failed`, tidak
   pernah `sent`) dan `ADMIN_PAID_TIMEOUT_COOLDOWN_SQL` (`src/lib/cron-queues.ts`) menahan
-  probe `paid_admin` + retry 20 menit.
+  probe `paid_admin` + retry 20 menit. Sejak audit 21 November 2026 (AU-E2-7) kedua
+  pengirim admin memakai KLAIM pre-send pada kunci ledger yang sama (status `sending`,
+  lease 2 menit) SEBELUM transport: cron yang membaca marker NULL tidak dapat
+  mengambil alih sebelum deadline `access_retry_at`, terlepas dari umur `updated_at`.
+  Setelah lease kedaluwarsa cron dapat memulihkan kiriman worker yang crash.
+  Gagal pasti (ditolak) menghapus baris
+  klaim (retry tiap run seperti sebelumnya); timeout menyisakan `failed` untuk cooldown;
+  sukses menandai `sent`. Cooldown SQL hanya melihat baris `failed`, jadi klaim `sending`
+  yang aktif dipagari CAS klaim, bukan oleh penundaan 20 menit.
   `retryPendingTelegramNotifications` menerima `paidAdminWeb`; pemanggil lama yang memberi
   `only` tanpa kunci ini tidak membaca antrean web (anggaran query RR3-01). Order lama
   (>6 jam) tidak pernah dikirim ulang, jadi deploy tidak membanjiri grup.
@@ -3061,7 +3172,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 - **Website:** Halaman detail `/produk/[slug]` mendukung variant selector interaktif; cart Zustand membedakan item berdasarkan kombinasi `product_id + variant_id`; checkout quote mendukung variant_id.
 - **Telegram Bot:** Menambahkan langkah pemilihan varian sebelum konfirmasi beli (`TELEGRAM_VARIANT_FLOW`). Menggunakan harga dan konfigurasi varian.
 - **Navigasi & marketing Telegram Fase 1:** label menu bawah (`MENU_LABEL_*`: 🛍 Katalog · 🔎 Cari · 🛒 Keranjang · 📦 Pesanan · ❓ Bantuan terpusat di `keyboards.ts` dan tetap di-route sebagai teks di webhook untuk keyboard lama); `/start` hanya mengirim satu foto welcome + `homeKeyboard` tanpa bubble "Menu cepat" tambahan; command `/cari`+`/search`, `/orders`+`/riwayat`, `/cart`+`/keranjang`; welcome landing `/start` menampilkan 3 bestseller by `sold_count`; `Terjual X` (compact `1.5rb+` di ≥1000) di kartu produk; riwayat `/orders` 10 terakhir by `telegram_user_id` dengan keyboard `myOrdersKeyboard` (detail + `reorder:*` → beli lagi); pencarian nama/alias via `pending_action=search:` + `/batal`; breadcrumb `breadcrumbLine` (`Langkah X/4`) di pilihan varian (2), langsung qty (3) tanpa konfirmasi tambahan, invoice (4). Payment/fulfillment tidak berubah.
-- **Keranjang + reminder Telegram Fase 2 (tanpa review/promo):** tabel `telegram_carts` (migrasi 0014, `UNIQUE(user_id, variant_id)`, CHECK qty 1–100, maks 20 baris/user; maksimal 1 baris fulfillment `unique` per keranjang karena `findReservedForOrder` + `fulfillment_jobs` memakai satu `order_code`); lib `src/lib/telegram/cart.ts` (`addToCart`/`setCartLineQty`/`removeFromCart`/`clearCart`/`getCartSummary` dengan pembersihan baris basi); tombol `🛒 + Keranjang` (`cadd:*`) di langkah qty berdampingan dengan Bayar QRIS langsung; `/cart` memakai `cartKeyboard` (➖/➕/❌ per baris, `ccheckout`, `cclear`) lalu ringkasan `cartCheckoutSummaryMessage` + konfirmasi `cconfirm` sebelum invoice terbit; checkout gabungan `createAndSendCartInvoice` = SATU order + SATU `createDanaQrisInvoice` + SATU `createFulfillmentJob` mode dominan (unique > shared > manual; campuran → job manual + snapshot `mixed` informatif), stok finite dipotong per baris dengan rollback kompensasi; cart dikosongkan hanya setelah invoice terbit; reminder pending via `sendPendingOrderReminders` di cron operasi (maks 2x/order, interval ≥60 mnt, JOIN invoice aktif `pt.status='pending'` + `expires_at` masa depan, claim CAS `telegram_reminder_count`, copy eskalatif `orderReminderMessage`).
+- **Keranjang + reminder Telegram Fase 2 (tanpa review/promo):** tabel `telegram_carts` (migrasi 0014, `UNIQUE(user_id, variant_id)`, CHECK qty 1–100, maks 20 baris/user; maksimal 1 baris fulfillment `unique` per keranjang karena `findReservedForOrder` + `fulfillment_jobs` memakai satu `order_code`); lib `src/lib/telegram/cart.ts` (`addToCart`/`setCartLineQty`/`removeFromCart`/`clearCart`/`getCartSummary` dengan pembersihan baris basi); tombol `🛒 + Keranjang` (`cadd:*`) di langkah qty berdampingan dengan Bayar QRIS langsung; `/cart` memakai `cartKeyboard` (➖/➕/❌ per baris, `ccheckout`, `cclear`) lalu ringkasan `cartCheckoutSummaryMessage` + konfirmasi `cconfirm` sebelum invoice terbit; checkout gabungan `createAndSendCartInvoice` = SATU order + SATU `createDanaQrisInvoice` + SATU `createFulfillmentJob` mode dominan (unique > shared > manual; campuran → job manual + snapshot `mixed` informatif), stok finite dipotong per baris dengan rollback kompensasi; cart dikosongkan hanya setelah invoice terbit; reminder pending via `sendPendingOrderReminders` di cron operasi (maks 2x/order, interval ≥60 mnt, JOIN invoice aktif `pt.status='pending'` + `expires_at` masa depan, claim CAS `telegram_reminder_count`, copy eskalatif `orderReminderMessage`). Audit 21 November 2026 (AU-E2-8): mutasi RELATIF `cinc`/`cdec` menulis jurnal idempoten `buyer_notice_log` kunci `tg-cart:<update_id>` SEBELUM `setCartLineQty`; redelivery update yang sama hanya merender ulang keranjang, tidak menerapkan +1/−1 dua kali. `crm` (hapus) tetap idempoten alami.
 - **Input jumlah + konfirmasi email Telegram (2026-09-27):** qty tetap memakai
   stepper, ditambah callback owner-bound `qinput:<productId>:<variantId>` yang
   memasang `pending_action=qty_for:*` dan mengirim ForceReply dengan rentang
@@ -3083,7 +3194,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
   - Pilihan `QRIS` / `SEABANK` / `EWALLET` → pending order idempotent + satu instruksi pembayaran terpilih di grup
   - `garansi` / `/garansi` → kebijakan garansi kanonis
    - Reply otomatis mengutip pesan pembeli; intake screenshot cukup memakai caption nama metode (kode order ditentukan dari sesi/order aktif), dedup, R2 private, notifikasi admin
-   - Order WA mengumumkan `Order Baru — WhatsApp` ke grup Telegram admin segera setelah order dibuat (best-effort + retry cron via marker `telegram_order_notified_at`, migrasi 0023); saat lunas via QRIS Hook / retry admin / approve bukti, grup menerima `Pembayaran diterima — WhatsApp` (`telegram_paid_admin_notified_at`, cron yang sama dengan Telegram)
+   - Order WA historis: notif "Order Baru — WhatsApp" dihapus 21 Nov 2026 (order WA dipensiunkan FX-15); saat lunas via QRIS Hook / retry admin / approve bukti, grup menerima `Pembayaran diterima — WhatsApp` (`telegram_paid_admin_notified_at`, cron yang sama dengan Telegram)
    - Admin pada `WHATSAPP_ADMIN_NUMBERS` dapat reply `.d` ke pesan pembayaran atau mengetik `.d AXV-...` untuk menandai fulfillment order lunas sebagai `delivered`; command non-admin berhenti sebelum pencarian produk
 - **Feature Flags:** 10 feature flags independen di `src/lib/feature-flags.ts` untuk rollout aman bertahap (semua default `false`).
 - **Minimum pembelian per varian (migrasi 0034, 2026-09-17):** `product_variants.min_qty` (default 1, CHECK ≥ 1, milik admin — sync WR tidak pernah menulisnya) adalah mode generik untuk aturan grosir: GSuite dikunci 50 via UPDATE migrasi, produk lain tinggal set angka dari admin (plafon 100 = plafon channel). Penegakan berlapis server-side: quote 409 `below_minimum` (qty agregat per baris) → orders 409 (hitung ulang DB) → guard atomik `COALESCE(min_qty,1)` di `createOrderWithStock` + `createChannelOrderAtomic` (batch gagal total bila di bawah min). Plafon web naik 20 → 100/baris (paritas Telegram) agar min-besar bisa dibeli dari web; verifier quote ikut 100. Telegram: stepper dibuka di min, tolak ketik/invoice/keranjang di bawah min; WhatsApp (qty selalu 1): varian min>1 ditolak jelas sejak pilih varian + saat bayar, diarahkan ke web/Telegram bulk.
@@ -3115,7 +3226,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
   filter `?sellable=1|0`, urutan `?sort=sellable` (sellable dulu); endpoint
   `games/products/enable-wave`, `pedia/credits`, `warung/credentials` DIHAPUS.
 
-Mulai 5 September 2026, Baileys gateway produksi berjalan di Heroku dan seluruh fitur transaksi WhatsApp aktif untuk GID pada `WHATSAPP_GROUP_ALLOWLIST`. Flag aktif meliputi `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`, `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, dan `WHATSAPP_FULFILLMENT`. **Sejak 19 Sep 2026 `WHATSAPP_CREDENTIAL_DM_ENABLED=false` (default mati)** — auto-DM kredensial ke buyer dimatikan pasca-restriction nomor BOT; grup tetap penuh, kredensial via email + panel + manual HP. Outbound `/send` dan `/send-image` wajib memakai shared gateway token; pesan inbound di-cache terbatas selama 20 menit agar balasan dapat memakai quoted message Baileys. Target kirim dinormalisasi di adapter via `normalizeWhatsAppTarget` (2026-09-18 sore, live): nomor HP mentah (`628…`/`08…`, seperti tersimpan di outbox) menjadi JID DM `<62…>@s.whatsapp.net` — Baileys baru melempar `jidDecode(...)` undefined untuk target tanpa domain (bukti prod: 2 baris `wr-web-ready` gagal 4x sejak 13:20 UTC 18 Sep). Pola DM ketat (`^62\\d{9,13}$`/`^0\\d{9,13}$`); JID grup (`@g.us`) dan ID non-pola dikembalikan apa adanya agar gateway yang menolak, bukan salah alamat.
+Baileys gateway berjalan di Heroku. Alur pembeli WhatsApp lama dipensiunkan; kontrak promo, sambutan dan dukungan saat ini ada di §16.12. `/send` teks grup tetap memakai token dan mendukung quoted reply Baileys.
 - **Hardening umur nomor gateway (19 Sep 2026, deploy DITUNDA sampai restriction lepas — deploy = restart = reconnect saat dibatasi = memperpanjang).** `axvara-wa-gateway/src/index.ts`: (1) 401/loggedOut = TIDAK reconnect otomatis (hammer = signature bot; diam + terpantau, pairing manual oleh owner); (2) 515 reconnect cepat 1 dtk; sisanya exponential backoff + jitter (maks ~60 dtk); (3) teardown socket lama (`end()` + hapus listener) sebelum bikin baru — anti zombie socket / konflik sesi; (4) `cachedGroupMetadata` TTL 5 mnt (hemat fetch partisipan tiap kirim, sesuai FAQ resmi); (5) jeda baca acak 1–2,5 dtk sebelum teruskan inbound; (6) antrean outbound serial + jeda 4–8 dtk + cooldown 15 mnt setelah 3 sinyal bahaya (`gateway_cooldown_active`, `/send` 429 saat cooldown); (7) `/health` memaparkan `lastDisconnectCode/lastDisconnectAt/reconnectCount`. Jangan ganti string browser, jangan hapus `baileys_auth_keys`, satu socket per dyno.
 
 ### Tabel Baru (migrasi 0007)
@@ -3146,7 +3257,7 @@ Migrasi `0010_dana_dynamic_qris.sql` menambah `unique_code` dan `qris_payload` p
 - **Media Bukti & Anti-SSRF:** Gateway Baileys mengunduh image message dan menyediakan token URL acak sekali pakai selama 10 menit. Pages hanya menerima HTTPS, memvalidasi anti-SSRF terhadap private IP/loopback, men-stream maksimal 5 MB, memverifikasi magic bytes (JPG/PNG/WebP), menghitung SHA-256, lalu menyimpan privat di Cloudflare R2 prefix `bukti/whatsapp/`. Shared gateway token tidak pernah diteruskan ke URL media.
 - **Review & Otoritas Pembayaran:** Bukti QRIS hanya evidence opsional dan tidak dapat melunasi order. `POST /api/webhook/dana` adalah satu-satunya authority QRIS; SeaBank/e-wallet tetap memakai review admin CAS. Pembayaran QRIS yang sudah terdeteksi tidak ditahan oleh kewajiban screenshot WhatsApp.
 - **Lifecycle Stok & Pembayaran:** QRIS berlaku 15 menit untuk SEMUA kanal (keputusan owner 2026-10-11; sebelumnya Telegram/Web 60 menit dengan 1x perpanjangan QR — window 60 menit itu yang membuat 1 order iseng mengunci stok 1 jam). QR mati = order kedaluwarsa = stok dilepas via cron ±5 menit. Pembeli yang berubah pikiran / salah varian membatalkan sendiri dari halaman pesanan atau lacak pesanan (`POST /api/orders/[code]/cancel`: verifikasi kode + WA/email checkout pola lookup, 404 generik anti-oracle, hanya pending+unpaid, CAS `transitionPendingOrder` yang sama dengan admin sehingga kalah race vs webhook = 409 jujur + stok tidak ganda + ledger paid tidak tersentuh). QRIS Hook memperbarui ledger+order dalam satu batch guard. Cron memakai deadline order DANA (fallback invoice untuk legacy tanpa deadline), memeriksa deadline ulang dalam batch sebelum melepas stok. Migrasi 0026 menyesuaikan deadline WA/QR pengganti yang sudah pending dan menambah `payment_transactions.expiry_notice_state` (`renewable`/`terminal`). `src/lib/payments/qris-expiry-notifications.ts` mengirim tombol pembaruan hanya bersama pesan kedaluwarsa pertama Telegram; kegagalan kirim tetap pending, dan pesan terminal WA memakai outbox idempoten per order. Marker reset saat reissue bersama reset delivery foto Telegram, tanpa membuat QR tambahan. Helper memakai budget D1 request yang sama (1 list + maksimal 2 query per pesan). Notifikasi mengikuti cron 5 menit; deadline penerimaan pembayaran tidak menunggu cron. `GET /api/orders?code=...` dan `/api/orders/[code]` mengembalikan `expires_at` dan `qris_reissue_allowed` untuk halaman pesanan. Rail manual WhatsApp tanpa ledger tetap memakai TTL sebelumnya.
-- **Proteksi Kredensial Fulfillment:** Job hanya dapat di-claim setelah order `lunas/paid`; mode dipatok oleh `variant_snapshot` order dan shared secret diambil dari varian terpilih. Varian shared tanpa secret terenkripsi dan varian unique tanpa inventory gagal tertutup sebelum order bot dibuat. Pengiriman WhatsApp selalu via pesan langsung (DM) ke `channel_member_id`/`customer_wa`, tidak pernah ke grup. Gate `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT` menahan job sampai bukti diserahkan, dan `WHATSAPP_FULFILLMENT` dapat memaksa jalur manual selama rollout.
+- **Proteksi Kredensial Fulfillment:** Job hanya dapat di-claim setelah order `lunas/paid`; mode dipatok oleh `variant_snapshot` order dan shared secret diambil dari varian terpilih. Varian shared tanpa secret terenkripsi dan varian unique tanpa inventory gagal tertutup sebelum order bot dibuat. Order WhatsApp historis memerlukan handover manual, tanpa pengiriman otomatis ke WhatsApp.
 
 ### Migrasi 0025 — Riwayat penerbitan QRIS
 
@@ -3358,13 +3469,9 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `tests/warung-rebahan/sync-roundtrip.regression.test.ts`.
 - **Kejujuran status pengiriman + jalan keluar admin (audit UX 2026-09-22):** pola akar yang
   ditutup di sini bukan satu bug, melainkan **server sudah tahu jawabannya tetapi UI
-  membuangnya**. (1) `deliverWhatsAppCredential` dulu `return` diam saat kill-switch
-  `WHATSAPP_CREDENTIAL_DM_ENABLED` mati, sehingga `processCredentialDelivery` tetap menulis
-  `delivery_status='delivered'` walau NOL pesan terkirim — pembeli kanal WhatsApp melihat
-  "Selesai" dan menerima nihil. Kini **throw** (`whatsapp_credential_dm_disabled`) → retry →
-  `failed` → antrean handover. Bedakan tegas dengan `deliverWebCredentialViaWhatsApp` yang
-  MEMANG boleh skip diam: kanal web punya token capability + panel pesanan + email sebagai
-  jalur pengambilan, kanal WhatsApp tidak punya jalur lain. (2) `fulfillment_status='failed'`
+  membuangnya**. (1) Order WA historis yang belum diserahkan membutuhkan
+  handover manual, bukan penanda delivered setelah sekadar enqueue pesan WA.
+  (2) `fulfillment_status='failed'`
   (ditulis `warung-rebahan/order.ts` saat attempt WR habis dan `deliver.ts` saat delivery
   habis 5 percobaan) tidak punya tombol apa pun di admin padahal
   `recordManualHandoverDetailed` menerimanya — order lunas yang gagal kirim = jalan buntu
@@ -3512,7 +3619,7 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   Rp7.500 tampil "Rp8rb") (T-M3). **Ditolak setelah diverifikasi:** email-gate Telegram
   "fail-open saat DB timeout" (T-H3; setiap query sudah `.catch(() => null)` dan
   `wr_type` dimuat dari varian, jadi timeout justru membuat bot MEMINTA email), hero
-  search mati (W-M1; `Hero.tsx` tidak dirender di mana pun, homepage memakai
+  search mati (W-M1; `Hero.tsx` dihapus 21 Nov 2026 karena tidak dirender di mana pun, homepage memakai
   `OrbitHero`), dan `ctaDisabled` hardcode QRIS (W-M4; `submit()` sendiri meng-hardcode
   `payMethod="qris"`, jadi checkout memang sengaja QRIS-only). Dikunci oleh
   `tests/round4-buyer-notices.regression.test.ts`, `tests/round4-telegram.regression.test.ts`,
@@ -3815,8 +3922,7 @@ bot meneruskannya sebagai email branding Axvara (nol jejak "Warung Rebahan"):
 - **Join + kirim:** invoice → `wr_order_links.wr_order_id` → buyer
   (`orders.customer_email`). Kirim via Resend (`RESEND_API_KEY` +
   `FORWARD_FROM_EMAIL`, mis. `noreply@axvara.id` — JANGAN SMTP Gmail
-  pribadi). Buyer tanpa email → fallback teks ke WA via `whatsapp_outbox`
-  (idempoten `wr-email:order:invoice:kind`, diproses cron).
+  pribadi). Pembeli tanpa email → `held` / `no_buyer_contact`, tanpa fallback DM WhatsApp.
 - **Idempoten:** `wr_email_forward_log.gmail_message_id` UNIQUE (migrasi
   0036) — retry forwarder = `duplicate` tanpa kirim ulang. Status:
   `forwarded` / `duplicate` / `unmatched` (invoice tak dikenal, untuk
@@ -4781,7 +4887,7 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
   → `custom_comments` di token/snapshot → dispatch `add` + `comments` (newline).
   Tipe layanan wajib cocok (`pediaServiceTypeFor`): comments↔"Custom Comments",
   lainnya↔"Default" di katalog, harga, quote, order, sync, admin.
-- Kebijakan supplier jual (12 November 2026, implementasi lokal): `src/lib/pedia/sales-policy.ts`
+- Kebijakan supplier jual (snapshot historis 12 November 2026, digantikan 13 November): `src/lib/pedia/sales-policy.ts`
   menetapkan `PEDIA_SALE_PROVIDER='providersmm'` dan `PEDIA_LEGACY_PROVIDER='indosmm'`
   sebagai satu-satunya sumber gate katalog/pembanding/quote/order/draft admin/shortlist/overview.
   Penjualan baru IndoSMM ditolak 409 `provider_retired`, tetapi retry order tersimpan
@@ -4799,8 +4905,10 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
 Implementasi lokal; publikasi lewat CI. Bagian 12 November (16.10b/16.10c-bis) adalah snapshot historis yang digantikan.
 - `src/lib/pedia/sales-policy.ts`: `PEDIA_SALE_PROVIDER='indosmm'`, tanpa supplier riwayat. Katalog publik,
   pembanding harga, quote, order, draft/aktivasi admin, shortlist, dan overview hanya IndoSMM. Baris
-  supplier lain yang masih aktif di D1 tidak dijual; retry order tersimpan tetap dicari lewat `quote_id`
-  sebelum gate.
+  supplier lain yang masih aktif di D1 tidak dijual. Quote menolak tier non-IndoSMM dengan 409
+  layanan tidak tersedia; verifikasi token order menolak supplier non-IndoSMM dengan 409 quote tidak
+  valid. Sesudah token valid, retry tersimpan dicari lewat `quote_id` sebelum guard pembuatan baru.
+  `provider_retired` tetap dipakai admin produk untuk mapping/aktivasi yang tidak diizinkan.
 - Dihapus: `src/lib/pedia/auto-catalog.ts`, `metadata-refresh.ts`, `supplier-descriptions.ts`; client
   `/psmm/*` dan `callPsmmProxy`; jalur materialisasi/deskripsi/`managedTermsFresh`; checkpoint
   `pedia_diff_*`; kolom/field API khusus katalog otomatis. PEDIA_PROVIDERS = `["indosmm"]`.
@@ -4842,7 +4950,7 @@ Implementasi lokal; publikasi lewat CI. Bagian 12 November (16.10b/16.10c-bis) a
 ### 16.10c-bis Katalog otomatis Pedia + deskripsi resmi + gate syarat (12 November 2026) — HISTORI, digantikan 13 November 2026
 Implementasi lokal; publikasi lewat CI. Bootstrap produksi, deployment, dan QA admin produksi belum dijalankan.
 
-**Kebijakan supplier.** `src/lib/pedia/sales-policy.ts` menetapkan `PEDIA_SALE_PROVIDER='providersmm'`
+**Kebijakan supplier pada snapshot 12 November.** `src/lib/pedia/sales-policy.ts` menetapkan `PEDIA_SALE_PROVIDER='providersmm'`
 dan `PEDIA_LEGACY_PROVIDER='indosmm'` sebagai satu-satunya gate katalog/pembanding/quote/order/draft
 admin/shortlist/overview. Penjualan baru IndoSMM ditolak 409 `provider_retired`, tetapi retry order
 tersimpan dicari lewat `quote_id` sebelum gate. Diff VPS ProviderSMM ditulis ke cermin D1
@@ -4927,7 +5035,7 @@ Implementasi lokal; publikasi lewat CI; deployment belum diverifikasi. Data-only
 - Verifikasi akhir lokal (3 Nov 2026; bukan deployed/live): vitest penuh 312 file/3975 tes, tsc, `build:pages` lulus; Chromium 89/89 + 16/16 kasus perbaikan; smoke D1 workerd (Miniflare lokal, skrip sementara di luar repo) menerapkan 0090→0093 nyata: koreksi tier 47/388, edit admin + snapshot tak berubah, idempoten, tier 285 tetap 90, CAS `start_count` 0→8278 dengan positif konflik dipertahankan dan konkuren tanpa geser. Batas: tanpa D1 remote/produksi; migrasi remote tetap lewat CI; sumber cache 1 Nov.
 
 ### 16.10b Nama layanan Pedia + perapian — migrasi 0089 (2 November 2026)
-Data-only: UPDATE `pedia_tiers.public_name`/`is_active` per id dengan guard `COALESCE(public_name,label_note)` = nama ekspor, idempoten, tanpa DELETE/remap supplier. Order lama memakai snapshot. Katalog publik menambah `price_ref {qty,price}` khusus produk `metric='comments'` (jumlah acuan 10 bila valid, selain itu minimum), dihitung `computePediaPrice` yang sama dengan quote. Generator/manifest: `scripts/curate-pedia-names-20261102.py`, `src/lib/pedia/names-20261102.json`.
+Data-only: UPDATE `pedia_tiers.public_name`/`is_active` per id dengan guard `COALESCE(public_name,label_note)` = nama ekspor, idempoten, tanpa DELETE/remap supplier. Order lama memakai snapshot. Katalog publik menambah `price_ref {qty,price}` khusus produk `metric='comments'` (jumlah acuan 10 bila valid, selain itu minimum), dihitung `computePediaPrice` yang sama dengan quote. Manifest `src/lib/pedia/names-20261102.json` tetap; generator `scripts/curate-pedia-names-20261102.py` hanya di riwayat Git.
 
 ### 16.10c Info layanan Pedia terpadu - migrasi 0090 (2 November 2026)
 
@@ -5347,6 +5455,25 @@ Indeks `idx_orders_telegram_pending_chat` pada migrasi0075 mempersempit guard/pr
 
 ### 16.12 Notifikasi grup WA dan admin Telegram — 24 Oktober 2026
 
+**21 November 2026 — keputusan owner (FX-15, implementasi lokal):** web dan bot
+Telegram adalah satu-satunya kanal jual. Gateway/outbox WA tetap untuk promo,
+siaran, sambutan dan balasan dukungan (`.d` khusus admin, `garansi`, arahan ke
+kanal resmi). Hub `/wa` adalah bantuan yang dimulai pembeli; bukan checkout.
+`whatsapp_sales_notifications` adalah nama key konfigurasi promo lama, bukan
+sakelar transaksi. `/send` teks grup dipertahankan; `/send-image` legacy dihapus.
+Pembayaran, expiry/pengingat dan kredensial tidak lagi dikirim melalui WA;
+antrean transaksi legacy dipensiunkan tanpa menghapus baris. Penulisan order
+baru menolak WA; DB CHECK, laporan/admin, expiry stok dan notifikasi lunas
+internal Telegram untuk pesanan WA historis tetap. Pesanan lunas yang belum
+diserahkan masuk handover manual. Flag rollout penjualan/fulfillment WA yang
+lama tidak dibaca lagi; tidak ada perubahan konfigurasi hosting atau migrasi.
+
+Kabar `wr-blocked:<kode>` tetap idempoten lewat `buyer_notice_log` untuk
+email web dan DM Telegram privat. Web tanpa email tidak membuat entri outbox
+WA dan `notifyBuyerWrBlocked` mengembalikan `false`. Link tetap `blocked_balance`
+dan muncul di Antrean Warung Rebahan → **Saldo habis** (`GET /api/admin/warung/orders?status=blocked_balance`),
+terlepas dari hasil notifikasi buyer atau alert Telegram admin yang best-effort.
+
 **17 November 2026 — Bot Promo kedua (implementasi lokal; publikasi via CI).**
 `src/lib/whatsapp/promo-bot.ts` memisahkan konfigurasi store_settings
 `whatsapp_promo_bot` JSON `{enabled,enabledAt?,botNumber,botRevision,groups:[{id,subject}]}`
@@ -5538,20 +5665,20 @@ library/WhatsApp dan bukti QA: issue/whatsapp-sales-notifications-2026-10-24.md.
 - Gateway `/send-broadcast` key `wa:broadcast:<UUIDv4>`, `/send-welcome` key
   `wa:welcome:<sha256>`; revisi11November2026 `/send-promo` key tanggal/slot,
   `/send-notification` invoice lama dipensiunkan410. Semua route token-only,
-  session mutex, nomor/revisi aktif, grup pin/izin terverifikasi, deliveryClaim PG,
+  mutex sesi hanya untuk admission, mutex outbound untuk urutan/pacing, nomor/revisi aktif, grup pin/izin terverifikasi, deliveryClaim PG,
   shared pacing60detik/cooldown/unknown. Key lintas namespace ditolak. Siaran lama
   sesudah ganti bot dipertahankan untuk owner Hentikan+Tinjau baru; tidak pindah
   otomatis. Sambutan basi identitas menjadi dead; sent/unknown tidak diulang.
 - `group-participants.update` add menginvalidasi cache dan memverifikasi grup,
-  menyingkirkan bot sendiri PN/LID, meneruskan maksimal100 kontak batch ke Pages
-  `/api/whatsapp/group-events` (header token existing). Tidak menahan session mutex
-  selama HTTP, karena Pages memanggil status. Pages memverifikasi ulang group/phone/
-  revision, menulis outbox group_welcome dengan SHA256(group,phone,revision,hariUTC,
-  sorted unique memberIDs). Pesan+identitas dibekukan JSON, ID anggota tidak disimpan
-  dalam payload. Event duplikat batch/hari sama dedupe; join ulang hari sama/batch
-  sama tidak disambut lagi. Belum ada backfill event saat socket offline atau
-  ingress gagal sebelum D1 menyimpan; pengiriman sesudah enqueue memakai retry
-  outbox existing dan ledger PG. Satu sambutan per batch, nama max3 dan sanitasi
+  menyingkirkan bot sendiri PN/LID, menyimpan maksimal100 kontak per batch di
+  `axvara_wa_welcome_inbox` (PG), lalu meneruskan ke Pages `/api/whatsapp/group-events`
+  memakai token existing dan `x-wa-join-observed-at`. Tanpa callback status, Pages
+  mengakui hanya setelah outbox D1 tersimpan (SHA256 grup, nomor, revisi, hari UTC
+  event, ID anggota unik terurut). ID anggota tidak tersimpan di payload D1.
+  Inbox mengulang maks 6 kali dalam umur 30 menit, termasuk setelah restart;
+  duplikat/ACK hilang tetap satu baris D1. Gateway memeriksa grup, identitas dan
+  masa berlaku lagi sebelum kirim; tidak ada backfill event offline. Satu sambutan
+  per batch, nama max3 dan sanitasi
   formatting/control; fallback Kak, tidak menjadikan nomor sebagai nama.
 - Webhook chat lama menghapus welcome berdasar sesi, pencarian hanya `cari <produk>`;
   chat, emote, reaction/stiker biasa tidak menimbulkan balasan. Perintah/admin/proof
@@ -6123,8 +6250,8 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 
 - **Seed A2 (lokal, belum deploy):** `drizzle/migrations/0111_games_reference_seed.sql`
   berisi198 SKU utama (FF16/FF MAX8/ML156/PUBG18), source `ourastore.com riset 2026-11-09`,
-  captured_at/updated_at tetap `2026-11-09T08:28:15Z`. Generator stdlib offline
-  `scripts/generate-games-reference-seed.mjs <reference.json> <skus.json>` membaca JSON
+  captured_at/updated_at tetap `2026-11-09T08:28:15Z`. Generator offline historis
+  `scripts/generate-games-reference-seed.mjs` hanya di riwayat Git. Dulu membaca JSON
   saja, menolak kode tidak valid/duplikat, memilih exact, kode utama menurut aturan
   `isBackup` catalog-sync, non-utilitas via guard bersama, empat brand gelombang1,
   harga Oura integer>0 dan rasio Oura/modal `[0.5,3.0]`.383 kandidat:198 dipilih,
@@ -6154,7 +6281,7 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 ### 16.25 AXVARA Games tahap A + proxy Digiflazz `/dgf/*` — 9 November 2026
 
 - **Proxy (terpasang di VPS):** `POST /dgf/v1/{cek-saldo,price-list,transaction}`, token `WARUNG_REBAHAN_PROXY_TOKEN`, body bertanda tangan Pages diteruskan byte-per-byte; bukti: `/health dgf:true`, cek-saldo Development 200, tanpa token 401. Detail `axvara-wr-proxy/AGENTS.md`.
-- **Kode (lokal → CI):** `src/lib/games/digiflazz.ts` (md5 murni TS, sign, `callDigiflazz` → ok/ambiguous/config/http_error/api_error, `checkBalance`, `fetchPrepaidPriceList`, `sendTransaction`), `src/lib/games/catalog-sync.ts` (`syncGamesCatalog`: CAS `store_settings.games_catalog_sync_at` ≥9 mnt, upsert `json_each` per 50 baris, kode `…b` → kolom cadangan, katalog Games kosong = tidak mengubah apa pun, `enabled`/`reference_price` tidak disentuh).
+- **Kode (lokal → CI):** `src/lib/games/digiflazz.ts` (md5 murni TS, sign, `callDigiflazz` → ok/ambiguous/config/http_error/api_error, `checkBalance`, `fetchPrepaidPriceList`, `sendTransaction`). Catatan 21 Nov 2026: `src/lib/games/catalog-sync.ts` (`syncGamesCatalog`) dihapus sebagai dead code (audit AU-C1-7; cron `games_catalog` memakai `sk-catalog-sync.ts`, hanya test sendiri yang mengimpornya) — lihat §16.26 untuk sinkron SK aktif.
 - **Migrasi 0107** `games_products`, `games_order_items`, `games_dispatch_attempts` (§12.2 `docs/GAMES.md`); `orders.order_kind` tanpa CHECK sehingga `'games'` diterima.
 - **Cron:** lite job `games_catalog` (`mcp-worker` langkah `everyMinutes:10`, alarm soft); tanpa `DIGIFLAZZ_USERNAME`/`DIGIFLAZZ_API_KEY` → 200 `skipped:not_configured`.
 - **Env dipasang PM9November2026 sekitar21.40–22.05WIB (`secret_text` di Pages produksi):**
@@ -6206,7 +6333,7 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 
 ### 16.21 Tes pembayaran admin terisolasi — 6 November 2026 (DIPENSIUNKAN 18 November 2026, lokal G1)
 
-- **Status 18 November 2026 (lokal G1):** fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah terbukti jalan di publik: `src/app/(shop)/admin/payments/test/page.tsx` dan `PaymentTestScope.tsx` dihapus; `/api/admin/payments/test/{quote,orders}` mengembalikan `410` `{error:"Tes pembayaran admin sudah dipensiunkan."}` (`Cache-Control: no-store`); `isPaymentAdminTestEnabled` dan seluruh mode `adminTest`/`admin_payment_test` dihapus dari `rails.ts`, `method-options.ts`, `nowpayments.ts`, `sekalipay-gateway.ts`, `checkout/quote`, `orders/route.ts`, dan `checkout/page.tsx`; `verifyCheckoutQuoteToken` menolak token lama yang membawa `admin_payment_test`. `PAYMENT_ADMIN_TEST_ENABLED` tidak lagi dibaca (owner boleh menghapusnya kelak dari Pages dengan prosedur backup env). Kolom DB (`orders.supplier_purchase_disabled`, dll.) tetap dipertahankan untuk histori order lama, dan gate `supplier_purchase_disabled=0` kini diterapkan seragam di WR (`src/lib/warung-rebahan/order.ts`), SK (`src/lib/sekalipay/order.ts`), TUNVN, dan AIVault (link/riwayat lama tidak diubah).
+- **Pensiun 18 November 2026 (G1); endpoint dihapus 21 November (lokal):** fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah terbukti jalan di publik: `src/app/(shop)/admin/payments/test/page.tsx` dan `PaymentTestScope.tsx` dihapus; stub `410` `/api/admin/payments/test/{quote,orders}` sudah dihapus; `isPaymentAdminTestEnabled` dan seluruh mode `adminTest`/`admin_payment_test` dihapus dari `rails.ts`, `method-options.ts`, `nowpayments.ts`, `sekalipay-gateway.ts`, `checkout/quote`, `orders/route.ts`, dan `checkout/page.tsx`; `verifyCheckoutQuoteToken` menolak token lama yang membawa `admin_payment_test`. `PAYMENT_ADMIN_TEST_ENABLED` tidak lagi dibaca (owner boleh menghapusnya kelak dari Pages dengan prosedur backup env). Kolom DB (`orders.supplier_purchase_disabled`, dll.) tetap dipertahankan untuk histori order lama, dan gate `supplier_purchase_disabled=0` kini diterapkan seragam di WR (`src/lib/warung-rebahan/order.ts`), SK (`src/lib/sekalipay/order.ts`), TUNVN, dan AIVault (link/riwayat lama tidak diubah).
 - Catatan 6 November di bawah adalah snapshot historis sebelum pensiun:
 
 - Route edge dinamis baru: `src/app/(shop)/admin/payments/test/page.tsx`, `/api/admin/payments/test/quote` dan `/api/admin/payments/test/orders`. Halaman server memeriksa `requireAdmin`, redirect unauthorized ke `/admin`, noindex/nofollow, notice saat nonaktif. `PaymentTestScope.tsx` menyediakan context defaultfalse hanya untuk memilih endpoint UI; bukan otorisasi. Checkout existing dipakai ulang, termasuk keranjang, quote, harga, stok, instruksi dan notifikasi nyata.
@@ -6572,7 +6699,7 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 
 ### 16.52 S&K varian stale tetap tampil + sanitizer teks supplier — 17 November 2026 (lokal)
 
-- **Aturan stale baru** (`src/lib/product-copy/resolve.ts`): saat salinan admin ID ada (`parseAdminVariantCopy` non-null) namun `admin_copy_fingerprint !== supplierKey`, pembeli TETAP melihat salinan admin (ID = salinan admin, EN = salinan admin EN bila diisi atau fallback ke auto EN) dan `status = "admin"` (saat salinan admin dipakai) alih-alih jatuh ke teks mentah supplier. `adminStale = true`, `reviewKind = "changed"`, `needsCopyReview = true`, dan `auto` tidak berubah sehingga admin tetap wajib meninjau.
+- **Aturan stale** (`src/lib/product-copy/resolve.ts`, FX-8b lokal): simpan override ID, EN, atau keduanya (PUT tunggal maupun bulk) mencatat sidik jari sumber; semua teks kosong → fingerprint `NULL`. EN saja tetap memakai auto ID dan tidak perlu ditinjau saat fingerprint cocok. Bila sumber berubah, salinan admin tetap tampil di bahasanya (`status = "admin"`), tetapi `adminStale = true`, `reviewKind = "changed"`, dan hitungan review admin ikut berubah.
 - **Sanitizer teks pemasok** (`src/lib/product-copy/sanitize.ts`): `sanitizeSupplierCopy(copy, links)` murni (tanpa mutasi input) dan HANYA memodifikasi `VariantCopy` bersumber `"pemasok"` (`admin` dan `axvara` tidak disentuh). Membangun `SupplierLinkMap` (`buildSupplierLinkMap`) dari baris aktif `supplier_links` (tujuan internal `/...` diabaikan) lalu pada `sections[].items`, `activation[].steps`, dan `notes[]`:
   - mengganti URL maupun bare domain yang `host` (lowercase tanpa `www.`) + `path` (tanpa trailing `/`) cocok persis dengan tujuan absolut aktif, atau fallback ke host-root (`/`) bila host cocok, menjadi `axvara.tech/go/<slug>`; URL tidak cocok dan email (`user@...`) dibiarkan;
   - mengganti frasa case-insensitive `hubungi admin` / `chat admin` / `kontak admin` yang belum diikuti `AXVARA` menjadi `hubungi admin AXVARA`, serta `contact admin` / `contact the admin` menjadi `contact AXVARA admin` dengan menjaga kapitalisasi awal.
@@ -6632,6 +6759,9 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   - Revisi TUNVN 18 Nov: `/api/buff/check` 502 tidak membatalkan sukses mirror/proyeksi akun atau drain grup; cron mengembalikan `ok:true` dengan `buff_error` tersanitasi. Kegagalan akun tetap 503. Snapshot Buff tidak berubah saat probe gagal; throttle cron 3 menit dihitung juga dari timestamp `tunvn_buff_last_error` (force admin tetap bypass/502). Probe valid yang sudah diproyeksikan memajukan `tunvn_buff_sync_at` dan mengosongkan error Buff. Watchdog dan Ringkasan Harian punya sumber `tunvn_buff` sendiri (`TUNVN (Muse Buff)`, 15 menit, state CAS terpisah). Tidak mengubah pembelian atau menambah query setting di watchdog/ringkasan.
 - **Propagasi kegagalan subjob inti `cron/lite` (`src/app/api/cron/lite/route.ts`):**
   - Subjob inti (`payments`: pass NOWPayments & Sekalipay gateway; `pedia_orders`: dispatch; `notify_a`/`notify_b`/`notify`: `telegram_retry` & `whatsapp_outbox`) tetap tidak menghentikan subjob saudara bila melempar non-`QueryBudgetExceeded`, namun mengembalikan HTTP `503` `{ ok: false, failed_subjobs }` tanpa menulis `cron_lite_<job>_ok_at`. Yield karena `QueryBudgetExceeded` dan error subjob opsional (`invoice_retry`, `whatsapp_promo*`, `qris_expiry_notices`, `pending_reminders`, `checkout_pin_emails`, `copy_review`, `crypto_market`) tetap HTTP `200`.
+  - Koreksi 21 November (lokal): `payments` mengecek sisa waktu sebelum klaim GET di tiap pass dan melaporkan kandidat yang belum dicoba lewat `payments_deferred`, bukan `payments_failed`. `notify_b` memberi PIN email hingga 18 detik lalu memproses outbox WA sebelum Telegram; cek waktu dilakukan sebelum klaim dan pacing WA. `notify_a` memeriksa anggaran retry invoice dan kabar Telegram per item. Jadwal dan urutan `payments → expiry → fulfillment` tidak berubah.
+  - `operations`/`lite` berbagi predikat expiry `initializing` 5 menit, termasuk pengecekan atomik ulang yang melindungi NOWPayments dengan ID tersimpan dan klaim Sekalipay gateway. Pembersihan ledger yatim `operations` tidak menutup kedua jenis ini sebelum jalur review masing-masing. Cleanup webhook 30 hari mengecualikan antrean `PAYMENT_ATTENTION_WHERE`.
+  - Fulfillment Market manual mematerialisasi maksimal dua baris per job per pass berdasarkan jumlah unit pada manifest. `reconcileSettledJobs` menutup agregat job terminal dan order lunas hanya jika manifest lengkap dan seluruh baris `delivered`; batch D1 memeriksa ulang status dan manifest, tanpa kirim ulang.
 - **Watchdog basi (`src/lib/sync-staleness.ts`):**
   - Dipanggil di akhir `runCleanup` (`job=cleanup`, tiap 5 menit) setelah `runCryptoMarketRefresh` dengan guard `db.canSpend(6)`. Tanpa env/migrasi baru.
   - Memantau hanya sumber aktif/terkonfigurasi (`isSkSyncEnabled`, `isWrSyncEnabled` untuk Jaspay, `isTunvnSyncEnabled && isTunvnConfigured`, `isAivaultSyncEnabled && isAivaultConfigured`, `isGamesSkCatalogConfigured`, `isPediaProxyConfigured` bila ada penanda `pedia_indosmm_diff_last_at`, `isNowpaymentsReadable` untuk `crypto_market_snapshot.fx_effective_at`). WR dikecualikan agar tidak beradu dengan `alertStaleWrSync` existing di `/api/cron/operations`.
@@ -6656,10 +6786,11 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 
 - **Ringkasan harian admin (`src/lib/telegram/daily-admin-summary.ts`):**
   - Dipanggil secara dinamis dari `runPromo` (`POST /api/cron/lite?job=promo`) tanpa menambah cron trigger, env Pages, atau migrasi D1. Aktif hanya bila `TELEGRAM_BOT_ENABLED=true`, `TELEGRAM_ADMIN_CHAT_ID`, dan `TELEGRAM_BOT_TOKEN` tersedia, pada jendela `07:00–11:59 WIB` (catch-up bila tick 07.00 gagal; di luar jendela langsung keluar dengan 0 query D1).
-  - Dedupe per tanggal WIB: memo isolate (`unwrapD1` di `src/lib/db-access.ts`, 0 statement setelah terkirim) + CAS di `store_settings.admin_daily_summary_state` (`claiming_until` 120 detik; dilepas otomatis bila `sendMessage` gagal agar tick berikutnya dapat mencoba ulang; menyisakan guard `db.canSpend`).
+  - Dedupe per tanggal WIB: memo isolate (`unwrapD1` di `src/lib/db-access.ts`, 0 statement setelah terkirim) + CAS di `store_settings.admin_daily_summary_state` (`claiming_until` 120 detik; dilepas bila `sendMessage` gagal DAN bila pengumpulan data melempar error non-budget — audit 21 Nov 2026, CV-3-N1 — agar error query persisten tidak membungkam seluruh jendela 07:00–11:59 WIB; menyisakan guard `db.canSpend`).
   - Memuat 5 seksi HTML aman (`escapeHtml`, dipangkas aman per baris ≤3.800 karakter) dalam ≤12 statement D1: (1) order lunas & omzet kemarin WIB (`00:00–24:00 WIB`, rincian kanal Web/Telegram + kadaluarsa/dibatalkan), (2) order lunas >30 menit macet dari `fulfillment_jobs`, `fulfillment_items`, `wr_order_links` (termasuk `delivery_status`), `sk_order_links`, `tunvn_order_links`, `aivault_order_links`, `pedia_order_items`, `games_order_items` (jumlah + maks 5 kode) beserta hitungan rekonsiliasi QRIS `dana_webhook_events`, (3) saldo tersimpan WR (`wr_saldo_log`), SK (`sk_saldo_log`), IndoSMM (`pedia_supplier_balance_log`), TUNVN & AIVault (`<supplier>_balance_last_value` di `store_settings`, disimpan pada upsert sukses `src/lib/supplier-balance-alert.ts` yang sama tanpa statement ekstra) beserta penanda di bawah ambang — tanpa panggilan API supplier saat menyusun ringkasan, (4) status sinkronisasi: sumber aktif yang saat ini basi + sumber yang sempat basi dalam 24 jam terakhir (`last_stale_at`/`last_recovered_at` dipertahankan di JSON `sync_stale_state_*` pada `src/lib/sync-staleness.ts` tanpa statement ekstra) + WR watchdog, (5) maks 5 produk aktif non-pecundang terlaris 30 hari (dari order lunas) dengan stok efektif (`effectiveVariantStockSql` + `purchasableStockSql`) `0..2`.
 - **Backup harian D1 → R2 (`scripts/d1-backup-r2.cjs`, `.github/workflows/d1-backup.yml`):**
   - Workflow GitHub Actions terjadwal harian `19:23 UTC` (`02:23 WIB`) + `workflow_dispatch` menggunakan Secrets CI existing (`CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, `CLOUDFLARE_ACCOUNT_ID`).
+  - Step `failure()` menulis anotasi/ringkasan tanpa secret; notifikasi mengikuti pengaturan GitHub owner. Belum mendeteksi jadwal terlewat atau backup basi.
   - Mengekspor `axvara-db` (`c21453bf-68ab-4efd-8b0d-22fb360c4f33`) melalui D1 Export REST API (`output_format: "polling"`, `at_bookmark`→`current_bookmark`), memvalidasi dump (`≥10.000` byte, `CREATE TABLE` untuk `orders`, `products`, `payment_transactions`, `fulfillment_items`, serta terminasi `;` agar dump terpotong gagal tertutup), mengompresi `gzip -9` + `SHA-256`, lalu mengunggah ke bucket R2 privat terpisah `axvara-db-backups` (lifecycle 30 hari prefix `daily/`, key `daily/YYYY/MM/axvara-db-<ISO>.sql.gz`; menolak keras bucket publik `axvara-assets`). Signed URL, isi dump, dan kredensial diredaksi dari seluruh log/error; `GITHUB_STEP_SUMMARY` hanya menulis key, ukuran raw/gzip, SHA-256, dan durasi.
 
 ### 16.62 Katalog live di browser pembeli — 19 November 2026 (lokal)
@@ -6828,8 +6959,9 @@ remote, deployment, atau panggilan supplier untuk verifikasi paket ini.
     - `GET /api/games/catalog/[slug]` tetap `private, no-store` dan tidak di-cache (cache edge menolak respons privat).
 - **Titik invalidasi mutasi (hanya saat `changed > 0`, ≤1 tulis/eksekusi — dikoalesensi di tingkat run/loop):**
   - Checkout & order: `orders-create.ts`, `commerce.ts` (`createChannelOrderAtomic`, `createPendingChannelOrder` — skip pada idempotent/race replay), `orders-transition.ts` (restock cancel/expiry & `incrementSoldCountForOrder`, terisolasi ke order Market/legacy sehingga Pedia/Games tidak me-bump Market; pemanggil loop cron `cron/operations` `runExpiry`, `cron/lite` `runExpiry`, dan `cron/publish-scheduled` mengirim `onMarketChanged` dan memanggil `bumpCatalogRevision("market", ..., { metered: true })` paling banyak sekali di akhir fase bila budget masih cukup), `fulfillment/inventory.ts` + `api/admin/fulfillment/route.ts` (`import`/`release`/`revoke` ketika `>0`; pada route admin `import`/`DELETE`, bump `market` dijalankan **setelah** `syncUniqueVariantStock` menyinkronkan `product_variants.stock` dengan `{ bumpRevision: false }` di helper), `api/pedia/orders/route.ts` (saat guard margin `410` menonaktifkan tier `pedia_tiers`, mem-bump `pedia`), dan `warung-rebahan/order.ts` (`WrOutOfStockError` di `processWrPendingOrders` dikoalesensi ke paling banyak sekali per batch dengan `{ metered: true }`).
-  - Supplier sync & grup: `warung-rebahan/sync.ts` (`syncProducts` termasuk perubahan metadata tampilan `description`/`label`/`duration_*`/`warranty_*`/`compare_price` maks 1×/run, `syncJaspayCatalog`), `sekalipay/sync.ts` (`syncSkProducts`, termasuk perubahan `label`/`compare_price` maupun saat `staleParentsRefreshed > 0`), `tunvn/catalog.ts` (tetap mem-bump `market` bila `catalogChanged` sudah terkomit sebelum `buffError`), `aivault/catalog.ts`, `pedia/sync.ts` + `pedia/dispatch.ts` (auto-disable margin di `processPediaPaidOrders` dikoalesensi paling banyak sekali per batch `{ metered: true }`), `games/sk-catalog-sync.ts` (diinjeksikan atomik dalam `SUCCESS_MARKER_WITH_REV_SQL` tanpa statement ekstra saat `catalogChanged`), `games/catalog-sync.ts`, dan `product-groups.ts`.
+  - Supplier sync & grup: `warung-rebahan/sync.ts` (`syncProducts` termasuk perubahan metadata tampilan `description`/`label`/`duration_*`/`warranty_*`/`compare_price` maks 1×/run, `syncJaspayCatalog`), `sekalipay/sync.ts` (`syncSkProducts`, termasuk perubahan `label`/`compare_price` maupun saat `staleParentsRefreshed > 0`), `tunvn/catalog.ts` (tetap mem-bump `market` bila `catalogChanged` sudah terkomit sebelum `buffError`), `aivault/catalog.ts`, `pedia/sync.ts` + `pedia/dispatch.ts` (auto-disable margin di `processPediaPaidOrders` dikoalesensi paling banyak sekali per batch `{ metered: true }`), `games/sk-catalog-sync.ts` (diinjeksikan atomik dalam `SUCCESS_MARKER_WITH_REV_SQL` tanpa statement ekstra saat `catalogChanged`), dan `product-groups.ts`. (`games/catalog-sync.ts` dihapus 21 Nov 2026 — audit AU-C1-7.)
   - Admin mutations: `products/{route,[id],reorder,[id]/sold-count}`, `categories/{route,[id],reorder}`, `admin/{variants,variant-copy,variant-copy/bulk,fulfillment,supplier-links}` (`supplier-links` `POST/PUT/DELETE` memanggil `clearSupplierLinksMemo()` sebelum bump `market`), `admin/{warung,sekalipay}/markup/{route,bulk}`, `admin/tunvn/{products/[id],buff/[sku]}`, `admin/aivault/products/[id]`, `admin/pedia/{products,settings}`, dan `admin/games/{games,pricing,products,products/bulk-markup}`.
+  - **Harga admin (21 November, lokal):** markup WR/SK satuan dan bulk memakai satu batch D1 per item untuk cermin dan varian storefront; yang rollback tidak dihitung `updated`. Pedia POST tier menyimpan harga paket pada INSERT; perubahan tier dan harga berbagi satu UPDATE, sedangkan perubahan paket/step produk membatch semua tier. Naikkan revisi Market/Pedia setelah commit, sekali per permintaan sukses/parsial bulk.
   - Catatan batas scope & dampak kuota: `/api/catalog`, `/api/games/catalog/[slug]`, PDP `/produk/[slug]`, `wrangler.json`, `src/lib/fulfillment/delivery/**`, dan `mcp-worker/` sengaja tidak disentuh oleh B-H (ranah B-S/C0). Estimasi dampak setelah rilis B-H+B-S: baca revisi `≤3` rows/5 dtk per isolate (~50–150 ribu `rows_read`/hari), tulis revisi ~200–500 baris/hari (<0,03% kuota 50 juta/30 hari), dengan penghematan baca katalog ~65–80% (~400–550 juta `rows_read`/30 hari; menunggu pengukuran produksi pasca-CI).
 
 ### 16.63 Overhaul UX & Latensi Webhook Bot Telegram (W-A) — 19 November 2026 (lokal)
@@ -6846,7 +6978,7 @@ remote, deployment, atau panggilan supplier untuk verifikasi paket ini.
 ### 16.64 Derivasi durasi varian SK render-time (SK-DUR) — 20 November 2026 (lokal)
 
 - **Helper murni (`src/lib/catalog-duration.ts`):** `durationFromSupplierText(text)` mengekstrak durasi berlabel eksplisit (`Durasi` / `Masa aktif` / `Duration` / `Validity` + pemisah opsional `:` / `-` / `—` + `N` atau `N-M` + unit ID/EN `hari/day(s)`, `minggu/week(s)`, `bulan/month(s)`, `tahun/year(s)`) ke bentuk Indonesia ternormalisasi (`"1 Bulan"`, `"28-30 Hari"`, `"1 Tahun"`, `"2 Minggu"`), tanpa menebak angka acak.
-- **Aturan `formatVariantLabel()` (`src/lib/catalog.ts`) dan `withVariantCopy()` (`src/lib/product-copy/resolve.ts`):** hanya berlaku untuk varian SK (`sk_variant_id` non-kosong) ketika `duration_label`, `duration_value`, dan `duration_unit` semuanya kosong (`duration_*` milik admin selalu menang). Menggabung `"label - dur"` kecuali label sudah memuat token durasi (`<N> Hari/Bulan/Tahun/Minggu/Day/Month/Year`). Perilaku WR dan label manual non-WR/non-SK tetap identik secara byte. `withVariantCopy` menurunkan `sk_duration` sebelum menghapus `terms` dan `sk_description` dari JSON publik `/api/catalog`.
+- **Aturan `formatVariantLabel()` (`src/lib/catalog.ts`) dan `withVariantCopy()` (`src/lib/product-copy/resolve.ts`):** hanya berlaku untuk varian SK (`sk_variant_id` non-kosong) ketika `duration_label`, `duration_value`, dan `duration_unit` semuanya kosong (`duration_*` milik admin selalu menang). Menggabung `"label - dur"` kecuali label sudah memuat token durasi (`<N> Hari/Bulan/Tahun/Minggu/Day/Month/Year`). Perilaku WR dan label manual non-WR/non-SK tetap identik secara byte. FX-8b menurunkan `label_duration` untuk JSON publik tanpa ID/kolom mentah supplier. Allowlist varian membawa penanda pengiriman pembeli dan `supplier_variant` boolean; cache hanya untuk detail memakai namespace `catalog-detail-v2` agar payload lama tidak disajikan lagi.
 - **Cakupan query & checkout (tanpa query tambahan, tanpa migrasi DB):** `getProductDetail` dan `getActiveVariant` (`src/lib/catalog.ts`), `POST /api/checkout/quote`, serta `getCartSummary` (`src/lib/telegram/cart.ts`) menyertakan `sk_products.sk_description` via `LEFT JOIN sk_products`; `invoice.ts`, `payment-lines.ts`, dan payload keranjang/direct checkout storefront memakai `formatVariantLabel()`. Nama item order SK di `orders.items[].name` kini menyertakan durasi (terkonfirmasi tidak ada kode yang mem-parse balik label varian dari `orders.items`).
 
 ### 16.65 Topup saldo supplier SK + TUNVN — 20 November 2026 (implementasi lokal, belum deploy)
@@ -6859,9 +6991,10 @@ dikirim AXVARA.
 
 - **Migrasi `0151_supplier_topups.sql`** (selaras `drizzle/schema.sql`) membuat `supplier_topups(id, supplier CHECK('sekalipay','tunvn'), ref_id UNIQUE, supplier_ref, channel, currency CHECK('IDR','USDT'), requested_amount, pay_amount, credit_amount, fee_amount, status CHECK('creating','pending','paid','expired','failed','unknown'), payment_json, error, expires_at INTEGER ms, created_at, updated_at, paid_at)` + index `(supplier, created_at DESC)`. Tidak ada tabel/kolom lain yang berubah.
 - **`ref_id`** dibuat server-side `AXVTU-YYYYMMDD-<8 hex>` (tidak pernah dari klien, tidak pernah diawali `GW-`, ≤50 char).
-- **State machine:** `creating → pending → paid | expired | failed | unknown`. `paid`/`failed` terminal. `unknown` = hasil ambigu (timeout/network/5xx/response tak terbaca) dan aman di-refresh dengan **`ref_id` yang sama**; `expired` tetap dapat diperiksa ulang (pembayaran terlambat bisa `confirmed`).
+- **State machine:** `creating → pending → paid | expired | failed | unknown`. `paid` terminal. `failed` dengan `supplier_ref` hanya dapat dicek untuk konfirmasi kredit terlambat; tanpa kredit tetap `failed`, tanpa expiry atau POST supplier. `unknown` = hasil ambigu (timeout/network/5xx/response tak terbaca) dan aman di-refresh dengan **`ref_id` yang sama**; `expired` tetap dapat diperiksa ulang (pembayaran terlambat bisa `confirmed`).
 - **Cakupan upstream:** SK lewat `skFetch` existing (`GET v1/balance/channels`, `POST v1/balance`, `GET v1/balance/mutations?type=topup&direction=credit&per_page=50`). Channel divalidasi ulang server-side (`status:"on"`, nominal integer dalam `[minimum,maximum]`) sebelum POST; kode channel tidak di-hardcode. Konfirmasi lunas hanya dari mutasi `credit` yang `invoice`-nya cocok — tidak ada endpoint status lain. TUNVN langsung dari Pages (`POST /api/deposit`, `GET /api/deposit/status?code=`) memakai env existing `TUNVN_*`; parser mewajibkan `network==="BEP20"`, address `0x` + 40 hex, dan `exact_amount >= diminta && < diminta+1`.
-- **Pagar:** maksimal **3** baris non-terminal (`creating/pending/unknown`) per supplier dengan `expires_at` > sekarang, atau `expires_at` NULL dan dibuat < 30 menit lalu (baris macet tanpa kedaluwarsa tidak mengunci kuota selamanya) → `429 too_many_pending`. Refresh minimal **10 detik** sejak `updated_at` → `429 too_soon`. TUNVN tanpa retry (5 key salah/60 dtk memblokir upstream). Saat CREATE: 401/403 = config (`failed`), 429/5xx = `unknown`. Saat REFRESH: gagal memeriksa status (401/403/4xx/5xx/timeout/bentuk respons salah, SK maupun TUNVN) TIDAK mengubah status invoice — hanya `error` + `updated_at` dicatat dan route membalas 502, karena gagal cek bukan bukti invoice gagal/lunas.
+- **Pagar:** maksimal **3** baris non-terminal (`creating/pending/unknown`) per supplier dengan `expires_at` > sekarang, atau `expires_at` NULL dan dibuat < 30 menit lalu (baris macet tanpa kedaluwarsa tidak mengunci kuota selamanya) → `429 too_many_pending`. Refresh minimal **10 detik** sejak `updated_at` → `429 too_soon`. TUNVN tanpa retry (5 key salah/60 dtk memblokir upstream). Saat CREATE: 401/403 = config (`failed`), 429/5xx = `unknown`. Saat REFRESH: gagal memeriksa status tidak mengubah status invoice; route membalas 502 dan mencatat `error` + `updated_at`. Untuk invoice yang sudah `failed`, hanya waktu cek dicatat agar error create tetap tersimpan.
+- **Konsistensi (21 November 2026, lokal):** slot pending diambil dengan satu `INSERT … SELECT … WHERE … RETURNING`; refresh tidak dapat menimpa `paid`. Untuk invoice SK yang sudah diketahui, mutasi/expiry dicek sebelum mencoba mengambil ulang link; hanya ref yang sama boleh dipakai ulang.
 - **Inline QR SK:** CSP admin hanya mengizinkan gambar dari host yang disetujui, jadi QR dari host Sekalipay ditampilkan lewat tautan/halaman bayar HTTPS di tab baru; menampilkan QR inline memerlukan keputusan owner untuk menambah host ke `img-src`.
 - **Gates (tanpa env baru):** SK `isSkEnabled() && isSkConfigured() && !isSkSandbox()`; TUNVN `isTunvnConfigured()`. Gate gagal → `503 sekalipay_unavailable` / `tunvn_unavailable`.
 - **Route admin** (`runtime="edge"`, `dynamic="force-dynamic"`, `Cache-Control: private, no-store`, `requireAdmin` → 401; body `readBoundedText` 8.000 byte):

@@ -184,164 +184,6 @@ describe("Catalog Formatting Helpers", () => {
 });
 
 describe("WhatsApp Message Formatting", () => {
-  it("formats list products message without categories or prices in enhanced JemStore style", () => {
-    const products = [
-      { name: "Canva Pro 1 Tahun", whatsappAlias: "CANVA" },
-      { name: "ChatGPT Plus 1 Bulan", whatsappAlias: "CHATGPT" },
-      { name: "Gemini Advanced 1 Bulan", whatsappAlias: "GEMINI" },
-    ];
-    const msg = waMsg.listProductsMessage(products);
-
-    expect(msg).toContain("「 *LIST MENU AXVARA* 」");
-    expect(msg).toContain("Tanggal :");
-    expect(msg).toContain("Jam :");
-    expect(msg).toContain("꧁ঔৣ★ CANVA");
-    expect(msg).toContain("꧁ঔৣ★ CHATGPT");
-    expect(msg).toContain("꧁ঔৣ★ GEMINI");
-    expect(msg).toContain("Ketik nama produk untuk melihat pilihan varian.");
-    expect(msg).toContain("Ketik *garansi*");
-    expect(msg).toContain("*Belanja & update produk AXVARA:*");
-    expect(msg).toContain("✈️ Telegram: https://t.me/Axvara_bot");
-    expect(msg).toContain("🌐 Website: https://axvara.tech");
-    expect(msg).not.toContain("Rp");
-    expect(waMsg.getWhatsAppDisplayName({ name: "Netflix Premium 1 Bulan" })).toBe("NETFLIX PREMIUM 1 BULAN");
-  });
-
-  it("formats product detail with numbered active variants", () => {
-    const variants: VariantSummary[] = [
-      {
-        id: 1, product_id: 1, sku: "GEM-INV", label: "Invite",
-        duration_value: 12, duration_unit: "month", duration_label: null,
-        warranty_type: "full", warranty_value: null, warranty_unit: null, warranty_label: null,
-        terms: null, delivery_terms: null, wr_delivery_class: null,
-        wr_type: null, require_email: 0, min_qty: 1,
-        price: 18000, compare_price: null, stock: -1, fulfillment_mode: "manual", is_active: 1, sort_order: 0,
-      },
-      {
-        id: 2, product_id: 1, sku: "GEM-HEAD", label: "Head",
-        duration_value: 3, duration_unit: "month", duration_label: null,
-        warranty_type: "limited", warranty_value: 1, warranty_unit: "month", warranty_label: null,
-        terms: null, delivery_terms: null, wr_delivery_class: null,
-        wr_type: null, require_email: 0, min_qty: 1,
-        price: 25000, compare_price: null, stock: 5, fulfillment_mode: "manual", is_active: 1, sort_order: 10,
-      },
-    ];
-
-    const msg = waMsg.productDetailMessage("Gemini", "Akses Gemini Pro", variants);
-    expect(msg).toContain("*GEMINI*");
-    expect(msg).toContain("1. *Invite*");
-    expect(msg).toContain("🛡 Full Garansi");
-    expect(msg).toContain("「 *Rp18.000* 」");
-    expect(msg).toContain("2. *Head*");
-    expect(msg).toContain("🛡 Garansi 1 Bulan");
-    expect(msg).toContain("「 *Rp25.000* 」");
-    expect(msg).toContain("Balas dengan angka *1-2* untuk memilih.");
-  });
-
-  it("shows HABIS label for out-of-stock variants", () => {
-    const variants: VariantSummary[] = [
-      {
-        id: 1, product_id: 1, sku: "TEST-OUT", label: "Solo",
-        duration_value: 1, duration_unit: "month", duration_label: null,
-        warranty_type: "none", warranty_value: null, warranty_unit: null, warranty_label: null,
-        terms: null, delivery_terms: null, wr_delivery_class: null,
-        wr_type: null, require_email: 0, min_qty: 1,
-        price: 10000, compare_price: null, stock: 0, fulfillment_mode: "manual", is_active: 1, sort_order: 0,
-      },
-    ];
-    const msg = waMsg.productDetailMessage("Test", null, variants);
-    expect(msg).toContain("❌ *HABIS*");
-  });
-
-  it("formats variant selected message with call-to-action", () => {
-    const variant: VariantSummary = {
-      id: 2, product_id: 1, sku: "GEM-HEAD", label: "Head",
-      duration_value: 3, duration_unit: "month", duration_label: null,
-      warranty_type: "limited", warranty_value: 1, warranty_unit: "month", warranty_label: null,
-      terms: null, delivery_terms: null, wr_delivery_class: null,
-      wr_type: null, require_email: 0, min_qty: 1,
-      price: 25000, compare_price: null, stock: 5, fulfillment_mode: "manual", is_active: 1, sort_order: 10,
-    };
-    const msg = waMsg.variantSelectedMessage("Gemini", variant);
-    expect(msg).toContain("*VARIAN DIPILIH*");
-    expect(msg).toContain("GEMINI — *Head*");
-    expect(msg).toContain("🛡 Garansi 1 Bulan");
-    expect(msg).toContain("Rp25.000");
-    // Maintenance 2026-09-17: opsi manual dihilangkan di WA (QRIS saja).
-    expect(msg).toContain("*QRIS*");
-    expect(msg).not.toContain("*SEABANK*");
-    expect(msg).not.toContain("*EWALLET*");
-  });
-
-  it("formats QRIS payment rail (jalur manual dihilangkan selama maintenance)", () => {
-    const msg = waMsg.paymentMessage({
-      orderCode: "AXV-20260904-TEST1234",
-      productName: "Gemini",
-      variantLabel: "Head",
-      duration: "3 Bulan",
-      warranty: "1 Bulan",
-      total: 25000,
-      method: "QRIS",
-      qrisUrl: "/qris/test.jpg",
-      seabankAccount: "901812349386",
-      seabankName: "Brotherstore06",
-      ewalletAccount: "082135277434",
-      ewalletName: "Brotherstore06",
-    });
-
-    expect(msg).toContain("*PEMBAYARAN AXVARA*");
-    expect(msg).toContain("🛍 GEMINI — *Head*");
-    expect(msg).toContain("💰 Total: *Rp25.000*");
-    expect(msg).toContain("💳 Metode: *QRIS*");
-    expect(msg).toContain("Referensi otomatis: AXV-20260904-TEST1234");
-  });
-
-  it("menampilkan pesan maintenance untuk metode manual", () => {
-    const msg = waMsg.manualPaymentMaintenanceMessage();
-    expect(msg).toContain("*PEMBAYARAN MAINTENANCE*");
-    expect(msg).toContain("*QRIS*");
-  });
-
-  it("paymentChoiceMessage hanya menawarkan QRIS selama maintenance", () => {
-    const msg = waMsg.paymentChoiceMessage();
-    expect(msg).toContain("*QRIS*");
-    expect(msg).not.toContain("*SEABANK*");
-    expect(msg).not.toContain("*EWALLET*");
-  });
-
-  it("formats proof acknowledgement message with warning", () => {
-    const msg = waMsg.proofAcknowledgementMessage("AXV-20260904-TEST1234");
-    expect(msg).toContain("AXV-20260904-TEST1234");
-    expect(msg).toContain("menunggu verifikasi");
-    expect(msg).toContain("Bukti tidak otomatis berarti pembayaran sudah sah");
-  });
-
-  it("formats payment detected message with celebratory style and product details", () => {
-    const msg = waMsg.paymentDetectedMessage({
-      orderCode: "AXV-20260906-TEST5678",
-      productName: "CHATGPT PLUS",
-      variantLabel: "1 Bulan",
-      total: 89000,
-      method: "QRIS",
-    });
-    expect(msg).toContain("🎊🎉 *PEMBAYARAN BERHASIL!* 🎉🎊");
-    expect(msg).toContain("AXV-20260906-TEST5678");
-    expect(msg).toContain("CHATGPT PLUS");
-    expect(msg).toContain("1 Bulan");
-    expect(msg).toContain("Rp89.000");
-    expect(msg).toContain("QRIS");
-    expect(msg).toContain("Terima kasih");
-    expect(msg).toContain("axvara.tech");
-    expect(msg).toContain("t.me/Axvara_bot");
-  });
-
-  it("formats payment detected message with minimal params", () => {
-    const msg = waMsg.paymentDetectedMessage({ orderCode: "AXV-MINIMAL" });
-    expect(msg).toContain("AXV-MINIMAL");
-    expect(msg).toContain("PEMBAYARAN BERHASIL");
-    expect(msg).not.toContain("undefined");
-  });
-
   it("formats order completed message for admin .d command", () => {
     const msg = waMsg.orderCompletedMessage({
       orderCode: "AXV-20260906-DONE1234",
@@ -357,7 +199,8 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("Jangan lupa order lagi");
     expect(msg).toContain("axvara.tech");
     expect(msg).toContain("t.me/Axvara_bot");
-    expect(msg).toContain("Ketik *list*");
+    expect(msg).not.toContain("Ketik *list*");
+    expect(msg).toContain("website atau bot Telegram");
   });
 
   it("formats order already processed message", () => {
@@ -528,22 +371,24 @@ describe("Webhook Authentication & Timing-Safe Check (P0.2)", () => {
     expect(auth.ok).toBe(true);
   });
 
-  it("authenticates valid token from query parameter", () => {
+  it("rejects a token supplied only as a query param (header-only, AU-B1-2)", () => {
     const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook?token=super_secret_webhook_token_123", {
       method: "POST",
     });
     const auth = authenticateWebhook(req);
-    expect(auth.ok).toBe(true);
+    expect(auth.ok).toBe(false);
+    expect(auth.reason).toBe("missing_token");
   });
 
-  it("authenticates a compatible payload secret for local fixtures", () => {
+  it("rejects a payload-body secret (header-only, AU-B1-2)", () => {
     const req = new NextRequest("http://127.0.0.1:3000/api/whatsapp/webhook", {
       method: "POST",
     });
     const auth = authenticateWebhook(req, {
       secret: "super_secret_webhook_token_123",
     });
-    expect(auth.ok).toBe(true);
+    expect(auth.ok).toBe(false);
+    expect(auth.reason).toBe("missing_token");
   });
 
   it("rejects missing token with 401 reason", () => {

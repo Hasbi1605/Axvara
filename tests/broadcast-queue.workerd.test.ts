@@ -11,6 +11,7 @@ it("workerd D1 + native BROADCAST_QUEUE producer: sendBatch chunks enqueue and o
       contents: `
         import { enqueueDueTelegramPromo } from './src/lib/telegram/promo-broadcast';
         import { POST } from './src/app/api/internal/queue/broadcast/route';
+        import { POST as recordDlq } from './src/app/api/cron/broadcast-dlq/route';
         import { createDatabaseAccess } from './src/lib/db-access';
 
         const sentCalls = [];
@@ -36,6 +37,7 @@ it("workerd D1 + native BROADCAST_QUEUE producer: sendBatch chunks enqueue and o
             if (url.pathname === '/calls') {
               return Response.json({ sentCalls });
             }
+            if (url.pathname === '/api/cron/broadcast-dlq') return recordDlq(req);
             return POST(req);
           }
         };
@@ -107,6 +109,18 @@ it("workerd D1 + native BROADCAST_QUEUE producer: sendBatch chunks enqueue and o
     expect(enq.enqueued).toBe(2);
     expect(enq.queuedMessages).toBe(1);
     expect(enq.ids).toHaveLength(2);
+
+    const recordDlq = (secret: string) => runtime.dispatchFetch("https://fixture/api/cron/broadcast-dlq", {
+      method: "POST",
+      headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+      body: JSON.stringify({ campaignId: enq.campaignId, messageId: "workerd-dlq-fixture", deliveryIds: enq.ids }),
+    });
+    expect((await recordDlq("bad-secret")).status).toBe(401);
+    expect((await recordDlq("workerd-cron")).status).toBe(204);
+    expect((await recordDlq("workerd-cron")).status).toBe(204);
+    expect(await db.prepare("SELECT value FROM store_settings WHERE key GLOB 'broadcast_dlq:*'").all()).toMatchObject({
+      results: [{ value: JSON.stringify({ campaignId: enq.campaignId, deliveryIds: enq.ids }) }],
+    });
 
     // Origin processes batch on real workerd D1
     const originRes = await runtime.dispatchFetch("https://fixture/api/internal/queue/broadcast", {

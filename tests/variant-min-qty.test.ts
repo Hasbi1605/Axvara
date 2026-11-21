@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
+import { SITE, adminTelegramLink } from "@/lib/site";
+import * as waMessages from "@/lib/whatsapp/messages";
 
 const read = (file: string) => fs.readFileSync(file, "utf8");
 
@@ -110,7 +112,12 @@ describe("variant min_qty — bot & storefront", () => {
     const webhook = read("src/app/api/whatsapp/webhook/route.ts");
     expect(webhook).toContain("buyerFlowsRetiredMessage");
     expect(webhook).not.toContain("min_qty");
-    expect(read("src/lib/whatsapp/messages.ts")).toContain("Minimal pembelian");
+    expect(waMessages).not.toHaveProperty("variantSelectedMessage");
+    const redirect = waMessages.buyerFlowsRetiredMessage();
+    expect(redirect).toContain("pemesanan, dan bukti pembayaran di grup WhatsApp sudah tidak dilayani");
+    expect(redirect).toContain(`Website: ${SITE.webUrl}`);
+    expect(redirect).toContain(`Telegram: ${adminTelegramLink()}`);
+    expect(redirect).not.toMatch(/minimal pembelian/i);
   });
 
   it("web: stepper PDP/modal + Beli Langsung bawa qty, dialog konsisten solid", () => {

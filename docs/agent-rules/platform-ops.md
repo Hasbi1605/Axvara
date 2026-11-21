@@ -1,5 +1,21 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Cron pembayaran, notifikasi dan fulfillment — 21 November 2026 (lokal)
+
+- Deadline 45 dtk adalah batas admission per item: sebelum klaim cek ruang
+  untuk timeout transport dan settlement. `payments_deferred` bukan failure;
+  tidak mengubah urutan core atau cadence. `notify_b` mendahulukan PIN dan
+  outbox WA dari Telegram; pertahankan pacing dan lease WA.
+- Mode manual memakai jumlah unit unik dalam manifest, bukan jumlah baris
+  keranjang; materialisasi bertahap tidak mengirim produk. Perbaikan agregat
+  Market hanya untuk manifest lengkap dan seluruh item `delivered`, dengan CAS
+  order + job. Tidak ada backfill produksi. FX-11 (lokal) menampilkan paid
+  `manual_required` >24 jam dan Games `needs_check` di Ringkasan, bukan ping berulang.
+- FX-11: failure recovery WR/SK di lite masuk alarm hard existing (503 dengan
+  `failed_subjobs`/`recovery_failed` dan `*_recovery_last_error` tersanitasi).
+  Maintenance cleanup melanjutkan subjob independen, mencatat kegagalan dan
+  meneruskan sinyalnya via alarm soft `notify_b` hingga cleanup berhasil.
+
 ### Workers Logs `axvara-mcp` + runbook log Pages — 20 November 2026 (keputusan owner; berlaku setelah rilis CI)
 
 - **Keputusan owner:** aktifkan Workers Logs persisten (retensi 7 hari, dashboard Observability) di Worker `axvara-mcp` dengan invocation logs otomatis **ON**. Konfigurasi di `mcp-worker/wrangler.toml`: `[observability] enabled = true`, `head_sampling_rate = 1`, dan `[observability.logs] invocation_logs = true`. Sampling 1 agar kegagalan langka (queue/cron) tidak terlewat; turunkan hanya bila pemakaian bersama menuntut.
@@ -21,6 +37,7 @@
   - **Auto-recover:** paling banyak 1× per 5 menit (CAS di `store_settings.tg_webhook_guard_state` `last_kick_at`). Memanggil `deleteWebhook({ drop_pending_updates: false })` lalu `setWebhook(...)` dengan parameter kanonis dan `drop_pending_updates: false`. **Dilarang keras** mengirim `drop_pending_updates: true`. Jika `setWebhook` gagal, coba ulang 1× seketika agar webhook tidak tertinggal kosong; bila kedua percobaan gagal, kirim alert kritis ke `TELEGRAM_ADMIN_CHAT_ID`.
   - **Notifikasi admin:** mengirim `"⚠️ Bot Telegram tertahan: {pending} update antre · error terakhir {hh:mm WIB}: {message} · webhook dipasang ulang otomatis"` (rate-limit 1×/30 menit selama tertahan) dan `"✅ Bot Telegram pulih (antrean kosong)"` sekali saat `pending_update_count` kembali ke 0 setelah alert tertahan. Revisi 20 Nov malam: `sendMessage` yang timeout dianggap terkirim untuk kedua alert ini (Telegram bisa menahan lalu tetap mengirim saat Bot API hang), agar run tiap menit tidak menumpuk salinan.
   - **`GET /api/admin/bot/health`:** ikut melaporkan `pending_update_count`, `last_error_date`, `last_error_message`, dan `last_auto_kick_at` pada objek `webhook`.
+  - FX-14 (lokal): probe gagal/URL salah/tertahan → lite `503`, termasuk saat kick baru diterima tetapi belum dikonfirmasi probe berikutnya. Alarm soft existing; `healthy`/`recovered` tidak gagal. Ringkasan baca sampel tersanitasi (umur ≤5 menit) dari `store_settings`, tanpa probe Telegram baru.
 
 ### Kuota menit GitHub Actions — 20 November 2026
 
@@ -34,7 +51,7 @@
 - **Batas Telegram (Workers Paid):** `retryPendingTelegramNotifications`/`sendPendingOrderReminders` per panggilan `20 → 50`, `retryInvoicePendingTelegramInvoices` `12 → 25` (`attempts<5` + backoff claim provider 60 dtk tetap). `cron/lite` `notify_a` memakai 50/25; `notify_b` pengingat 50. Cadence lama 60 mnt diganti TG-POLISH-B (lihat `payments.md`). Pemanggil lama tetap memakai default fungsi; jangan menaikkan lagi tanpa mengukur 429.
 - **`cron/operations`:** `TIME_TELEGRAM_BATCH` `12_000 → 4_000` dan gerbang pre-batch `budget.fits(1 + 4×units)`/`1+4×12` dihapus saat ukuran antrean tak diketahui; batas nyata adalah `hasTime` per item + `canSpend` per order di dalam `retryPending…`/`sendPendingOrderReminders`/`retryInvoice…`. `COST_PER_NOTIFICATION` dihapus. Jangan menghapus `RUN_DEADLINE_MS` 45 dtk atau guard `canSpend` runaway.
 - **Broadcast pacing:** `TELEGRAM_RECIPIENT_PACE_MS` `250 → 100` ms (≈10 penerima/dtk, di bawah ~30 msg/dtk Telegram). `TELEGRAM_SAME_CHAT_PACE_MS = 300` ms dan backoff `retry_after` 429 TIDAK berubah.
-- **Tab Pesanan/garansi/restok/.txt:** lihat ARCHITECTURE §16.63. Migrasi `0144_telegram_restock_alerts.sql` forward-only; cron `notify_b` menjalankan `processDueRestockAlerts` (maks 50/tick, klaim atomik, 403 → cancelled, 429 → rollback+stop). Klaim garansi memakai `pending_action="wclaim:<code>"` + forward ke `TELEGRAM_ADMIN_CHAT_ID` (rate-limit 3/order/24 jam di `buyer_notice_log`), tanpa tabel baru. Pengiriman fulfillment awal sengaja tidak diubah.
+- **Tab Pesanan/garansi/restok/.txt:** lihat ARCHITECTURE §16.63. Migrasi `0144_telegram_restock_alerts.sql` forward-only; cron `notify_b` menjalankan `processDueRestockAlerts` (maks 50/tick, klaim atomik, 403 → cancelled, 429 → rollback+stop). Klaim garansi memakai `pending_action="wclaim:<code>"` + forward ke `TELEGRAM_ADMIN_CHAT_ID` (rate-limit 3/order/24 jam di `buyer_notice_log`), tanpa tabel baru; audit 21 Nov 2026: hanya pengiriman yang TERKONFIRMASI (`{ok:true}`) yang menghapus state dan menulis baris `sent` — penolakan/timeout Bot API menyisakan `wclaim:` tanpa baris ledger (tanpa memakan kuota), dan teks diterima + screenshot ditolak dicatat `failed/warranty_claim_partial` dengan copy untuk mengirim ulang screenshot via WhatsApp admin. Pengiriman fulfillment awal sengaja tidak diubah.
 
 ### Wave 2 (B1/B2) supplier multi-link & cron fase paralel — 19 November 2026 (lokal, belum deploy)
 
@@ -60,7 +77,7 @@
 - **Workers Paid:** batas hemat era Free (`Math.min(8, limit)`, cadangan 11 detik Telegram, batas 20 detik, budget bersama 40 statement untuk dispatch) **dihapus** dari jalur pengiriman siaran/promo.
 - **Resource Cloudflare Queues WAJIB dibuat PM sebelum deploy** (CI `wrangler pages deploy` + `wrangler deploy --config mcp-worker/wrangler.toml` gagal bila resource belum ada):
   - `axvara-broadcast` (producer binding `BROADCAST_QUEUE` di `wrangler.json`; consumer di `mcp-worker/wrangler.toml`: `max_batch_size = 10`, `max_batch_timeout = 1`, `max_concurrency = 1`, `max_retries = 3`, `dead_letter_queue = "axvara-broadcast-dlq"`).
-  - `axvara-broadcast-dlq` (consumer DLQ log + `ack()` saja tanpa alert Telegram/retry; cron backstop menyelesaikan sisa baris `pending`).
+  - `axvara-broadcast-dlq` (FX-14, lokal): catat ID kampanye dan ID delivery internal di `store_settings.broadcast_dlq:<hash ID pesan>` via `POST /api/cron/broadcast-dlq` (Bearer cron existing, timeout 3 detik), lalu `ack()` tanpa alert Telegram/retry. Kegagalan catat tetap `ack()` dengan log tersanitasi; cron backstop tetap menyelesaikan baris `pending`. Ringkasan API menampilkan `broadcast_dlq_chunks` (kumulatif, termasuk chunk yang kemudian pulih lewat backstop).
 - **Kontrak consumer/origin:** `mcp-worker/src/queue.ts` merutekan `batch.queue` (`axvara-order-fulfillment` & DLQ-nya utuh; `axvara-broadcast` diproses berurutan/konkurensi 1 ke `POST ${AXVARA_API_ORIGIN}/api/internal/queue/broadcast` dengan `Bearer ${AXVARA_CRON_SECRET}`, skema ketat `v:1`, `kind:'broadcast_deliveries'`, `campaignId` UUID, `deliveryIds` 1..50 integer positif, `enqueuedAt`; pesan cacat → `ack()`).
 - **Origin & pacing:** `/api/internal/queue/broadcast` memakai DB unbudgeted Paid (2 statement/penerima hot path: CAS claim + update final), lease global `broadcast_dispatch_control` + CAS per delivery, pacing Telegram ~250 ms antarpenerima + ~300 ms antarpesan chat sama (foto→teks), Email 650 ms, 429 menghentikan batch & mengembalikan `settled:false` + `retrySec` tanpa kirim ulang foto (`provider_id`), tidak pernah mengirim ulang `'sending'` atau `'unknown'`.
 - **Producer & saklar:** `enqueueDueTelegramPromo` dan `launchBroadcast` (hanya `telegram`/`email`; WA tidak berubah) mendorong chunk `≤ 50` ID/pesan (default 20, dikelompokkan per kanal) via `sendBatch` (`≤ 100` pesan/call); binding absen atau gagal kirim hanya dicatat di log (cron backstop mengambil alih). Saklar `store_settings.broadcast_queue_mode = 'off'` mematikan producer dan membuat origin `ack` (`queue_disabled`, cron-only); default aktif. `telegram_promo_broadcast_enabled` tetap utuh.
@@ -76,6 +93,17 @@
 - Tiap sambungan `AND` pada rantai datar menambah kedalaman ekspresi. Setelah penambahan kondisi StoreBat/Mirai, guard `createOrderWithStock` melebihi batas D1 100 tingkat dan `POST /api/orders` gagal 500. Kelompokkan kondisi berdasarkan snapshot supplier saat menambah syarat.
 - `tests/market-order-reservation.workerd.test.ts` menjalankan reservasi aktual di D1 lokal melalui Miniflare. Runtime ini menerapkan batas 100 tingkat, sementara fixture `node:sqlite` standar menerima ekspresi yang lebih dalam.
 
+### Retensi log murni (keputusan owner 21 November 2026, lokal)
+
+- `runMaintenanceCleanup` (`src/lib/maintenance-cleanup.ts`) kini memangkas **hanya** tabel log append-only murni, tiap tabel dibatasi 500 baris/tick dan dilewati bila statement budget ketat (penanda sukses tetap ditulis; tick berikut melanjutkan):
+  - `wr_sync_log`/`sk_sync_log` > 30 hari, dengan lantai "baris terbaru per `sync_type`+`status`" agar kartu admin dan watchdog tetap punya bukti terakhir walau sumber berhenti.
+  - `wr_saldo_log`/`sk_saldo_log`/`pedia_supplier_balance_log` > 30 hari, lantai "baris terbaru per `source`/`supplier`".
+  - `telegram_updates` > 14 hari (jendela dedupe update_id hanya jam-an; order tetap idempoten lewat guard sendiri).
+  - `broadcast_deliveries` > 90 hari **hanya** untuk campaign `status='completed'` dan status terminal; baris antre aktif tidak disentuh.
+  - `security_events` kini disimpan **90 hari** (naik dari 30), bounded 500/tick.
+- **Tidak pernah** disentuh: ledgers uang/order (`orders`, `payment_transactions`, `payment_invoice_history`, `order_item_costs`), bukti webhook yang masih menunggu review (baris `dana_webhook_events` yang cocok `PAYMENT_ATTENTION_WHERE`, termasuk baris FX-1), ledger notice/dedupe (`buyer_notice_log`, dsb.), `fulfillment_send_claims`, klaim/lease aktif, `whatsapp_outbox` terminal, dan `operation_guards`.
+- Timestamp dibandingkan lewat `julianday()`/`datetime()` agar format campuran (`datetime('now')` vs ISO `toISOString()`) tetap benar. Status: implementasi lokal + test; publikasi via CI.
+
 ### Prioritas Workers Paid dan kuota D1 — 19 November 2026 (keputusan owner)
 
 - Utamakan kelancaran dan operasi real-time. Tambahan read/write D1 dapat diterima selama proyeksi tetap dalam jatah bulanan Workers Paid (**25 miliar baca / 50 juta tulis**), dipantau lewat `.github/workflows/d1-usage.yml`. Optimalkan hanya bila proyeksi mendekati jatah atau latensi memburuk.
@@ -83,7 +111,7 @@
 
 ### Anggaran watchdog — 19 November 2026 (lokal)
 
-- `cleanup` menjalankan watchdog sesudah maintenance maksimal 10 statement, sebelum materialisasi pengeluaran dan drain grup/copy/FX. Cadangan invalidasi revisi katalog dipertahankan saat drain. Budget request tetap 40 (2 statement tail); urutan job Worker tidak berubah.
+- `cleanup` menjalankan watchdog sesudah maintenance, sebelum materialisasi pengeluaran dan drain grup/copy/FX. Cadangan invalidasi revisi katalog dipertahankan saat drain. Budget request tetap 40 (2 statement tail); urutan job Worker tidak berubah. Sejak 21 November 2026 maintenance memakai hingga 17 statement (9 inti + 7 prune log baru, masing-masing admission-gated) dan tiap prune berhenti memakai budget saat sisa < 2 sehingga tick lain tidak kelaparan.
 
 ### Cache edge Games ditunda — 18 November 2026
 
@@ -165,7 +193,13 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
   Rincian/batas target: ARCHITECTURE A-S dan PAID-OPERATIONS. Belum deploy.
 ### Ringkasan harian Telegram 07.00 WIB & backup harian D1 → R2 — 18 November 2026 (lokal, Paket A-H)
 
-- **Ringkasan harian admin (`src/lib/telegram/daily-admin-summary.ts`):** menumpang `POST /api/cron/lite?job=promo` existing (impor dinamis di `runPromo`; tanpa env/cron/migrasi baru), hanya aktif saat `TELEGRAM_BOT_ENABLED=true`, `TELEGRAM_ADMIN_CHAT_ID` & `TELEGRAM_BOT_TOKEN` terisi, pada jendela `07:00–11:59 WIB` (catch-up bila tick 07.00 gagal; lewat 11:59 WIB dilewati hari itu). Memakai memo per-isolate (`unwrapD1` di `src/lib/db-access.ts`, 0 statement setelah terkirim) + CAS `store_settings.admin_daily_summary_state` (klaim 120 dtk; lepas bila kirim gagal; budget ≤12 statement D1). Isi 5 seksi HTML aman: (1) order lunas/omzet kemarin WIB per kanal + kadaluarsa/dibatalkan, (2) order lunas >30 menit macet + rekonsiliasi QRIS perlu cek, (3) saldo tersimpan WR/SK/IndoSMM/TUNVN/AIVault tanpa memanggil API supplier (`supplier-balance-alert.ts` kini menyimpan `<supplier>_balance_last_value` di upsert sukses yang sama tanpa statement ekstra), (4) sumber sync yang kini basi & sempat basi dalam 24 jam terakhir (`sync-staleness.ts` mempertahankan `last_stale_at`/`last_recovered_at` di JSON `sync_stale_state_*` tanpa statement ekstra), (5) maks 5 produk terlaris 30 hari berstatus aktif non-pecundang dengan stok efektif (`effectiveVariantStockSql`) `0..2`.
+- **Failure backup (revisi lokal 21 Nov):** anotasi dan ringkasan GitHub Actions
+  di job yang sama, hanya saat gagal; tidak menambah secret/job. Notifikasi
+  mengikuti pengaturan GitHub owner. Belum mendeteksi run yang tidak terjadwal
+  atau backup basi; freshness dan kanal butuh persetujuan owner. Pertahankan
+  lifecycle bucket privat 30 hari prefix `daily/` saja.
+
+- **Ringkasan harian admin (`src/lib/telegram/daily-admin-summary.ts`):** menumpang `POST /api/cron/lite?job=promo` existing (impor dinamis di `runPromo`; tanpa env/cron/migrasi baru), hanya aktif saat `TELEGRAM_BOT_ENABLED=true`, `TELEGRAM_ADMIN_CHAT_ID` & `TELEGRAM_BOT_TOKEN` terisi, pada jendela `07:00–11:59 WIB` (catch-up bila tick 07.00 gagal; lewat 11:59 WIB dilewati hari itu). Memakai memo per-isolate (`unwrapD1` di `src/lib/db-access.ts`, 0 statement setelah terkirim) + CAS `store_settings.admin_daily_summary_state` (klaim 120 dtk; lepas bila kirim gagal atau pengumpulan data error non-budget (audit 21 Nov 2026: error query persisten tidak boleh membungkam jendela 07.00–11.59 WIB); budget ≤12 statement D1). Isi 5 seksi HTML aman: (1) order lunas/omzet kemarin WIB per kanal + kadaluarsa/dibatalkan, (2) order lunas >30 menit macet + rekonsiliasi QRIS perlu cek, (3) saldo tersimpan WR/SK/IndoSMM/TUNVN/AIVault tanpa memanggil API supplier (`supplier-balance-alert.ts` kini menyimpan `<supplier>_balance_last_value` di upsert sukses yang sama tanpa statement ekstra), (4) sumber sync yang kini basi & sempat basi dalam 24 jam terakhir (`sync-staleness.ts` mempertahankan `last_stale_at`/`last_recovered_at` di JSON `sync_stale_state_*` tanpa statement ekstra), (5) maks 5 produk terlaris 30 hari berstatus aktif non-pecundang dengan stok efektif (`effectiveVariantStockSql`) `0..2`.
 - **Backup harian D1 → R2 (`scripts/d1-backup-r2.cjs`, `.github/workflows/d1-backup.yml`):** berjalan harian `19:23 UTC` (`02:23 WIB`) + `workflow_dispatch` memakai Secrets CI existing (`CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, `CLOUDFLARE_ACCOUNT_ID`). Mengekspor `axvara-db` lewat REST API polling (`at_bookmark`→`current_bookmark`), memvalidasi ukuran minimal (`≥10.000` byte), `CREATE TABLE` tabel inti (`orders`, `products`, `payment_transactions`, `fulfillment_items`), dan terminasi `;` (anti-terpotong), mengompresi `gzip -9` + `SHA-256`, lalu mengunggah via `wrangler@4.128.0 r2 object put --remote` HANYA ke bucket privat `axvara-db-backups` (`daily/YYYY/MM/axvara-db-<ISO>.sql.gz`; menolak `axvara-assets`). Tidak pernah mencetak signed URL, isi dump, atau kredensial; `GITHUB_STEP_SUMMARY` hanya memuat key, ukuran raw/gzip, SHA-256, dan durasi.
 
 ### Penegakan batas D1 di fixture & hardening query/trigger — 18 November 2026 (lokal, F4)
@@ -198,6 +232,14 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
 - `publish-scheduled` tetap POST path/header existing setiap5menit, kini masuk
   pipeline outcome sebagai soft. Trigger menit, urutan job lite/order, cadence
   katalog dan heavy hourly tidak berubah; tidak ada env/binding baru.
+- Audit X23-8 (21 Nov 2026, cost): cadence 5menit dipertahankan, tetapi query
+  kandidat expiry kini memakai range `datetime(expires_at) <= datetime('now')`
+  dengan `ORDER BY datetime(expires_at)` yang sama sehingga indeks
+  `idx_orders_expires_dt (status, datetime(expires_at))` melayani range + urutan
+  (SEARCH, tanpa temp sort) dan tick sepi tidak membaca baris pending.
+  `isExpiredIso` tetap filter final (superset SQL aman untuk format ISO/legacy).
+  Perubahan query-only: tanpa env, binding, atau perubahan perilaku. Cache
+  homepage/ISR (X23-9) sengaja tidak diubah karena perlu keputusan owner.
 - Non-2xx membawa field JSON `error` (fallback teks), diringkas maksimal120karakter
   sesudah redaksi bearer/token/key/secret dan secret Worker yang diketahui.
   Error jaringan/KV juga diredaksi. Body sukses tetap hanya menentukan `more`.
@@ -205,7 +247,7 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
   kemudian pulih; riwayat recovery tidak dipotong8step. Tidak ada pesan tambahan
   setiap tick untuk perubahan identitas failure.
 - Binding hilang, state korup, get/put gagal → log tersanitasi + fallback stateless
-  hard **dan** soft pada :00/:30. Key belum ada bukan error. Ketika storage pulih,
+  hard **dan** soft hanya pada jadwal 00:00 UTC (FX-14, lokal; tidak dedup replay tick yang sama lintas isolate). Key belum ada bukan error. Ketika storage pulih,
   counter stateful kembali berjalan; tidak menganggap fallback sebagai ack KV.
 - Write counter diverifikasi sebelum pengiriman; ack start/reminder/recovery
   hanya ditulis setelah Telegram berhasil. Ack gagal dapat menyebabkan pesan

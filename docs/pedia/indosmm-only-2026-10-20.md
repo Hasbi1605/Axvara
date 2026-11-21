@@ -19,7 +19,7 @@ Manifest `src/lib/pedia/curation-20261020.json`: **53 kebutuhan baru**, **7 kebu
 
 Platform tambahan: Roblox, WhatsApp Channel, Lazada, SnackVideo, Kick, Vimeo, Tumblr, Reddit, Dribbble, Mixcloud, Audiomack, Medium, Rumble, CoinMarketCap, Rutube, Tidal, Coub dan ReverbNation. Platform lama diperluas dengan kunjungan profil/likes Story Instagram, likes halaman/members grup Facebook, share YouTube, pendengar bulanan/plays playlist Spotify, koneksi/tayangan/repost/reactions LinkedIn, followers profil Pinterest, repost SoundCloud dan likes produk Shopee.
 
-Migrasi baru **0073_pedia_indosmm_only_catalog.sql**, dihasilkan oleh `scripts/generate-pedia-indosmm-20261020.mjs`:
+Migrasi **0073_pedia_indosmm_only_catalog.sql** dihasilkan oleh `scripts/generate-pedia-indosmm-20261020.mjs` (generator bertanggal hanya di riwayat Git):
 
 - Menonaktifkan tier ProviderSMM yang masih aktif dengan alasan warisan; tidak menghapus baris atau mengubah supplier/service ID.
 - Menambahkan produk baru tanpa menimpa konflik slug owner, termasuk draf. Pengganti hanya dihubungkan ke slug dengan platform/metrik/jenis target yang sesuai. Produk owner yang nonaktif tetap nonaktif.

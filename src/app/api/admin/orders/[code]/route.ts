@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OrderTransitionError, queryFirst, transitionPendingOrder, transitionPendingPaymentToPaid } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
 
 export const runtime = "edge";
@@ -33,12 +34,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { code } = await params;
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
-  }
+  const bounded = await readJsonBody(req, 8_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data;
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const row = (await queryFirst("SELECT code, status, sales_channel, items, payment_method, payment_status FROM orders WHERE code=?", code)) as Record<string, unknown> | undefined;
@@ -89,31 +87,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       await execRun(`UPDATE orders SET admin_note=? WHERE code=?`, adminNote, code);
     } catch { /* admin_note best-effort */ }
     await schedulePaidFulfillment(code, "apps", "admin_paid_qris");
-    // WA: kabar payment_detected + notif admin (cermin webhook dana route).
-    try {
-      const waRow = await queryFirst(`SELECT sales_channel, channel_conversation_id FROM orders WHERE code=?`, code);
-      if (String(waRow?.sales_channel) === "whatsapp" && waRow?.channel_conversation_id) {
-        const orderDetail = await queryFirst(`SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`, code);
-        const snap = orderDetail?.variant_snapshot ? JSON.parse(String(orderDetail.variant_snapshot)) : {};
-        const { paymentDetectedMessage } = await import("@/lib/whatsapp/messages");
-        const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
-        await enqueueWhatsAppMessage(
-          waOutboxKey("payment_detected", code),
-          String(waRow.channel_conversation_id),
-          paymentDetectedMessage({
-            orderCode: code,
-            productName: snap.product_name,
-            variantLabel: snap.label,
-            total: Number(orderDetail?.subtotal || 0),
-            method: String(orderDetail?.payment_method || "QRIS").toUpperCase(),
-          }),
-        ).catch(() => false);
+    if (String(row.sales_channel) === "whatsapp") {
+      try {
         const { notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
         await notifyWhatsAppPaidAdmin(code).catch(() => false);
-      }
-    } catch { /* antrean bertahan; cron memproses yang due */ }
-    // Notif admin + buyer mengikuti jalur ensureFulfillmentForPaidOrder
-    // (email kredensial web / DM Telegram / WA) — sama persis dengan hook.
+      } catch { /* Cron retries. */ }
+    }
     return NextResponse.json({ ok: true, code, status: "lunas", via: "manual_qris_acc" });
   }
 

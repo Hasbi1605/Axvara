@@ -277,13 +277,14 @@ export default async function ArtikelDetail({ params }: { params: Promise<{ slug
   const article = await getArticle(slug);
   if (!article) return notFound();
   const canonicalUrl = `https://axvara.tech/artikel/${article.slug}`;
+  const publishedMs = parseExpiry(article.published_at);
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
     headline: article.title,
     description: article.excerpt ?? article.title,
     image: article.cover_url ? absoluteUrl(article.cover_url) : undefined,
-    datePublished: article.published_at ?? undefined,
+    datePublished: publishedMs !== null ? new Date(publishedMs).toISOString() : undefined,
     author: { "@type": "Organization", name: article.author_name ?? "AXVARA" },
     mainEntityOfPage: canonicalUrl,
   };

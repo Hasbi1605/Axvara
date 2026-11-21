@@ -3,10 +3,11 @@
 // margin per paket; merah bila < min profit — dihitung di UI dari field).
 // POST: buat produk. PUT: ubah produk / tingkat / urutan / aktif.
 // Badge "Nonaktif otomatis" dibaca dari tiers.auto_disabled_reason.
-import { pediaServiceTypeFor } from "@/lib/pedia/custom-comments";
+import { CUSTOM_COMMENT_MAX_LINES, pediaServiceTypeFor } from "@/lib/pedia/custom-comments";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { pediaMinOrderRp } from "@/lib/pedia/ops-config";
@@ -81,29 +82,25 @@ const tierSchema = z.object({
   is_active: z.coerce.number().int().min(0).max(1).default(0),
 });
 
-async function reprice(db: DatabaseAccess, id: number, isTier: boolean) {
-  const affected = await db.queryAll(
-    `SELECT t.*, p.packages_json, p.step, s.rate_idr_per_1k AS live_rate, s.present AS live_present,
-            s.type AS live_type, s.min_qty AS live_min, s.max_qty AS live_max
-       FROM pedia_tiers t JOIN pedia_products p ON p.id=t.product_id
-       LEFT JOIN pedia_supplier_services s ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
-      WHERE ${isTier ? "t.id" : "t.product_id"}=?`, id,
-  );
-  for (const tier of affected) {
-    if (!isPediaProvider(tier.supplier) || Number(tier.live_present) !== 1 || tier.live_type !== pediaServiceTypeFor(tier.input_kind) || !Number.isFinite(Number(tier.live_rate)) || Number(tier.live_rate) <= 0) {
-      await db.execRun(`UPDATE pedia_tiers SET package_prices_json='{}', is_active=0,
-        auto_disabled_reason='service_missing', updated_at=datetime('now') WHERE id=?`, tier.id);
-      continue;
-    }
-    const limits = pediaBounds({ min_qty: tier.live_min, max_qty: tier.live_max }, tier, Number(tier.step));
-    const prices = Object.fromEntries((JSON.parse(String(tier.packages_json)) as number[])
-      .filter((qty) => limits && qty % limits.step === 0 && qty >= limits.min && qty <= limits.max)
-      .map((quantity) => [quantity, computePediaPrice({
-        quantity, supplierRatePer1k: Number(tier.live_rate), markupPct: Number(tier.markup_pct),
-        minProfitRp: Number(tier.min_profit_rp), minOrderRp: pediaMinOrderRp(),
-      })]));
-    await db.execRun(`UPDATE pedia_tiers SET package_prices_json=?, rate_snapshot=?, updated_at=datetime('now') WHERE id=?`, JSON.stringify(prices), Number(tier.live_rate), tier.id);
-  }
+function priceTier(tier: Record<string, unknown>, product: Record<string, unknown>, service: Record<string, unknown> | null) {
+  const rate = Number(service?.rate_idr_per_1k);
+  if (!service || !isPediaProvider(tier.supplier) || Number(service.present) !== 1 ||
+      service.type !== pediaServiceTypeFor(tier.input_kind) || !Number.isFinite(rate) || rate <= 0) return null;
+  const liveBounds = tier.input_kind === "comments"
+    ? { ...service, max_qty: Math.min(Number(service.max_qty), CUSTOM_COMMENT_MAX_LINES) }
+    : service;
+  const limits = pediaBounds(liveBounds, tier, Number(product.step));
+  const prices = Object.fromEntries((JSON.parse(String(product.packages_json)) as number[])
+    .filter((qty) => limits && qty % limits.step === 0 && qty >= limits.min && qty <= limits.max)
+    .map((quantity) => [quantity, computePediaPrice({
+      quantity, supplierRatePer1k: rate, markupPct: Number(tier.markup_pct),
+      minProfitRp: Number(tier.min_profit_rp), minOrderRp: pediaMinOrderRp(),
+    })]));
+  return { rate, prices };
+}
+
+function loadService(db: DatabaseAccess, supplier: unknown, serviceId: unknown) {
+  return db.queryFirst(`SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=?`, supplier, serviceId);
 }
 
 async function validateMapping(db: DatabaseAccess, tier: Record<string, unknown>): Promise<string | null> {
@@ -111,7 +108,7 @@ async function validateMapping(db: DatabaseAccess, tier: Record<string, unknown>
   const gate = await providerPricingGate(tier.supplier);
   if (gate) return gate;
   for (const id of [tier.supplier_service_id, tier.backup_service_id].filter((id) => id != null)) {
-    const service = await db.queryFirst(`SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=?`, tier.supplier, id);
+    const service = await loadService(db, tier.supplier, id);
     if (service && isPediaPremiumToolCandidate(service.name, service.category)) return "premium_tool_excluded";
     if (!service || Number(service.present) !== 1 || service.type !== pediaServiceTypeFor(tier.input_kind) || !Number.isFinite(Number(service.rate_idr_per_1k)) || Number(service.rate_idr_per_1k) <= 0) return "service_unavailable";
   }
@@ -144,7 +141,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const bounded = await readJsonBody(request, 64_000);
+  if (!bounded.ok) return bounded.response;
+  const body = (bounded.data ?? null) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   const db = createDatabaseAccess();
 
@@ -183,28 +182,31 @@ export async function POST(request: NextRequest) {
     const t = parsed.data;
     if (!isPediaSaleProvider(t.supplier)) return NextResponse.json(PEDIA_SALE_RETIRED, { status: 409 });
     try {
-    if (!await db.queryFirst(`SELECT id FROM pedia_products WHERE id=?`, t.product_id)) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const product = await db.queryFirst(`SELECT packages_json,step FROM pedia_products WHERE id=?`, t.product_id);
+    if (!product) return NextResponse.json({ error: "not_found" }, { status: 404 });
     const mappingError = await validateMapping(db, t);
     if (mappingError) return NextResponse.json({ error: mappingError }, { status: 400 });
+    const price = priceTier(t, product, await loadService(db, t.supplier, t.supplier_service_id));
+    if (!price || !Object.keys(price.prices).length) return NextResponse.json({ error: "service_unavailable" }, { status: 400 });
     const r = await db.execRun(
       `INSERT INTO pedia_tiers
          (product_id, tier, label_note, supplier, supplier_service_id, backup_service_id,
           price_group, markup_pct, min_profit_rp, refill_days, eta_start, eta_finish,
           package_prices_json, is_active, public_name, description_md, terms_md, instructions_md,
           recommendation_note, min_qty_override, max_qty_override, quantity_step, target_format,
-          refill_anchor, region, quality, speed_note, drop_risk, is_recommended, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          refill_anchor, region, quality, speed_note, drop_risk, is_recommended, sort_order,
+          input_kind, drop_label, speed_per_day, rate_snapshot)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       t.product_id, t.tier, t.label_note, t.supplier, t.supplier_service_id, t.backup_service_id ?? null,
       t.price_group, t.markup_pct, t.min_profit_rp, t.refill_days,
-      t.eta_start, t.eta_finish, t.is_active, t.public_name ?? null, t.description_md ?? null,
+      t.eta_start, t.eta_finish, JSON.stringify(price.prices), t.is_active, t.public_name ?? null, t.description_md ?? null,
       t.terms_md ?? null, t.instructions_md ?? null, t.recommendation_note ?? null,
       t.min_qty_override ?? null, t.max_qty_override ?? null, t.quantity_step ?? 1,
       t.target_format ?? "url", t.refill_anchor ?? "created", t.region ?? "global", t.quality ?? "standar",
       t.speed_note ?? null, t.drop_risk ?? "sedang", t.is_recommended ?? 0, t.sort_order ?? 0,
-    ).catch(() => null);
-    if (!r) return NextResponse.json({ error: "save_failed" }, { status: 500 });
-    try { await reprice(db, Number(r.lastInsertRowid), true); }
-    catch { return NextResponse.json({ error: "reprice_failed", saved: true, id: r.lastInsertRowid }, { status: 500 }); }
+      t.input_kind ?? null, t.drop_label ?? null, t.speed_per_day ?? null, price.rate,
+    );
+    if (!r.changes) return NextResponse.json({ error: "save_failed" }, { status: 500 });
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("pedia", db);
     return NextResponse.json({ ok: true, id: r.lastInsertRowid });
@@ -234,7 +236,9 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const bounded = await readJsonBody(request, 64_000);
+  if (!bounded.ok) return bounded.response;
+  const body = (bounded.data ?? null) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   const db = createDatabaseAccess();
 
@@ -249,16 +253,16 @@ export async function PUT(request: NextRequest) {
   try {
     const current = await db.queryFirst(`SELECT * FROM ${table} WHERE id=?`, id.data);
     if (!current) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const merged = { ...current, ...values };
     if (isTier) {
       if ((values.supplier !== undefined) !== (values.supplier_service_id !== undefined)) return NextResponse.json({ error: "supplier_service_pair_required" }, { status: 400 });
-      const merged = { ...current, ...values };
       const mappingChanged = (values.supplier !== undefined && values.supplier !== current.supplier) ||
         (values.supplier_service_id !== undefined && Number(values.supplier_service_id) !== Number(current.supplier_service_id)) ||
         (values.backup_service_id != null && Number(values.backup_service_id) !== Number(current.backup_service_id));
       if (!isPediaSaleProvider(merged.supplier) && (mappingChanged || values.is_active === 1)) return NextResponse.json(PEDIA_SALE_RETIRED, { status: 409 });
-      if (values.supplier !== undefined && values.supplier !== current.supplier && values.backup_service_id === undefined) values.backup_service_id = null;
+      if (values.supplier !== undefined && values.supplier !== current.supplier && values.backup_service_id === undefined) merged.backup_service_id = values.backup_service_id = null;
       if (isPediaSaleProvider(merged.supplier) && (values.supplier !== undefined || values.backup_service_id !== undefined)) {
-        const mappingError = await validateMapping(db, { ...merged, ...values });
+        const mappingError = await validateMapping(db, merged);
         if (mappingError) return NextResponse.json({ error: mappingError }, { status: 400 });
       }
       else if (values.is_active === 1 && isPediaProvider(current.supplier)) {
@@ -269,7 +273,6 @@ export async function PUT(request: NextRequest) {
       }
     }
     if (!isTier) {
-      const merged = { ...current, ...values };
       const packages = JSON.parse(String(merged.packages_json)) as number[];
       if (packages.some((qty) => qty % Number(merged.step) !== 0)) return NextResponse.json({ error: "Paket harus sesuai kelipatan jumlah" }, { status: 400 });
     }
@@ -278,22 +281,51 @@ export async function PUT(request: NextRequest) {
       : ["slug", "platform", "metric", "target_kind", "name", "tagline", "description_md", "checklist_json", "packages_json", "step", "sort_order", "is_active", "is_featured"];
     const keys = allow.filter((key) => values[key] !== undefined);
     if (!keys.length) return NextResponse.json({ error: "no_changes" }, { status: 400 });
-    const fields = keys.map((key) => `${key}=?`);
-    // Old supplier prices must not survive a saved mapping whose reprice fails.
-    if (isTier && (values.supplier !== undefined || values.supplier_service_id !== undefined || values.markup_pct !== undefined || values.min_profit_rp !== undefined)) fields.push("package_prices_json='{}'");
-    if (isTier && values.is_active === 1) fields.push("auto_disabled_reason=NULL");
-    fields.push("updated_at=datetime('now')");
-    const result = await db.execRun(`UPDATE ${table} SET ${fields.join(", ")} WHERE id=?`, ...keys.map((key) => values[key]), id.data);
-    if (!result.changes) return NextResponse.json({ error: "save_failed" }, { status: 500 });
+    if (isTier) {
+      const product = await db.queryFirst(`SELECT packages_json,step FROM pedia_products WHERE id=?`, current.product_id);
+      if (!product) return NextResponse.json({ error: "not_found" }, { status: 404 });
+      const price = priceTier(merged, product, await loadService(db, merged.supplier, merged.supplier_service_id));
+      values.package_prices_json = JSON.stringify(price?.prices ?? {});
+      keys.push("package_prices_json");
+      if (price) {
+        values.rate_snapshot = price.rate;
+        keys.push("rate_snapshot");
+      } else {
+        values.is_active = 0;
+        if (!keys.includes("is_active")) keys.push("is_active");
+      }
+      if (!price || values.is_active === 1) {
+        values.auto_disabled_reason = price ? null : "service_missing";
+        keys.push("auto_disabled_reason");
+      }
+    }
+    const update = `UPDATE ${table} SET ${keys.map((key) => `${key}=?`).join(", ")}, updated_at=datetime('now') WHERE id=?`;
+    const bindings = [...keys.map((key) => values[key]), id.data];
+    if (!isTier && (values.packages_json !== undefined || values.step !== undefined)) {
+      const d1 = db.d1;
+      if (!d1) return NextResponse.json({ error: "save_failed" }, { status: 503 });
+      const tiers = await db.queryAll(
+        `SELECT t.*, s.type, s.present, s.rate_idr_per_1k, s.min_qty, s.max_qty
+           FROM pedia_tiers t LEFT JOIN pedia_supplier_services s
+             ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
+          WHERE t.product_id=? ORDER BY t.id`, id.data,
+      );
+      // Prepare all prices before writing; a failed statement rolls back the
+      // product edit and every derived tier price together.
+      const [result] = await d1.batch([d1.prepare(update).bind(...bindings), ...tiers.map((tier) => {
+        const price = priceTier(tier, merged, tier);
+        return price
+          ? d1.prepare(`UPDATE pedia_tiers SET package_prices_json=?, rate_snapshot=?, updated_at=datetime('now') WHERE id=?`)
+              .bind(JSON.stringify(price.prices), price.rate, tier.id)
+          : d1.prepare(`UPDATE pedia_tiers SET package_prices_json='{}', is_active=0, auto_disabled_reason='service_missing', updated_at=datetime('now') WHERE id=?`)
+              .bind(tier.id);
+      })]);
+      if (!result?.meta.changes) return NextResponse.json({ error: "save_failed" }, { status: 500 });
+    } else {
+      const result = await db.execRun(update, ...bindings);
+      if (!result.changes) return NextResponse.json({ error: "save_failed" }, { status: 500 });
+    }
   } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
-
-  // Reprice only this product/tier; never upsert a missing supplier back to present.
-  // Prices are derived, not an editable PUT field. Report partial persistence honestly.
-  if (isTier || values.packages_json !== undefined || values.step !== undefined) {
-    try {
-      await reprice(db, id.data, isTier);
-    } catch { return NextResponse.json({ error: "reprice_failed", saved: true, id: id.data }, { status: 500 }); }
-  }
   const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
   await bumpCatalogRevision("pedia", db);
   return NextResponse.json({ ok: true });

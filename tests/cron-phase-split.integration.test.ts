@@ -17,7 +17,6 @@ import { syntheticResponse } from "./helpers/synthetic-response";
 import {
   ALARM_KV_KEY,
   ALARM_REMINDER_MS,
-  ALERT_EVERY_MINUTES,
   CRON_STEPS,
   MAX_CHUNKS_PER_PHASE,
   STEP_DELAY_MS,
@@ -407,7 +406,7 @@ describe("Worker runOperationsTick", () => {
     expect(calls.filter((u) => u.includes("phase=sekalipay&part=sync"))).toHaveLength(MAX_CHUNKS_PER_PHASE);
   });
 
-  it("tanpa KV: fallback stateless — alarm hanya di tick :00/:30, heavy tetap diabaikan", async () => {
+  it("tanpa KV: fallback stateless — alarm hanya di 00:00 UTC, heavy tetap diabaikan", async () => {
     const failing = (url: string) => (url.includes("job=wr_orders") || url.includes("phase=") ? { status: 503 } : { status: 200 });
     const quiet = mockFetch(failing);
     const r1 = await runOperationsTick(env, at(25), quiet.fn as never, async () => undefined);
@@ -420,7 +419,7 @@ describe("Worker runOperationsTick", () => {
     expect(r0.failures.map((f) => f.step)).toEqual(["lite:wr_orders"]);
 
     const loud = mockFetch(failing);
-    const r2 = await runOperationsTick(env, at(30), loud.fn as never, async () => undefined);
+    const r2 = await runOperationsTick(env, Date.UTC(2026, 9, 4), loud.fn as never, async () => undefined);
     expect(r2.alerted).toBe(true);
     expect(loud.telegram()[0]).toContain("lite:wr_orders: HTTP 503");
     expect(loud.telegram()[0]).not.toContain(":sync");
@@ -525,8 +524,8 @@ describe("Worker runOperationsTick", () => {
   });
 
   it("shouldAlert + formatAlert", () => {
-    expect(ALERT_EVERY_MINUTES).toBe(30);
-    expect(shouldAlert(at(0))).toBe(true);
+    expect(shouldAlert(Date.UTC(2026, 9, 4))).toBe(true);
+    expect(shouldAlert(at(0))).toBe(false);
     expect(shouldAlert(at(35))).toBe(false);
     const text = formatAlert([{ step: "sekalipay:sync", calls: 1, ok: false, status: 0, error: "timeout" }], at(30));
     expect(text).toContain("20:30 WIB");

@@ -1,5 +1,34 @@
 # Aturan agent — Admin Access, hardening OWASP, checkout anti-abuse
 
+## S: password admin upgrade-on-login + body cap admin mutation — 21 November 2026 (lokal, audit AU-B1-1/B1-3)
+
+- **Upgrade-on-login (AU-B1-1).** Hash admin legacy tetap SHA-256 satu putaran
+  (64 hex tanpa salt) DITERIMA agar admin lama tidak terkunci, tetapi pada login
+  sukses pertama (jalur password, bukan proof browser) `upgradeAdminPasswordHash`
+  menggantinya dengan PBKDF2 dan menyimpan `{source,hash}` di D1
+  `store_settings.admin_password_hash`; `source` adalah HMAC-SHA256 atas hash
+  legacy `ADMIN_PASSWORD_SHA256` dan penggantinya, memakai `ADMIN_JWT_SECRET`
+  existing dan divalidasi dengan perbandingan timing-safe. Bila override hilang,
+  rusak, tidak cocok, atau kunci HMAC tidak tersedia, pakai hash env. Rotasi
+  salah satu secret membatalkan override. Format sidik jari FX-6 lama belum
+  pernah dideploy; tidak perlu migrasi. Login GET lapor `pbkdf2-proof` setelah upgrade.
+  Jangan mengunci login tanpa jalur upgrade; hash legacy jangan dibuang sebelum
+  admin terbukti sudah PBKDF2. Event `admin_password_upgraded` dicatat sanitized
+  via console (tanpa hash/plaintext).
+- **Body cap admin mutation (AU-B1-3).** Mutasi JSON berautentikasi, termasuk di
+  luar `src/app/api/admin/**` (produk, artikel, banner, kategori, pengaturan toko
+  dan metode pembayaran), wajib memakai `readJsonBody` / `readTextBody` setelah
+  autentikasi. Cap per kelas: 2–8 KB untuk aksi skalar, 16 KB untuk editor banner
+  dan fulfillment DELETE, 64 KB untuk batch/reorder, 128 KB untuk variant-copy
+  (4 × 4.000 code unit termasuk JSON escape), 512 KB untuk varian bulk dan editor
+  produk/artikel (50.000 code unit konten artikel dapat melebihi 128 KB), 1 MB
+  untuk POST fulfillment (100 kredensial × 2.000 code unit; sekitar 600 KB untuk
+  UTF-8 multibyte biasa). Batas berlaku pada byte JSON di wire, termasuk escape.
+  Oversize → 413 `{"error":"payload_too_large"}` dari stream aktual, bukan hanya
+  Content-Length; malformed di bawah cap → 400. Upload multipart/raw dan cap
+  publik/webhook tetap terpisah. Guard statis `tests/admin-body-caps.integration.test.ts`
+  menolak parser body langsung di route berprivilege, kecuali upload yang didaftar.
+
 ## A-S: exception quote synthetic dan CSP Analytics — 18 November 2026 (lokal)
 
 - Hanya header `x-axvara-synthetic:1` + Bearer `CRON_SECRET` sah constant-time
@@ -20,7 +49,7 @@
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
 ## Admin Cloudflare Access — 27 Oktober 2026
-- Perluasan6November2026: halaman `/admin/payments/test` dan API `/api/admin/payments/test/{quote,orders}` memakai `requireAdmin` existing, tanpa bypass sesi/idle/revokasi/password/Access. Marker signed membatasi quote ke scope tes, bukan otorisasi mandiri; query/body/header tidak memberi izin. Kedua path ada di cakupan Access existing (GETanon live302ke login); webhook pembayaran tetap publik dengan HMAC, bukan blanket Access `/api`. Fitur baru menunggu rilis CI; tes fixture bukan bukti enrollment atau pembayaran live.
+- Snapshot 6 November 2026: halaman `/admin/payments/test` dan API `/api/admin/payments/test/{quote,orders}` memakai `requireAdmin` dan cakupan Access yang sudah ada. Fitur dipensiunkan 18 November; stub API dihapus 21 November (lokal), tanpa perubahan Access. Webhook pembayaran tetap publik dengan HMAC, bukan blanket Access `/api`.
 - Organisasi `axvara-admin-9d00b9.cloudflareaccess.com`, aplikasi AXVARA Admin dan App Launcher dibuat dengan Global API Key existing dari `.cf-credentials`; tanpa perubahan langganan. Allow policy hanya email owner, IdP PIN email, MFA independent wajib pada aplikasi admin (TOTP/biometrik/security key, sesi8jam). Launcher khusus enrollment juga hanya owner, sengaja tanpa MFA bootstrap; audience launcher tidak memberikan otorisasi aplikasi.
 - Destinasi `/admin`, `/api/auth`, `/api/admin` pada apex/www/Pedia. Jangan blanket `/api`: katalog/pembeli/agent/cron/webhook berbagi domain. Path campuran dilindungi JWT Access di `checkAdminSession`, selain JWT aplikasi/idle/revokasi/password existing. UI admin host alternatif dialihkan ke apex; API alias Pages tetap memerlukan JWT Access valid.
 - Pages produksi: `ADMIN_EMAIL` diganti sesuai instruksi owner; password/hash/JWT secret tidak diubah. Dua env baru `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` bertipe **secret_text**, tidak memuat seed TOTP. Konfigurasi hilang/parsial di produksi gagal tertutup. Jangan menghapus env atau melemahkan guard untuk mengatasi error login.
@@ -33,7 +62,8 @@
 - Migrasi0080 menambah login D1 maksimal10 gagal/in-flight per IP/jendela tetap15menit, sebelum verifikasi password/proof, selain burst5/menit. Error admission503; reset sukses hanya hash+jendela klien sama. Jangan menambah lock akun global yang memungkinkan penyerang mengunci owner dari IP lain.
 - Challenge PBKDF2 publik memakai admin_subject HMAC domain admin-challenge:v1, tanpa email di JWT baru; dukungan challenge email legacy hanya sampai expiry5menit yang ditandatangani. Email salah menjalankan verifikasi sama lalu401, tanpa cabang delay pembeda akun.
 - Audit login/otorisasi mutasi+baca sensitif admin memakai HMAC subjek dan label route tetap, satu event/request, tanpa IP/kontak/token/body/query mentah. Otorisasi bukan bukti mutasi berhasil. Polling read biasa tidak ditulis. Limit login/fallback audit hanya console; retensi/alert produksi belum dibuktikan.
-- Cleanup hourly existing maksimal200 counter login>24jam +500 event>30hari; budget heavy cleanup10 statement. Tidak ada env/cron/secret baru. Jangan hapus window aktif.
+- `GET /api/admin/orders?export=csv` dan `GET /api/admin/orders/[code]` masuk audit baca sensitif. Polling daftar tanpa ekspor tetap tidak diaudit; kode, parameter filter dan input pembeli tidak ikut dicatat.
+- Cleanup hourly existing maksimal200 counter login>24jam dan500 event keamanan>**90hari** (keputusan owner 21 November 2026; sebelumnya 30hari, tetap bounded500/tick, window aktif tidak dihapus). Budget heavy cleanup naik sesuai prune log murni (lihat platform-ops). Tidak ada env/cron/secret baru. Jangan hapus window aktif.
 - Batas stream aktual sebelum parse: JSON buyer32.000byte; login/lookup/kredensial/cancel/refill/subscriber8.000; webhook16.000–128.000 sesuai route; supplier-sync2MiB; MCP8MiB. Content-Length saja tidak cukup; raw text signature dipertahankan. Header browser harus ikut semua return middleware termasuk rewrite Pedia/403.
 - CI dependency gate sebelum build wajib menolak high/critical runtime serta audit registry/error/schema tidak valid. Audit unit tests tanpa jaringan; pemeriksaan registry nyata terpisah. Tiga high dev Miniflare/Pages ditutup lewat Miniflare4.20260730.0 + Undici7.30.1/Sharp0.35.5; next-on-pages1.13.16 tetap. Verifikasi ulang audit/build/workerd sebelum mengubah override; dev/emulator tetap loopback. Jangan npm audit fix --force/migrasi adapter major tanpa verifikasi platform.
 

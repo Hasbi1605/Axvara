@@ -43,6 +43,8 @@ describe("WhatsApp ready catalog", () => {
     expect(payload.message).toContain("✅ Canva Pro / Premium — Rp2.000");
     expect(payload.message).toContain("✅ Claude Pro — Rp195.000");
     expect(payload.message).toContain("✅ Netflix — Rp18.500");
+    expect(payload.message).toContain("https://axvara.tech");
+    expect(payload.message).toContain("https://t.me/");
     expect(payload.message.split("\n").filter((s: string)=>/^-+$/.test(s))).toEqual(["-".repeat(52), "-".repeat(52)]);
     for (const hidden of ["Sold out", "Hidden", "Supplier loser", "Inactive"]) expect(payload.message).not.toContain(hidden);
     expect(payload).toMatchObject({ botNumber: config.botNumber, botRevision: config.botRevision, expiresAt: "2026-11-11T12:00:00+07:00" });

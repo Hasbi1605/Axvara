@@ -14,8 +14,6 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret } from "../crypto";
 import { findReservedForOrder, markDelivered } from "../inventory";
 import { sendMessage } from "@/lib/telegram/api";
-import { sendTextMessage } from "@/lib/whatsapp/gateway";
-import { isEnabled } from "@/lib/feature-flags";
 import {
   adminDeliveryFailedNotification,
 } from "@/lib/telegram/messages";
@@ -81,11 +79,6 @@ export async function processJobItems(
   if (["pedia", "games"].includes(String(order.order_kind))) return empty("no_work");
   const orderCode = String(order.code);
   const channel = String(order.sales_channel || "telegram");
-  if (channel === "whatsapp" && isEnabled("WHATSAPP_FULFILLMENT") && order.payment_method !== "qris" && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")) {
-    if (!database.canSpend(1)) return empty("budget_yield");
-    const proof = database.d1 ? await queryFirst(`SELECT id FROM payment_proofs WHERE order_code=? AND status IN ('submitted','approved')`, orderCode) : true;
-    if (!proof) return empty("no_work");
-  }
   if (!database.canSpend(COST_PER_JOB_FRAME)) return empty("budget_yield");
   const itemRows = await ensureFulfillmentItems(order, database, Number.isFinite(maxItems) ? Math.max(1, maxItems) : Infinity);
   if (!itemRows.length) return empty("budget_yield");
@@ -127,7 +120,7 @@ export async function processJobItems(
     // Shared push folds snapshot + lease read into UPDATE RETURNING, offsetting
     // its ledger CAS/checkpoint. Unique still needs one extra statement.
     const copyCost = String(row.recipient_channel || channel) === "telegram" && row.fulfillment_mode !== "manual" ? 1 : 0;
-    const pushCost = ["telegram", "whatsapp"].includes(String(row.recipient_channel || channel)) && row.fulfillment_mode === "unique" ? 1 : 0;
+    const pushCost = String(row.recipient_channel || channel) === "telegram" && row.fulfillment_mode === "unique" ? 1 : 0;
     const itemCost = (row.tunvn_link_id != null || row.aivault_link_id != null || row.storebat_link_id != null || row.mirai_link_id != null ? 16 : row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost + pushCost;
     if (!database.canSpend(itemCost + COST_PER_JOB_FRAME) || (shouldContinue && !shouldContinue())) break;
     if (row.status === "failed") { failure ??= String(row.last_error || "item failed"); continue; }
@@ -188,7 +181,7 @@ export async function processJob(
 
 /** Legacy path FASE shared: satu shared secret produk/varian dikirim ke kanal. */
 async function deliverLegacyShared(
-  jobId: number, orderCode: string, salesChannel: string, chatId: string, waRecipient: string,
+  jobId: number, orderCode: string, chatId: string,
   fulfillmentSource: Row,
 ): Promise<boolean> {
   const ct = String(fulfillmentSource.shared_secret_ciphertext || "");
@@ -196,18 +189,8 @@ async function deliverLegacyShared(
   if (!ct || !iv) throw new Error("Shared secret not configured for product");
   const plaintext = await decryptSecret(ct, iv);
 
-  if (salesChannel === "whatsapp") {
-    if (!waRecipient) throw new Error("No WhatsApp recipient phone number");
-    const sendResult = await sendTextMessage({
-      target: waRecipient,
-      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`,
-    });
-    if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
-    await markJobDelivered(jobId, sendResult.messageId || "");
-  } else {
-    const messageId = await sendToRecipient("telegram", chatId, orderCode, plaintext, 1);
-    await markJobDelivered(jobId, messageId);
-  }
+  const messageId = await sendToRecipient("telegram", chatId, orderCode, plaintext, 1);
+  await markJobDelivered(jobId, messageId);
 
   await execRun(
     `UPDATE orders SET fulfillment_status='delivered', updated_at=datetime('now') WHERE code=?`,
@@ -218,7 +201,7 @@ async function deliverLegacyShared(
 
 /** Legacy path FASE unique: dekripsi reserved inventory lalu kirim. */
 async function deliverLegacyUnique(
-  jobId: number, orderCode: string, salesChannel: string, chatId: string, waRecipient: string,
+  jobId: number, orderCode: string, chatId: string,
 ): Promise<boolean> {
   const inventoryItem = await findReservedForOrder(orderCode);
   if (!inventoryItem) throw new Error("No reserved inventory found");
@@ -227,20 +210,9 @@ async function deliverLegacyUnique(
     String(inventoryItem.secret_iv),
   );
 
-  if (salesChannel === "whatsapp") {
-    if (!waRecipient) throw new Error("No WhatsApp recipient phone number");
-    const sendResult = await sendTextMessage({
-      target: waRecipient,
-      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`,
-    });
-    if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
-    await markDelivered(Number(inventoryItem.id));
-    await markJobDelivered(jobId, sendResult.messageId || "");
-  } else {
-    const messageId = await sendToRecipient("telegram", chatId, orderCode, plaintext, 1);
-    await markDelivered(Number(inventoryItem.id));
-    await markJobDelivered(jobId, messageId);
-  }
+  const messageId = await sendToRecipient("telegram", chatId, orderCode, plaintext, 1);
+  await markDelivered(Number(inventoryItem.id));
+  await markJobDelivered(jobId, messageId);
 
   await execRun(
     `UPDATE orders SET fulfillment_status='delivered', updated_at=datetime('now') WHERE code=?`,
@@ -295,12 +267,8 @@ async function processLegacyJob(
   const orderCode = String(order.code);
   const recipient = resolveRecipient(order);
   const chatId = recipient.channel === "telegram" ? recipient.target : String(order.telegram_chat_id || "");
-  const waRecipient = recipient.channel === "whatsapp" ? recipient.target : String(order.channel_member_id || order.customer_wa || "");
 
-  // WhatsApp fulfillment feature flag (if disabled, route to manual)
-  // Kill-switch DM kredensial 19 Sep 2026: flag MATI juga me-route ke manual
-  // (admin kirim dari HP). Kode + mekanisme UTUH, nyalakan via env.
-  if (salesChannel === "whatsapp" && (!isEnabled("WHATSAPP_FULFILLMENT") || !isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED"))) {
+  if (salesChannel === "whatsapp") {
     await execRun(
       `UPDATE fulfillment_jobs SET status='manual_required', locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
       jobId,
@@ -350,12 +318,12 @@ async function processLegacyJob(
 
     // Shared: decrypt product shared secret
     if (fulfillmentMode === "shared") {
-      return await deliverLegacyShared(jobId, orderCode, salesChannel, chatId, waRecipient, fulfillmentSource);
+      return await deliverLegacyShared(jobId, orderCode, chatId, fulfillmentSource);
     }
 
     // Unique: decrypt reserved inventory
     if (fulfillmentMode === "unique") {
-      return await deliverLegacyUnique(jobId, orderCode, salesChannel, chatId, waRecipient);
+      return await deliverLegacyUnique(jobId, orderCode, chatId);
     }
 
     throw new Error(`Unknown fulfillment mode: ${fulfillmentMode}`);

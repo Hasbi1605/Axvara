@@ -55,7 +55,7 @@ export async function claimSekalipayGatewayPoll(orderCode: string, late = false,
   return Number(result.changes) === 1;
 }
 
-export async function reconcileDueSekalipayGatewayPayments(db: DatabaseAccess) {
+export async function reconcileDueSekalipayGatewayPayments(db: DatabaseAccess, admit = (_remaining: number) => true) {
   const result = { gateway_checked: 0, gateway_late_checked: 0 };
   if (!process.env.SEKALIPAY_GATEWAY_API_KEY?.trim() || !process.env.SEKALIPAY_GATEWAY_SECRET_KEY?.trim()) return result;
   const { reconcileSekalipayGatewayPayment } = await import("./sekalipay-gateway");
@@ -71,7 +71,8 @@ export async function reconcileDueSekalipayGatewayPayments(db: DatabaseAccess) {
       WHERE pt.provider='sekalipay_gateway' AND pt.status IN ('initializing','pending') AND ${gatewayPollEligible.replaceAll("last_error", "pt.last_error")}
       AND ${lateScope}
       AND (pt.last_checked_at IS NULL OR julianday(pt.last_checked_at)<=julianday('now',?)) ORDER BY COALESCE(pt.last_checked_at,pt.created_at),pt.id LIMIT ?`, late ? "-21600 seconds" : `-${SEKALIPAY_GATEWAY_POLL_COOLDOWN_SECONDS} seconds`, limit);
-    for (const row of rows) {
+    for (const [index, row] of rows.entries()) {
+      if (!admit(rows.length - index)) break;
       if (!await claimSekalipayGatewayPoll(String(row.order_code), late, db)) continue;
       if (late) result.gateway_late_checked++; else result.gateway_checked++;
       try { await reconcileSekalipayGatewayPayment(String(row.order_code), db); } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }
@@ -235,7 +236,7 @@ export const NOWPAYMENTS_BACKGROUND_LIMIT = 20;
  * Even NOWPAYMENTS_ENABLED=false stays safe: claim key-only readable. */
 export const NOWPAYMENTS_LATE_LIMIT = 20;
 export const NOWPAYMENTS_LATE_RECHECK_MS = 6 * 60 * 60_000;
-export async function reconcileLateKnownNowpaymentsPayments(db: DatabaseAccess) {
+export async function reconcileLateKnownNowpaymentsPayments(db: DatabaseAccess, admit = (_remaining: number) => true) {
   const out = { late_checked: 0, late_manual_review: 0 };
   let due: Record<string, unknown>[];
   try {
@@ -253,7 +254,8 @@ export async function reconcileLateKnownNowpaymentsPayments(db: DatabaseAccess) 
     return out;
   }
   const { claimNowpaymentsPollReconcile, reconcileNowpaymentsPayment } = await import("./nowpayments");
-  for (const row of due) {
+  for (const [index, row] of due.entries()) {
+    if (!admit(due.length - index)) break;
     const code = String(row.order_code);
     if (!await claimNowpaymentsPollReconcile(code)) continue;
     out.late_checked++;
@@ -264,7 +266,7 @@ export async function reconcileLateKnownNowpaymentsPayments(db: DatabaseAccess) 
   }
   return out;
 }
-export async function reconcileDueNowpaymentsPayments(db: DatabaseAccess) {
+export async function reconcileDueNowpaymentsPayments(db: DatabaseAccess, admit = (_remaining: number) => true) {
   const out = { payments_checked: 0, payments_confirmed: 0, payments_failed: 0, manual_review: 0 };
   const { claimNowpaymentsPollReconcile, NOWPAYMENTS_POLL_RECONCILE_MS, reconcileNowpaymentsPayment } = await import("./nowpayments");
   const due = await db.queryAll(
@@ -277,7 +279,8 @@ export async function reconcileDueNowpaymentsPayments(db: DatabaseAccess) {
     `-${NOWPAYMENTS_POLL_RECONCILE_MS / 1000} seconds`,
     NOWPAYMENTS_BACKGROUND_LIMIT,
   );
-  for (const row of due) {
+  for (const [index, row] of due.entries()) {
+    if (!admit(due.length - index)) break;
     const code = String(row.order_code);
     if (!await claimNowpaymentsPollReconcile(code)) continue;
     out.payments_checked++;

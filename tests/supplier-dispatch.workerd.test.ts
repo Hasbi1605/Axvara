@@ -6,7 +6,7 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 it("native D1 preserves WR/SK single dispatch across competing workers and blocks remapped manual items", async () => {
   const compiled = await build({ stdin: { resolveDir: process.cwd(), loader: "ts", contents: `
     import {processWrPendingOrders} from './src/lib/warung-rebahan/order';
-    import {processSkPendingOrders} from './src/lib/sekalipay/order';
+    import {processSkPendingOrders,settleExhaustedSkRetries} from './src/lib/sekalipay/order';
     import {createBudgetedDatabase} from './src/lib/db-access';
     export default {async fetch(req,env){
       let purchases=0; const body=await req.json();
@@ -15,13 +15,18 @@ it("native D1 preserves WR/SK single dispatch across competing workers and block
         if(path.endsWith('/v1/item/1095'))return Response.json({data:{id:1095,price:5000,stock:-1,order_process:'auto'}});
         if(path.endsWith('/v1/balance'))return Response.json({data:{balance:100000}});
         if(path.endsWith('/v1/order')){purchases++;return Response.json({success:true,data:{order_id:'WR-D1',status:'processing'}});}
-        if(path.endsWith('/v1/trx') && init.method==='POST'){purchases++;const sent=JSON.parse(init.body);return Response.json({data:{invoice:'SK-D1',ref_id:sent.ref_id,status:'paid'}});}
+        if(path.endsWith('/v1/trx') && init.method==='POST'){
+          purchases++;
+          if(body.reject) return Response.json({message:'PRODUCT_TEMPORARILY_UNAVAILABLE'},{status:503});
+          const sent=JSON.parse(init.body);return Response.json({data:{invoice:'SK-D1',ref_id:sent.ref_id,status:'paid'}});
+        }
         if(path.includes('/v1/trx/'))return Response.json({message:'TRX_NOT_FOUND'},{status:404});
         throw new Error('unexpected fixture HTTP '+path);
       };
       const budgets=[];
       const results=await Promise.all(Array.from({length:3},async()=>{
         const b=createBudgetedDatabase(40,2,env.DB);budgets.push(b);
+        if(body.settle) return settleExhaustedSkRetries(b.access);
         return body.supplier==='wr'?processWrPendingOrders(b.access,{skipOrphanProbe:true}):processSkPendingOrders(b.access,{skipOrphanProbe:true});
       }));
       return Response.json({purchases,results,used:budgets.map(b=>b.used)});
@@ -44,8 +49,8 @@ it("native D1 preserves WR/SK single dispatch across competing workers and block
       db.prepare("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'WR','wr',10000,10),(2,'SK','sk',10000,10)"),
       db.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,wr_variant_id,sk_variant_id) VALUES(1,1,'WR','WR',10000,10,'var-1',NULL),(2,2,'SK','SK',10000,10,NULL,'1095')"),
     ]);
-    const call = async (supplier: string) => {
-      const response = await runtime.dispatchFetch("https://fixture.test/dispatch", { method: "POST", body: JSON.stringify({ supplier }) });
+    const call = async (supplier: string, options: { reject?: boolean; settle?: boolean } = {}) => {
+      const response = await runtime.dispatchFetch("https://fixture.test/dispatch", { method: "POST", body: JSON.stringify({ supplier, ...options }) });
       expect(response.status).toBe(200);
       const result = await response.json() as { purchases: number; used: number[] };
       expect(result.used.every(n => n <= 38)).toBe(true);
@@ -70,5 +75,18 @@ it("native D1 preserves WR/SK single dispatch across competing workers and block
       ]);
       expect(await call(supplier)).toBe(0);
     }
+    await db.batch([
+      db.prepare("DELETE FROM fulfillment_items WHERE order_code='sk'"),
+      db.prepare("UPDATE product_variants SET sk_variant_id='1095' WHERE id=2"),
+      db.prepare("UPDATE sk_order_links SET attempt_count=max_attempts-1,fulfillment_item_id=NULL"),
+    ]);
+    expect(await call("sk", { reject: true })).toBe(1);
+    expect(await db.prepare("SELECT status,request_sent_at FROM sk_order_links").first()).toEqual({ status: "retry", request_sent_at: null });
+    await db.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,recipient_channel,status)
+      VALUES('sk',0,2,2,1,'manual','web','queued')`).run();
+    expect(await call("sk", { settle: true })).toBe(0);
+    expect(await db.prepare("SELECT status FROM sk_order_links").first()).toEqual({ status: "failed" });
+    expect(await db.prepare("SELECT status FROM fulfillment_items WHERE order_code='sk'").first()).toEqual({ status: "failed" });
+    expect(await db.prepare("SELECT fulfillment_status FROM orders WHERE code='sk'").first()).toEqual({ fulfillment_status: "failed" });
   } finally { fixture.close(); await runtime.dispose(); }
 }, 30000);

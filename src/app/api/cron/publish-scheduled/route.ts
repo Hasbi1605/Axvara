@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execRun, OrderTransitionError, queryAll, transitionPendingOrder } from "@/lib/db";
-import { isExpiredIso } from "@/lib/expiry";
+import { EXPIRED_ORDER_CANDIDATES_SQL, isExpiredIso } from "@/lib/expiry";
 import { constantTimeEqual } from "@/lib/security";
 
 export const runtime = "edge";
@@ -24,9 +24,7 @@ export async function POST(request: NextRequest) {
   // transaction row never stays `pending` while its order is kadaluarsa
   // (which would pin the unique amount slot forever); that transition is
   // idempotent, so whichever cron reaches such an order first wins.
-  const expiredCandidates = await queryAll(
-    "SELECT code,items,expires_at FROM orders WHERE status='pending' AND expires_at IS NOT NULL ORDER BY expires_at ASC LIMIT 200",
-  );
+  const expiredCandidates = await queryAll(EXPIRED_ORDER_CANDIDATES_SQL);
   const expiredOrders = expiredCandidates.filter((order) => (
     order.status === undefined || order.status === "pending"
   ) && isExpiredIso(order.expires_at));

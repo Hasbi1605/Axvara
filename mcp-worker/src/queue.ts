@@ -741,7 +741,7 @@ async function processBroadcastMessage(
     if (body && body.ok === true && body.settled === false) {
       if (msg.attempts >= BROADCAST_MAX_SETTLED_FALSE_ATTEMPTS) {
         // max_retries=3 sends this fourth failed delivery to axvara-broadcast-dlq;
-        // DLQ logs & acks while the cron backstop finishes any remaining rows.
+        // DLQ records & acks while the cron backstop finishes any remaining rows.
         const delaySeconds = computeBackoffSeconds(msg.attempts);
         msg.retry({ delaySeconds });
         deps.logFn("error", {
@@ -792,13 +792,31 @@ async function processBroadcastMessage(
   });
 }
 
-function processBroadcastDlqMessage(
+async function processBroadcastDlqMessage(
   queueName: string,
   msg: QueueMessage<unknown>,
+  env: QueueEnv,
   deps: Required<QueueDeps>,
-): void {
+): Promise<void> {
   const nowMs = deps.nowFn();
   const fields = safeBroadcastLogFields(msg.body, nowMs);
+  const parsed = parseBroadcastQueueMessage(msg.body);
+  let error: string | undefined;
+  if (parsed) {
+    if (!env.AXVARA_CRON_SECRET) error = "missing_cron_secret";
+    else {
+      try {
+        const res = await fetchTextWithTimeout(deps.fetchFn, `${env.AXVARA_API_ORIGIN.replace(/\/$/, "")}/api/cron/broadcast-dlq`, {
+          method: "POST",
+          redirect: "manual",
+          headers: { authorization: `Bearer ${env.AXVARA_CRON_SECRET}`, "content-type": "application/json" },
+          body: JSON.stringify({ campaignId: parsed.campaignId, messageId: msg.id, deliveryIds: parsed.deliveryIds }),
+        }, Math.min(deps.timeoutMs, 3_000), "broadcast_dlq_record_timeout");
+        if (res.status !== 204) error = `record_http_${res.status}`;
+      } catch { error = "broadcast_dlq_record_unavailable"; }
+    }
+  }
+  // Reporting never changes delivery status or retries a dead-letter message.
   msg.ack();
   deps.logFn("error", {
     event: "queue_dlq",
@@ -809,6 +827,7 @@ function processBroadcastDlqMessage(
     attempt: msg.attempts,
     ...(fields.latencyMs !== undefined ? { latencyMs: fields.latencyMs } : {}),
     outcome: "broadcast_dlq_acked",
+    ...(error ? { error } : {}),
   });
 }
 
@@ -845,9 +864,7 @@ export async function handleQueueBatch(
   }
 
   if (batch.queue === BROADCAST_DLQ_QUEUE_NAME) {
-    for (const msg of batch.messages) {
-      processBroadcastDlqMessage(batch.queue, msg, resolved);
-    }
+    await runWithConcurrency(batch.messages, QUEUE_MAX_CONCURRENCY, (msg) => processBroadcastDlqMessage(batch.queue, msg, env, resolved));
     return;
   }
 

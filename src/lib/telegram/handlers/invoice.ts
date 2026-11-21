@@ -28,7 +28,7 @@ import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // 2026-09-25): grup Axvara_Notif hanya menerima "Lunas — Telegram" saat order
 // lunas (notifyTelegramPaidAdmin via jalur paid). Order yang tidak jadi bayar
 // tidak membunyikan grup.
-import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
+import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { activeQrisProvider } from "@/lib/payments/dana-qris";
@@ -367,7 +367,12 @@ export async function createAndSendVariantInvoice(
     // RR3-05: sama seperti jalur cart — foto invoice transaksional, periksa
     // {ok:false}, tandai pending/sent, lempar agar retry nyata + cron retry.
     // TG2c1: caption + keyboard mengikuti locale order yang baru dibuat.
+    // AU-E2-2: klaim atomik sebelum kirim (CAS attempts yang sama dengan teks
+    // provider) agar cron retry/Refresh tidak mengirim bubble kedua.
     await markInvoicePending(orderCode);
+    if (await claimProviderInvoiceSend(orderCode, { allowFresh: true }) !== "claimed") {
+      throw new Error("telegram_invoice_send_failed:not_claimed");
+    }
     const tgVariantLabel = formatVariantLabel(variant, tgLocale);
     const displayName = invoiceItemName(productName, tgVariantLabel, qty);
     const variantPhoto = await sendPhoto({
@@ -390,6 +395,9 @@ export async function createAndSendVariantInvoice(
       return;
     }
     if (isCriticalSendResult(variantPhoto, "transactional")) {
+      // Definitif (ada error_code): lepas stempel klaim agar redelivery/Refresh
+      // boleh langsung mengirim ulang foto yang sama.
+      await releaseInvoiceSendClaim(orderCode);
       throw new Error(`telegram_invoice_send_failed:${variantPhoto.description || "unknown"}`);
     }
     await markInvoiceSent(orderCode);

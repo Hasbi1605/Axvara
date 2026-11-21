@@ -150,12 +150,6 @@ export interface EditMessageCaptionParams {
   reply_markup?: InlineKeyboardMarkup;
 }
 
-export interface EditMessageReplyMarkupParams {
-  chat_id: number | string;
-  message_id: number;
-  reply_markup?: InlineKeyboardMarkup;
-}
-
 export interface TelegramApiResponse<T = unknown> {
   ok: boolean;
   result?: T;

@@ -15,11 +15,13 @@ export async function securitySubject(domain: string, subject: string): Promise<
 // Only fixed route labels reach storage. No query strings, IDs, contacts or secrets.
 export function adminAuditRoute(request: Request): string | null {
   if (auditedRequests.has(request)) return null;
-  const path = new URL(request.url).pathname;
+  const { pathname: path, searchParams } = new URL(request.url);
   if (!path.startsWith("/api/")) return null;
   const read = request.method === "GET";
-  if (read && !/^\/api\/(products\/\d+$|admin\/(fulfillment|proofs|bukti|warung\/credentials|agent-tokens)(\/|$)|orders\/[^/]+\/credentials$)/.test(path)) return null;
   if (read) {
+    const ordersCsv = path === "/api/admin/orders" && searchParams.get("export") === "csv";
+    const buyerInput = /^\/api\/admin\/orders\/[^/]+$/.test(path);
+    if (!ordersCsv && !buyerInput && !/^\/api\/(products\/\d+$|admin\/(fulfillment|proofs|bukti|warung\/credentials|agent-tokens)(\/|$)|orders\/[^/]+\/credentials$)/.test(path)) return null;
     auditedRequests.add(request);
     return path.startsWith("/api/products/") ? "/api/products/:id" : "/api/admin/sensitive-read";
   }

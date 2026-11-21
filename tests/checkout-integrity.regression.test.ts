@@ -79,12 +79,18 @@ describe("Checkout quote integrity", () => {
     expect(checkout).not.toContain("Nama lengkap");
     // QRIS auto-select selama maintenance (hemat 1 klik).
     expect(checkout).toContain("Auto-select QRIS");
-    // Satu handler submit dipakai 2 tombol (rail + sticky mobile) —
-    // tidak ada logika validasi ganda.
+    // Satu form + handler untuk Enter dan kedua CTA; tepat satu CTA per rail.
     expect(checkout).toContain("ctaDisabled");
     expect(checkout).toContain("ctaLabel");
-    const submitCount = (checkout.match(/onClick=\{submit\}/g) || []).length;
-    expect(submitCount).toBe(2);
+    const form = checkout.match(/<form\b[\s\S]*?<\/form>/)?.[0] ?? "";
+    const mobileCta = form.match(/<div className="lg:hidden fixed bottom-0\b[\s\S]*?<\/div>/)?.[0] ?? "";
+    const desktopRail = form.match(/<aside className="hidden lg:block\b[\s\S]*?<\/aside>/)?.[0] ?? "";
+    const submitButtons = /<button type="submit" disabled=\{ctaDisabled\}/g;
+    expect(form).toContain("onSubmit=");
+    expect(form).toContain("if (!ctaDisabled && !issueDialogOpen) void submit();");
+    expect(form.match(/<button\b[^>]*\btype="submit"/g)).toHaveLength(2);
+    expect(mobileCta.match(submitButtons)).toHaveLength(1);
+    expect(desktopRail.match(submitButtons)).toHaveLength(1);
     // Mobile: accordion ringkasan di atas + sticky bottom CTA + spacer.
     expect(checkout).toContain("Ringkasan accordion");
     expect(checkout).toContain("checkout-summary-mobile");
@@ -287,14 +293,11 @@ describe("Authoritative UI and admin state", () => {
     expect(statusPage).toContain("order.credentialsReady");
     expect(statusPage).toContain("credentialsReady={order.credentialsReady}");
     expect(read("src/components/storefront/WrCredentialsPanel.tsx")).toContain("if (!credentialsReady) return null;");
-    // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
+    // Fallback: email + halaman pesanan, atau halaman pesanan saja tanpa email.
     expect(copySource).toContain("Pengiriman Produk");
-    // Kabar web lewat email (bot WA mati); WA hanya untuk order tanpa email.
-    // Copy 2026-10-07 (permintaan owner): order ber-email = kalimat email +
-    // halaman ini; order lama tanpa email = fallback "Detail produk dikirim".
-    expect(statusPage).toContain("const destination = order.email");
+    expect(statusPage).toMatch(/const toBuyer = order\.email\s*\? <>{ui\.delivery\.toBuyerEmail}<\/>\s*: <>{ui\.delivery\.toBuyerPanel}<\/>/);
     expect(copySource).toContain("Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.");
-    expect(copyFile).toContain("Detail produk dikirim ke {destination}");
+    expect(copyFile).toContain("Cek detail produk di halaman ini, atau hubungi admin dengan kode pesanan jika butuh bantuan.");
     // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (C1: <1 jam + plafon 12 jam,
     // tanpa jam layanan spesifik — revisi copy 2026-10-02).
     expect(statusPage).toContain("order.queuedDelivery");

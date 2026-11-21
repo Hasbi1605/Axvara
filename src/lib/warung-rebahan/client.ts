@@ -298,6 +298,7 @@ export function classifyWrError(
 export async function wrFetch<T>(
   endpoint: string,
   payload: Record<string, unknown> = {},
+  sliceBudgetMs = Infinity,
 ): Promise<WrApiResponse<T>> {
   const proxyUrl = getWrProxyUrl();
   // Mode proxy: POST https://<proxy>/wr/<endpoint> + x-proxy-token; api_key
@@ -310,7 +311,9 @@ export async function wrFetch<T>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (proxyUrl) headers["x-proxy-token"] = getWrProxyToken();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), WR_API_TIMEOUT_MS);
+  const timeoutMs = proxyUrl && path === "/products-slice" ? Math.min(35_000, sliceBudgetMs) : WR_API_TIMEOUT_MS;
+  if (timeoutMs <= 0) throw new WrNetworkError("wr_request_timeout", endpoint);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -374,10 +377,10 @@ export type WrProductsSlice = {
  * `fetchProducts()` penuh. Tujuan: cron Free plan (~10 ms CPU) tidak mem-parse
  * seluruh katalog di setiap potongan.
  */
-export async function fetchProductsSlice(offset: number, limit: number): Promise<WrProductsSlice | null> {
+export async function fetchProductsSlice(offset: number, limit: number, budgetMs?: number): Promise<WrProductsSlice | null> {
   if (!getWrProxyUrl()) return null;
   try {
-    const res = await wrFetch<WrProduct[]>("/products-slice", { offset, limit });
+    const res = await wrFetch<WrProduct[]>("/products-slice", { offset, limit }, budgetMs);
     const meta = ((res as unknown as { meta?: Record<string, unknown> }).meta ?? {}) as Record<string, unknown>;
     if (!Array.isArray(res.data) || typeof meta.total !== "number") return null;
     return {

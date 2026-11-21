@@ -22,6 +22,13 @@ function fixture(count = 60, kinds = metrics): PediaCatalogProduct[] {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("catalog navigation at supplier scale", () => {
+  it("does not rank one product's live quantity price against another's stored package price", () => {
+    const products = fixture(2, ["followers"]);
+    products[1].tiers[0].prices["100"] = 4000;
+    render(<ServicePicker product={products[0]} products={products} tierId={1} qty={100} prices={{ 1: 9000 }} onSelect={vi.fn()} expanded />);
+    expect(screen.getAllByRole<HTMLInputElement>("radio").map(radio => radio.value)).toEqual(["1", "2"]);
+    expect(screen.getByText(/estimasi/i)).toBeTruthy();
+  });
   it("cleans live names, decoration, chip labels and duplicates without empty output", () => {
     expect(shortPediaName("Instagram Video Views [Max: Unlimited] [All Type Link] ⚠ ⚠ ★🔥", "instagram")).toBe("Video Views");
     expect(shortPediaName("Instagram Followers [Tidak Bergaransi] ⚠ ⚠ ⚠", "instagram")).toBe("Followers");

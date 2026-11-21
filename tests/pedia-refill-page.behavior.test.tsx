@@ -50,6 +50,20 @@ describe("pediaRefillState", () => {
 
 describe("Pedia refill page", () => {
   const order = (refill: Record<string, unknown>) => ({ ok: true, order: { code: "AXP-20261101-AB12CD34", product_name: "Followers Instagram", quantity: 1000, target: "https://instagram.com/x", status: "completed", refill } });
+  it("keeps the submit error after refreshing eligibility", async () => {
+    const eligible = { mode: "api", days: 30, eligible: true, reason: null };
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json(order(eligible)))
+      .mockResolvedValueOnce(Response.json({ error: "Refill fixture rejected" }, { status: 409 }))
+      .mockResolvedValueOnce(Response.json(order(eligible)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PediaRefillClient />);
+    fireEvent.change(screen.getByLabelText("Kode pesanan *"), { target: { value: "AXP-20261101-AB12CD34" } });
+    fireEvent.change(screen.getByLabelText("No. WA atau email checkout *"), { target: { value: "buyer@example.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cek status refill" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ajukan Refill" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText("Refill fixture rejected")).toBeTruthy();
+  });
   it("looks up an order, submits refill once, and refreshes the status", async () => {
     const eligible = { mode: "api", days: 30, eligible: true, reason: null, ends_at: "2026-11-19T00:00:00.000Z", next_at: null, status: null, status_label: null, last_at: null };
     const after = { ...eligible, eligible: false, reason: "in_progress", status: "submitted", status_label: "Refill sedang diproses", last_at: "2026-11-01T00:00:00.000Z" };

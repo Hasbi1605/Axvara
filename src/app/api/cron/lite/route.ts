@@ -13,7 +13,7 @@
 // pending + outbox WhatsApp). Latar: 09:50 WIB 4 langkah lite 503 bareng;
 // `notify` satu-satunya job yang mengipas 5 sub-kerjaan (5 dynamic import)
 // dalam 1 request (~1,9 dtk antrean kosong). `job=notify` LAMA tetap hidup
-// sebagai alias gabungan A→B (kompat pemanggil lama + heavy tick) — Worker
+// sebagai alias gabungan (kompat pemanggil lama + heavy tick) — Worker
 // memanggil a/b terpisah agar tiap request lebih ringan.
 //
 // Cakupan sengaja inti (yang menyentuh pembeli); sisanya tetap di route besar
@@ -37,7 +37,7 @@
 //                 admin + worker siaran bounded
 //   notify_a    — retry kabar order Telegram + invoice tertunda (separuh notify)
 //   notify_b    — kabar QRIS kedaluwarsa + pengingat pending + outbox WA
-//   notify      — alias gabungan notify_a lalu notify_b (kompat lama)
+//   notify      — alias gabungan notify_b lalu notify_a (kompat lama)
 // Kontrak: header `authorization: Bearer <CRON_SECRET>`; 200 {ok,job,...};
 // 400 job tak dikenal; 401 secret salah. Worker: `mcp-worker/src/cron.ts`.
 
@@ -84,16 +84,26 @@ export async function POST(request: NextRequest) {
   const failedCore: string[] = [];
   try {
     if (job === "payments") {
+      // A status GET has a 10s timeout. Reserve an extra 10s if reconciliation
+      // can send an inline admin review notice, plus time to settle the row.
+      const pollReserve = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_ADMIN_CHAT_ID ? 21_000 : 11_000;
+      result.payments_deferred = 0;
+      const admit = (remaining: number) => {
+        if (Date.now() + pollReserve <= deadline) return true;
+        result.payments_deferred = Number(result.payments_deferred) + remaining;
+        return false;
+      };
       // Bounded (Paid 300-budget): KlikQRIS (limit 20) + NOWPayments (limit 20,
       // shared budget/CAS, incl. known-id initializing for manual review)
       // + late known-id (limit 20, 6h recheck, no revive/fulfill) + Sekalipay gateway (12/4/5).
       // NOWPayments passes read key only => run saved-invoice flag-off (key
       // present => readable; key absent => passes quietly return zeros).
       const { reconcileDueKlikQrisPayments } = await import("@/lib/payments/klikqris-reconcile");
-      Object.assign(result, await reconcileDueKlikQrisPayments(db));
+      const klik = await reconcileDueKlikQrisPayments(db, admit);
+      Object.assign(result, klik);
       try {
         const { reconcileDueNowpaymentsPayments, reconcileLateKnownNowpaymentsPayments } = await import("@/lib/payments/payment-view");
-        const now = await reconcileDueNowpaymentsPayments(db);
+        const now = await reconcileDueNowpaymentsPayments(db, admit);
         (result as Record<string, unknown>).nowpayments_checked = now.payments_checked;
         (result as Record<string, unknown>).nowpayments_confirmed = now.payments_confirmed;
         (result as Record<string, unknown>).nowpayments_manual_review = now.manual_review;
@@ -104,7 +114,7 @@ export async function POST(request: NextRequest) {
         (result as Record<string, unknown>).payments_failed =
           Number(result.payments_failed ?? 0) + now.payments_failed;
         if (db.canSpend(6)) {
-          const late = await reconcileLateKnownNowpaymentsPayments(db);
+          const late = await reconcileLateKnownNowpaymentsPayments(db, admit);
           (result as Record<string, unknown>).nowpayments_late_checked = late.late_checked;
           (result as Record<string, unknown>).nowpayments_late_manual_review = late.late_manual_review;
         }
@@ -116,7 +126,7 @@ export async function POST(request: NextRequest) {
       if (db.canSpend(6)) {
         try {
           const { reconcileDueSekalipayGatewayPayments } = await import("@/lib/payments/payment-view");
-          Object.assign(result, await reconcileDueSekalipayGatewayPayments(db));
+          Object.assign(result, await reconcileDueSekalipayGatewayPayments(db, admit));
         } catch (error) {
           if (error instanceof QueryBudgetExceeded) throw error;
           result.gateway_error = "pass_failed";
@@ -126,12 +136,16 @@ export async function POST(request: NextRequest) {
       if (db.canSpend(4)) {
         try {
           const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
-          Object.assign(result, await reconcileStaleSekalipayGatewayPayments(db));
+          Object.assign(result, await reconcileStaleSekalipayGatewayPayments(db, { admit }));
         } catch (error) {
           if (error instanceof QueryBudgetExceeded) throw error;
           result.gateway_stale_error = "pass_failed";
           failedCore.push("sekalipay_gateway_stale");
         }
+      }
+      if (klik.payments_checked > 0 && db.canSpend(1) && Date.now() + 1_000 <= deadline) {
+        const { KLIKQRIS_POLL_HEALTH_KEY } = await import("@/lib/service-health");
+        await saveServiceHealth(db, KLIKQRIS_POLL_HEALTH_KEY, String(klik.payments_failed));
       }
       if (Number(result.payments_failed) > 0 || failedCore.length > 0) {
         return NextResponse.json(
@@ -142,8 +156,8 @@ export async function POST(request: NextRequest) {
     }
     else if (job === "expiry") Object.assign(result, await runExpiry(db));
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db, deadline));
-    else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
-    else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
+    else if (job === "wr_orders") Object.assign(result, await runWrOrders(db, failedCore));
+    else if (job === "sk_orders") Object.assign(result, await runSkOrders(db, failedCore));
     else if (job === "aivault_orders") Object.assign(result, await runAivaultOrders(db, deadline));
     else if (job === "aivault_catalog") {
       const { isAivaultConfigured,isAivaultSyncEnabled }=await import("@/lib/aivault/client");
@@ -235,10 +249,13 @@ export async function POST(request: NextRequest) {
       if (!synced.errors.length) await drainDirtyGroupsIfBudget(db, result);
     }
     else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db, failedCore));
-    else if (job === "notify_a") Object.assign(result, await runNotifyA(db, failedCore));
+    else if (job === "notify_a") Object.assign(result, await runNotifyA(db, deadline, failedCore));
     else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline, failedCore));
     else if (job === "notify") Object.assign(result, await runNotify(db, deadline, failedCore));
-    else if (job === "cleanup") Object.assign(result, await runCleanup(db));
+    else if (job === "cleanup") {
+      Object.assign(result, await runCleanup(db, failedCore));
+      await sampleWhatsAppGateway(db, deadline);
+    }
     else if (job === "games_catalog") {
       // docs/GAMES.md §12.5: katalog baru = Sekalipay Game; Digiflazz tidak lagi
       // dipanggil untuk price-list. Throttle/no-op ada di dalam sync.
@@ -257,7 +274,19 @@ export async function POST(request: NextRequest) {
     }
     else if (job === "tg_webhook") {
       const { guardTelegramWebhook } = await import("@/lib/telegram/webhook-guard");
-      Object.assign(result, await guardTelegramWebhook(db));
+      const { TG_WEBHOOK_HEALTH_KEY } = await import("@/lib/service-health");
+      const guard = await guardTelegramWebhook(db);
+      Object.assign(result, guard);
+      // A successful reinstall is not proof of recovery. Let the next
+      // getWebhookInfo confirm the URL/backlog before resetting the soft alarm.
+      const failed = guard.status !== "skipped" && guard.status !== "healthy" && guard.status !== "recovered";
+      if (guard.status !== "skipped" && db.canSpend(1)) {
+        await saveServiceHealth(db, TG_WEBHOOK_HEALTH_KEY, JSON.stringify({
+          error: failed ? guard.status : null,
+          pending: guard.pending_update_count ?? null,
+        }));
+      }
+      if (failed) return NextResponse.json({ ...result, ok: false, error: guard.error || guard.status }, { status: 503 });
     }
     else Object.assign(result, await runPromo(db));
   } catch (error) {
@@ -282,6 +311,42 @@ export async function POST(request: NextRequest) {
 
 type Db = DatabaseAccess;
 
+async function saveServiceHealth(db: Db, key: string, value: string) {
+  try {
+    await db.execRun(`INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, key, value);
+  } catch {
+    // A failed sample write must not change payment/notification handling.
+    console.warn("[cron-health] sample_write_failed", key);
+  }
+}
+
+async function sampleWhatsAppGateway(db: Db, deadline: number) {
+  const url = process.env.WHATSAPP_GATEWAY_URL?.trim().replace(/\/+$/, "");
+  if (process.env.WHATSAPP_ENABLED !== "true" || !url || !db.canSpend(2) || Date.now() + 4_000 > deadline) return;
+  const { WA_GATEWAY_HEALTH_KEY } = await import("@/lib/service-health");
+  try {
+    if (await db.queryFirst(`SELECT 1 FROM store_settings WHERE key=? AND updated_at > datetime('now','-5 minutes')`, WA_GATEWAY_HEALTH_KEY)) return;
+    if (Date.now() + 4_000 > deadline) return;
+    // /health reads session state without taking the notification-group lock.
+    // The main session handles welcomes; a configured second session handles promo.
+    const sample = await fetch(`${url}/health`, {
+      signal: AbortSignal.timeout(3_000), redirect: "error", cache: "no-store",
+    }).then(async (res) => {
+      if (!res.ok) return "false";
+      const health = await res.json().catch(() => null) as {
+        connected?: boolean; blocked?: boolean;
+        promoBot?: { configured?: boolean; connected?: boolean; blocked?: boolean };
+      } | null;
+      const promo = health?.promoBot?.configured === true ? health.promoBot : null;
+      if (health?.blocked === true || promo?.blocked === true) return "blocked";
+      if (health?.connected === false || promo?.connected === false) return "false";
+      return health?.connected === true && (!promo || promo.connected === true) ? "true" : "unknown";
+    }).catch(() => "false");
+    await saveServiceHealth(db, WA_GATEWAY_HEALTH_KEY, sample);
+  } catch { console.warn("[cron-health] whatsapp_sample_failed"); }
+}
+
 async function drainDirtyGroupsIfBudget(db: Db, result: Record<string, unknown>) {
   if (!db.canSpend(4)) return;
   try {
@@ -297,6 +362,7 @@ async function drainDirtyGroupsIfBudget(db: Db, result: Record<string, unknown>)
 async function runExpiry(db: Db) {
   const { transitionPendingPaymentOrder, transitionPendingOrder } = await import("@/lib/db");
   const { isExpiredIso } = await import("@/lib/expiry");
+  const { STALE_INITIALIZING_SQL } = await import("@/lib/payments/stale-initializing");
   let staleInitializing = 0;
   let expired = 0;
   let marketRestocked = false;
@@ -327,15 +393,14 @@ async function runExpiry(db: Db) {
   const stale = await db.queryAll(
     `SELECT pt.order_code, o.items FROM payment_transactions pt
        JOIN orders o ON o.code=pt.order_code
-      WHERE pt.status='initializing' AND pt.created_at < datetime('now', '-5 minutes')
-        AND NOT (pt.provider='nowpayments' AND pt.provider_payment_id IS NOT NULL)
-        AND pt.provider!='sekalipay_gateway'
+      WHERE ${STALE_INITIALIZING_SQL} AND o.status='pending'
       LIMIT ?`,
     EXPIRY_PER_RUN,
   );
   for (const tx of stale) {
     const changed = await transitionPendingPaymentOrder({
       orderCode: String(tx.order_code), expectedTransactionStatus: "initializing",
+      staleInitializingOnly: true,
       transactionStatus: "failed", orderStatus: "dibatalkan", paymentStatus: "failed",
       items: parseItems(tx.items), lastError: "stale_initializing",
     }, db.d1, expiryOpts).catch(() => false);
@@ -429,13 +494,27 @@ async function runFulfillment(db: Db, deadline: number) {
   return { stale_locks_released: released, due_jobs_processed: processed };
 }
 
-async function runWrOrders(db: Db) {
+function monitorRecovery(db: Db, job: string, out: Record<string, unknown>, failedCore: string[]) {
+  return async <T,>(name: string, run: () => Promise<T>, fallback: T): Promise<T> => {
+    try { return await run(); } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      failedCore.push(name);
+      out.recovery_failed = Number(out.recovery_failed ?? 0) + 1;
+      const { recordSyncError, sanitizeSyncError } = await import("@/lib/sync-status");
+      await recordSyncError(db, `${job}_recovery`, `${name}: ${sanitizeSyncError(error)}`);
+      return fallback;
+    }
+  };
+}
+
+async function runWrOrders(db: Db, failedCore: string[]) {
   const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
   if (!isWrEnabled()) return { skipped: "disabled" };
   const order = await import("@/lib/warung-rebahan/order");
   const out: Record<string, unknown> = {};
-  await order.recoverStaleClaims(db).catch(() => 0);
-  await order.reconcileBlockedBalance(db).catch(() => 0);
+  const recover = monitorRecovery(db, "wr_orders", out, failedCore);
+  await recover("stale_claims", () => order.recoverStaleClaims(db), 0);
+  await recover("blocked_balance", () => order.reconcileBlockedBalance(db, { reportLookupFailure: true }), 0);
   if (process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true") {
     // 2026-10-09 (kasus AXV-20261009-DA1ACF56): link WR tidak pernah dibuat
     // webhook + COUNT due = 0 → `processWrPendingOrders` tidak dipanggil →
@@ -443,13 +522,13 @@ async function runWrOrders(db: Db) {
     // selamanya. Probe yatim WAJIB jalan duluan tanpa gate due (murah: 1
     // SELECT indeks lunas + INSERT OR IGNORE idempoten), hasilnya ikut
     // menentukan gate proses di bawah.
-    const orphanHealed = await order.reconcileMissingWrLinks(db).catch(() => ({ orders: 0, links: 0 }));
+    const orphanHealed = await recover("missing_links", () => order.reconcileMissingWrLinks(db), { orders: 0, links: 0 });
     if (orphanHealed.links > 0) out.orphan_links_healed = orphanHealed.links;
-    const due = await db.queryFirst(
+    const due = await recover("due_lookup", () => db.queryFirst(
       `SELECT COUNT(*) AS n FROM wr_order_links
         WHERE status IN ('pending','retry') AND attempt_count < max_attempts
           AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
-    ).catch(() => null);
+    ), null);
     // Link yatim yang baru dibuat SELALU due (next_attempt_at=now), tapi gate
     // ikut dibuka eksplisit agar tak bergantung pada asumsi itu + hemat 1
     // COUNT berikutnya bila tick ini hanya menyembuhkan.
@@ -467,29 +546,22 @@ async function runWrOrders(db: Db) {
     // secepat SK terasa tanpa menunggu route besar per jam. Gerbang
     // 20 dtk/order di store_settings menjaga biaya tetap; vendor dibaca
     // sekali per tarikan.
-    try {
+    await recover("supplier_refresh", async () => {
       const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
       const fresh = await refreshDueSupplierOrders(db, { limit: 12 });
       if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
-    } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-    }
+    }, undefined);
     // 2 menit, bukan 1 jam (2026-10-10): webhook WR yang hilang/terputus
     // tidak lagi menahan kredensial varian instan sampai route besar jalan.
-    out.reconciled = await order.reconcileStuckWrOrders(db, { minAgeMinutes: 2 }).catch((error) => {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      return 0;
-    });
+    out.reconciled = await recover("stuck_links", () => order.reconcileStuckWrOrders(db, { minAgeMinutes: 2, reportLookupFailure: true }), 0);
     // WR3 Jaspay (bounded, di job wr_orders yang sama — bukan cron baru):
     // link Jaspay ambigu => exact-ref identik / poll invoice dikenal.
     // Premium tak tersentuh; lease existing tetap.
-    try {
+    await recover("jaspay_recovery", async () => {
       const healed = await order.reconcileJaspayAmbiguous(db, 12);
       if (healed.exactRef > 0) out.jaspay_exact_ref = healed.exactRef;
       if (healed.polled > 0) out.jaspay_polled = healed.polled;
-    } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-    }
+    }, undefined);
   }
   const { processDueCredentialDeliveries, requeueOrphanCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
   // Kredensial completed yang tidak pernah diantrekan (completion terputus).
@@ -518,13 +590,17 @@ async function runWrOrders(db: Db) {
   return out;
 }
 
-async function runSkOrders(db: Db) {
+async function runSkOrders(db: Db, failedCore: string[]) {
   const { isSkEnabled } = await import("@/lib/sekalipay/client");
   if (!isSkEnabled()) return { skipped: "disabled" };
   const order = await import("@/lib/sekalipay/order");
   const out: Record<string, unknown> = {};
-  await order.recoverStaleSkClaims(db).catch(() => 0);
-  await order.reconcileBlockedSkBalance(db).catch(() => 0);
+  const recover = monitorRecovery(db, "sk_orders", out, failedCore);
+  // Read-only watchdog is independent of the purchase flag or saturated queue.
+  const aging = await recover("aging_alert", () => order.alertAgingSkOrders(db), 0);
+  if (aging) out.aging_alerted = aging;
+  await recover("stale_claims", () => order.recoverStaleSkClaims(db, { reportLookupFailure: true }), 0);
+  await recover("blocked_balance", () => order.reconcileBlockedSkBalance(db, { reportLookupFailure: true }), 0);
   if (process.env.SEKALIPAY_AUTO_ORDER_ENABLED === "true") {
     // Existing due purchases get first use of the budget. Probe orphans once,
     // independently of queue size. If no buys ran, dispatch healed links now;
@@ -532,10 +608,9 @@ async function runSkOrders(db: Db) {
     const processed = await order.processSkPendingOrders(db, { skipOrphanProbe: true });
     out.processed = processed.processed;
     out.succeeded = processed.succeeded;
-    const orphanHealed = await order.reconcileMissingSkLinks(db).catch((error) => {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      return { orders: 0, links: 0 };
-    });
+    const exhausted = await recover("exhausted_retries", () => order.settleExhaustedSkRetries(db), 0);
+    if (exhausted) out.exhausted_settled = exhausted;
+    const orphanHealed = await recover("missing_links", () => order.reconcileMissingSkLinks(db), { orders: 0, links: 0 });
     if (orphanHealed.links > 0) out.orphan_links_healed = orphanHealed.links;
     if (orphanHealed.links > 0 && processed.processed === 0) {
       const healed = await order.processSkPendingOrders(db, { skipOrphanProbe: true });
@@ -544,14 +619,12 @@ async function runSkOrders(db: Db) {
     }
     // Penjamin status segar bersama (cermin WR di atas): SK yang webhook-nya
     // terlambat ikut tertarik di sini, bukan hanya di route besar.
-    try {
+    await recover("supplier_refresh", async () => {
       const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
       const fresh = await refreshDueSupplierOrders(db, { limit: 12 });
       if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
-    } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-    }
-    out.reconciled = await order.reconcileStuckSkOrders(db).catch(() => 0);
+    }, undefined);
+    out.reconciled = await recover("stuck_links", () => order.reconcileStuckSkOrders(db, { reportLookupFailure: true }), 0);
   }
   // Paid plan: cek saldo SK maks tiap 10 menit (sebelumnya 60 menit hanya di cron/operations :00).
   if (db.canSpend(5)) {
@@ -766,7 +839,7 @@ async function runPromo(db: Db) {
 // `notify_b` = qris_expiry + reminders + whatsapp_outbox (3 import). `notify`
 // = alias gabungan A lalu B. Hasil digabung dengan kunci yang sama sehingga
 // pemantau lama (alarm Worker, dashboard) tidak berubah bentuk respons.
-async function runNotifyA(db: Db, failedCore: string[]) {
+async function runNotifyA(db: Db, deadline: number, failedCore: string[]) {
   const out: Record<string, unknown> = {};
   const guard = async (key: string, fn: () => Promise<unknown>, core = false) => {
     try { out[key] = await fn(); } catch (error) {
@@ -775,14 +848,17 @@ async function runNotifyA(db: Db, failedCore: string[]) {
       if (core) failedCore.push(key);
     }
   };
-  await guard("telegram_retry", async () => {
-    const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
-    return retryPendingTelegramNotifications(50, undefined, db);
-  }, true);
   await guard("invoice_retry", async () => {
     const { retryInvoicePendingTelegramInvoices } = await import("@/lib/telegram/invoice-retry");
-    return retryInvoicePendingTelegramInvoices(25, db);
+    // At most one slow photo plus ambiguity notice, or one slow text retry,
+    // before yielding. Stop if this is the combined job and time is short.
+    const invoiceDeadline = Math.min(deadline, Date.now() + 37_000);
+    return retryInvoicePendingTelegramInvoices(25, db, ms => Date.now() + ms <= invoiceDeadline);
   });
+  await guard("telegram_retry", async () => {
+    const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
+    return retryPendingTelegramNotifications(50, undefined, db, ms => Date.now() + ms <= deadline);
+  }, true);
   return out;
 }
 
@@ -795,6 +871,24 @@ async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
       if (core) failedCore.push(key);
     }
   };
+  const hasTime = (ms: number) => Date.now() + ms <= deadline;
+  // cleanup has no Worker alarm; feed its durable failure into the monitored
+  // notify step without delaying either buyer lane or sending another alert.
+  await guard("maintenance_cleanup", async () => {
+    if (await db.queryFirst(`SELECT 1 FROM store_settings WHERE key='cleanup_recovery_last_error'`)) {
+      throw new Error("maintenance_cleanup_failed");
+    }
+    return "ok";
+  }, true);
+  // Protect both buyer lanes from Telegram. PIN gets up to 18s; WA runs next
+  // and only claims when the send and its existing anti-ban delay fit.
+  const pinDeadline = Math.min(deadline, Date.now() + 18_000);
+  await guard("checkout_pin_emails", async () => {
+    if (!db.canSpend(10)) return { skipped: "query_budget" };
+    const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
+    return processCredentialAccessEmails(db, 15, undefined, { hasTime: ms => Date.now() + ms <= pinDeadline });
+  });
+  // Promo only enqueues in D1; keep it ahead of the outbox drain for the same tick.
   await guard("whatsapp_promo", async () => {
     const { enqueueWhatsAppPromo } = await import("@/lib/whatsapp/promo-digest");
     return enqueueWhatsAppPromo(db);
@@ -803,54 +897,38 @@ async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
     const { enqueueWhatsAppPromoBot } = await import("@/lib/whatsapp/promo-bot");
     return enqueueWhatsAppPromoBot(db);
   });
+  await guard("whatsapp_outbox", async () => {
+    const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
+    return processDueWhatsAppOutbox(4, db, hasTime);
+  }, true);
   await guard("qris_expiry_notices", async () => {
     const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
-    return sendQrisExpiryNotifications(15, db, { hasTime: () => Date.now() + 9_000 <= deadline });
+    return sendQrisExpiryNotifications(15, db, { hasTime: () => hasTime(11_000) });
   });
   await guard("pending_reminders", async () => {
     const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
-    return sendPendingOrderReminders(50, db);
+    return sendPendingOrderReminders(50, db, hasTime);
   });
-  // Item 13: kirim alert restok per produk (langganan pembeli, bukan broadcast).
   await guard("restock_alerts", async () => {
     const { processDueRestockAlerts } = await import("@/lib/telegram/restock-alerts");
-    return processDueRestockAlerts(db, 50);
+    return processDueRestockAlerts(db, 50, hasTime);
   });
-  // B2: jalankan PIN checkout SEBELUM whatsapp_outbox agar jeda anti-ban WA
-  // (6-9 dtk x 4 pesan) tidak pernah membuat email PIN kehabisan deadline.
-  await guard("checkout_pin_emails", async () => {
-    if (!db.canSpend(10)) return { skipped: "query_budget" };
-    const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
-    return processCredentialAccessEmails(db, 15, undefined, { hasTime: (needMs) => Date.now() + needMs <= deadline });
-  });
-  await guard("whatsapp_outbox", async () => {
-    const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
-    return processDueWhatsAppOutbox(4, db);
-  }, true);
   return out;
 }
 
 async function runNotify(db: Db, deadline: number, failedCore: string[]) {
-  const out: Record<string, unknown> = {};
-  try {
-    Object.assign(out, await runNotifyA(db, failedCore));
-  } catch (error) {
-    // Budget habis di paruh A = sisa kerja dilanjutkan tick berikut.
-    if (error instanceof QueryBudgetExceeded) throw error;
-  }
-  try {
-    Object.assign(out, await runNotifyB(db, deadline, failedCore));
-  } catch (error) {
-    if (error instanceof QueryBudgetExceeded) throw error;
-  }
-  return out;
+  const out = await runNotifyB(db, deadline, failedCore);
+  return Object.assign(out, await runNotifyA(db, deadline, failedCore));
 }
 
-// cleanup: baris kedaluwarsa (sesi WA, inbox WA 7 hari, event DANA 30 hari,
+// cleanup: baris kedaluwarsa (sesi WA, inbox WA 7 hari, event bayar tuntas 30 hari,
 // revokasi sesi admin). Murah dan idempoten.
-async function runCleanup(db: Db) {
+async function runCleanup(db: Db, failedCore: string[]) {
   const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");
-  const cleanup = await runMaintenanceCleanup(db);
+  const out: Record<string, unknown> = {};
+  const recover = monitorRecovery(db, "cleanup", out, failedCore);
+  const cleanup = await recover("maintenance_cleanup", () => runMaintenanceCleanup(db), null);
+  if (cleanup && db.canSpend(1)) await db.execRun(`DELETE FROM store_settings WHERE key='cleanup_recovery_last_error'`);
   // Hourly maintenance uses at most 10 statements. Give the watchdog first
   // access to the remaining budget before the optional recurring/group work.
   let staleness: Record<string, unknown>;
@@ -864,7 +942,7 @@ async function runCleanup(db: Db) {
     const { materializeRecurring } = await import("@/lib/finance/expenses");
     await materializeRecurring(db);
   }
-  if (!db.canSpend(3)) return { ...cleanup, ...staleness };
+  if (!db.canSpend(3)) return { ...out, ...cleanup, ...staleness };
   // Drain WR-only changes and failed VPS pair requests on the existing cron.
   // Critical order work has its own jobs; this drain is bounded and resumable.
   const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
@@ -878,7 +956,7 @@ async function runCleanup(db: Db) {
     } catch { copy.copy_review = { checked: false, error: "check_failed" }; }
   }
   const market = await runCryptoMarketRefresh(db);
-  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...copy, ...market, ...staleness };
+  return { ...out, ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...copy, ...market, ...staleness };
 }
 
 /**

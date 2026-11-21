@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveRecipient } from "@/lib/fulfillment/delivery/manifest";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 // deliver.ts kini barrel; implementasi per-item pindah ke delivery/*.
@@ -120,12 +121,15 @@ describe("reservasi unique per baris", () => {
 });
 
 describe("penerima kanal eksplisit per item", () => {
-  it("resolveRecipient memetakan tiap kanal ke target yang benar", () => {
-    const deliver = readDelivery();
-    expect(deliver).toContain("export function resolveRecipient");
-    expect(deliver).toContain("channel_member_id");
-    // Target kosong → manual, bukan kirim ke nobody.
-    expect(deliver).toContain("no_recipient_for_channel");
+  it("penerima WA historis kosong untuk handover manual; target web dan Telegram tetap", () => {
+    const customer_wa = "628000000000";
+    expect(resolveRecipient({ sales_channel: "whatsapp", channel_member_id: "628111111111", customer_wa }))
+      .toEqual({ channel: "web", target: "" });
+    expect(resolveRecipient({ sales_channel: "web", customer_wa }))
+      .toEqual({ channel: "web", target: customer_wa });
+    const telegram = { sales_channel: "telegram", telegram_chat_id: "-100123" };
+    expect(resolveRecipient({ ...telegram, telegram_user_id: "123" })).toEqual({ channel: "telegram", target: "123" });
+    expect(resolveRecipient(telegram)).toEqual({ channel: "telegram", target: "" });
   });
 
   it("web dikirim lewat email; tanpa email valid langsung ke antrean admin (bukan drop diam-diam)", () => {

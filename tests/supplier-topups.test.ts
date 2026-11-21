@@ -78,6 +78,46 @@ describe("ref_id", () => {
   });
 });
 
+it.each(["sekalipay", "tunvn"] as const)("%s refresh only checks for late credit on a failed invoice", async (supplier) => {
+  const fx = createD1Fixture();
+  try {
+    const sk = supplier === "sekalipay";
+    if (sk) stubSkEnv();
+    else stubTunvnEnv();
+    const now = Date.UTC(2026, 10, 20, 8);
+    const ref = sk ? "SK-INV-1" : "TUN-123";
+    const statusPath = sk ? "/sk/v1/balance/mutations" : "/api/deposit/status";
+    let paid = false;
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const target = new URL(String(url));
+      expect(target.pathname).toBe(statusPath);
+      expect(init?.method ?? "GET").toBe("GET");
+      if (sk) return Response.json({ data: paid ? [{ invoice: ref, direction: "credit", type: "topup", amount: 50_000 }] : [] });
+      expect(target.searchParams.get("code")).toBe(ref);
+      return Response.json({ success: true, deposit: { status: paid ? "confirmed" : "expired" }, paid });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    fx.sql.prepare(`INSERT INTO supplier_topups
+      (supplier,ref_id,supplier_ref,channel,currency,requested_amount,status,error,created_at,updated_at,expires_at)
+      VALUES (?,'AXVTU-late-credit',?,?,?,?,'failed','create_failed',?,?,?)`)
+      .run(supplier, ref, sk ? "sk-topup" : null, sk ? "IDR" : "USDT", sk ? 50_000 : 10, now, now, now + 60_000);
+    const db = createDatabaseAccess(fx.db);
+    for (const elapsed of [11_000, 61_000]) {
+      const unpaid = await refreshSupplierTopup(db, 1, { now: now + elapsed });
+      expect(unpaid).toMatchObject({ status: "failed", paid_at: null, error: "create_failed", updated_at: now + elapsed });
+      await expect(refreshSupplierTopup(db, 1, { now: now + elapsed + 1 })).rejects.toMatchObject({ status: 429, code: "too_soon" });
+    }
+    paid = true;
+    const paidAt = now + 72_000;
+    const refreshed = await refreshSupplierTopup(db, 1, { now: paidAt });
+    expect(refreshed).toMatchObject({ status: "paid", paid_at: paidAt, error: null });
+    if (sk) expect(refreshed.credit_amount).toBe(50_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(await refreshSupplierTopup(db, 1, { now: paidAt + 11_000 })).toEqual(refreshed);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  } finally { fx.close(); }
+});
+
 describe("Sekalipay topup", () => {
   it("stores invoice, pay vs credit amounts, fees and expiry", async () => {
     const fx = createD1Fixture();
@@ -128,6 +168,7 @@ describe("Sekalipay topup", () => {
       vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: RequestInit) => {
         const s = String(url);
         if (s.includes("/sk/v1/balance/channels")) return Response.json({ data: [channel()] });
+        if (s.includes("/sk/v1/balance/mutations")) return Response.json({ data: [] });
         if (s.includes("/sk/v1/balance")) {
           posts.push(JSON.parse(String(init?.body ?? "{}")));
           return Response.json({
@@ -255,6 +296,39 @@ describe("Sekalipay topup", () => {
     }
   });
 
+  it("H2-18: refresh re-validates channels before reposting after a channel-read failure", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubSkEnv();
+      const now = Date.UTC(2026, 10, 20, 8);
+      let channelsFail = true;
+      const posts: unknown[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: RequestInit) => {
+        const s = String(url);
+        if (s.includes("/sk/v1/balance/channels")) {
+          if (channelsFail) return new Response("{}", { status: 502 });
+          return Response.json({ data: [channel({ status: "off" })] });
+        }
+        if (s.includes("/sk/v1/balance")) { posts.push(init?.body); return Response.json({ data: skInvoice() }); }
+        throw new Error(`Unexpected fetch ${s}`);
+      }));
+      const db = createDatabaseAccess(fx.db);
+      await expect(
+        createSupplierTopup(db, { supplier: "sekalipay", code: "sk-topup", amount: 50_000 }, { now }),
+      ).rejects.toBeInstanceOf(SupplierTopupError);
+      const row = fx.sql.prepare("SELECT id,status FROM supplier_topups").get() as { id: number; status: string };
+      expect(row.status).toBe("unknown");
+
+      channelsFail = false;
+      const refreshed = await refreshSupplierTopup(db, row.id, { now: now + 11_000 });
+      expect(posts).toHaveLength(0);
+      expect(refreshed.status).toBe("failed");
+      expect(refreshed.error).toBe("channel_unavailable");
+    } finally {
+      fx.close();
+    }
+  });
+
   it("refresh matches the credit mutation invoice and marks paid", async () => {
     const fx = createD1Fixture();
     try {
@@ -284,6 +358,28 @@ describe("Sekalipay topup", () => {
     } finally {
       fx.close();
     }
+  });
+  it.each([true, false])("checks a known invoice with no link for credit (paid=%s), then expiry", async (paid) => {
+    const fx = createD1Fixture();
+    try {
+      stubSkEnv();
+      const now = Date.UTC(2026, 10, 20, 8);
+      const fetchMock = vi.fn(async (url: unknown) => {
+        const path = String(url);
+        if (path.includes("/balance/channels")) return Response.json({ data: [channel()] });
+        if (path.includes("/balance/mutations")) {
+          return Response.json({ data: paid ? [{ invoice: "SK-INV-1", direction: "credit", type: "topup", amount: 50_000 }] : [] });
+        }
+        return Response.json({ message: "REF_ID_ALREADY_EXIST" }, { status: 400 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      fx.sql.prepare(`INSERT INTO supplier_topups
+        (supplier,ref_id,supplier_ref,channel,currency,requested_amount,status,created_at,updated_at,expires_at)
+        VALUES ('sekalipay','AXVTU-missing-link','SK-INV-1','sk-topup','IDR',50000,'pending',?,?,?)`).run(now, now, now + 60_000);
+      const result = await refreshSupplierTopup(createDatabaseAccess(fx.db), 1, { now: now + 61_000 });
+      expect(result).toMatchObject({ status: paid ? "paid" : "expired", paid_at: paid ? now + 61_000 : null });
+      expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/sk/v1/balance/mutations"]);
+    } finally { fx.close(); }
   });
 });
 
@@ -429,6 +525,64 @@ describe("TUNVN topup", () => {
     }
   });
 
+  it.each([true, false])("concurrent refresh preserves paid (paid resolves first=%s)", async (paidFirst) => {
+    const fx = createD1Fixture();
+    try {
+      stubTunvnEnv();
+      const now = Date.UTC(2026, 10, 20, 8);
+      const paid = Promise.withResolvers<Response>();
+      const unpaid = Promise.withResolvers<Response>();
+      const status = vi.fn().mockReturnValueOnce(paid.promise).mockReturnValueOnce(unpaid.promise);
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown) => String(url).includes("/api/deposit/status")
+        ? status() : Response.json(depositResponse({ expires_in_minutes: 1 }))));
+      const db = createDatabaseAccess(fx.db);
+      const created = await createSupplierTopup(db, { supplier: "tunvn", amount: 10 }, { now });
+      fx.sql.exec(`CREATE TABLE paid_transitions (paid_at INTEGER);
+        CREATE TRIGGER record_topup_payment AFTER UPDATE OF status ON supplier_topups
+        WHEN OLD.status <> 'paid' AND NEW.status = 'paid'
+        BEGIN INSERT INTO paid_transitions VALUES (NEW.paid_at); END;`);
+      const confirmed = refreshSupplierTopup(db, created.id, { now: now + 70_000 });
+      const expired = refreshSupplierTopup(db, created.id, { now: now + 71_000 });
+      await vi.waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+      const resolvePaid = () => paid.resolve(Response.json({ success: true, deposit: { status: "confirmed" }, paid: true }));
+      const resolveUnpaid = () => unpaid.resolve(Response.json({ success: true, deposit: { status: "expired" }, paid: false }));
+      if (paidFirst) {
+        resolvePaid();
+        expect(await confirmed).toMatchObject({ status: "paid", paid_at: now + 70_000 });
+        resolveUnpaid();
+        expect(await expired).toMatchObject({ status: "paid", paid_at: now + 70_000 });
+      } else {
+        resolveUnpaid();
+        expect(await expired).toMatchObject({ status: "expired", paid_at: null });
+        resolvePaid();
+        expect(await confirmed).toMatchObject({ status: "paid", paid_at: now + 70_000 });
+      }
+      expect(fx.sql.prepare("SELECT status,paid_at FROM supplier_topups").get()).toMatchObject({ status: "paid", paid_at: now + 70_000 });
+      expect(fx.sql.prepare("SELECT paid_at FROM paid_transitions").all()).toEqual([{ paid_at: now + 70_000 }]);
+    } finally { fx.close(); }
+  });
+
+  it("H2-18: an undated invoice honours upstream status=expired", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubTunvnEnv();
+      const now = Date.UTC(2026, 10, 20, 8);
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+        if (String(url).includes("/api/deposit/status")) {
+          return Response.json({ success: true, deposit: { status: "expired" }, paid: false });
+        }
+        return Response.json(depositResponse({ expires_in_minutes: null }));
+      }));
+      const db = createDatabaseAccess(fx.db);
+      const created = await createSupplierTopup(db, { supplier: "tunvn", amount: 10 }, { now });
+      expect(created.expires_at).toBeNull();
+      const refreshed = await refreshSupplierTopup(db, created.id, { now: now + 11_000 });
+      expect(refreshed.status).toBe("expired");
+    } finally {
+      fx.close();
+    }
+  });
+
   it("a failed status check (401/404/5xx) keeps the invoice pending and records the error", async () => {
     const fx = createD1Fixture();
     try {
@@ -476,6 +630,26 @@ describe("TUNVN topup", () => {
 });
 
 describe("guards", () => {
+  it("reserves only three pending slots across simultaneous creates, before any supplier POST", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubSkEnv();
+      let posted = 0;
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown) => String(url).includes("/balance/channels")
+        ? Response.json({ data: [channel()] })
+        : Response.json({ data: skInvoice({ invoice: `SK-INV-${++posted}` }) })));
+      const db = createDatabaseAccess(fx.db);
+      const now = Date.UTC(2026, 10, 20, 8);
+      const attempts = await Promise.allSettled(Array.from({ length: 6 }, () =>
+        createSupplierTopup(db, { supplier: "sekalipay", code: "sk-topup", amount: 50_000 }, { now })));
+      expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(3);
+      for (const attempt of attempts) if (attempt.status === "rejected") {
+        expect(attempt.reason).toMatchObject({ status: 429, code: "too_many_pending" });
+      }
+      expect(posted).toBe(3);
+      expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM supplier_topups").get()?.n).toBe(3);
+    } finally { fx.close(); }
+  });
   it("rejects with too_many_pending (429) when 3 non-terminal rows are open", async () => {
     const fx = createD1Fixture();
     try {

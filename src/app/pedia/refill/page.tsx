@@ -7,7 +7,7 @@ export const runtime = "edge";
 
 // src/app/pedia/refill/page.tsx — Halaman Refill Pedia (2026-11-01).
 export async function generateMetadata(): Promise<Metadata> {
-  return pediaPageMetadata(await requestLocale(), "refill", "/refill");
+  return { ...pediaPageMetadata(await requestLocale(), "refill", "/refill"), robots: { index: false, follow: false } };
 }
 
 export default function PediaRefillPage() {

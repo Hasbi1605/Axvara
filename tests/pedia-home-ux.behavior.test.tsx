@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PediaHomeClient } from "@/app/pedia/home-client";
 import { PediaNavbar } from "@/components/pedia/PediaNavbar";
-import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
+import { PlatformCatalog } from "@/components/pedia/PlatformCatalog";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { catalogCard, ProductCard } from "@/components/pedia/PlatformGrid";
 import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
@@ -30,8 +31,8 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); usePediaSearch.getState().setQ(""); });
-function renderPediaHome(products: PediaCatalogProduct[], ordersEnabled?: boolean) {
-  return render(<><PediaNavbar /><PediaHomeClient products={products} ordersEnabled={ordersEnabled} /></>);
+function renderPediaHome(products: PediaCatalogProduct[]) {
+  return render(<><PediaNavbar /><PediaHomeClient products={products} /></>);
 }
 function search(value: string) { fireEvent.change(screen.getByRole("searchbox", { name: "Cari layanan Pedia" }), { target: { value } }); }
 
@@ -137,7 +138,8 @@ describe("Pedia platform-first storefront", () => {
   });
   it("does not render unsafe or unsaved promotional tagline markup", () => {
     expect(catalogCard({ ...product, tagline: " " }).tagline).toBeNull();
-    render(<PediaHomeClient products={[{ ...product, tagline: '<img src=x onerror="alert(1)">' }]} />);
+    const richProduct: PediaCatalogProduct = { ...product, tagline: '<img src=x onerror="alert(1)">' };
+    render(<PediaHomeClient products={[richProduct]} />);
     expect(document.querySelector('img[src="x"]')).toBeNull();
   });
   it("filters platform groups, searches service names, and recovers from empty search", () => {
@@ -177,33 +179,27 @@ describe("Pedia platform-first storefront", () => {
     expect(screen.getByRole("link", { name: /Views TikTok/ }).getAttribute("href")).toBe("/pedia/o/views-tiktok");
     expect(screen.queryByRole("link", { name: /Followers Instagram/ })).toBeNull();
   });
-  it("routes navbar search from an order to searchable services", () => {
+  it("routes navbar search from an order to searchable services on Enter, not during typing", async () => {
     navigation.path = "/pedia/o/followers-instagram";
-    renderPediaHome([product, tiktok]);
-    search("tiktok");
-    expect(navigation.push).toHaveBeenCalledWith("/pedia/layanan");
-    expect(screen.getByRole("link", { name: /Views TikTok/ })).toBeTruthy();
+    const user = userEvent.setup();
+    const { unmount } = render(<PediaNavbar />);
+    const input = screen.getByRole("searchbox", { name: "Cari layanan Pedia" });
+    await user.type(input, "tiktok");
+    expect(navigation.push).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
+    expect(navigation.push.mock.calls).toEqual([["/pedia/layanan"]]);
+
+    // Router is mocked; mount the actual destination catalog with the same store.
+    unmount();
+    render(<PlatformCatalog products={[product, tiktok]} headingLevel={1} />);
+    expect(screen.getByRole("link", { name: /Views TikTok/ }).getAttribute("href")).toBe("/pedia/o/views-tiktok");
+    expect(screen.queryByRole("link", { name: /Followers Instagram/ })).toBeNull();
   });
   it("groups a large service collection into a single platform without sales claims", () => {
     render(<PediaHomeClient products={Array.from({ length: 9 }, (_, i) => ({ ...product, slug: `service-${i}`, name: `Layanan ${i}`, is_featured: 0 }))} />);
     expect(screen.getAllByRole("link", { name: "Layanan Instagram" })).toHaveLength(1);
     expect(document.body.textContent).toContain("1 platform");
     expect(document.body.textContent).not.toMatch(/Terlaris|Paling dipilih/);
-  });
-
-  it("handles unmatched and invalid links without suggesting verification", async () => {
-    render(<LinkPasteHero suggestionsFor={() => []} />);
-    fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "https://tiktok.com/@customer/video/123456" } });
-    expect(await screen.findByText(/Belum ada layanan untuk jenis link ini/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "invalid-link" } });
-    expect(await screen.findByText(/Gunakan link lengkap/)).toBeTruthy();
-  });
-
-  it("does not suggest reel-only services for post links rejected by the quote contract", async () => {
-    render(<LinkPasteHero suggestionsFor={() => []} />);
-    fireEvent.change(screen.getByLabelText("Tautan profil atau konten"), { target: { value: "https://instagram.com/p/ABC/" } });
-    expect(await screen.findByText(/Belum ada layanan untuk jenis link ini/)).toBeTruthy();
-    expect(screen.queryByRole("link", { name: /Followers Instagram mulai/ })).toBeNull();
   });
 
   it("selects a service kind directly on the platform page and supports switching", () => {

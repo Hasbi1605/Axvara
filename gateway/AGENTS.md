@@ -3,6 +3,12 @@
 Scope: `axvara/gateway/`. Aturan root AXVARA berlaku. Source produksi kanonis
 berpindah dari folder saudara `axvara-wa-gateway` pada 24 Oktober 2026.
 
+**21 November 2026 — keputusan owner (FX-15, lokal):** hanya web dan bot Telegram
+yang menjadi kanal jual. Gateway WA tetap untuk promo, siaran grup, sambutan dan
+balasan dukungan `.d`/`garansi`/arahan ke kanal resmi. Jangan menambah checkout,
+notifikasi transaksi atau DM kredensial. `/send` teks grup bertoken tetap ada;
+`/send-image` legacy dihapus (tidak memengaruhi gambar pada endpoint promo).
+
 Audit dependency27Oktober: Fastify5.12.7, Sharp0.35.5, fast-uri4.2.3/3.1.9,
 music-metadata11.16.1 dipatch kompatibel; Baileys/Node22/session/runtime tidak
 diganti. Sharp dipanggil transitif Baileys thumbnail, sehingga tidak boleh
@@ -60,8 +66,12 @@ laporan `../docs/security/dependency-audit-2026-10-27.md`. Deploy tetap hanya CI
   `/send-welcome` key `wa:welcome:<sha256>` memakai handler grup yang sama
   (token, mutex sesi, nomor/revisi aktif, pin grup terverifikasi, ledger PG,
   pacing bersama); key lintas namespace ditolak. `group-participants.update`
-  action `add` meneruskan maks 100 anggota (bot PN/LID disingkirkan) ke Pages
-  `/api/whatsapp/group-events` tanpa menahan mutex selama HTTP. Detail:
+  action `add` menyimpan maks 100 anggota (bot PN/LID disingkirkan) di inbox
+  PostgreSQL, lalu meneruskan ke Pages `/api/whatsapp/group-events` tanpa mutex
+  sesi. Retry memakai waktu asal `x-wa-join-observed-at`, maks 6 percobaan dan
+  umur 30 menit; 202 hanya sah setelah outbox D1 tersimpan. Mutex outbound
+  terpisah dari status/sesi; izin grup, socket, revisi dan usia diperiksa sebelum
+  kirim, settlement memakai nomor asal. Pacing/cooldown lama tetap. Detail:
   `../issue/broadcasts-welcome-2026-10-24.md`, ARCHITECTURE §16.13.
 - Promo bot 17 Nov 2026 (`src/promo-bot.ts`): sesi Baileys kedua yang
   terisolasi di proses yang sama (mutex, socket, cache metadata grup 5 menit,

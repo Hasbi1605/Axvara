@@ -1,6 +1,8 @@
 import { createRequire } from "node:module";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
+import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 
 const {
@@ -33,6 +35,16 @@ const baseEnv = {
 };
 
 describe("d1-backup-r2", () => {
+  it("adds a failure-only, credential-free Actions annotation and summary to the existing job", () => {
+    const yaml = readFileSync(new URL("../.github/workflows/d1-backup.yml", import.meta.url), "utf8");
+    const step = yaml.match(/      - name: Report backup failure\n        if: (.*)\n        run: \|\n((?: {10}.+\n)+)/);
+    expect(step?.[1]).toBe("${{ failure() }}");
+    expect(step?.[2]).not.toContain("secrets.");
+    // Pipe the summary to stdout in the fixture; no Actions or external calls.
+    const output = execFileSync("/bin/bash", ["-e", "-c", step![2]], {env:{NODE_ENV:"test",GITHUB_STEP_SUMMARY:"/dev/stdout"},encoding:"utf8"});
+    expect(output).toContain("::error title=D1 backup failed::");
+    expect(output).toContain("last successful backup");
+  });
   it("polls D1 export API with at_bookmark -> current_bookmark, validates, gzips, hashes, and uploads to axvara-db-backups", async () => {
     const dumpBuf = makeValidSqlDump();
     const signedUrl = "https://r2-signed.cloudflare.test/export/dump.sql?X-Amz-Signature=deadbeefsecret123&Expires=99999";

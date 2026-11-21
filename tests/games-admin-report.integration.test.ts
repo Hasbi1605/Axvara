@@ -11,6 +11,7 @@ import { sendMessage } from "@/lib/telegram/api";
 import { gamesAdminDeliverySummary, notifyWebPaidAdmin, telegramPaidDeliveryProfile } from "@/lib/telegram/order-notifications";
 import { ensureFulfillmentForPaidOrder, ensureFulfillmentItems, processJobItems, reconcileOrphanLight, reconcileSettledJobs, getDueJobs, recordManualHandoverDetailed } from "@/lib/fulfillment/deliver";
 import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL } from "@/lib/admin-overview-queries";
+import * as overviewQueries from "@/lib/admin-overview-queries";
 
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn() }));
 let fx: ReturnType<typeof createD1Fixture>;
@@ -181,4 +182,13 @@ it("operations cron's bounded orphan query cannot spend slots on Games", () => {
   const sql = source.match(/`(SELECT o\.code FROM orders o LEFT JOIN fulfillment_jobs fj ON fj\.order_code=o\.code[\s\S]*?ORDER BY o\.created_at ASC LIMIT \?)`/)?.[1];
   expect(sql).toBeTruthy();
   expect(fx.sql.prepare(sql!).all(1)).toEqual([]);
+});
+it("FX-11: tracks aged paid manual orders and paid Games needs_check independently of Market queues", () => {
+  fx.sql.exec(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,paid_at,fulfillment_status) VALUES
+    ('AXV-OLD','Buyer','628','[]',10000,'qris','lunas','paid',datetime('now','-25 hours'),'manual_required'),
+    ('AXV-FRESH','Buyer','628','[]',10000,'qris','lunas','paid',datetime('now'),'manual_required'),
+    ('AXV-UNPAID','Buyer','628','[]',10000,'qris','pending','pending',datetime('now','-25 hours'),'manual_required');
+    UPDATE games_order_items SET status='needs_check';`);
+  const sql=overviewQueries.OVERVIEW_MANUAL_ATTENTION_SQL;
+  expect(sql && fx.sql.prepare(sql).get()).toMatchObject({aged_manual_required:1,games_needs_check:1});
 });

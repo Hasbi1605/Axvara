@@ -14,6 +14,28 @@
 
 export type ServiceLevel = "configured" | "healthy" | "degraded" | "unknown";
 
+export const TG_WEBHOOK_HEALTH_KEY = "tg_webhook_health";
+export const WA_GATEWAY_HEALTH_KEY = "wa_gateway_health";
+export const KLIKQRIS_POLL_HEALTH_KEY = "klikqris_health_poll_failed";
+
+// GoPay and KlikQRIS already share the event ledger; unrelated IPNs and
+// supplier events do not measure the QRIS rails.
+export const QRIS_HEALTH_EVENTS_SQL = `SELECT SUM(CASE WHEN status IN ('received','ignored') THEN 1 ELSE 0 END) AS unmatched,
+  SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+  MAX(CASE WHEN status='matched' THEN processed_at END) AS last_match
+  FROM dana_webhook_events WHERE (provider IN ('dana','gopay','klikqris') OR provider IS NULL)
+    AND created_at >= date('now','-7 days') AND datetime(created_at) >= datetime('now','-7 days')`;
+
+export function readTelegramWebhookHealth(value: unknown): { error: string | null; pending: number | null } {
+  try {
+    const sample = JSON.parse(String(value)) as { error?: unknown; pending?: unknown } | null;
+    return {
+      error: typeof sample?.error === "string" ? sample.error : null,
+      pending: typeof sample?.pending === "number" && Number.isSafeInteger(sample.pending) && sample.pending >= 0 ? sample.pending : null,
+    };
+  } catch { return { error: null, pending: null }; }
+}
+
 export type ServiceStatus = {
   level: ServiceLevel;
   detail: string;
@@ -111,6 +133,7 @@ export function evaluateTelegram(signals: TelegramSignals, now = Date.now()): Se
   }
   const queueVerdict = evaluateQueue(signals.queue, { maxPending: 25, maxAgeMinutes: 30 }, "Fulfillment Telegram", now);
   if (queueVerdict.level === "degraded") return queueVerdict;
+  if (signals.webhookPending != null) return { level: "healthy", detail: `Webhook Telegram aktif: ${signals.webhookPending} update antre` };
   return { level: "configured", detail: "Telegram terkonfigurasi, belum ada pengukuran kirim" };
 }
 
@@ -118,6 +141,7 @@ export type WhatsAppSignals = {
   configured: boolean;
   enabled: boolean;
   gatewayReachable: boolean | null;
+  gatewayBlocked?: boolean;
   lastSendOkAt: string | null;
   lastSendFailAt: string | null;
   queue: QueueSample;
@@ -125,7 +149,8 @@ export type WhatsAppSignals = {
 
 export function evaluateWhatsApp(signals: WhatsAppSignals, now = Date.now()): ServiceStatus {
   if (!signals.configured || !signals.enabled) return { level: "unknown", detail: "WhatsApp belum dikonfigurasi/aktif" };
-  if (signals.gatewayReachable === false) return { level: "degraded", detail: "Gateway Baileys tidak terjangkau" };
+  if (signals.gatewayBlocked) return { level: "degraded", detail: "Pengiriman gateway Baileys dijeda" };
+  if (signals.gatewayReachable === false) return { level: "degraded", detail: "Gateway/sesi Baileys tidak tersambung" };
   if (signals.lastSendFailAt && (signals.lastSendOkAt == null || Date.parse(signals.lastSendFailAt) > Date.parse(signals.lastSendOkAt))) {
     return { level: "degraded", detail: "Kirim WhatsApp terakhir gagal" };
   }
@@ -140,11 +165,13 @@ export type QrisSignals = {
   enabled: boolean;
   unmatched7d: number;
   failed7d: number;
+  klikQrisPollFailures?: number;
   lastMatchAt: string | null;
 };
 
 export function evaluateQris(signals: QrisSignals): ServiceStatus {
   if (!signals.configured || !signals.enabled) return { level: "unknown", detail: "QRIS dinamis belum dikonfigurasi/aktif" };
+  if ((signals.klikQrisPollFailures ?? 0) > 0) return { level: "degraded", detail: `KlikQRIS: ${signals.klikQrisPollFailures} cek status gagal` };
   if (signals.failed7d > 0) return { level: "degraded", detail: `QRIS: ${signals.failed7d} event gagal 7 hari` };
   if (signals.unmatched7d > 10) return { level: "degraded", detail: `QRIS: ${signals.unmatched7d} event tak cocok 7 hari` };
   if (signals.lastMatchAt) return { level: "healthy", detail: "QRIS Hook mencocokkan pembayaran" };

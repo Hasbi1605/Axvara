@@ -35,9 +35,10 @@ async function checkout(channel: "telegram" | "whatsapp" = "telegram") {
   await createChannelOrderAtomic({ orderCode: code,
     lines: [{ productId: 1, variantId: 1, qty: 1, fulfillmentMode: "manual", stock: 100 }],
     items: [{ product_id: 1, variant_id: 1, qty: 1, price: 10000, name: "Fixture" }],
-    variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1, customerName: "Fixture", salesChannel: channel,
+    variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1, customerName: "Fixture", salesChannel: "telegram",
     paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required" });
   fixture.sql.prepare("UPDATE orders SET telegram_chat_id='77', channel_conversation_id='fixture@g.us', telegram_order_notified_at=datetime('now') WHERE code=?").run(code);
+  if (channel === "whatsapp") fixture.sql.prepare("UPDATE orders SET sales_channel='whatsapp' WHERE code=?").run(code);
   return createDanaQrisInvoice(code, 10000);
 }
 const row = () => fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;
@@ -92,14 +93,12 @@ it("the replacement is the final QR; its deadline closes the order and restores 
     { text: "🔁 Pesan Lagi", callback_data: "reorder:1" }, { text: "🛍 Katalog", callback_data: "catalog:0" },
   ]] });
 });
-it("WA expiry creates a durable message once for the original conversation", async () => {
+it("expires historical WA orders without notifying the original conversation", async () => {
   await checkout("whatsapp"); expire(true); await cron();
   expect(row().status).toBe("kadaluarsa");
   await sendQrisExpiryNotifications(); await sendQrisExpiryNotifications();
   const notices = fixture.sql.prepare("SELECT * FROM whatsapp_outbox WHERE idempotency_key=?").all(`wa:qris-expired:${code}`);
-  expect(notices).toHaveLength(1);
-  expect(notices[0]).toMatchObject({ destination: "fixture@g.us", payload: expect.stringContaining("15 menit") });
-  expect(String(notices[0].payload)).toContain("buat pesanan ulang");
+  expect(notices).toHaveLength(0);
 });
 it("migration shortens an existing active WA order to its invoice deadline", async () => {
   const invoice = await checkout("whatsapp");
@@ -122,16 +121,6 @@ it("Telegram variant selection goes straight to quantity controls", async () => 
   expect(fixture.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='77'").get()!.pending_action).toBe("qty_for:1:1");
 });
 
-it("a failed WA outbox insert is retried without losing the expiry notice", async () => {
-  await checkout("whatsapp");
-  fixture.sql.prepare("UPDATE orders SET status='kadaluarsa',payment_status='expired'").run();
-  fixture.sql.prepare("UPDATE payment_transactions SET status='expired'").run();
-  fixture.control.fail = query => query.includes("INSERT OR IGNORE INTO whatsapp_outbox");
-  expect((await sendQrisExpiryNotifications()).sent).toBe(0);
-  fixture.control.fail = null;
-  expect((await sendQrisExpiryNotifications()).sent).toBe(1);
-  expect((await sendQrisExpiryNotifications()).sent).toBe(0);
-});
 it("migration preserves first Telegram waiting window and leaves historical terminal messages suppressed", async () => {
   await checkout(); const deadline = row().expires_at;
   fixture.sql.exec("ALTER TABLE payment_transactions DROP COLUMN expiry_notice_state");

@@ -12,8 +12,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { queryFirst, execRun } from "@/lib/db";
+import { readJsonBody } from "@/lib/http-body";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { calculateSellPrice } from "@/lib/warung-rebahan/sync";
+import { saveSupplierMarkup } from "@/lib/supplier/admin-markup";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -30,11 +32,15 @@ const bulkSchema = z.object({
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const parsed = bulkSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 64_000);
+  if (!body.ok) return body.response;
+  const parsed = bulkSchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "validation_failed" }, { status: 400 });
   }
   const { variant_ids, markup_percent, markup_fixed, update_fixed } = parsed.data;
+  const db = createDatabaseAccess();
+  if (!db.d1) return NextResponse.json({ error: "update_failed" }, { status: 503 });
   const now = new Date().toISOString();
   // Dedup ID agar 1 varian tidak dihitung 2x.
   const ids = [...new Set(variant_ids)];
@@ -42,8 +48,8 @@ export async function POST(request: NextRequest) {
   const failed: { id: string; error: string }[] = [];
   for (const id of ids) {
     try {
-      const row = await queryFirst(
-        `SELECT wr_price, markup_fixed, axvara_variant_id FROM wr_variants WHERE wr_variant_id=?`,
+      const row = await db.queryFirst(
+        `SELECT wr_price, markup_fixed FROM wr_variants WHERE wr_variant_id=?`,
         id,
       );
       if (!row) {
@@ -52,35 +58,15 @@ export async function POST(request: NextRequest) {
       }
       const fixed = update_fixed ? markup_fixed : Number(row.markup_fixed ?? 0);
       const sellPrice = calculateSellPrice(Number(row.wr_price), markup_percent, fixed);
-      await execRun(
-        `UPDATE wr_variants SET markup_percent=?, markup_fixed=?, axvara_sell_price=?,
-          last_synced_at=?, updated_at=? WHERE wr_variant_id=?`,
-        markup_percent,
-        fixed,
-        sellPrice,
-        now,
-        now,
-        id,
-      );
-      if (row.axvara_variant_id != null) {
-        // Harga coret milik admin: NULL-kan bila tak lagi membentuk diskon
-        // valid agar CHECK compare_price > price tidak menolak UPDATE harga
-        // (insiden Alight/Viu 2026-10-06).
-        await execRun(
-          `UPDATE product_variants SET price=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now') WHERE id=?`,
-          sellPrice,
-          sellPrice,
-          Number(row.axvara_variant_id),
-        ).catch(() => undefined);
-      }
+      await saveSupplierMarkup(db.d1, "warung", id, markup_percent, fixed, sellPrice, now);
       updated++;
-    } catch (e) {
-      failed.push({ id, error: e instanceof Error ? e.message : "update_failed" });
+    } catch {
+      failed.push({ id, error: "update_failed" });
     }
   }
   if (updated > 0) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-    await bumpCatalogRevision("market");
+    await bumpCatalogRevision("market", db);
   }
   return NextResponse.json({ ok: true, updated, failed });
 }

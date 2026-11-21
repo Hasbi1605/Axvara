@@ -26,19 +26,14 @@ import type {
  *   chat_id adalah ID grup, sehingga memakainya membocorkan kredensial ke
  *   seluruh anggota grup. Order grup menyimpan chat pribadi setelah buyer
  *   menekan START (ensurePrivateRecipient) atau item diarahkan manual.
- * - whatsapp → nomor anggota grup (channel_member_id) atau customer_wa.
+ * - whatsapp historis → tanpa tujuan otomatis; jalur manual admin.
  * - web → nomor WA pembeli (jalur manual/admin; tidak ada push otomatis).
  * Target kosong berarti item tidak dapat dikirim otomatis dan diarahkan ke
  * `manual_required` — bukan dikirim ke penerima kosong/grup.
  */
 export function resolveRecipient(order: Row): FulfillmentRecipient {
   const channel = String(order.sales_channel || "telegram");
-  if (channel === "whatsapp") {
-    return {
-      channel: "whatsapp",
-      target: String(order.channel_member_id || order.customer_wa || ""),
-    };
-  }
+  if (channel === "whatsapp") return { channel: "web", target: "" };
   if (channel === "web") {
     return { channel: "web", target: String(order.customer_wa || "") };
   }

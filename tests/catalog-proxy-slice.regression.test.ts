@@ -12,11 +12,54 @@ import { createD1Fixture, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { syncProducts } from "@/lib/warung-rebahan/sync";
 import { syncSkProducts } from "@/lib/sekalipay/sync";
-import type { WrProduct } from "@/lib/warung-rebahan/client";
+import { fetchProductsSlice, type WrProduct } from "@/lib/warung-rebahan/client";
+import { fetchSkCatalogSlice } from "@/lib/sekalipay/client";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+});
+
+it.each(["wr", "sk"] as const)("%s cold slice allows the proxy's 30s upstream budget with margin", async (supplier) => {
+  vi.useFakeTimers();
+  vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://wr-proxy.axvara.test");
+  vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "fixture");
+  vi.stubEnv("SEKALIPAY_PROXY_URL", "https://wr-proxy.axvara.test");
+  vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "fixture");
+  const result = supplier === "wr" ? {success:true,data:wrCatalog(1),meta:{total:1}} : {rows:[],meta:{in_scope_n:0}};
+  const fetchFn = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(Response.json(result)), 31_000);
+    init.signal!.addEventListener("abort", () => { clearTimeout(timer); reject(init.signal!.reason); });
+  }));
+  vi.stubGlobal("fetch", fetchFn);
+  const pending = (supplier === "wr" ? fetchProductsSlice(0,1) : fetchSkCatalogSlice({category:"Aplikasi Premium",offset:0,limit:1})).catch(error => error);
+  await vi.advanceTimersByTimeAsync(31_000);
+  expect(await pending).toMatchObject({offset:0});
+  expect(fetchFn).toHaveBeenCalledTimes(1);
+});
+
+it.each(["wr", "sk"] as const)("%s timeout respects remaining sweep budget without fallback or zero-missing", async supplier => {
+  const fx = createD1Fixture();
+  try {
+    vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_ENABLED", "true");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://wr-proxy.axvara.test");
+    vi.stubEnv("SEKALIPAY_PROXY_URL", "https://wr-proxy.axvara.test");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "fixture");
+    vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "fixture");
+    vi.useFakeTimers({toFake:["setTimeout","clearTimeout"]});
+    const fetchFn = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+    }));
+    vi.stubGlobal("fetch",fetchFn);
+    const sync = supplier === "wr" ? syncProducts : syncSkProducts;
+    const pending = sync(createDatabaseAccess(fx.db),undefined,{trigger:"cron",useProxySlices:true,timeBudgetMs:7_000});
+    await vi.advanceTimersByTimeAsync(7_100);
+    expect(await pending).toMatchObject({snapshotComplete:false,synced:0,errors:[`${supplier}_request_timeout`]});
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(fetchFn.mock.calls[0][0]).toMatch(/-slice(\?|$)/);
+  } finally { fx.close(); }
 });
 
 function wrCatalog(n: number): WrProduct[] {
@@ -214,6 +257,22 @@ describe("diff VPS — /api/supplier-sync", () => {
     }));
     return { status: res.status, body: (await res.json()) as Record<string, unknown> };
   }
+
+  it.each(["wr", "sk"] as const)("%s disabled diff explicitly did not apply; removal can be replayed after enable", async (supplier) => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("SUPPLIER_SYNC_TOKEN", "tok");
+      const enabled = supplier === "wr" ? "WARUNG_REBAHAN_ENABLED" : "SEKALIPAY_ENABLED";
+      vi.stubEnv(enabled, "false");
+      const payload = {supplier, products:[], rows:[], removed_variant_ids:["101"]};
+      expect(await post(payload)).toEqual({status:409,body:{ok:false,applied:false,error:"supplier_disabled",supplier}});
+      vi.stubEnv(enabled, "true");
+      vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "fixture");
+      vi.stubEnv("SEKALIPAY_API_KEY", "fixture");
+      expect((await post(payload)).status).toBe(200);
+    } finally { fx.close(); }
+  });
 
   it("auth: 503 tanpa secret, 401 token salah", async () => {
     const fx = createD1Fixture();

@@ -22,6 +22,7 @@ import { CheckoutSkeleton, InlineSpinner } from "@/components/storefront/Skeleto
 import { buyerDeliveryEtaJaspay, formatVariantLabel } from "@/lib/catalog";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useDisplayContext } from "@/hooks/useDisplayPrices";
+import { useModalA11y } from "@/hooks/useModalA11y";
 import { translateProductName } from "@/lib/i18n/product-name";
 import { checkoutMessage } from "@/lib/i18n/checkout-copy";
 
@@ -46,9 +47,8 @@ type CatalogVariant = BulkVariantFields & {
   duration_value?: number | null;
   duration_unit?: string | null;
   duration_label?: string | null;
-  wr_variant_id?: string | null;
-  sk_variant_id?: string | null;
-  sk_duration?: string | null;
+  supplier_variant?: boolean;
+  label_duration?: string | null;
   price: number;
   stock: number;
   min_qty?: number;
@@ -189,6 +189,11 @@ function CheckoutInner() {
   const [quoteIssues, setQuoteIssues] = useState<QuoteIssue[]>([]);
   const [priceChanges, setPriceChanges] = useState<PriceChange[]>([]);
   const [showIssueDialog, setShowIssueDialog] = useState(false);
+  const issueDialogRef = React.useRef<HTMLDivElement>(null);
+  const issueCancelRef = React.useRef<HTMLButtonElement>(null);
+  const closeIssueDialog = useCallback(() => setShowIssueDialog(false), []);
+  const issueDialogOpen = showIssueDialog && (quoteIssues.length > 0 || priceChanges.length > 0);
+  useModalA11y({ active: issueDialogOpen, containerRef: issueDialogRef, initialFocusRef: issueCancelRef, onClose: closeIssueDialog });
   const [quoteToken, setQuoteToken] = useState<string | null>(null);
   const [quoteAccepted, setQuoteAccepted] = useState(false);
   const uiLocale = explicitLocale ?? (quoteToken ? payLocale : resolvedLocale ?? payLocale);
@@ -456,7 +461,7 @@ function CheckoutInner() {
   if (buySlug && directError) {
     return (
       <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
-        <p className="text-red-300">{message(directError)}</p>
+        <h1 className="text-red-300">{message(directError)}</h1>
         <Link prefetch={false} href="/#katalog" className="mt-3 inline-block text-sm text-[#00E5FF]">{text("Kembali ke katalog", "Back to catalog")}</Link>
       </div>
     );
@@ -465,7 +470,7 @@ function CheckoutInner() {
   if (items.length === 0) {
     return (
       <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
-        <p className="text-white/60">{text("Keranjang kosong", "Your cart is empty")}</p>
+        <h1 className="text-white/60">{text("Keranjang kosong", "Your cart is empty")}</h1>
         <Link prefetch={false} href="/#katalog" className="text-[#00E5FF] text-sm mt-3 inline-block">{text("← Kembali belanja", "← Continue shopping")}</Link>
       </div>
     );
@@ -560,6 +565,12 @@ function CheckoutInner() {
         await fetchQuote(quoteRequestItems);
         throw new Error(j.message || "Harga produk berubah. Periksa harga terbaru lalu lanjutkan.");
       }
+      if (r.status === 409 && j.error_code === "checkout_order_closed") {
+        setQuoteToken(null);
+        setQuoteAccepted(false);
+        setQuoteError("checkout_order_closed");
+        return;
+      }
       // Gateway/crypto gagal/ambigu: order + klaim lama dibiarkan expire (tidak
       // dibatalkan), tetapi quote lama TIDAK boleh dipakai untuk metode lain
       // (reuse orders.quote_id akan mengembalikan order lama). Kosongkan
@@ -646,8 +657,8 @@ function CheckoutInner() {
         </div>
       ) : quoteError ? (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2">
-          <p className="text-sm text-red-300">{message(quoteError)}</p>
-          <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">{text("Coba lagi", "Try again")}</button>
+          <p className="text-sm text-red-300" role="alert">{quoteError === "checkout_order_closed" ? text("Pesanan ini sudah ditutup.", "This order is closed.") : message(quoteError)}</p>
+          <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">{quoteError === "checkout_order_closed" ? text("Ambil harga terbaru", "Get a new quote") : text("Coba lagi", "Try again")}</button>
         </div>
       ) : (
         <>
@@ -754,7 +765,8 @@ function CheckoutInner() {
         )}
       </div>
 
-      <div className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6 items-start">
+      {/* Keep the shared WA/email errors and focus handling on click and Enter. */}
+      <form noValidate onSubmit={(event) => { event.preventDefault(); if (!ctaDisabled && !issueDialogOpen) void submit(); }} className="mt-6 grid lg:grid-cols-[1fr_380px] gap-6 items-start">
         {/* Kiri — METODE + DATA + S&K (revamp 2026-09-23 ala Sekalipay:
             ① Metode di atas → ② Data minimal (WA + Email) → S&K mobile.
             Rail kanan desktop hanya ringkasan + S&K + CTA.) */}
@@ -769,7 +781,7 @@ function CheckoutInner() {
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
                 <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">{text("No WA aktif *", "Active WhatsApp number *")}</label>
                 <input id="checkout-wa" type="tel" inputMode="tel" autoComplete="tel" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} aria-describedby={fieldErrors.wa ? "checkout-wa-hint checkout-wa-error" : "checkout-wa-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
-                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Nomor aktif untuk terima produk, info pesanan, dan bantuan via WhatsApp bila ada kendala.", "An active number for product delivery, order updates, and WhatsApp support.")}</p>
+                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Nomor WhatsApp aktif untuk verifikasi dan bantuan. Produk tersedia lewat email atau halaman pesanan.", "An active WhatsApp number for verification and support. Find your product by email or on the order page.")}</p>
                 {fieldErrors.wa && <p id="checkout-wa-error" className="mt-1.5 text-xs text-red-300">{message(fieldErrors.wa)}</p>}
               </div>
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
@@ -821,7 +833,7 @@ function CheckoutInner() {
             {renderAgreeBlock("checkout-agree-mobile")}
           </div>
 
-          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{message(error)}</p>}
+          {error && <p role="alert" className="lg:hidden text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{message(error)}</p>}
 
           {/* Sticky bottom CTA — MOBILE ONLY. Di mobile rail kanan jatuh ke
               bawah; sticky ini menjaga tombol bayar selalu dalam jangkauan.
@@ -829,7 +841,7 @@ function CheckoutInner() {
               ganda). */}
           <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/90 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
             {Object.values(fieldErrors).some(Boolean) && <p role="alert" className="mb-2 text-center text-xs text-red-200">{message("Lengkapi data pembeli untuk melanjutkan.")}</p>}
-            <button onClick={submit} disabled={ctaDisabled} className="w-full h-12 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold text-sm hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+            <button type="submit" disabled={ctaDisabled} className="w-full h-12 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold text-sm hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
               {loading && <span className="w-4 h-4 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
               {ctaLabel}
             </button>
@@ -880,25 +892,25 @@ function CheckoutInner() {
             )}
           </div>
 
-          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{message(error)}</p>}
+          {error && <p role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{message(error)}</p>}
 
           {renderAgreeBlock("checkout-agree")}
 
           <div>
-            <button onClick={submit} disabled={ctaDisabled} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
+            <button type="submit" disabled={ctaDisabled} className="w-full h-[52px] rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
               {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
               {ctaLabel}
             </button>
             {selectedOption && copyForLocale.railFootnote[selectedOption.kind] && <p className="text-xs text-white/30 mt-3 text-center">{copyForLocale.railFootnote[selectedOption.kind]}</p>}
           </div>
         </aside>
-      </div>
+      </form>
 
       {/* Price-change / stock / minimum-qty issue dialog.
           Dialog memakai panel solid yang sama dengan modal admin
           (bg #0B1025, bukan glass transparan) agar konsisten. */}
-      {showIssueDialog && (quoteIssues.length > 0 || priceChanges.length > 0) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="quote-change-title">
+      {issueDialogOpen && (
+        <div ref={issueDialogRef} tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="quote-change-title">
           <div className="rounded-2xl border border-white/10 bg-[#0B1025] p-6 max-w-md w-full space-y-4 shadow-[0_24px_64px_rgba(0,0,0,0.6)]">
             <h3 id="quote-change-title" className="text-white font-semibold text-base">{belowMinIssues.length > 0 ? text("Sesuaikan Jumlah Pembelian", "Adjust Purchase Quantity") : text("Perubahan Harga / Stok", "Price / Stock Changed")}</h3>
             <p className="text-sm text-white/60">{belowMinIssues.length > 0 ? text("Produk ini punya minimal pembelian — naikkan jumlah ke batasnya untuk lanjut:", "This product has a minimum purchase quantity. Increase it to continue:") : text("Beberapa item berubah sejak kamu menambahkannya:", "Some items changed since you added them:")}</p>
@@ -918,7 +930,7 @@ function CheckoutInner() {
               ) : quoteIssues.length === 0 && priceChanges.length > 0 ? (
                 <button onClick={() => { setShowIssueDialog(false); setQuoteAccepted(true); useCart.getState().forgetBulkTiers(priceChanges.filter((c) => c.tier && c.variant_id !== undefined).map((c) => c.variant_id as number)); }} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">{text("Setujui harga baru", "Accept new price")}</button>
               ) : null}
-              <button onClick={() => { setShowIssueDialog(false); if (isDirect || belowMinIssues.length === 0) router.push("/#katalog"); }} className="flex-1 h-10 rounded-xl border border-white/20 text-white/70 text-sm">{!isDirect && belowMinIssues.length > 0 ? text("Ubah manual", "Adjust manually") : text("Kembali belanja", "Continue shopping")}</button>
+              <button ref={issueCancelRef} type="button" onClick={() => { setShowIssueDialog(false); if (isDirect || belowMinIssues.length === 0) router.push("/#katalog"); }} className="flex-1 min-h-11 rounded-xl border border-white/20 text-white/70 text-sm">{!isDirect && belowMinIssues.length > 0 ? text("Ubah manual", "Adjust manually") : text("Kembali belanja", "Continue shopping")}</button>
             </div>
           </div>
         </div>

@@ -114,6 +114,22 @@ export async function settleAmbiguousInvoiceSend(
  * gateway/crypto invoice send. Bounds an in-flight first send (Telegram timeout
  * is 10 s) and a crashed claim: recovery is the existing retry, never a lock. */
 export const PROVIDER_INVOICE_CLAIM_BACKOFF_SECONDS = 60;
+const CLAIM_RELEASED_SQL = `datetime('now','-${PROVIDER_INVOICE_CLAIM_BACKOFF_SECONDS} seconds')`;
+
+/**
+ * Tutup klaim kirim sebagai GAGAL PASTI: Telegram menjawab dengan error_code,
+ * jadi tidak ada kiriman yang mungkin masih mendarat. Stempel klaim dimundurkan
+ * agar retry berikutnya (redelivery/Refresh/cron) boleh langsung mengambil alih
+ * tanpa menunggu jendela freshness. Hasil AMBIGU (timeout tanpa error_code)
+ * tidak pernah memanggil ini — foto bisa tetap mendarat.
+ */
+export async function releaseInvoiceSendClaim(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<void> {
+  const { execRun } = database;
+  await execRun(
+    `UPDATE orders SET updated_at=${CLAIM_RELEASED_SQL} WHERE code=? AND telegram_invoice_sent_at IS NULL`,
+    orderCode,
+  ).catch(() => undefined);
+}
 
 /**
  * ONE durable claim for every gateway/crypto invoice text send (initial
@@ -250,10 +266,14 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
   const payableAmount = Number(ledger.payable_amount ?? order.subtotal ?? 0);
   if (!Number.isSafeInteger(payableAmount) || payableAmount <= 0) return false;
   if (!database.canSpend(2)) return false;
-  await execRun(
-    `UPDATE orders SET telegram_invoice_attempts=telegram_invoice_attempts+1, updated_at=datetime('now') WHERE code=?`,
-    orderCode,
-  ).catch(() => {});
+  // AU-E2-2: QRIS photos take the SAME atomic pre-send claim as provider text
+  // invoices (attempts CAS + claim timestamp). Cron retry and the Refresh
+  // callback reading the same unsent marker now defer to one sender instead of
+  // double-sending the photo. An invoice that was never claimed may be taken
+  // immediately; a failed claim waits out the freshness window unless the last
+  // attempt was a DEFINITIVE rejection (releaseInvoiceSendClaim).
+  const claim = await claimProviderInvoiceSend(orderCode, { allowFresh: true }, database);
+  if (claim !== "claimed") return claim === "sent";
   const result = await sendPhoto({
     chat_id: Number(order.telegram_chat_id),
     photo: String(ledger.qris_url ?? ""),
@@ -272,7 +292,11 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
     await settleAmbiguousInvoiceSend(Number(order.telegram_chat_id), order.code, String(ledger.qris_url ?? ""), database);
     return true;
   }
-  if (!result.ok) return false;
+  if (!result.ok) {
+    // Definitif: lepas stempel klaim agar retry berikutnya boleh langsung.
+    await releaseInvoiceSendClaim(orderCode, database);
+    return false;
+  }
   await markInvoiceSent(orderCode, database);
   return true;
 }
@@ -282,7 +306,7 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
  * Batasan per panggilan agar tunduk pada budget cron. Mengembalikan jumlah
  * foto yang akhirnya terkirim pada panggilan ini.
  */
-export async function retryInvoicePendingTelegramInvoices(limit = 25, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+export async function retryInvoicePendingTelegramInvoices(limit = 25, database: DatabaseAccess = createDatabaseAccess(), hasTime = (_ms: number) => true): Promise<number> {
   const { queryAll } = database;
   if (process.env.TELEGRAM_BOT_ENABLED !== "true") return 0;
   if (!database.canSpend(1)) return 0;
@@ -300,7 +324,9 @@ export async function retryInvoicePendingTelegramInvoices(limit = 25, database: 
   ).catch(() => [] as Record<string, unknown>[]);
   let sent = 0;
   for (const row of pending) {
-    if (!database.canSpend(["nowpayments", "sekalipay_gateway"].includes(String(row.provider)) ? 8 : 5)) break;
+    const providerText = ["nowpayments", "sekalipay_gateway"].includes(String(row.provider));
+    // Reserve the primary send and a possible ambiguity notice before claim.
+    if (!database.canSpend(providerText ? 8 : 5) || !hasTime(providerText ? 21_000 : 36_000)) break;
     try {
       if (await retryTelegramInvoiceDelivery(String(row.code), database)) sent++;
     } catch { /* cron berikutnya retry */ }

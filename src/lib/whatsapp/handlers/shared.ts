@@ -7,9 +7,8 @@
 // yang dipakai untuk mendeteksi pesan alur belanja lama.
 
 import { sendTextMessage as sendTextViaGateway } from "@/lib/whatsapp/gateway";
-import * as msg from "@/lib/whatsapp/messages";
 
-export type PaymentMethodChoice = msg.WhatsAppPaymentMethod;
+export type PaymentMethodChoice = "QRIS" | "SEABANK" | "EWALLET";
 
 // Wrapper: gateway mengembalikan {ok:false} pada kegagalan; handler lama
 // mengandalkan throw agar blok catch POST menandai inbox event `failed`

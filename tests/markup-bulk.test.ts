@@ -198,3 +198,37 @@ describe("status toko admin (live_status)", () => {
     }
   });
 });
+
+describe.each([
+  { supplier: "warung", table: "wr_variants", key: "wr_variant_id", badId: "WR-A", goodId: "WR-B", badVariant: 11, goodVariant: 12,
+    single: () => import("@/app/api/admin/warung/markup/route"), bulk: () => import("@/app/api/admin/warung/markup/bulk/route") },
+  { supplier: "sekalipay", table: "sk_products", key: "sk_variant_id", badId: "1", goodId: "2", badVariant: 21, goodVariant: 22,
+    single: () => import("@/app/api/admin/sekalipay/markup/route"), bulk: () => import("@/app/api/admin/sekalipay/markup/bulk/route") },
+])("$supplier atomic markup", ({ supplier, table, key, badId, goodId, badVariant, goodVariant, single, bulk }) => {
+  it.each([false, true])("rolls back the mirror on storefront write failure (bulk=%s)", async (isBulk) => {
+    vi.stubEnv("ADMIN_EMAIL", "admin@example.test");
+    vi.stubEnv("ADMIN_JWT_SECRET", "markup-fixture-secret");
+    vi.stubEnv("ADMIN_PASSWORD_SHA256", "a".repeat(64));
+    const { createAdminToken, createIdleToken } = await import("@/lib/auth");
+    const session = await createAdminToken("admin@example.test");
+    const idle = await createIdleToken(session.sid);
+    fixture.sql.exec(`CREATE TRIGGER fail_price BEFORE UPDATE OF price ON product_variants WHEN OLD.id=${badVariant}
+      BEGIN SELECT RAISE(ABORT,'fixture price failure'); END`);
+    const request = new NextRequest(`http://localhost/api/admin/${supplier}/markup${isBulk ? "/bulk" : ""}`, {
+      method: isBulk ? "POST" : "PUT",
+      headers: { cookie: `axvara_admin_token=${session.token}; axvara_idle=${idle}`, "content-type": "application/json" },
+      body: JSON.stringify({ ...(isBulk ? { variant_ids: [badId, goodId, badId] } : { [key]: badId }), markup_percent: 20 }),
+    });
+    const response = isBulk ? await (await bulk()).POST(request) : await (await single()).PUT(request);
+    expect(response.status).toBe(isBulk ? 200 : 500);
+    if (isBulk) expect(await response.json()).toEqual({ ok: true, updated: 1, failed: [{ id: badId, error: "update_failed" }] });
+    expect(fixture.sql.prepare(`SELECT markup_percent,axvara_sell_price FROM ${table} WHERE ${key}=?`).get(badId))
+      .toEqual({ markup_percent: 50, axvara_sell_price: 16000 });
+    const price = (id: number) => fixture.sql.prepare("SELECT price FROM product_variants WHERE id=?").get(id)?.price;
+    expect(price(badVariant)).toBe(16000);
+    if (isBulk) expect(price(goodVariant)).toBe(26000);
+    const revision = fixture.sql.prepare("SELECT value FROM store_settings WHERE key='catalog_revision_market'").get();
+    if (isBulk) expect(revision?.value).toEqual(expect.any(String));
+    else expect(revision).toBeUndefined();
+  });
+});

@@ -1,5 +1,22 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Batas harga preflight (keputusan owner 21 November 2026, lokal)
+
+- Preflight AIVault kini membandingkan `pricing.final_total` quote live dengan
+  `aivault_order_links.cost_usd` snapshot saat order lunas. Bila total live
+  **melebihi snapshot × 1,02** (toleransi 2%), order **tidak** di-POST: link
+  ditandai `needs_admin`/`last_error=price_increased`, satu alert admin
+  terdedupe lewat eskalasi `escalateSupplierManual` (jalur FX-11), dan pembeli
+  menerima kabar manual-handling existing. `price_increased` masuk
+  `AIVAULT_RETRYABLE_SQL`, jadi admin dapat Retry bila harga turun kembali.
+  Ini paritas dengan StoreBat/Mirai (`price_increased`), menggantikan perilaku
+  sebelumnya yang mengabaikan `final_total` dan bisa membeli di atas harga
+  yang dibayar pembeli. Status: implementasi lokal + test; publikasi via CI.
+
+## Perbaikan audit H2 — 21 November 2026 (lokal)
+
+- Dispatch: `interpret` menyalin `provider_order_id` ke baris in-memory agar gangguan D1 transien setelah receipt tersegel mem-poll ID yang diketahui, bukan jatuh `needs_admin`; `settle(needs_admin)` tidak lagi menimpa item yang sudah memiliki ciphertext terkirim. Replay idempotent tetap diizinkan saat varian dinonaktifkan/diarsipkan setelah POST terkirim (identitas tetap diperiksa); gerbang varian aktif hanya berlaku untuk POST baru. HTTP 429 pada `/quote` kini benar-benar menghentikan batch; gerbang retryable/bind/fence menambah kolom supplier saudara; query orphan memakai predikat eligibilitas penuh sebelum `LIMIT` agar snapshot invalid tidak menahan order valid. Katalog mengosongkan `compare_price` bila harga proyeksi menyentuh/melampauinya. Status: implementasi lokal + test.
+
 ## Auto-retry preflight stok/quote — 20 November 2026 (keputusan owner)
 
 - Insiden 20 Nov: order Gemini 6M `AXV-20261120-9849706E` jatuh `needs_admin`/`stock_unavailable` karena `/quote` sesaat melaporkan stok kurang, padahal mirror (dan stok sesudahnya) 2.301; Retry manual lalu sukses dan terkirim.

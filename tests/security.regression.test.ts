@@ -4,6 +4,11 @@ import path from "path";
 import { generateOrderCode, checkMagicBytes, isAllowedImageType, aggregateQty, isValidOrderCode } from "@/lib/security";
 import { rateLimit } from "@/lib/rateLimit";
 
+// Deterministic source IPs keep rate-limit buckets isolated per test without
+// unseeded randomness (AU-J2-7).
+let ipSeq = 0;
+function nextIp() { return `10.0.0.${++ipSeq}`; }
+
 // Helper to mock NextRequest minimal for rateLimit
 function mockReq(ip: string) {
   return {
@@ -35,7 +40,7 @@ describe("F-High: Order enumeration — code entropy + format", () => {
   });
 
   it("rateLimit untuk public lookup: 20允许, 21 ditolak", () => {
-    const ip = `10.0.0.${Math.floor(Math.random() * 200) + 10}`;
+    const ip = nextIp();
     for (let i = 0; i < 20; i++) expect(rateLimit(`lookup:${ip}`, 20)).toBe(true);
     expect(rateLimit(`lookup:${ip}`, 20)).toBe(false);
   });
@@ -162,13 +167,6 @@ describe("F-Medium: Payment proof — upload strict", () => {
     expect(checkMagicBytes(webp, "image/webp")).toBe(true);
     expect(checkMagicBytes(fake, "image/jpeg")).toBe(false);
     expect(checkMagicBytes(jpg, "image/png")).toBe(false); // mismatch
-  });
-
-  it("src/app/api/proof/upload/route.ts ditutup 503 selama maintenance jalur manual", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/proof/upload/route.ts"), "utf-8");
-    // Maintenance 2026-09-17: upload bukti WEB disembunyikan + endpoint 503 (QRIS saja).
-    expect(src).toContain("503");
-    expect(src).toContain("Upload bukti sedang dinonaktifkan");
   });
 
   it("checkout page: jalur manual pensiun, metode hanya dari ID quote", () => {
@@ -333,17 +331,6 @@ describe("BUG-12: community destinations remain live and centralized", () => {
     expect(bar).toContain('target="games"');
     const site = fs.readFileSync(path.join(process.cwd(), "src/lib/site.ts"), "utf-8");
     expect(site).toContain('`https://t.me/${SITE.adminTelegram}?start=beli`');
-  });
-});
-
-describe("BUG-13: Proof upload extension sesuai tipe (bukan selalu .webp)", () => {
-  it("proof upload route ditutup 503 selama maintenance (implementasi normal diarsipkan)", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/proof/upload/route.ts"), "utf-8");
-    // Maintenance 2026-09-17: POST selalu 503. Revert: hapus early-return
-    // 503 dan kembalikan blok validasi magic-bytes + extension per tipe
-    // (const ext = type === "image/png" ? "png" : ... + `bukti/...${ext}`).
-    expect(src).toContain("503");
-    expect(src).toContain("Upload bukti sedang dinonaktifkan");
   });
 });
 

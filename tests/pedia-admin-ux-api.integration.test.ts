@@ -4,6 +4,7 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 import { GET, POST, PUT } from "@/app/api/admin/pedia/products/route";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { createAdminToken, createIdleToken } from "@/lib/auth";
+import { getCatalogRevision } from "@/lib/catalog-cache";
 import { callPediaProxy } from "@/lib/pedia/proxy";
 
 vi.mock("@/lib/pedia/proxy", async (original) => ({ ...await original<typeof import("@/lib/pedia/proxy")>(), callPediaProxy: vi.fn() }));
@@ -107,17 +108,42 @@ it("failed and nonexistent writes return errors, not success", async () => {
   expect((await PUT(req({ id: productId, is_active: 1 }))).status).toBe(500);
 });
 
-it("repricing failure reports partial persistence explicitly", async () => {
-  fixture.control.fail = (sql) => sql.includes("SET package_prices_json=?");
+it("a tier price write failure preserves both the markup and its price", async () => {
+  fixture.sql.exec(`CREATE TRIGGER reject_tier_prices BEFORE UPDATE OF package_prices_json ON pedia_tiers
+    BEGIN SELECT RAISE(ABORT,'fixture price failure'); END;`);
   const result = await PUT(req({ kind: "tier", id: tierId, markup_pct: 40 }));
-  expect(result.status).toBe(500); expect(await result.json()).toMatchObject({ error: "reprice_failed" });
-  expect(await createDatabaseAccess().queryFirst("SELECT markup_pct FROM pedia_tiers WHERE id=?", tierId)).toMatchObject({ markup_pct: 40 });
-  expect(await createDatabaseAccess().queryFirst("SELECT package_prices_json FROM pedia_tiers WHERE id=?", tierId)).toMatchObject({ package_prices_json: "{}" });
+  expect(result.status).toBe(500);
+  expect(await createDatabaseAccess().queryFirst("SELECT markup_pct,package_prices_json FROM pedia_tiers WHERE id=?", tierId))
+    .toEqual({ markup_pct: 20, package_prices_json: "{}" });
 });
 
 it("failed reads do not masquerade as an empty catalog", async () => {
   fixture.control.fail = (sql) => sql.startsWith("SELECT * FROM pedia_products");
   expect((await GET(req())).status).toBe(500);
+});
+
+it("rolls back product packages and every tier price if the second reprice fails", async () => {
+  const db = createDatabaseAccess();
+  await saleService();
+  await db.execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present)
+    VALUES ('indosmm',89,'Followers','Instagram','Default',9000,100,1000,1)`);
+  await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,package_prices_json)
+    VALUES (?,'premium','indosmm',89,'G3',20,1000,'{"250":5000}')`, productId);
+  expect((await PUT(req({ kind: "tier", id: tierId, markup_pct: 25 }))).status).toBe(200);
+  const prices = () => db.queryAll("SELECT id,package_prices_json FROM pedia_tiers WHERE product_id=? ORDER BY id", productId);
+  const before = await prices();
+  const revision = () => db.queryFirst("SELECT value FROM store_settings WHERE key='catalog_revision_pedia'");
+  const warmRevision = await revision();
+  expect(warmRevision?.value).toEqual(expect.any(String));
+  expect(await getCatalogRevision("pedia", db)).toBe(warmRevision?.value);
+  let tierWrites = 0;
+  fixture.control.fail = sql => sql.startsWith("UPDATE pedia_tiers") && ++tierWrites === 2;
+  const response = await PUT(req({ id: productId, packages_json: "[500]" }));
+  expect(response.status).toBe(500);
+  expect(tierWrites).toBe(2);
+  expect(await db.queryFirst("SELECT packages_json FROM pedia_products WHERE id=?", productId)).toEqual({ packages_json: "[100,250,500,1000]" });
+  expect(await prices()).toEqual(before);
+  expect(await revision()).toEqual(warmRevision);
 });
 
 it("order action database failures return a visible error", async () => {
@@ -177,21 +203,45 @@ it("creation validates packages, parent, provider and compatible service then pr
   expect(Object.keys(JSON.parse(String(row?.package_prices_json)))).toEqual(["250"]);
 });
 
-it("creation reprice failure identifies the already saved tier so retries cannot create duplicates silently", async () => {
-  // Sejak 0062 duplikat dicegah UNIQUE(product, supplier, service): retry
-  // pembuatan layanan yang sama ditolak bersih, bukan duplikat diam-diam.
-  await createDatabaseAccess().execRun(`DELETE FROM pedia_tiers WHERE product_id=? AND tier='hemat'`, productId);
-  fixture.control.fail = (sql) => sql.includes("SET package_prices_json=?");
+it("does not save an unpriceable tier or leave a partial tier on a priced write failure", async () => {
+  const db = createDatabaseAccess();
   await createDatabaseAccess().execRun(`INSERT INTO pedia_supplier_services (supplier, service_id, name, category, type, rate_idr_per_1k, min_qty, max_qty, present)
     VALUES ('indosmm',777001,'Baru','Followers','Default',30000,100,1000,1)`);
   const body = { kind: "tier", product_id: productId, tier: "hemat", supplier: "indosmm", supplier_service_id: 777001, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 };
+  const load = () => db.queryFirst("SELECT package_prices_json FROM pedia_tiers WHERE supplier_service_id=777001");
+  expect((await POST(req({ ...body, min_qty_override: 2000 }))).status).toBe(400);
+  expect(await load()).toBeNull();
+  expect((await POST(req({ ...body, min_qty_override: 101, max_qty_override: 249 }))).status).toBe(400);
+  expect(await load()).toBeNull();
+  fixture.control.fail = (sql) => sql.startsWith("INSERT INTO pedia_tiers");
   const result = await POST(req(body));
   expect(result.status).toBe(500);
-  expect(await result.json()).toMatchObject({ error: "reprice_failed", saved: true, id: expect.any(Number) });
+  expect(await result.json()).toEqual({ error: "save_failed" });
+  expect(await load()).toBeNull();
   fixture.control.fail = null;
+  expect((await POST(req(body))).status).toBe(200);
+  expect(Object.keys(JSON.parse(String((await load())?.package_prices_json)))).not.toHaveLength(0);
   const dupe = await POST(req(body));
   expect(dupe.status).toBe(500);
   expect((await dupe.json()).error).toBe("save_failed");
+});
+
+it("creates a priced Custom Comments tier with all its metadata, then activates it", async () => {
+  await saleService("Custom Comments");
+  const body = { kind: "tier", product_id: productId, tier: "hemat", supplier: "indosmm", supplier_service_id: 86,
+    price_group: "G3", markup_pct: 20, min_profit_rp: 1000, input_kind: "comments", drop_label: "no_drop", speed_per_day: " 500/hari " };
+  const db = createDatabaseAccess();
+  await db.execRun("DELETE FROM pedia_tiers WHERE id=?", tierId);
+  await db.execRun("UPDATE pedia_supplier_services SET min_qty=1 WHERE supplier='indosmm' AND service_id=86");
+  const response = await POST(req(body));
+  expect(response.status).toBe(200);
+  const { id } = await response.json();
+  const load = async () => (await (await GET(req())).json()).tiers.find((tier: { id: number }) => tier.id === id);
+  const tier = await load();
+  expect(tier).toMatchObject({ input_kind: "comments", drop_label: "no_drop", speed_per_day: "500/hari", rate_snapshot: 9000, auto_disabled_reason: null });
+  expect(Object.keys(JSON.parse(tier.package_prices_json))).toEqual(["100"]);
+  expect((await PUT(req({ kind: "tier", id, is_active: 1 }))).status).toBe(200);
+  expect(await load()).toMatchObject({ is_active: 1, auto_disabled_reason: null });
 });
 
 it("incompatible supplier types cannot be mapped", async () => {

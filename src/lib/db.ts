@@ -6,7 +6,6 @@
 // untuk ~80 pemakai di repo. Isi nyata dipisah demi maintainability:
 //   - db/types.ts            → kontrak tipe D1 + DbProduct + AtomicOrderItem
 //   - db/client.ts           → getD1 + state in-memory dev (SATU sumber) + query helpers
-//   - db/expiry.ts           → predikat kadaluarsa kanonis
 //   - db/errors.ts           → kelas error jalur uang
 //   - db/orders-create.ts    → reservasi stok atomik (createOrderWithStock)
 //   - db/orders-transition.ts→ transisi status order/pembayaran (jalur uang)
@@ -14,7 +13,6 @@
 
 export type { DbProduct, D1Result, D1Statement, D1, AtomicOrderItem } from "./db/types";
 export { getD1, getDbSync, isD1Mode, queryAll, queryFirst, execRun } from "./db/client";
-export { D1_EXPIRY_PREDICATE, D1_NOT_EXPIRED_PREDICATE } from "./db/expiry";
 export { StockReservationError, OrderTransitionError } from "./db/errors";
 export { createOrderWithStock } from "./db/orders-create";
 export {

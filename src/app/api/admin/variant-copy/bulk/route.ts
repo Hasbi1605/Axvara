@@ -52,10 +52,14 @@ export async function POST(req: NextRequest) {
   }
   const values = [data.terms, data.activation, data.terms_en, data.activation_en]
     .map(value => value.replace(/\r\n?/g, "\n").trim() || null);
+  // Audit AU-H2-16 (21 Nov 2026): mengosongkan semua teks TIDAK boleh menulis
+  // sidik jari supplier — itu menandai varian "sudah ditinjau" padahal admin
+  // baru menghapus. Sama seperti PUT tunggal: fingerprint null saat kosong.
+  const hasCopy = values.some(Boolean);
   await d1.batch(rows.map(row => d1.prepare(
     `UPDATE product_variants SET admin_terms=?, admin_activation=?, admin_terms_en=?, admin_activation_en=?,
        admin_copy_fingerprint=?, updated_at=datetime('now') WHERE id=? AND product_id=?`,
-  ).bind(...values, toEntry(row).supplierKey, row.id, data.product_id)));
+  ).bind(...values, hasCopy ? toEntry(row).supplierKey : null, row.id, data.product_id)));
   const saved = await queryAll(`${VARIANT_COPY_SQL}${selection}`, data.product_id, ...data.variant_ids);
   const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
   await bumpCatalogRevision("market", d1);

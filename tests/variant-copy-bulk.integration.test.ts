@@ -67,11 +67,24 @@ describe("POST /api/admin/variant-copy/bulk", () => {
     expect(fixture.sql.prepare(`SELECT ${columns} FROM product_variants WHERE id=3`).get()).toEqual({
       admin_terms: "- Manual\n- Rule", admin_activation: null, admin_terms_en: null, admin_activation_en: null, admin_copy_fingerprint: "",
     });
+    // Audit AU-H2-16: mengosongkan semua teks = kembali "belum ditinjau", jadi
+    // fingerprint WAJIB null (dulu menulis sidik jari supplier = palsu reviewed).
     expect((await POST(request({ ...payload, terms: "", activation: "", terms_en: "", activation_en: "" }))).status).toBe(200);
     expect(fixture.sql.prepare(`SELECT ${columns} FROM product_variants WHERE id=1`).get()).toEqual({
       admin_terms: null, admin_activation: null, admin_terms_en: null, admin_activation_en: null,
-      admin_copy_fingerprint: supplierFingerprint("WR rules", "WR login"),
+      admin_copy_fingerprint: null,
     });
+  });
+
+  it("treats EN-only saves as reviewed even when ID shows raw supplier copy", async () => {
+    const response = await POST(request({ ...payload, terms: "", activation: "" }));
+    expect(response.status).toBe(200);
+    for (const row of (await response.json()).variants) {
+      expect(row).toMatchObject({ status: "pemasok", adminTerms: "", adminTermsEn: payload.terms_en,
+        adminStale: false, reviewKind: null, needsReview: false, reviewed: false });
+      expect(fixture.sql.prepare("SELECT admin_copy_fingerprint FROM product_variants WHERE id=?").get(row.variantId))
+        .toEqual({ admin_copy_fingerprint: row.supplierKey });
+    }
   });
 
   it.each([[1, 4], [1, 999]])("rejects foreign or missing variants %j without writing", async (...variant_ids) => {

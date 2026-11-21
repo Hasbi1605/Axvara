@@ -59,14 +59,16 @@ export function PediaRefillClient() {
   const submit = async () => {
     if (!order || busy.current) return;
     busy.current = true; setLoading(true); setError(null); setNotice(null);
+    let submitError: string | null = null;
     try {
       const res = await fetch(`/api/pedia/orders/${encodeURIComponent(order.code)}/refill`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contact }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? t.refillSubmitFailed);
       setNotice(data.message ?? t.refillSubmitted);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t.refillSubmitFailed); }
+    } catch (cause) { submitError = cause instanceof Error ? cause.message : t.refillSubmitFailed; }
     finally { busy.current = false; setLoading(false); }
     await load(order.code, contact);
+    if (submitError) setError(submitError);
   };
 
   const codeValid = CODE_RE.test(code.trim());

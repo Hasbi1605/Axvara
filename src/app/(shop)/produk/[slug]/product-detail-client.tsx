@@ -1,11 +1,11 @@
 "use client";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/products";
 import { productIsBuyable } from "@/lib/product-order";
-import type { VariantSummary } from "@/lib/catalog";
+import type { StorefrontVariant } from "@/lib/product-copy/resolve";
 import { effectiveVariantStock, formatVariantLabel } from "@/lib/catalog";
 import { buyerDeliveryBadge, buyerDeliveryKind } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
@@ -18,7 +18,7 @@ import { usePendingNavigation } from "@/hooks/usePendingNavigation";
 import { useCatalogRevisionWatcher } from "@/hooks/useCatalogRevision";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
-import { bulkCopy, bulkUnitEstimate, usableBulkTiers, type BulkVariantFields } from "@/lib/bulk-display";
+import { bulkCopy, bulkUnitEstimate, usableBulkTiers } from "@/lib/bulk-display";
 import { useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty, localizedProductDescription } from "@/lib/i18n/catalog-copy";
 import { marketCategoryName } from "@/lib/i18n/market-categories";
@@ -28,7 +28,7 @@ import { Price, PriceNote } from "@/components/storefront/Price";
 
 // /api/catalog mengganti teks mentah WR (terms/delivery_terms) dengan `copy`
 // siap tampil — versi Axvara atau teks pemasok yang dirapikan.
-type VariantItem = VariantSummary & BulkVariantFields & { copy?: VariantCopy | null; copy_en?: VariantCopy | null };
+type VariantItem = StorefrontVariant;
 
 const DESC_FADE = {
   WebkitMaskImage: "linear-gradient(to bottom, #000 55%, transparent)",
@@ -82,7 +82,6 @@ function soleBuyableVariantId(detail: CatalogDetail | null | undefined): number 
 export default function ProductDetailClient({ slug: slugProp, initialProducts, initialCatalog, initialRevision }: { slug?: string; initialProducts?: Product[]; initialCatalog?: InitialCatalog | null; initialRevision?: string | null }) {
   const params = useParams<{ slug: string }>();
   const slug = slugProp ?? params.slug;
-  const router = useRouter();
   const add = useCart((s) => s.add);
   const { navigate: goCheckout, pending: checkoutPending } = usePendingNavigation();
   const seededProducts = initialProducts?.some((p) => p.slug === slug) ? initialProducts : undefined;
@@ -478,9 +477,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
 
   const mobileDescription = hasDescription ? (
     <div className="mt-6 lg:hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-      <h3 className="text-sm font-bold text-white flex items-center justify-between">
+      <h2 className="text-sm font-bold text-white flex items-center justify-between">
         <span>{descriptionTitle}</span>
-      </h3>
+      </h2>
       <div
         id="pdp-description-mobile"
         className={`mt-2.5 text-xs text-white/70 leading-relaxed ${descCollapsible && !descExpanded ? "max-h-32 overflow-hidden" : ""}`}
@@ -541,21 +540,8 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     </div>
   ) : null;
 
-  return (
-    <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-      <button
-        onClick={() => router.back()}
-        className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/icons/ios11/back-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} /> {t.back}
-      </button>
-
-      {/* Dynamic grid: card kiri greedy (1fr), card kanan responsive fit-content */}
-      <div className="mt-6 grid lg:grid-cols-[1fr_38%] xl:grid-cols-[1fr_minmax(360px,420px)] gap-6 lg:gap-8 items-start">
-        {/* ===== LEFT COLUMN: IMAGE GALLERY + DESKTOP DESCRIPTION ===== */}
-        <div className="flex flex-col gap-6">
-          <div className="ax-glass-card rounded-[24px] p-2 sm:p-3">
+  const gallery = (
+          <div className="min-w-0 ax-glass-card rounded-[24px] p-2 sm:p-3 lg:col-start-1 lg:row-start-1">
             <div className="relative">
               {/* Main image */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -595,6 +581,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 {galleryImages.map((img, i) => (
                   <button
                     key={`thumb-${i}-${img.slice(-12)}`}
+                    type="button"
+                    aria-label={t.photoAlt(displayName, i + 1)}
+                    aria-pressed={i === activeImg}
                     onClick={() => setActiveImg(i)}
                     className={`shrink-0 w-[72px] h-[56px] sm:w-[90px] sm:h-[68px] rounded-xl overflow-hidden border-2 transition-all duration-200 ${
                       i === activeImg
@@ -605,7 +594,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img}
-                      alt={t.photoAlt(displayName, i + 1)}
+                      alt=""
                       className={`w-full h-full ${i === 0 ? "object-cover" : "object-contain"}`}
                       loading="lazy"
                     />
@@ -615,6 +604,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             )}
           </div>
 
+  );
+  const desktopCopy = (
+        <div className="hidden lg:flex lg:col-start-1 lg:row-start-2 flex-col gap-6">
           {/* Deskripsi Produk — Kolom Kiri di Desktop (Lega & Rapi) */}
           {hasDescription && (
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
@@ -696,8 +688,21 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           )}
         </div>
 
-        {/* ===== PRODUCT INFO — sticky, self-sizing ===== */}
-        <div className="ax-glass-card rounded-[24px] p-6 sm:p-8 lg:sticky lg:top-24 flex flex-col">
+  );
+  return (
+    <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <Link
+        href="/#katalog"
+        prefetch={false}
+        className="inline-flex min-h-11 items-center gap-2 text-sm text-white/60 hover:text-white"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/icons/ios11/back-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} /> {t.back}
+      </Link>
+
+      <div className="mt-6 grid lg:grid-cols-[minmax(0,1fr)_38%] lg:grid-rows-[auto_1fr] xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] gap-6 lg:gap-8 items-start">
+        {gallery}
+        <div className="ax-glass-card rounded-[24px] p-6 sm:p-8 lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:sticky lg:top-24 flex flex-col">
           {/* Badge produk (Terlaris / Baru / Bundle / dll) */}
           {product.badge && (
             <span className="self-start rounded-full bg-[#FFB800]/15 text-[#FFB800] text-[11px] font-bold px-3 py-1 tracking-wide uppercase border border-[#FFB800]/25">
@@ -720,9 +725,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             <span className="font-display font-bold text-[26px] text-white">
               <Price idr={displayPrice} prices={prices} />
             </span>
-            {displayComparePrice && (
+            {displayComparePrice != null && displayComparePrice > displayPrice && (
               <>
-                <span className="text-sm line-through text-white/30">
+                <span className="text-sm line-through text-white/65">
                   <Price idr={displayComparePrice} prices={prices} />
                 </span>
                 <span className="rounded-full bg-[#FFB800] text-[#080C1E] text-xs font-bold px-2 py-1">
@@ -740,7 +745,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               {product.soldCount != null && product.soldCount > 0 && (
                 <span className="inline-flex items-center gap-1">
                   <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[#FFB800]" fill="currentColor"><path d="M8 1.314C12.438-3.248 23.534 4.735 8 15-7.534 4.736 3.562-3.248 8 1.314z"/></svg>
-                  {t.soldCount(product.soldCount.toLocaleString("id-ID"))}
+                  {t.soldCount(product.soldCount.toLocaleString(prices.locale === "en" ? "en-US" : "id-ID"))}
                 </span>
               )}
               {product.soldCount && product.stock ? <span className="text-white/20">·</span> : null}
@@ -794,7 +799,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                           </span>
                           {v.compare_price && v.compare_price > v.price && (
                             <div className="flex items-center gap-1.5 justify-end mt-0.5">
-                              <span className="text-[11px] text-white/30 line-through"><Price idr={v.compare_price} prices={prices} /></span>
+                              <span className="text-[11px] text-white/65 line-through"><Price idr={v.compare_price} prices={prices} /></span>
                               <span className="text-[10px] font-bold text-[#FFB800]">-{Math.round((1 - v.price / v.compare_price) * 100)}%</span>
                             </div>
                           )}
@@ -804,7 +809,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                             ) : isBelowMinimum(v) ? (
                               <span className="text-[11px] font-semibold text-red-400">{t.belowMinLabel}</span>
                             ) : (
-                              <span className="text-[11px] text-white/45">
+                              <span className="text-[11px] text-white/65">
                                 {usableBulkTiers(v, v.price)[0] && <>{bulkCopy(prices.locale).variantHint(usableBulkTiers(v, v.price)[0].min_qty)} · </>}{t.remaining((() => { const eff = effectiveStockOf(v); return eff === -1 ? "∞" : eff; })())}
                               </span>
                             )}
@@ -1041,6 +1046,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           )}
           </div>
         </div>
+        {desktopCopy}
       </div>
 
       {/* Floating Sticky Bottom Action Bar — Mobile Shopee-style. Nonaktif +

@@ -120,6 +120,40 @@ describe("R10 WA outbox lease prevents concurrent double-send", () => {
     expect(fixture.sql.prepare("SELECT status FROM whatsapp_outbox WHERE id=?").get(sentId)?.status).toBe("sent");
   });
 
+  // AU-E2-4: claim increments attempt_count BEFORE send, including the last
+  // allowed attempt. A crash then must settle terminally, not sit as `failed`
+  // forever (the due query requires attempt_count < MAX).
+  it("stale lease on the LAST attempt settles as terminal dead, not a stuck failed row", async () => {
+    const outbox = await import("@/lib/whatsapp/outbox");
+    await outbox.enqueueWhatsAppMessage("r10-exhausted", "628000000000", "DUMMY");
+    const row = (await outbox.getDueWhatsAppOutbox())[0];
+    // Seed max-1 attempts, then let the RUNTIME claim take it to MAX.
+    fixture.sql.prepare("UPDATE whatsapp_outbox SET attempt_count=? WHERE id=?")
+      .run(outbox.WA_OUTBOX_MAX_ATTEMPTS - 1, Number(row.id));
+    const claim = await outbox.claimWhatsAppOutboxRow({ ...row, attempt_count: outbox.WA_OUTBOX_MAX_ATTEMPTS - 1 });
+    expect(claim.outcome).toBe("claimed");
+    expect(fixture.sql.prepare("SELECT attempt_count FROM whatsapp_outbox WHERE id=?").get(Number(row.id))?.attempt_count)
+      .toBe(outbox.WA_OUTBOX_MAX_ATTEMPTS);
+    // Worker dies mid-send: the lease simply expires.
+    fixture.sql.prepare("UPDATE whatsapp_outbox SET locked_until=datetime('now','-1 minute') WHERE id=?").run(Number(row.id));
+    expect(await outbox.recoverStaleWhatsAppLeases()).toBe(1);
+    expect(fixture.sql.prepare("SELECT status,last_error,worker_id FROM whatsapp_outbox WHERE id=?").get(Number(row.id)))
+      .toMatchObject({ status: "dead", last_error: "lease_recovered_exhausted:delivery_outcome_unknown", worker_id: null });
+    expect(await outbox.getDueWhatsAppOutbox()).toHaveLength(0);
+  });
+
+  it("stale lease below the attempt ceiling stays retryable (no overreach)", async () => {
+    const outbox = await import("@/lib/whatsapp/outbox");
+    await outbox.enqueueWhatsAppMessage("r10-not-yet", "628000000000", "DUMMY");
+    const row = (await outbox.getDueWhatsAppOutbox())[0];
+    fixture.sql.prepare("UPDATE whatsapp_outbox SET attempt_count=3, status='sending', worker_id='dead-worker', locked_until=datetime('now','-10 minutes') WHERE id=?")
+      .run(Number(row.id));
+    expect(await outbox.recoverStaleWhatsAppLeases()).toBe(1);
+    expect(fixture.sql.prepare("SELECT status,last_error FROM whatsapp_outbox WHERE id=?").get(Number(row.id)))
+      .toMatchObject({ status: "failed", last_error: "lease_recovered:delivery_outcome_unknown" });
+    expect(await outbox.getDueWhatsAppOutbox()).toHaveLength(1);
+  });
+
   it("claim DB failure reports db_error, not a quiet loss", async () => {
     const outbox = await import("@/lib/whatsapp/outbox");
     await outbox.enqueueWhatsAppMessage("r10-dberr", "628000000000", "DUMMY");
@@ -183,5 +217,18 @@ describe("WA outbox pacing + danger auto-pause", () => {
     const result = await outbox.processDueWhatsAppOutbox(8);
     expect(result.sent).toBe(2);
     expect(result.paused ?? 0).toBe(0);
+  });
+
+  // RV-1: a tick starved BEFORE its first row did nothing and said nothing.
+  // The deferred count must make that visible like payments_deferred.
+  it("tick starved before the first row reports deferred rows (paused)", async () => {
+    const outbox = await import("@/lib/whatsapp/outbox");
+    for (const k of ["starve-1", "starve-2"]) {
+      await outbox.enqueueWhatsAppMessage(k, `6282222222${k.slice(-1)}`, "DUMMY");
+    }
+    const result = await outbox.processDueWhatsAppOutbox(8, undefined, () => false);
+    expect(result.sent).toBe(0);
+    expect(result.paused).toBe(2);
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE status='pending'").get()?.n).toBe(2);
   });
 });

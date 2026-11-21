@@ -250,20 +250,22 @@ describe("error detail and publish-scheduled", () => {
 });
 
 describe("KV degradation and recovery", () => {
-  it.each(["get", "put", "missing", "corrupt", "invalid_json"] as const)("%s failure: log redacted and fallback hard + soft only at :00/:30", async (mode) => {
+  it.each(["get", "put", "missing", "corrupt", "invalid_json"] as const)("%s failure: log redacted and fallback hard + soft once per UTC day", async (mode) => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const f = fixture((job) => ["payments", "tunvn_catalog"].includes(job) ? fail() : ok());
     if (mode === "missing") delete f.env.CRON_STATE;
     else if (mode === "corrupt") f.kv.get.mockResolvedValue('{"steps":null}');
     else if (mode === "invalid_json") f.kv.get.mockResolvedValue("arbitrary-private-storage-data");
     else f.kv[mode].mockRejectedValue(new Error(`storage_failed Bearer sensitive-kv-token key=kv-fixture-key ${baseEnv.TELEGRAM_BOT_TOKEN}`));
-    for (let minute = 0; minute < 60; minute++) await f.tick(minute);
+    for (const minute of [0, 1, 30, 60, 90, 1439]) await f.tick(minute);
+    expect(f.messages).toHaveLength(1);
+    await f.tick(1440);
     expect(f.messages).toHaveLength(2);
     for (const message of f.messages) {
       expect(message).toContain("lite:payments");
       expect(message).toContain("lite:tunvn_catalog");
     }
-    expect(log).toHaveBeenCalledTimes(60);
+    expect(log).toHaveBeenCalledTimes(7);
     const output = JSON.stringify(log.mock.calls);
     for (const secret of ["sensitive-kv-token", "kv-fixture-key", baseEnv.TELEGRAM_BOT_TOKEN]) expect(output).not.toContain(secret);
     expect(output).toContain("stateless fallback");
@@ -290,7 +292,7 @@ describe("KV degradation and recovery", () => {
     const f = fixture((job) => job === "games_catalog" ? fail() : ok());
     delete f.env.CRON_STATE;
     for (let minute = 0; minute < 60; minute++) await f.tick(minute);
-    expect(f.messages).toHaveLength(2);
+    expect(f.messages).toHaveLength(1);
     expect(f.messages.every((m) => m.includes("lite:games_catalog"))).toBe(true);
   });
 

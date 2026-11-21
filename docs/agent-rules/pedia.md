@@ -1,5 +1,10 @@
 # Aturan agent — Pedia (SMM)
 
+## Simpan harga kurasi dari admin — 21 November 2026 (lokal)
+
+- POST tier menyimpan `input_kind`, `drop_label`, `speed_per_day` dan harga paket pada INSERT yang sama; bila tidak ada paket yang dapat dihargai, gagal tanpa menulis tier. Custom Comments memakai batas jumlah yang sama dengan quote.
+- PUT menyimpan edit tier bersama harganya; edit paket/step produk dan reprice semua tier memakai satu batch D1. Gagal tulis berarti rollback, bukan `saved:true`; naikkan revisi katalog hanya setelah berhasil.
+
 ## Expiry tanpa restock lintas katalog — 18 November 2026 (lokal)
 
 Guard SQL apps/legacy NULL kini berlaku di **kedua** helper bersama,
@@ -15,10 +20,12 @@ Bagian 12 November di bawah adalah **snapshot historis yang digantikan**; jangan
 menghidupkan kembali katalog otomatis/ProviderSMM dari catatan itu.
 
 - **Supplier jual.** `src/lib/pedia/sales-policy.ts`: `PEDIA_SALE_PROVIDER='indosmm'`
-  satu-satunya gate katalog/pembanding/quote/order/draft-aktivasi admin/shortlist/overview.
+  untuk katalog/pembanding/draft-aktivasi admin/shortlist/overview. Quote publik memakai
+  `isPediaProvider` (hanya IndoSMM); token order non-IndoSMM ditolak 409 sebagai quote tidak valid.
+  Payload `provider_retired` tetap berlaku di admin produk.
   Katalog publik menampilkan tier kurasi IndoSMM yang aktif dan punya cermin live
   (batas/harga); baris supplier lain yang masih aktif di D1 TIDAK pernah dijual.
-  Retry order tersimpan tetap dicari lewat `quote_id` LEBIH DULU sebelum gate.
+  Sesudah verifikasi token, retry order tersimpan dicari lewat `quote_id` sebelum guard order baru.
 - **ProviderSMM dihapus dari kode.** `auto-catalog.ts`, `metadata-refresh.ts`,
   `supplier-descriptions.ts`, proxy `/psmm/*`, jalur materialisasi/deskripsi,
   `pedia_diff_*`, dan panel/endpoint khusus katalog otomatis sudah tidak ada.
@@ -81,12 +88,12 @@ menghidupkan kembali katalog otomatis/ProviderSMM dari catatan itu.
   dari konfigurasi server. Payload mutasi dan guard API tidak berubah. Implementasi
   lokal; UI3 belum di-commit dan publikasi melalui CI.
 
-## Keputusan owner 12 November 2026 — katalog otomatis Pedia (ProviderSMM)
+## Snapshot historis 12 November 2026 — katalog otomatis Pedia (ProviderSMM), digantikan 13 November
 
 Satu fitur (implementasi lokal; publikasi lewat CI). Bootstrap produksi, deployment, dan
 QA admin produksi belum dijalankan — jangan klaim live/terverifikasi.
 
-**Supplier jual.** `src/lib/pedia/sales-policy.ts`: `PEDIA_SALE_PROVIDER='providersmm'`,
+**Supplier jual saat itu.** `src/lib/pedia/sales-policy.ts`: `PEDIA_SALE_PROVIDER='providersmm'`,
 `PEDIA_LEGACY_PROVIDER='indosmm'`. Konstanta ini satu-satunya gate katalog/pembanding/quote/
 order/draft-aktivasi admin/shortlist/overview; jangan menyebar cabang supplier baru. Penjualan
 baru IndoSMM → 409 `provider_retired`; URUTAN ORDER WAJIB: lookup order tersimpan via `quote_id`
@@ -213,15 +220,16 @@ tidak maju = error, sukses `done` mengaktifkan kembali + reload). Fixture dev am
 - ProviderSMM diputus: jangan menambah cek saldo/notif/penjualan ProviderSMM. Diff VPS ProviderSMM dibalas 200 `ignored`; order/snapshot lama tetap dibaca.
 - Istilah SMM keputusan owner tetap bahasa supplier (No Drop, Less Drop, High Drop, Refill N Days, Refill Lifetime, No Refill, Drop rate, Start time, Speed, Avg time, Success rate) dari `src/lib/pedia/terms.ts`; jangan menerjemahkan ke istilah Indonesia.
 - Layanan High Drop/No Refill boleh dijual dengan label jelas. Refill manual (bergaransi tanpa tombol API) sah: admin meneruskan ke CS IndoSMM lalu `refill_resolve`.
-- Statistik supplier dari alat publik IndoSMM bukan API resmi dan bukan uji kualitas AXVARA. Katalog baru lewat manifest + generator; jangan mengedit migrasi 0086 manual.
+- Statistik supplier dari alat publik IndoSMM bukan API resmi dan bukan uji kualitas AXVARA. Manifest kurasi 1 November tetap disimpan; generator bertanggal hanya di riwayat Git. Jangan mengedit migrasi 0086.
 - Komentar custom: tier `input_kind='comments'` hanya boleh dipetakan ke layanan tipe "Custom Comments"; jangan menjual layanan Custom Comments tanpa kolom komentar.
 - White label 100%: teks yang dilihat pembeli Pedia tidak boleh menyebut supplier/IndoSMM/ProviderSMM. Teks baru wajib lolos `whiteLabel()`/test leak; admin boleh menyebut IndoSMM.
 - Nama layanan (2 November): [Metrik] [Wilayah] [Kualitas] (+ " · keterangan" bermakna); jangan memasukkan Refill/drop/"Ekonomis"/"Max N" ke nama karena sudah chip. Kurasi berikutnya satu layanan per (wilayah, masa refill, kualitas, keterangan); migrasi data memakai guard nama lama.
 - Spec: `docs/pedia/indosmm-catalog-refill-2026-11-01.md`.
 
-### Pedia IndoSMM 20 Oktober 2026
-- Spec terkini `docs/pedia/indosmm-only-2026-10-20.md` menggantikan dua supplier aktif: hanya IndoSMM untuk penjualan baru, ProviderSMM tetap untuk riwayat/retry checkout tersimpan/dispatch/refill/recovery lama. Jangan ubah provider/snapshot order lama.
-- Quote ProviderSMM tanpa order tersimpan ditolak 409 sebelum reservasi/debit/invoice; retry order tersimpan diperiksa dahulu. Kebijakan server berlaku meski tier lama aktif di DB.
+### Pedia IndoSMM 20 Oktober 2026 (snapshot historis)
+- Spec `docs/pedia/indosmm-only-2026-10-20.md` saat itu membatasi penjualan baru ke IndoSMM tetapi mempertahankan transport ProviderSMM lama. Untuk guard saat ini lihat aturan 13 November di atas; jangan ubah snapshot order lama.
+- Pada snapshot ini quote ProviderSMM tanpa order tersimpan ditolak 409 sebelum reservasi/debit/invoice; retry tersimpan diperiksa dahulu.
 - Migrasi 0073 menonaktifkan penjualan PSMM dan menambah tier IndoSMM baru, tidak remap tier lama. Konflik slug/draf owner dan tier IndoSMM existing dijaga. Produk premium Canva/Gemini/CapCut dikecualikan.
 - Manifest 20 Oktober: 53 kebutuhan baru, tujuh pengganti, 61 mapping, 18 platform tambahan. Quote Threads dan Share Video Facebook tidak dipaksakan tanpa padanan terverifikasi. Registry/target/ikon diperluas; semua penawaran baru tanpa refill AXVARA. Nama API/deskripsi bukan bukti kualitas.
 - API akun IDR 4.395 layanan/saldo0 dibaca saja. Tidak ada order berbayar, top-up, env/cron/proxy baru. Rencana sampling dua supplier 19 Oktober historis; saldo uji selanjutnya IndoSMM.
+- FX-11b (lokal): `needs_check` biasa (termasuk submit yang terputus) memakai satu klaim Telegram admin per order dan satu kunci idempoten email pembeli untuk menghubungi admin/tidak pesan ulang. Cron mengulang email gagal dengan jeda 5 menit, maksimal 3 percobaan dalam 23 jam; `sending` lama tanpa hitungan percobaan tidak dikirim ulang. Tidak memesan ulang, menulis refund, atau mengubah aturan `partial`/`canceled`.

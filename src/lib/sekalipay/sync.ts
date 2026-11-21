@@ -649,7 +649,7 @@ export async function syncSkProducts(
     : null;
   if (!applyOnly && options.useProxySlices && !fetchFn) {
     try {
-      slice = await fetchSkCatalogSlice({ category: SK_SYNC_CATEGORY, offset: state.cursor, limit: maxProducts });
+      slice = await fetchSkCatalogSlice({ category: SK_SYNC_CATEGORY, offset: state.cursor, limit: maxProducts, budgetMs: hasTimeBudget ? timeLeftMs() : undefined });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       result.errors.push(message.slice(0, 300));

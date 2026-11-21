@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getWebhookInfo } from "@/lib/telegram/api";
 import { TG_WEBHOOK_GUARD_STATE_KEY, parseWebhookGuardState } from "@/lib/telegram/webhook-guard";
 import { queryAll, queryFirst } from "@/lib/db";
+import { QRIS_HEALTH_EVENTS_SQL } from "@/lib/service-health";
 
 export const runtime = "edge";
 
@@ -178,14 +179,8 @@ export async function GET(request: NextRequest) {
 
     // Event QRIS 7 hari terakhir: tak-cocok vs gagal — sinyal degraded.
     try {
-      const { queryFirst } = await import("@/lib/db");
-      const qrisEvents = await queryFirst(
-        `SELECT COUNT(*) AS unmatched, SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
-                MAX(CASE WHEN status='matched' THEN processed_at ELSE NULL END) AS last_match
-         FROM dana_webhook_events
-         WHERE status IN ('received','ignored','failed') AND datetime(created_at)>=datetime('now','-7 days')`,
-      );
-      health.qris_events_7d = qrisEvents ?? null;
+      const qrisEvents = await queryFirst(QRIS_HEALTH_EVENTS_SQL);
+      health.qris_events_7d = qrisEvents ? { ...qrisEvents, unmatched: Number(qrisEvents.unmatched || 0) } : null;
     } catch { /* tabel lama tetap kompatibel */ }
   } catch { /* ok if tables don't exist yet */ }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { BannerOrderConflict, saveBanner, deleteBanner } from "@/lib/banner-order";
 
 import { readBannerSettings } from "@/lib/banner-settings";
@@ -49,9 +50,9 @@ const schema = z.object({
 export async function POST(req: NextRequest) {
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
-  const parsed = schema.safeParse(body);
+  const bounded = await readJsonBody(req, 16_000);
+  if (!bounded.ok) return bounded.response.status === 413 ? bounded.response : NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
+  const parsed = schema.safeParse(bounded.data);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const d = parsed.data;
   if (d.image_url && !d.image_url.startsWith("/r2/banners/")) return NextResponse.json({ error: "Gambar harus berasal dari uploader banner AXVARA" }, { status: 400 });
@@ -70,7 +71,9 @@ export async function PUT(req: NextRequest) {
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id diperlukan" }, { status: 400 });
   if (!await queryFirst("SELECT id FROM banners WHERE id=?", id)) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const parsed = schema.safeParse(await req.json().catch(() => null));
+  const bounded = await readJsonBody(req, 16_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = schema.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const d = parsed.data;
   if (d.image_url && !d.image_url.startsWith("/r2/banners/")) return NextResponse.json({ error: "Gambar harus berasal dari uploader banner AXVARA" }, { status: 400 });

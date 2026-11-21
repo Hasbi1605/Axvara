@@ -60,7 +60,8 @@ afterEach(()=>{fixture.close();vi.unstubAllGlobals();vi.unstubAllEnvs();vi.resto
 async function seed(code=A,channel:"telegram"|"web"|"whatsapp"="telegram"){
  await createChannelOrderAtomic({orderCode:code,lines:[{productId:1,variantId:1,qty:1,fulfillmentMode:"manual",stock:100}],
   items:[{product_id:1,variant_id:1,qty:1,price:1000,name:"Fixture"}],variantSnapshot:"{}",subtotal:1000,
-  primaryVariantId:1,customerName:"Fixture",salesChannel:channel,paymentMethod:"qris",paymentAccount:"QRIS",fulfillmentStatus:"not_required"});
+  primaryVariantId:1,customerName:"Fixture",salesChannel:channel==="whatsapp"?"web":channel,paymentMethod:"qris",paymentAccount:"QRIS",fulfillmentStatus:"not_required"});
+ if(channel==="whatsapp")fixture.sql.prepare("UPDATE orders SET sales_channel='whatsapp' WHERE code=?").run(code);
 }
 async function checkout(code=A){await seed(code);return createActiveQrisInvoice(code,1000);}
 const row=(code=A)=>fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;
@@ -98,6 +99,31 @@ describe("Paid background payment recovery",()=>{
   const {POST}=await import("@/app/api/cron/lite/route");
   return POST(new NextRequest("https://axvara.tech/api/cron/lite?job=payments",{method:"POST",headers:{authorization:"Bearer fixture-cron"}}));
  };
+ it("defers slow status GETs before the lite deadline and leaves untouched rows for the next tick",async()=>{
+  vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
+  for(let i=0;i<6;i++) {
+   const code=`AXV-20261018-AAAAA00${i}`;
+   await seed(code);await createActiveQrisInvoice(code,1000);
+  }
+  const original=fetchMock.getMockImplementation()!;
+  vi.useFakeTimers({toFake:["Date"]});
+  try {
+   const start=Date.now();const times:number[]=[];
+   fetchMock.mockImplementation(async(url,init)=>{
+    if(String(url).includes("/status/")) {times.push(Date.now()-start);vi.setSystemTime(Date.now()+10_000);}
+    return original(url,init);
+   });
+   expect(await (await run()).json()).toMatchObject({ok:true,payments_checked:4,payments_deferred:2,payments_failed:0});
+   expect(times).toEqual([0,10_000,20_000,30_000]);
+   expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM payment_transactions WHERE last_checked_at IS NULL").get()?.n).toBe(2);
+   const {POST}=await import("@/app/api/cron/lite/route");
+   const expiry=await POST(new NextRequest("https://axvara.tech/api/cron/lite?job=expiry",{method:"POST",headers:{authorization:"Bearer fixture-cron"}}));
+   expect(expiry.status).toBe(200);
+   expect(await (await run()).json()).toMatchObject({ok:true,payments_checked:2,payments_deferred:0});
+   expect(times).toEqual([0,10_000,20_000,30_000,40_000,50_000]);
+   expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM payment_transactions WHERE last_checked_at IS NULL").get()?.n).toBe(0);
+  } finally {vi.useRealTimers();}
+ });
  it("confirms a closed-page payment, dispatches immediately and never reissues or delivers twice",async()=>{
   await checkout();paid();mocks.skCreate.mockResolvedValue(1);fetchMock.mockClear();
   expect(await (await run()).json()).toMatchObject({ok:true,payments_checked:1,payments_confirmed:1,payments_failed:0});
@@ -232,6 +258,24 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
   expect(body).toMatchObject({code:first.code,reused:true,qris:{payable_amount:1089,image_url:expect.stringContaining("/image")}});
   expect(posts()).toBe(1);expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(reserved);
   expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()!.n).toBe(1);
+ });
+ it.each(["dibatalkan","kadaluarsa"])("web checkout cannot reuse a terminal order (%s) as payable",async status=>{
+  const {createCheckoutQuoteToken}=await import("@/lib/auth");
+  const {POST}=await import("@/app/api/orders/route");
+  const {token}=await createCheckoutQuoteToken({items:[{product_id:1,variant_id:1,qty:1,price:1000,name:"Fixture"}],subtotal:1000,
+   payment_methods:[{id:"qris",account_number:"-"}]});
+  const request=()=>new NextRequest("https://axvara.tech/api/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({customer_wa:"081234567890",customer_email:"fixture@example.test",items:[{product_id:1,variant_id:1,qty:1}],payment_method:"qris",quote_token:token})});
+  fixture.control.fail = query => query.includes("INSERT INTO payment_transactions");
+  const first = await POST(request());expect(first.status).toBe(503);
+  expect(await first.json()).not.toHaveProperty("error_code");
+  fixture.control.fail = null;
+  expect(fixture.sql.prepare("SELECT status FROM orders").get()?.status).toBe("dibatalkan");
+  if(status==="kadaluarsa") fixture.sql.exec("UPDATE orders SET status='kadaluarsa',payment_status='expired'");
+  fetchMock.mockClear();
+  const retry=await POST(request());expect(retry.status).toBe(409);
+  expect(await retry.json()).toMatchObject({error_code:"checkout_order_closed"});
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()?.n).toBe(1);
  });
  it("manual preparation recovers an initializing invoice while ordinary polling never contacts the gateway",async()=>{
   await seed(A,"web");failCreateAfterSave=true;await expect(createActiveQrisInvoice(A,1000)).rejects.toThrow();

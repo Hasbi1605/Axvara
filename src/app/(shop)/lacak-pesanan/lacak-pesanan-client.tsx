@@ -492,7 +492,7 @@ export default function LacakPesananClient() {
           </span>
           <div>
             <p className="text-sm font-semibold text-white">{ui.lacak.formTitle}</p>
-            <p className="text-xs text-white/45">{ui.lacak.formSub}</p>
+            <p className="text-xs text-white/65">{ui.lacak.formSub}</p>
           </div>
         </div>
         <div className="mt-4 grid gap-3">
@@ -578,7 +578,7 @@ export default function LacakPesananClient() {
                   className="min-w-0 flex-1 text-left"
                 >
                   <span className="block truncate font-mono text-xs font-bold text-[#00E5FF]">{entry.code}</span>
-                  <span className="block text-[11px] text-white/40">{entry.wa ? `${entry.wa.includes("@") ? "Email" : "WA"} ${maskWaShort(entry.wa)}` : ui.lacak.recentContact}</span>
+                  <span className="block text-[11px] text-white/65">{entry.wa ? `${entry.wa.includes("@") ? "Email" : "WA"} ${maskWaShort(entry.wa)}` : ui.lacak.recentContact}</span>
                 </button>
                 <button
                   type="button"
@@ -632,7 +632,7 @@ export default function LacakPesananClient() {
             </p>
           )}
           {checkedAt && (
-            <p className="mt-2 text-[11px] text-white/35">
+            <p className="mt-2 text-[11px] text-white/65">
               {ui.lacak.statusUpdated(checkedAt.toLocaleTimeString(order.locale === "en" ? "en-US" : "id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", second: "2-digit" }))} WIB
               {pollError ? ` • ${ui.lacak.lastUpdateFailed}: ${pollError}` : ""}
             </p>
@@ -674,8 +674,8 @@ export default function LacakPesananClient() {
                           : <IosIcon name="box" size={14} tint="white" />}
                   </span>
                   <span className="min-w-0 pt-0.5">
-                    <span className={`block text-sm font-semibold ${state === "upcoming" ? "text-white/40" : "text-white"}`}>{step.title}</span>
-                    {step.hint && <span className="block text-xs leading-5 text-white/45">
+                    <span className={`block text-sm font-semibold ${state === "upcoming" ? "text-white/65" : "text-white"}`}>{step.title}</span>
+                    {step.hint && <span className="block text-xs leading-5 text-white/65">
                       {step.id === "created" && order.createdAt ? `${ui.lacak.created} ${formatDateTime(order.createdAt)}.` : step.id === "paid" && pay ? ui.lacak.verifiedAuto : step.hint}
                       {step.id === "paid" && isPending && !isExpired ? ` ${ui.lacak.finishBefore}` : ""}
                       {step.id === "paid" && isPaid ? ` ${ui.lacak.paymentVerified}` : ""}
@@ -797,14 +797,14 @@ export default function LacakPesananClient() {
             </div>
           )}
           <div className="mt-3">
-            <p className="text-center text-[11px] text-white/35">{ui.delivery.help}</p>
+            <p className="text-center text-[11px] text-white/65">{ui.delivery.help}</p>
             <div className="mt-2 grid grid-cols-2 gap-2.5">
               <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
               <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
             </div>
           </div>
-          {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white">{ui.lacak.another}</button>}
-          <p className="mt-3 text-center text-[11px] leading-5 text-white/35">{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
+          {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white">{ui.lacak.another}</button>}
+          <p className="mt-3 text-center text-[11px] leading-5 text-white/65">{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
         </div>
       )}
 

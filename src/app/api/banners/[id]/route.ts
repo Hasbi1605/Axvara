@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { BannerOrderConflict, saveBanner, deleteBanner } from "@/lib/banner-order";
 
 export const runtime = "edge";
@@ -23,9 +24,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
-  const parsed = patchSchema.safeParse(body);
+  const bounded = await readJsonBody(req, 16_000);
+  if (!bounded.ok) return bounded.response.status === 413 ? bounded.response : NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
+  const parsed = patchSchema.safeParse(bounded.data);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const existing = (await queryFirst("SELECT id FROM banners WHERE id=?", id)) as Record<string, unknown> | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });

@@ -115,8 +115,8 @@ describe("T-H2 / C-H3 / C-H4: pembeli dikabari lintas kanal", () => {
     // Telegram: hanya chat pribadi terverifikasi.
     expect(src).toContain("telegram_users");
     expect(src).not.toContain("telegram_chat_id }");
-    // Web & WA memakai outbox durable (idempoten lewat key).
-    expect(src).toContain("waOutboxKey");
+    // Web uses email; WhatsApp is no longer a buyer notification channel.
+    expect(src).not.toContain("@/lib/whatsapp/outbox");
     for (const fn of ["notifyBuyerHandover", "notifyBuyerProofRejected", "notifyBuyerProofPendingHook"]) {
       expect(src).toContain(`export async function ${fn}`);
     }

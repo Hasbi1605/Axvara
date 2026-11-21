@@ -39,6 +39,7 @@ export type SendMessageParams = {
   idempotencyKey?: string;
   broadcastNotification?: boolean;
   welcomeNotification?: boolean;
+  welcomeExpiresAt?: number;
   promoNotification?: boolean;
   promoBotNotification?: boolean;
   botNumber?: string;
@@ -69,14 +70,6 @@ export function normalizeWhatsAppTarget(raw: unknown): string {
   return target;
 }
 
-export type SendImageParams = {
-  target: string;
-  imageUrl: string;
-  caption?: string;
-  inboxId?: string; // reply to incoming inboxid
-  filename?: string;
-};
-
 // ---- Timing-Safe Comparison ----
 
 /**
@@ -93,37 +86,21 @@ export function timingSafeEqual(a: string, b: string): boolean {
 
 export function authenticateWebhook(
   request: NextRequest,
-  payload?: unknown,
+  _payload?: unknown,
 ): { ok: boolean; reason?: string } {
   const expectedSecret = process.env.WHATSAPP_WEBHOOK_TOKEN;
   if (!expectedSecret || expectedSecret.trim() === "") {
     return { ok: false, reason: "webhook_not_configured" };
   }
 
-  // Check header tokens first
+  // Header-only (audit AU-B1-2). The canonical gateway sends `x-webhook-token`
+  // (gateway/src/index.ts:201,327). Query-string/body secrets would be logged
+  // by edge/proxy and leak the shared token, so they are no longer accepted.
   const headerToken =
     request.headers.get("x-webhook-token") ||
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
     "";
-
-  // Check query param fallback
-  const queryToken =
-    request.nextUrl.searchParams.get("token") ||
-    request.nextUrl.searchParams.get("secret") ||
-    "";
-
-  // Payload secret remains supported for local fixtures; the production
-  // Baileys gateway uses x-webhook-token.
-  const body = payload && typeof payload === "object"
-    ? payload as Record<string, unknown>
-    : undefined;
-  const payloadToken = typeof body?.secret === "string"
-    ? body.secret
-    : typeof body?.webhook_secret === "string"
-      ? body.webhook_secret
-      : "";
-
-  const tokenToTest = headerToken.trim() || queryToken.trim() || payloadToken.trim();
+  const tokenToTest = headerToken.trim();
   if (!tokenToTest) {
     return { ok: false, reason: "missing_token" };
   }
@@ -250,7 +227,7 @@ async function callGateway(path: string, payload: Record<string, unknown>, timeo
 }
 
 export function sendTextMessage(params: SendMessageParams): Promise<WhatsAppSendResult> {
-  return callGateway(params.promoBotNotification ? "/promo-bot/send-promo" : params.promoNotification ? "/send-promo" : params.welcomeNotification ? "/send-welcome" : params.broadcastNotification ? "/send-broadcast" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...((params.broadcastNotification || params.welcomeNotification || params.promoNotification || params.promoBotNotification) ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}) }, 15_000);
+  return callGateway(params.promoBotNotification ? "/promo-bot/send-promo" : params.promoNotification ? "/send-promo" : params.welcomeNotification ? "/send-welcome" : params.broadcastNotification ? "/send-broadcast" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...((params.broadcastNotification || params.welcomeNotification || params.promoNotification || params.promoBotNotification) ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}), ...(params.welcomeNotification ? { welcomeExpiresAt: params.welcomeExpiresAt } : {}) }, 15_000);
 }
 
 /** Admin control plane. Never return gateway tokens to a browser. */
@@ -266,16 +243,6 @@ export async function salesGatewayControl(action: "status" | "pair" | "number", 
   const body = await response.json();
   if (!response.ok) throw new Error(body.reason || "Gateway WhatsApp belum siap.");
   return body as { connected: boolean; botNumber: string; botRevision?: string; groupId?: string; groupName?: string; groupSubject?: string; pairingCode?: string; error?: string; blocked?: boolean };
-}
-
-export function sendImageMessage(params: SendImageParams): Promise<WhatsAppSendResult> {
-  return callGateway("/send-image", {
-    target: normalizeWhatsAppTarget(params.target),
-    imageUrl: params.imageUrl,
-    caption: params.caption,
-    inboxId: params.inboxId,
-    filename: params.filename,
-  }, 20_000);
 }
 
 // ---- SSRF-Safe Media Download ----

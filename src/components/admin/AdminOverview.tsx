@@ -50,6 +50,8 @@ export type AdminOverviewData = {
   pending_proofs: number;
   payment_attention: number;
   fulfillment_attention: number;
+  aged_manual_required?: number;
+  games_needs_check?: number;
   low_stock: number;
   top_product: null | { name: string; sold_count: number };
   channels: { web: number; telegram: number; whatsapp: number };
@@ -155,12 +157,11 @@ function NetProfitCard({ bucket, label, onOpenExpenses }: { bucket: FinanceView;
             <span className="truncate" title={row.hint}>{row.label}</span>
           </dt>
           <dd className={cn("flex shrink-0 items-center gap-1 tabular-nums", row.strong ? "font-semibold text-admin-fg" : "text-admin-fg")}>
-            {formatRupiah(row.value)}{row.action && <span aria-hidden="true" className="text-admin-muted">›</span>}
+            {row.action ? <Button type="button" variant="ghost" onClick={row.action} className="absolute inset-0 h-full w-full rounded-lg" aria-label={`${row.label} ${formatRupiah(row.value)}, lihat rincian di Pengeluaran`} /> : null}
+            <span className={row.action ? "pointer-events-none relative" : undefined}>{formatRupiah(row.value)}</span>{row.action && <span aria-hidden="true" className="pointer-events-none relative text-admin-muted">›</span>}
           </dd>
         </>;
-        return row.action
-          ? <Button key={row.label} type="button" variant="ghost" onClick={row.action} className="-mx-2 flex h-auto w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-sm font-normal" aria-label={`${row.label} ${formatRupiah(row.value)}, lihat rincian di Pengeluaran`}>{content}</Button>
-          : <div key={row.label} className="flex items-center justify-between gap-3 py-2">{content}</div>;
+        return <div key={row.label} className="relative flex items-center justify-between gap-3 py-2">{content}</div>;
       })}
     </dl>
     {hasFinance && <p className="mt-3 text-xs leading-5 text-admin-muted">Pengeluaran dihitung pada tanggal dibayar.</p>}
@@ -255,6 +256,10 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
   const exportActions = !loading && !error && data.selected_report && selection ? (renderReportActions ? renderReportActions({ report: data.selected_report, disabled: false }) : <ReportExportActions report={data.selected_report} disabled={false} />) : null;
   return <div className="mt-4 space-y-6"><PageHeader title="Ringkasan"
     actions={(onRecordExpense || exportActions) ? <div className="flex flex-wrap items-center gap-2">{onRecordExpense && <Button type="button" onClick={onRecordExpense} className="min-h-9 rounded-xl px-3 text-xs font-semibold">+ Catat pengeluaran</Button>}{exportActions}</div> : undefined} />
+    {(Boolean(data.aged_manual_required) || Boolean(data.games_needs_check)) && <section aria-label="Pesanan perlu tindakan" className="text-sm text-admin-muted">
+      {Boolean(data.aged_manual_required) && <p>{data.aged_manual_required} pesanan lunas perlu penanganan manual lebih dari 24 jam.</p>}
+      {Boolean(data.games_needs_check) && <p>{data.games_needs_check} pesanan Games lunas perlu pengecekan di antrean Games.</p>}
+    </section>}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <Tabs value={custom || typeof active !== "string" ? "custom" : active} onValueChange={value => { setCustom(value === "custom"); if (value !== "custom") choose(value as Period); }}><TabsList aria-label="Periode laporan" className="h-auto flex-wrap">
         {(Object.keys(PERIOD_LABEL) as Period[]).map((key) => (

@@ -43,7 +43,7 @@ untuk memilih pemeriksaan sesuai jenis perubahan.
 | [`src/lib/`](src/lib/) | Logika bisnis, pembayaran, supplier, dan integrasi |
 | [`drizzle/`](drizzle/) | Skema dan migrasi D1 |
 | [`mcp-worker/`](mcp-worker/) | Cloudflare Worker untuk cron dan antrean fulfillment |
-| [`gateway/`](gateway/) | Gateway WhatsApp |
+| [`gateway/`](gateway/) | Gateway WhatsApp (grup/admin + historis; alur beli pembeli dipensiunkan 13 Nov 2026) |
 | [`temp-mail/`](temp-mail/) | Layanan email sementara yang terisolasi |
 | [`tests/`](tests/) | Tes aplikasi dan integrasi |
 

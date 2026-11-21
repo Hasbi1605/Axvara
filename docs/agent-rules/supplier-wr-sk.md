@@ -1,11 +1,36 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Kabar saldo WR tertahan — FX-15 (21 November 2026, lokal)
+
+- `blocked_balance`: pembeli web hanya menerima email jika ada; tanpa email,
+  gunakan halaman pesanan, bukan fallback WhatsApp. DM privat Telegram tetap
+  untuk order Telegram. Untuk tindak lanjut, gunakan Admin → Warung Rebahan →
+  Antrean → **Saldo habis**; antrean ini tidak bergantung pada hasil notifikasi.
+
+## Kontrak katalog VPS–Pages — 21 November 2026 (lokal)
+
+- Hanya potongan `/wr/products-slice` dan `/sk/catalog-slice` mendapat batas
+  Pages `min(35 dtk, sisa budget sweep)`: proxy punya 30 dtk upstream, dan
+  cron menyisakan 8 dtk dari deadline 45 dtk. Timeout bukan fallback atau bukti
+  stok hilang; 404/405 proxy lama tetap fallback. Timeout order tetap 12 dtk.
+- `/api/supplier-sync` saat supplier mati → `409 {ok:false,applied:false,error:"supplier_disabled",supplier}`.
+  Proxy lama tidak mengakui 409 sebagai tersimpan tapi masih mengulang. Revisi
+  VPS terpisah: jeda per supplier (mis. 5 menit, terkonfigurasi dan berbatas),
+  jangan ubah snapshot/tombstone atau ukuran batch pada respons ini; supplier
+  lain tetap berjalan. `pairs` yang gagal transient tetap 503 dengan cron
+  cleanup sebagai backstop, tanpa perubahan kontrak write.
+
+## Perbaikan audit H2 — 21 November 2026 (lokal)
+
+- Refresh topup SK setelah kegagalan baca channel (create berakhir `unknown` tanpa status/rentang tervalidasi) kini memanggil `fetchSkTopupChannels()` lagi dan menolak `channel_unavailable`/`amount_out_of_range` sebelum `POST v1/balance`, tidak lagi langsung repost. Status: implementasi lokal + test.
+
 ## Topup saldo SK dari admin — 20 November 2026 (keputusan owner, lokal)
 
 - Admin boleh membuat **invoice topup saldo reseller SK** dari AXVARA tanpa membuka web SK. AXVARA hanya membuat invoice + melacak status; **owner membayar sendiri** (link/QR). Tidak ada payout otomatis, tidak ada POST order/dispatch baru.
 - Channel TIDAK di-hardcode: `fetchSkTopupChannels()` membaca `GET v1/balance/channels`, lalu server memvalidasi `status:"on"` dan nominal integer dalam `[minimum,maximum]` sebelum `POST v1/balance`. `ref_id` server-side `AXVTU-YYYYMMDD-<8hex>` (tidak pernah `GW-`, tidak dari klien); refresh yang gagal ambigu **mengulang ref_id yang sama**, tidak pernah membuat ref baru.
-- Konfirmasi lunas hanya dari `GET v1/balance/mutations?type=topup&direction=credit&per_page=50` yang `invoice`-nya cocok dengan `supplier_ref`. 4xx definitif (`REF_ID_ALREADY_EXIST`, `CODE_NOT_FOUND_OR_INACTIVE`, `AMOUNT_MINIMUM/MAXIMUM_IS_*`, `TOPUP_DAILY_LIMIT`, `TRX_DAILY_LIMIT`) = `failed` tanpa retry; timeout/network/5xx = `unknown` (aman refresh).
-- Gate SK = `isSkEnabled() && isSkConfigured() && !isSkSandbox()`; tidak ada env baru. Maks 3 invoice non-terminal per supplier, refresh ≥10 detik. Test memakai mock fetch/DB; **jangan** memanggil POST tulis SK nyata untuk QA. Detail ARCHITECTURE §16.65.
+- Konfirmasi lunas hanya dari mutasi `credit` topup yang `invoice`-nya cocok dengan `supplier_ref`. Jika invoice sudah diketahui, cek mutasi dan kedaluwarsa sebelum mencoba mengambil ulang link dengan ref yang sama. Duplikat ref atau gagal mengambil link bukan bukti invoice yang sudah diketahui gagal dibayar. Saat create, 4xx definitif = `failed` tanpa retry; timeout/network/5xx = `unknown` (aman refresh).
+- Gate SK = `isSkEnabled() && isSkConfigured() && !isSkSandbox()`; tidak ada env baru. Slot maks 3 invoice non-terminal per supplier direservasi atomik sebelum panggilan supplier; refresh ≥10 detik dan hasil lebih lambat tidak dapat menimpa `paid`. Test memakai mock fetch dan fixture DB; **jangan** memanggil POST tulis SK nyata untuk QA. Detail ARCHITECTURE §16.65.
+- `failed` dengan `supplier_ref` hanya boleh dicek lewat mutasi kredit invoice yang cocok. Tanpa kredit tetap `failed`; jangan expire, tampilkan ulang instruksi bayar, atau POST lagi.
 
 ## Panel admin bersama — 19 November 2026 (keputusan owner, lokal)
 
@@ -15,6 +40,7 @@
 - Produk WR/SK baru tetap auto-aktif dengan auto-hide saat stok habis. Harga
   tetap memakai markup persen dan nominal dibulatkan ke kelipatan Rp500.
   Badge AUTO/MANUAL, kontrak sync, Retry, dan Batal memakai aturan WR/SK.
+- Markup satuan/bulk menyimpan cermin dan harga varian storefront dalam satu batch per item. Bulk melaporkan item yang rollback di `failed`; revisi katalog Market dinaikkan bila ada yang berhasil.
 - Retry SK menghormati status pembayaran, permintaan terkirim, dan invoice.
   Batal antrean nonterminal tetap memakai endpoint void dan konfirmasi admin.
   Pengujian admin memakai fixture tanpa transaksi supplier.
@@ -165,6 +191,10 @@ verifikasi fixture lokal, deployment belum diverifikasi.
   `has_override`, 400 `not_pemasok`); unacknowledge mengosongkan fingerprint.
   Kolom EN dan teks admin tidak disentuh; CAS sumber+kolom admin sama. Jalur
   simpan teks lama (termasuk clear saat kosong/sama dengan otomatis) tetap.
+- FX-8b (lokal): simpan EN tanpa override ID mencatat sidik jari sumber pada
+  jalur tunggal maupun bulk. Saat sumber berubah, EN tetap tampil, tetapi
+  detail dan hitungan tinjauan admin menandainya `changed`. Data publik varian
+  memakai allowlist dan penanda netral, bukan ID/keluarga/konfigurasi supplier.
 - `GET /api/products` admin menambah `copyReviewChanged`/`copyReviewRaw` di
   samping total `copyReview`.
 - Formatter supplier: baris judul-saja (S&K/Syarat/Ketentuan/Rules/Wajib
@@ -288,6 +318,7 @@ backup dahulu, pertahankan `.env`, snapshot dan direktori idempotensi durable.
 Tes transport memakai MockAgent tanpa jaringan; tidak menambah retry pembelian.
 
 ## Keandalan dispatch supplier — 25 Oktober 2026
+- FX-11b (lokal): hanya penolakan eksplisit SK `PRODUCT_TEMPORARILY_UNAVAILABLE` pada percobaan terakhir menulis bukti `final_rejection` sambil melepas sent-fence. Link yang masih tanpa invoice/fence hanya menjadi `failed` dalam transaksi yang sama dengan item terkait; agregat menunggu item lain dan notis admin/pembeli memakai kunci per order. Retry lama tanpa bukti atau tanpa item tetap nonterminal. Watchdog 13 jam memperingatkan sekali per link paid `submitted`/`ordering`/`processing` atau `pending`/`retry` yang kehabisan percobaan, tanpa mengubah status. GET 404/timeout tetap bukan izin replay.
 - Setelah KlikQRIS paid, pekerjaan segera memakai `payments/paid-fulfillment.ts` + Cloudflare `ctx.waitUntil`; jangan mengikat POST supplier pada umur request browser. Materialisasi dan bind WR/SK mendahului fulfillment umum; immediate hanya order yang baru lunas, satu link/supplier, sisanya cron existing.
 - HTTP5xx generik dan receipt tanpa order_id/invoice atau ref SK yang berbeda adalah ambigu: request_sent_at/ref_id dipertahankan, hanya rekonsiliasi. Hanya penolakan eksplisit SK PRODUCT_TEMPORARILY_UNAVAILABLE yang boleh retry biasa. Jangan mengubah404/timeout menjadi izin membeli ulang otomatis.
 - Proxy WR/SK mengembalikan marker `wr_proxy_unreadable_response: network_error` / `sk_proxy_unreadable_response: network_error` untuk respons tulis2xx tak terbaca; kata network mempertahankan kompatibilitas Pages lama saat rollout. Sinkronkan kontrak di AGENTS proxy, README dan ARCHITECTURE.

@@ -1,6 +1,7 @@
 import * as jose from "jose";
 import { z } from "zod";
 import { checkCloudflareAccess } from "@/lib/cloudflare-access";
+import { constantTimeEqual } from "@/lib/security";
 import { idrToUsdCents, parseFxTimestamp, parseRateRational, type FxSource } from "@/lib/payments/fx";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
@@ -197,6 +198,105 @@ export async function verifyPasswordWithSha(plain: string, expectedShaHex: strin
 export async function hashPasswordPbkdf2(password: string, salt: string, iter = 100000): Promise<string> {
   const hex = await pbkdf2Hex(password, salt, iter);
   return `pbkdf2$${iter}$${salt}$${hex}`;
+}
+
+/** Format hash tersimpan: legacy satu-putaran SHA-256 (tanpa salt) atau PBKDF2. */
+export function isLegacyStoredHash(stored: string): boolean {
+  try {
+    return parseStoredHash(stored).kind === "sha256";
+  } catch {
+    return false;
+  }
+}
+
+// ── Upgrade-on-login (audit AU-B1-1) ──────────────────────────────────────
+// Hash legacy tetap diterima agar admin lama tidak terkunci, tetapi pada login
+// sukses pertama ia diganti PBKDF2 dan disimpan di D1 `store_settings`. Baris
+// override hanya dipercaya bila `source` cocok dengan secret env saat ini,
+// sehingga rotasi ADMIN_PASSWORD_SHA256 di Pages langsung berlaku kembali.
+const ADMIN_HASH_OVERRIDE_KEY = "admin_password_hash";
+const ADMIN_HASH_UPGRADED_AT_KEY = "admin_password_upgraded_at";
+
+type LegacyUpgradeRecord = { source: string; hash: string };
+
+function legacySourceFingerprint(stored: string, upgradedHash: string): Promise<string> | null {
+  const secret = process.env.ADMIN_JWT_SECRET?.trim();
+  if (!secret) return null;
+  // Bind the replacement hash too: a valid tag cannot be copied to a different override.
+  return hmacHex(new TextEncoder().encode(secret), `axvara-admin-legacy-source-v2:${normalizeStoredHash(stored)}:${upgradedHash}`);
+}
+
+function parseLegacyUpgrade(raw: string | null): LegacyUpgradeRecord | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<LegacyUpgradeRecord> | null;
+    if (typeof value?.source !== "string" || !/^[a-f0-9]{64}$/.test(value.source) || typeof value.hash !== "string") return null;
+    const parsed = parseStoredHash(value.hash);
+    if (parsed.kind !== "pbkdf2") return null;
+    return { source: value.source, hash: normalizeStoredHash(value.hash) };
+  } catch {
+    return null;
+  }
+}
+
+async function readStoreSetting(key: string): Promise<string | null> {
+  try {
+    const { queryFirst, isD1Mode } = await import("@/lib/db");
+    if (!isD1Mode()) return null;
+    const row = await queryFirst("SELECT value FROM store_settings WHERE key=?", key);
+    return typeof row?.value === "string" ? row.value : null;
+  } catch {
+    // Gangguan baca tidak boleh mengunci login: jatuh ke hash env.
+    return null;
+  }
+}
+
+async function writeStoreSetting(key: string, value: string): Promise<boolean> {
+  const { execRun, isD1Mode } = await import("@/lib/db");
+  if (!isD1Mode()) return false;
+  const result = await execRun(
+    `INSERT INTO store_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+    key, value,
+  );
+  return Number(result.changes ?? 0) > 0;
+}
+
+/** Hash efektif untuk verifikasi login. Bila env masih legacy tetapi sudah
+ *  pernah di-upgrade dan secret env belum berubah, pakai PBKDF2 tersimpan. */
+export async function resolveAdminStoredHash(envHash?: string): Promise<string> {
+  const stored = envHash ?? getAdminCredentials().sha256;
+  if (stored === "dev-placeholder" && isDev()) return stored;
+  if (!isLegacyStoredHash(stored)) return stored;
+  const override = parseLegacyUpgrade(await readStoreSetting(ADMIN_HASH_OVERRIDE_KEY));
+  if (override) {
+    try {
+      const source = await legacySourceFingerprint(stored, override.hash);
+      if (source && constantTimeEqual(source, override.source)) return override.hash;
+    } catch {
+      // An unavailable HMAC must not block verification with the env hash.
+    }
+  }
+  return stored;
+}
+
+/** Ganti hash legacy dengan PBKDF2 setelah login sukses. Tidak pernah
+ *  menggagalkan login; kegagalan penyimpanan dilaporkan ke log sanitized. */
+export async function upgradeAdminPasswordHash(plain: string, verifiedStored: string): Promise<boolean> {
+  if (!isLegacyStoredHash(verifiedStored)) return false;
+  try {
+    const { isD1Mode } = await import("@/lib/db");
+    if (!isD1Mode()) return false;
+    const hash = await hashPasswordPbkdf2(plain, randomSessionId());
+    const source = await legacySourceFingerprint(verifiedStored, hash);
+    if (!source) return false;
+    if (!(await writeStoreSetting(ADMIN_HASH_OVERRIDE_KEY, JSON.stringify({ source, hash })))) return false;
+    await writeStoreSetting(ADMIN_HASH_UPGRADED_AT_KEY, new Date().toISOString());
+    console.info("[security]", JSON.stringify({ event: "admin_password_upgraded", route: "/api/auth/login", method: "POST" }));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export type AdminPasswordProofConfig = {

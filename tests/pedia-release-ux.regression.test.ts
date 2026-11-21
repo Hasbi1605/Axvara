@@ -28,7 +28,7 @@ describe("rilis Pedia 2026-10-14 — UX setara Market", () => {
     // path R2 statis, label platform + metrik tetap di atas gambar.
     expect(card).toContain("PLATFORM_CARD_IMAGE");
     expect(card).toContain("pedia-platform-");
-    const api = read("src/app/api/pedia/catalog/route.ts");
+    const api = read("src/lib/pedia/public-catalog.ts");
     expect(api).toContain("platformCardImage");
     expect(api).toContain("pedia-platform-");
   });

@@ -17,7 +17,7 @@
 //   order didahulukan agar tetap jalan walau sync kena limit;
 // - alarm Telegram ber-state di Workers KV: 1 pesan saat gangguan mulai
 //   (hard 2 / soft 6 eksekusi gagal per step), pengingat tiap 6 jam,
-//   pulih setelah tiap step terdampak sukses 3 kali. KV rusak → :00/:30.
+//   pulih setelah tiap step terdampak sukses 3 kali. KV rusak → 00:00 UTC saja.
 
 import { runSyntheticProbes } from "./synthetic";
 
@@ -113,8 +113,6 @@ export const MAX_CHUNKS_PER_PHASE = 10;
 export const STEP_DELAY_MS = 0;
 /** A stalled origin must not prevent subsequent order/notification jobs. */
 export const STEP_TIMEOUT_MS = 45_000;
-/** Fallback KV hilang/rusak: hard DAN soft di tick menit kelipatan 30. */
-export const ALERT_EVERY_MINUTES = 30;
 export const ALARM_START_AFTER_FAILED_TICKS = 2;
 export const ALARM_RECOVER_AFTER_OK_TICKS = 3;
 export const ALARM_REMINDER_MS = 6 * 60 * 60 * 1000;
@@ -194,7 +192,9 @@ async function callStep(env: CronEnv, step: CronStep, fetchFn: FetchFn): Promise
 }
 
 export function shouldAlert(scheduledTime: number): boolean {
-  return new Date(scheduledTime).getUTCMinutes() % ALERT_EVERY_MINUTES === 0;
+  // ponytail: one scheduled minute per UTC day; no dependency on Pages/D1
+  // during an outage. Cross-isolate replay dedupe would need durable state.
+  return Math.floor(scheduledTime / 60_000) % (24 * 60) === 0;
 }
 
 function wib(ms: number): string {

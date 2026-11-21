@@ -102,6 +102,7 @@ function restockMessage(name: string, locale: "id" | "en"): string {
 export async function processDueRestockAlerts(
   database: DatabaseAccess = createDatabaseAccess(),
   limit = RESTOCK_ALERTS_PER_TICK,
+  hasTime = (_ms: number) => true,
 ): Promise<{ sent: number; cancelled: number; deferred: number }> {
   const out = { sent: 0, cancelled: 0, deferred: 0 };
   if (process.env.TELEGRAM_BOT_ENABLED !== "true") return out;
@@ -131,7 +132,7 @@ export async function processDueRestockAlerts(
 
   let processed = 0;
   for (const row of due) {
-    if (!database.canSpend(3)) break;
+    if (!database.canSpend(3) || !hasTime(11_000)) break;
     processed++;
     const id = Number(row.id);
     const userId = String(row.user_id);

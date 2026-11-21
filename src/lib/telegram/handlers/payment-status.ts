@@ -109,7 +109,7 @@ async function renderProviderInvoiceStatus(
     const { orderPaidMessage } = await import("@/lib/telegram/messages/status");
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
-      text: orderPaidMessage(code, "", false, "manual", { locale: savedLocale }),
+      text: orderPaidMessage(code, "", "manual", { locale: savedLocale }),
       parse_mode: "HTML",
       reply_markup: paidOrderStatusKeyboard(code, { locale: savedLocale }),
     });

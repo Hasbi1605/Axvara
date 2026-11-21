@@ -7,7 +7,7 @@
 // kecil; di-re-export di sini agar path impor pemanggil tidak berubah.
 // Pemindahan murni dari route.ts — SQL, urutan statement, dan teks IDENTIK.
 
-import { queryFirst } from "@/lib/db";
+import { queryFirst, execRun } from "@/lib/db";
 import { sendMessage, sendChatAction, safeEditOrSend } from "@/lib/telegram/api";
 import { orderStatusKeyboard, cartKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import {
@@ -129,6 +129,14 @@ export async function handleCartAdjust(
   if (delta === 0) {
     await removeFromCart(userId, variantId);
   } else {
+    // AU-E2-8: the relative ±1 write happens BEFORE the cart screen render.
+    // A transient failure rendering that screen makes the webhook update
+    // retryable; redelivery must not apply the delta twice. The journal row is
+    // written first (mutation boundary), so a duplicate delivery only re-renders.
+    if (sourceMeta?.updateId && !(await claimCartMutation(sourceMeta.updateId))) {
+      await handleShowCart(chatId, messageId, from, sourceMeta);
+      return;
+    }
     const ok = await setCartLineQty(userId, variantId, delta, true);
     if (!ok) {
       await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Cannot update quantity. Check min/max and stock." : "Jumlah tidak bisa diubah. Cek batas & stok.", parse_mode: "HTML" });
@@ -137,6 +145,18 @@ export async function handleCartAdjust(
     }
   }
   await handleShowCart(chatId, messageId, from, sourceMeta);
+}
+
+/** AU-E2-8: idempotency journal for one RELATIVE cart mutation per Telegram
+ * update_id. `buyer_notice_log` is the existing durable ledger (retention by
+ * created_at); returns false when this update already mutated the cart. */
+async function claimCartMutation(updateId: string): Promise<boolean> {
+  const res = await execRun(
+    `INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status, error)
+     VALUES (?, '', 'telegram', 'sent', 'cart_mutation') ON CONFLICT(idempotency_key) DO NOTHING`,
+    `tg-cart:${updateId}`,
+  );
+  return Number(res.changes ?? 0) > 0;
 }
 
 export async function handleCartCheckout(

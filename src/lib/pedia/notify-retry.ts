@@ -13,6 +13,7 @@
 // repurchase happens here. Transport is bounded at-least-once, not
 // exactly-once (documented in notify-channel + contract).
 import type { createDatabaseAccess } from "@/lib/db-access";
+import { keyPrefixRange } from "@/lib/db/key-prefix";
 
 type Db = ReturnType<typeof createDatabaseAccess>;
 
@@ -58,12 +59,14 @@ export async function retryPendingPediaEmails(
     // Deterministic affordable budget BEFORE each phase scan: scan read +
     // per-row send reserve. Never start what the budget cannot finish.
     if (!db.canSpend(1 + RETRY_LIMIT * 5)) break;
-    // Path 1: existing failed/due rows.
+    // Path 1: existing failed/due rows. BINARY key range (not LIKE 'prefix%')
+    // so the TEXT primary-key index is searched instead of scanned (AU-G2-4).
+    const phaseRange = keyPrefixRange(`email:pedia-${phase}:`);
     const rows = await db.queryAll(
       `SELECT b.order_code, b.idempotency_key FROM buyer_notice_log b
         JOIN orders o ON o.code=b.order_code
         JOIN pedia_order_items i ON i.order_code=b.order_code
-       WHERE b.idempotency_key LIKE ?
+       WHERE b.idempotency_key >= ? AND b.idempotency_key < ?
           AND o.status='lunas' AND o.payment_status='paid'
           ${phase === "processing" ? `AND (i.status IN ('completed','partial','canceled','expired') OR (${PROCESSING_READY}))` : ""}
          AND b.access_attempts < 5
@@ -71,7 +74,7 @@ export async function retryPendingPediaEmails(
            OR (b.status='sending' AND julianday(b.updated_at) < julianday('now','-10 minutes')))
          AND (b.access_retry_at IS NULL OR datetime(b.access_retry_at) <= datetime('now'))
        ORDER BY b.updated_at ASC LIMIT ?`,
-      `email:pedia-${phase}:%`, RETRY_LIMIT,
+      phaseRange.start, phaseRange.end, RETRY_LIMIT,
     ).catch(() => []);
     for (const row of rows) {
       if (!db.canSpend(5)) break;

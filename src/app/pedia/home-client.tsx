@@ -7,10 +7,10 @@ import { PlatformCatalog } from "@/components/pedia/PlatformCatalog";
 import { ScrollRope } from "@/components/storefront/ScrollRope";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { pediaCopy } from "@/lib/pedia/copy";
-import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import type { PediaCatalogSummary } from "@/lib/pedia/catalog-summary";
 import { HeroTrustRow } from "@/components/storefront/HeroTrustRow";
 
-export function PediaHomeClient({ products }: { products: PediaCatalogProduct[]; ordersEnabled?: boolean }) {
+export function PediaHomeClient({ products }: { products: PediaCatalogSummary[] }) {
   const locale = useDisplayLocale();
   const t = pediaCopy(locale);
   return <>

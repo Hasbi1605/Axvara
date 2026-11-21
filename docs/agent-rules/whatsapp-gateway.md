@@ -1,5 +1,28 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
+**21 November 2026 — keputusan owner (FX-15, implementasi lokal):** kanal jual
+sekarang dan ke depan hanya **web dan bot Telegram**. Grup WhatsApp bukan kanal
+jual; pertahankan promo/siaran dan sambutan yang sudah ada. `.d` khusus admin,
+`garansi`, arahan untuk intent belanja lama, dan hub `/wa` untuk bantuan yang
+dimulai pembeli tetap tersedia, bukan jalur pemesanan/pembayaran. Jangan tambahkan
+lagi checkout, unggah bukti, notifikasi transaksi grup, atau DM pembayaran,
+pengingat, kedaluwarsa maupun kredensial. `/send` grup, auth/webhook, dan cron
+outbox bersama tetap; `/send-image` lama tidak dipakai dan dihapus.
+
+Order WA historis tetap terbaca di admin/laporan tanpa migrasi; notifikasi lunas
+internal di grup admin Telegram dan expiry stok tetap berjalan. Order lunas yang
+belum diserahkan masuk handover manual admin, bukan dikirim ulang oleh bot WA.
+Antrean transaksi WA lama dipensiunkan ke `dead`, tanpa menghapus riwayat.
+
+Auth webhook header-only 21 November 2026 (audit AU-B1-2, lokal): `authenticateWebhook`
+(`src/lib/whatsapp/gateway.ts`) HANYA menerima token dari header `x-webhook-token`
+(atau `Authorization: Bearer`) yang dikirim gateway kanonis
+(`gateway/src/index.ts:201,327`). Fallback query `?token=`/`?secret=` dan body
+`secret`/`webhook_secret` dihapus; token query bocor ke access log/proxy/referrer.
+Token salah/kosong tetap 401 (`missing_token`/`invalid_token`), compare tetap
+constant-time, dan gate fail-closed bila `WHATSAPP_WEBHOOK_TOKEN` kosong. Jangan
+menambahkan kembali jalur query/body; pemanggil wajib header.
+
 Promo otomatis Telegram 19 November 2026 (lokal): promo pagi/sore 09.00 dan 17.00 WIB yang selama ini ke grup WA kini juga dikirim ke seluruh pengguna bot Telegram yang eligible (`is_blocked=0`, `broadcast_opt_out=0`, chat pribadi) lewat `broadcast_campaigns`/`broadcast_deliveries` (`src/lib/telegram/promo-broadcast.ts`) menggunakan banner JPEG `public/banners/ready-promo.jpg` (revisi 20 Nov 2026: pratinjau tautan besar di atas teks dalam satu bubble, tanpa `sendPhoto`/caption terpisah; snapshot lama tetap foto + caption) + daftar HTML bold (`promoMessages(slot, products).full`) + footer `/stop` + expiry di 12.00/20.00 WIB. Promo digest admin lama ke `TELEGRAM_ADMIN_CHAT_ID` (`sendDueAdminPromoDigest`, dua bubble salin-tempel) dihapus; `TELEGRAM_PROMO_DIGEST_ENABLED` tidak lagi dibaca. Perilaku promo WA (`promo-digest.ts`, `promo-bot.ts`, `ready-promo.webp`) tidak berubah.
 
 Urutan kategori digest 19 November 2026 (lokal): `loadPromoProducts` (`src/lib/telegram/promo-digest.ts`, dipakai bersama `promo-digest.ts` dan `promo-bot.ts` WA serta digest Telegram) kini mengurutkan kategori lebih dulu sesuai urutan web (`categories.sort_order`, tie-break nama/id, tanpa kategori terakhir), baru `p.sort_order` dan `p.id`, sehingga produk baru/ber-`sort_order` kecil di kategori akhir tidak lagi menggeser kategori tersebut ke baris paling atas.
@@ -37,6 +60,17 @@ untuk order historis. `/api/admin/bot/health` melaporkan
 `whatsapp_discovery/payment/proof_intake=false` + `whatsapp_buyer_flows:"retired"`.
 Data order WhatsApp historis tidak diubah/dibersihkan.
 
+FX-14 (lokal): cron lite `cleanup` membaca `/health` (timeout 3 detik,
+cache 5 menit) bila sisa deadline cukup. Sesi welcome dan sesi promo yang
+terkonfigurasi ikut dinilai; hanya hasil koneksi/jeda disimpan di
+`store_settings.wa_gateway_health`. Ringkasan mengabaikan sampel >20 menit
+dan tidak memanggil gateway. Ini bukan indikator penjualan WA.
+
+Notifikasi LUNAS order WA historis tetap berbagi klaim Telegram dengan order
+Telegram (FX-3b, lokal): cron hanya mengambil alih status `sending` setelah
+`access_retry_at` kedaluwarsa, bukan berdasarkan umur `updated_at`. Cooldown
+20 menit untuk timeout tercatat tidak berubah; tidak ada perubahan transport WA.
+
 Revisi11November2026 (implementasi lokal, deployment belum diverifikasi): hentikan
 notifikasi pembelian berhasil ke grup, termasuk pending/failed lama. Jangan
 mengaktifkan kembali scanner transaksi. Penggantinya katalog ready09.00/17.00 WIB,
@@ -67,6 +101,8 @@ migrasi0077) + snapshot kampanye atomik; tujuan grup WA terverifikasi/subscriber
 email active/user Telegram pribadi non-blokir/non-opt-out. Worker cron lite existing
 maks8/tick, hasil ambigu unknown tanpa kirim ulang; opt-out email token acak dan
 Telegram /stop. Sambutan hanya dari event group add via /api/whatsapp/group-events
-→ outbox group_welcome dedupe SHA256 harian; chat biasa tidak lagi menyapa/mencari
+→ inbox PG, lalu outbox group_welcome dedupe SHA256 menurut hari event UTC;
+tidak bergantung callback status, dan tak dikirim setelah 30 menit atau jika
+grup/identitas tidak cocok saat admission. Chat biasa tidak lagi menyapa/mencari
 produk. Gateway /send-broadcast//send-welcome namespace key terpisah. Rincian di
 gateway/AGENTS.md, ARCHITECTURE §16.13, issue/broadcasts-welcome-2026-10-24.md.

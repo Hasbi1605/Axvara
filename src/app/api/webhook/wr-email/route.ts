@@ -133,38 +133,10 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ ok: true, status: "forwarded", channel: "email", kind, order_code: orderCode });
   }
-  // Fallback: buyer tanpa email → antrekan teks ke WA via whatsapp_outbox
-  // (diproses cron operations seperti notifikasi WA lain; idempoten per order+kind).
-  const buyerWa = String(row.customer_wa || "").trim();
-  if (!buyerWa) {
-    await execRun(
-      `INSERT OR IGNORE INTO wr_email_forward_log (gmail_message_id, wr_invoice, axvara_order_code, kind, channel, error)
-       VALUES (?,?,?,?,'none','no_buyer_contact')`,
-      gmailId, parsed.wrInvoice, orderCode, kind,
-    ).catch(() => undefined);
-    return NextResponse.json({ ok: true, status: "held", reason: "no_buyer_contact", order_code: orderCode }, { status: 202 });
-  }
-  const idempotencyKey = `wr-email:${orderCode}:${parsed.wrInvoice}:${kind}`;
-  try {
-    await execRun(
-      `INSERT OR IGNORE INTO whatsapp_outbox (idempotency_key, channel, destination, message_type, payload, status)
-       VALUES (?,'whatsapp',?,'text',?,'pending')`,
-      idempotencyKey, buyerWa,
-      JSON.stringify({ text: `*AXVARA* — ${template.subject}\n\n${template.text}` }),
-    );
-  } catch {
-    await execRun(
-      `INSERT OR IGNORE INTO wr_email_forward_log (gmail_message_id, wr_invoice, axvara_order_code, kind, buyer_email, channel, error)
-       VALUES (?,?,?,?,?,'whatsapp','outbox_failed')`,
-      gmailId, parsed.wrInvoice, orderCode, kind, buyerWa,
-    ).catch(() => undefined);
-    return NextResponse.json({ ok: false, status: "outbox_failed", order_code: orderCode }, { status: 502 });
-  }
   await execRun(
-    `INSERT OR IGNORE INTO wr_email_forward_log
-       (gmail_message_id, wr_invoice, axvara_order_code, kind, buyer_email, buyer_notified_at, channel)
-     VALUES (?,?,?,?,?,datetime('now'),'whatsapp')`,
-    gmailId, parsed.wrInvoice, orderCode, kind, buyerWa,
+    `INSERT OR IGNORE INTO wr_email_forward_log (gmail_message_id, wr_invoice, axvara_order_code, kind, channel, error)
+     VALUES (?,?,?,?,'none','no_buyer_contact')`,
+    gmailId, parsed.wrInvoice, orderCode, kind,
   ).catch(() => undefined);
-  return NextResponse.json({ ok: true, status: "forwarded", channel: "whatsapp", kind, order_code: orderCode });
+  return NextResponse.json({ ok: true, status: "held", reason: "no_buyer_contact", order_code: orderCode }, { status: 202 });
 }

@@ -7,7 +7,7 @@ import { Price, PriceNote } from "@/components/storefront/Price";
 import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { productDisplayName } from "@/lib/i18n/product-name";
 import { catalogCopy, catalogDeliveryBadge, catalogWarranty } from "@/lib/i18n/catalog-copy";
-import type { VariantSummary } from "@/lib/catalog";
+import type { StorefrontVariant } from "@/lib/product-copy/resolve";
 import { formatVariantLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
@@ -18,9 +18,9 @@ import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { Bone, InlineSpinner } from "@/components/storefront/Skeletons";
 import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
-import { bulkCopy, bulkUnitEstimate, usableBulkTiers, type BulkVariantFields } from "@/lib/bulk-display";
+import { bulkCopy, bulkUnitEstimate, usableBulkTiers } from "@/lib/bulk-display";
 
-export type VariantOption = VariantSummary & BulkVariantFields;
+export type VariantOption = StorefrontVariant;
 
 /** Di atas angka ini kartu varian menjadi baris ringkas satu kolom. */
 export const COMPACT_VARIANTS_AFTER = 6;

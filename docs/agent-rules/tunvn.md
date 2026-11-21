@@ -1,7 +1,12 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Perbaikan audit H2 — 21 November 2026 (lokal)
+
+- Dispatch: preflight `fetchTunvnProducts`/`fetchTunvnBalance` memetakan HTTP 429 ke `rateLimited` sehingga batch berhenti setelah link pertama; gerbang retryable/bind/fence memeriksa kolom supplier saudara (`aivault/storebat/mirai`) dan `archived_at`; handover manual diblokir oleh link TUNVN aktif berdasarkan `(order_code, item_index)` walau `fulfillment_items.tunvn_link_id` belum terikat. Topup: invoice tanpa `expires_at` mengikuti status upstream `expired`. Katalog mengosongkan `compare_price` bila harga proyeksi menyentuh/melampauinya. Status: implementasi lokal + test.
+
 ## Deposit saldo TUNVN dari admin — keputusan owner 20 November 2026 (lokal)
 
+- Kuota 3 invoice non-terminal direservasi atomik sebelum panggilan deposit. Refresh yang selesai belakangan tidak dapat menimpa `paid`; invoice `expired` tetap bisa dikonfirmasi lunas setelahnya.
 - **Menggantikan** aturan setup "`POST /api/deposit` sengaja tidak diimplementasikan" hanya untuk scope ini: admin boleh membuat **invoice deposit saldo TUNVN** dari AXVARA. AXVARA hanya membuat invoice + melacak status; owner transfer sendiri. **Tidak ada auto payout, tidak ada dana dikirim AXVARA**, dan tidak ada deposit untuk QA.
 - `callTunvnDeposit(amountUsdt)` = `POST /api/deposit {amount,currency:"usdt"}`; `callTunvnDepositStatus(code)` = `GET /api/deposit/status?code=<encoded>`. Tanpa retry, redirect manual, key hanya di header (pola `callTunvnRead`); 401/403 = config, 429/5xx = ambigu.
 - Parser menolak invoice yang tidak sesuai: `wallet_transfer.network` wajib `BEP20`, address `0x` + 40 hex, dan `exact_amount >= nominal diminta && < nominal+1` (owner wajib transfer PERSIS nominal). `paid===true` atau `status==="confirmed"` = lunas. Invoice menyimpan `payment_json` non-secret `{address,network,exact_amount,instruction}` saja.
@@ -286,6 +291,7 @@ Produk admin”. Implementasi/migrasi baru lokal; tanpa perubahan produksi.
   owner menangani sendiri melalui Telegram TUNVN. D1 keduanya sudah diberi
   `supplier_purchase_disabled=1`; hanya flag dan updated_at diubah, bukan status
   pengiriman, receipt, fence, notifikasi atau pembelian. Readback attempt0/sendNULL.
+- FX-11: `insufficient_balance` yang masuk `needs_admin` mengirim notis penanganan manual sekali per order. Notis Pesanan Diproses tetap hanya setelah acceptance supplier.
 - Perbaikan lokal: kegagalan preflight memiliki alasan aman terpisah; saldo
   terkonfirmasi kurang = `insufficient_balance`, gagal baca saldo bukan saldo0.
   Error generik historis tidak membuktikan penyebab saldo kurang.

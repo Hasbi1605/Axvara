@@ -206,7 +206,7 @@ describe("PDP multi-varian: S&K mengikuti satu pilihan", () => {
 
   it("deskripsi umum diberi label; bagian Pilihan varian menjadi Perbandingan varian", () => {
     renderPdp();
-    const general = screen.getByRole("heading", { level: 2, name: "Deskripsi umum" });
+    const general = screen.getAllByRole("heading", { level: 2, name: "Deskripsi umum" }).find((h) => h.closest(".lg\\:block"))!;
     expect(general).toBeTruthy();
     // Desktop: deskripsi umum dulu, lalu Syarat & Ketentuan varian.
     expect(general.compareDocumentPosition(details()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -274,7 +274,7 @@ describe("PDP multi-varian: S&K mengikuti satu pilihan", () => {
     expect(screen.queryByTestId("pdp-variant-details")).toBeNull();
     expect(screen.getByRole("heading", { level: 2, name: /Syarat & Ketentuan/ }).textContent).toContain("1 Bulan");
     expect(body()).toContain("Garansi tujuh hari penuh");
-    expect(screen.getByRole("heading", { level: 2, name: "Deskripsi Produk" })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { level: 2, name: "Deskripsi Produk" })).toHaveLength(2);
   });
 });
 

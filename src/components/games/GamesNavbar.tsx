@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
@@ -17,15 +17,32 @@ export function GamesNavbar({ games }: { games: GamesCatalogGame[] }) {
   const t = gamesCopy(useDisplayLocale());
   const [mobileSearch, setMobileSearch] = useState(false);
   const [query, setQuery] = useState("");
+  const desktopSearch = useRef<HTMLDivElement>(null);
+  const mobilePanel = useRef<HTMLDivElement>(null);
+  const mobileToggle = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!mobileSearch && !query) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || [desktopSearch.current, mobilePanel.current, mobileToggle.current].some((node) => node?.contains(event.target as Node))) return;
+      setQuery(""); setMobileSearch(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [mobileSearch, query]);
   const matches = query.trim() ? games.filter((game) => game.name.toLowerCase().includes(query.trim().toLowerCase())) : [];
   const onSearch = (v: string) => {
     setQuery(v);
     if (v.trim()) document.getElementById("games-catalog")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   };
-  const search = (mobile = false) => <div className="relative w-full">
+  const search = (mobile = false) => <div className="relative w-full" onKeyDown={(event) => {
+    if (event.key !== "Escape" || (!query && !mobile)) return;
+    event.preventDefault(); event.stopPropagation(); setQuery("");
+    if (mobile) { setMobileSearch(false); mobileToggle.current?.focus(); }
+    else desktopSearch.current?.querySelector("input")?.focus();
+  }}>
     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60"><IosIcon name="search" size={16} tint="white" /></span>
     <input aria-label={mobile ? t.searchToggle : t.searchAria} type="search" value={query} onChange={(event) => onSearch(event.target.value)} placeholder={mobile ? t.searchShort : t.searchPlaceholder} className={`w-full ${mobile ? "h-11 text-base" : "h-10 text-sm"} pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 ${mobile ? "" : "focus:bg-white/[0.08]"} transition`} />
-    {query && <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label={t.clear}><X className="w-3.5 h-3.5 text-white/70" /></button>}
+    {query && <button type="button" onClick={(event) => { setQuery(""); event.currentTarget.parentElement?.querySelector("input")?.focus(); }} className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label={t.clear}><X className="w-3.5 h-3.5 text-white/70" /></button>}
     {query.trim() && <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-white/15 bg-[#0F1430] p-2 shadow-xl">{matches.length ? matches.map((game) => <Link prefetch={false} key={game.slug} href={`/games/${game.slug}`} onClick={() => { setQuery(""); setMobileSearch(false); }} className="flex min-h-11 items-center rounded-xl px-3 text-sm hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">{game.name}</Link>) : <p className="px-3 py-3 text-sm text-white/60">{t.noResults}</p>}</div>}
   </div>;
   return <header className="ax-glass-strong ax-glass-lite-mobile sticky top-0 z-50 border-b border-white/10">
@@ -39,13 +56,13 @@ export function GamesNavbar({ games }: { games: GamesCatalogGame[] }) {
         <span className="hidden whitespace-nowrap font-display text-[22px] font-[300] leading-none tracking-[0.16em] text-white md:inline">AXVARA GAMES</span>
         <span className="max-[343px]:hidden max-w-[130px] truncate whitespace-nowrap font-display text-[15px] font-[300] leading-none tracking-[0.12em] text-white md:hidden">AXVARA GAMES</span>
       </Link>
-      <div className="hidden lg:flex min-w-0 flex-1 max-w-[520px] mx-2">{search()}</div>
+      <div ref={desktopSearch} className="hidden lg:flex min-w-0 flex-1 max-w-[520px] mx-2">{search()}</div>
       <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2"><ServicesMenu active="games" />
-        <button onClick={() => setMobileSearch((value) => !value)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass max-md:![backdrop-filter:none] max-md:![-webkit-backdrop-filter:none] flex items-center justify-center text-white/70" aria-label={t.searchToggle} aria-expanded={mobileSearch}>{mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}</button>
+        <button ref={mobileToggle} type="button" onClick={() => { if (mobileSearch) setQuery(""); setMobileSearch(!mobileSearch); }} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass max-md:![backdrop-filter:none] max-md:![-webkit-backdrop-filter:none] flex items-center justify-center text-white/70" aria-label={t.searchToggle} aria-expanded={mobileSearch}>{mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}</button>
         <nav aria-label={t.navigation} className="hidden items-center gap-1 text-sm text-white/70 xl:flex"><Link prefetch={false} href="/games/lacak" className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">{t.trackFull}</Link><Link prefetch={false} href="/games/bantuan" className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">{t.help}</Link></nav>
         <PreferenceControls />
       </div>
-    </div>{mobileSearch && <div className="lg:hidden px-4 pb-3">{search(true)}</div>}
+    </div>{mobileSearch && <div ref={mobilePanel} className="lg:hidden px-4 pb-3">{search(true)}</div>}
   </header>;
 }
 

@@ -184,7 +184,7 @@ describe("Pesan lunas Telegram mengikuti kelas kirim (instan / MBO / manual)", (
   it("WR Made By Order → pesan tunggu + janji kirim otomatis ke chat ini", async () => {
     const text = await paidText("AXV-20261004-PAID0002", 21, 2);
     expect(text).toContain("Made By Order");
-    expect(text).toContain("maks 12 jam");
+    expect(text).toContain("maksimal 12 jam");
     expect(text).toContain("otomatis ke chat ini");
     expect(text).not.toContain("nomor WhatsApp");
   });
@@ -226,9 +226,9 @@ describe("WR delivery Telegram: format seragam + requeue setelah START", () => {
     expect(row).toMatchObject({ delivery_status: "queued", delivery_attempt_count: 0 });
   });
 
-  it("supplierCredentialMessage memuat kode, produk, dan detail ter-escape", async () => {
-    const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
-    const msg = supplierCredentialMessage("AXV-1", "Netflix <Premium>", "Email: a@b.c\nPassword: x<y");
+  it("credentialMessages memuat kode, produk, dan detail ter-escape", async () => {
+    const { credentialMessages } = await import("@/lib/telegram/messages/credential");
+    const msg = credentialMessages({ orderCode: "AXV-1", productName: "Netflix <Premium>", plaintext: "Email: a@b.c\nPassword: x<y" }).join("\n\n");
     expect(msg).toContain("AXV-1");
     expect(msg).toContain("Netflix &lt;Premium&gt;");
     expect(msg).toContain("<pre>Email: a@b.c\nPassword: x&lt;y</pre>");
@@ -302,13 +302,6 @@ describe("Garansi: varian tanpa data garansi tidak ditulis 'Tanpa Garansi'", () 
     expect(texts.some((t) => /garansi/i.test(t))).toBe(false);
   });
 
-  it("WhatsApp detail produk tidak menulis 'Tanpa Garansi'", async () => {
-    const { getProductDetail } = await import("@/lib/catalog");
-    const { productDetailMessage } = await import("@/lib/whatsapp/messages");
-    const detail = await getProductDetail(1);
-    const msg = productDetailMessage("Prime Video", null, detail!.variants);
-    expect(msg).not.toContain("Tanpa Garansi");
-  });
 });
 
 describe("Pengiriman kredensial Telegram hanya ke pemilik kanonis", () => {

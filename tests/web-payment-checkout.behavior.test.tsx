@@ -727,4 +727,26 @@ describe("checkout: 503 payment_method_unavailable (kontrak error_code)", () => 
     expect(posts[0].quote_token).toBe("quote-token-fixture-123456");
     expect(posts[1].quote_token).toBe("quote-token-fixture-123456");
   });
+
+  it("preserves the cart after a terminal replay and lets the buyer get a fresh quote", async () => {
+    const { posts, quoteCalls } = stub({
+      quotes: [{ methods, extra: { quoteToken: "quote-token-old-000000000" } }, { methods, extra: { quoteToken: "quote-token-new-111111111" } }],
+      orders: [
+        { status: 503, body: { error: "Gagal sementara. Coba lagi." } },
+        { status: 409, body: { error: "Pesanan ini sudah ditutup.", error_code: "checkout_order_closed" } },
+      ],
+    });
+    render(<CheckoutPage />);
+    await waitFor(() => expect(radios().length).toBe(2));
+    fillAndAgree();
+    await act(async () => { fireEvent.click(payButton()); });
+    await act(async () => { fireEvent.click(payButton()); });
+    expect(posts.map(post => post.quote_token)).toEqual(Array(2).fill("quote-token-old-000000000"));
+    expect(useCart.getState().items).toHaveLength(1);
+    expect(nav.push).not.toHaveBeenCalled();
+    expect(localStorage.getItem("axvara-orders")).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Ambil harga terbaru" }));
+    await waitFor(() => expect(quoteCalls.count).toBe(2));
+    expect(posts).toHaveLength(2);
+  });
 });

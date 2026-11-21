@@ -3,6 +3,7 @@
 // No payphone overwrite, no draft discard, no order writes. Crypto never
 // reaches here (email-only rules). Phone bounded + validated.
 import { execRun } from "@/lib/db";
+import { isValidWaNumber } from "@/lib/order-contact";
 import { sendMessage } from "@/lib/telegram/api";
 import { minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
@@ -11,7 +12,9 @@ import type { Payq1State } from "@/lib/telegram/payment-quote";
 import type { Locale } from "@/lib/i18n/locale";
 
 export function isValidContactPhone(raw: string): boolean {
-  return /^\+?[0-9]{8,20}$/.test(raw.trim());
+  // Kanonis = validator checkout web: WA 08…/+62…/62… (10–15 digit), bukan
+  // angka apa pun 8–20 digit yang web tolak.
+  return isValidWaNumber(raw);
 }
 
 export async function requestPayq1Contact(
@@ -38,8 +41,8 @@ export async function requestPayq1Contact(
   await sendMessage({
     chat_id: chatId,
     text: locale === "en"
-      ? `Reply with an active WhatsApp number (8–20 digits, e.g. <code>081234567890</code>). Email: <code>${email.replace(/</g, "&lt;")}</code>.`
-      : `Balas nomor WhatsApp aktif (8–20 digit, mis. <code>081234567890</code>). Email: <code>${email.replace(/</g, "&lt;")}</code>.`,
+      ? `Reply with an active WhatsApp number (08… / +62…, 10–15 digits, e.g. <code>081234567890</code>). Email: <code>${email.replace(/</g, "&lt;")}</code>.`
+      : `Balas nomor WhatsApp aktif (08… / +62…, 10–15 digit, mis. <code>081234567890</code>). Email: <code>${email.replace(/</g, "&lt;")}</code>.`,
     parse_mode: "HTML",
   });
   void messageId;
@@ -60,8 +63,8 @@ export async function handlePayq1PhoneInput(
     await sendMessage({
       chat_id: chatId,
       text: ctx.locale === "en"
-        ? "Invalid number format. Reply with 8-20 digits, or type /batal to cancel."
-        : "Format nomor tidak valid. Balas dengan 8-20 digit, atau ketik /batal untuk batal.",
+        ? "Invalid number format. Reply with 08… / +62… (10–15 digits), or type /batal to cancel."
+        : "Format nomor tidak valid. Balas dengan format 08… atau +62… (10–15 digit), atau ketik /batal untuk batal.",
       parse_mode: "HTML",
     });
     return true;

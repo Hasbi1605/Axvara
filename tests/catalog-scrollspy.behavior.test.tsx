@@ -3,10 +3,23 @@ import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { HomeClient } from "@/app/(shop)/home-client";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams(window.location.search) }));
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
 const categories = [{ id: 1, name: "AI & Chatbot", slug: "ai-chatbot", sort_order: 10 }, { id: 2, name: "Desain & Video", slug: "desain-video", sort_order: 20 }];
 const media = (reduced = false) => vi.stubGlobal("matchMedia", () => ({ matches: reduced, addEventListener() {}, removeEventListener() {} }));
+
+it("renders the legacy query filter on catalog arrival and clears it when the URL drops the query", () => {
+  media();
+  vi.stubGlobal("IntersectionObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const products = categories.map((cat, i) => ({ id: String(i), slug: cat.slug, name: `Fixture ${cat.slug}`, description: "", price: 10000, categorySlug: cat.slug, image: "" }));
+  window.history.replaceState(null, "", "/?category=ai-gateway#katalog");
+  const { rerender } = render(<HomeClient initialCategories={categories} initialProducts={products} />);
+  expect(screen.getByRole("heading", { name: "Fixture ai-chatbot" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "Fixture desain-video" })).toBeNull();
+  window.history.pushState(null, "", "/#katalog");
+  rerender(<HomeClient initialCategories={categories} initialProducts={products} />);
+  expect(screen.getByRole("heading", { name: "Fixture desain-video" })).toBeTruthy();
+});
 
 it("keeps pills in normal flow without an outer surface or divider, and reveals section icons without tinting pills", () => {
   media();

@@ -14,6 +14,7 @@ import { sendTextMessage } from "./gateway";
 
 export const WA_OUTBOX_RETRY_DELAYS_MINUTES = [1, 5, 15, 60];
 export const WA_OUTBOX_MAX_ATTEMPTS = WA_OUTBOX_RETRY_DELAYS_MINUTES.length + 1;
+export const WELCOME_TTL_MS = 30 * 60_000;
 // Batas operasional antar kirim dalam satu run: default 6 dtk +
 // jitter ≤3 dtk; override via env untuk test. Berlaku juga untuk cooldown
 // per destinasi (satu nomor tidak dihujani pesan berurutan).
@@ -63,11 +64,13 @@ function paceDelayMsLive(): number {
   return base + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
 }
 
-export type WaOutboxKind = "payment_detected" | "text";
-
-export function waOutboxKey(kind: WaOutboxKind, ref: string): string {
-  return `wa:${kind}:${ref}`;
-}
+// Retire already-queued sales rows by their historical keys, not by the generic
+// `text` type, which is still a supported group transport.
+const RETIRED_SALES = `(message_type IN ('sale_completed','payment_detected')
+  OR idempotency_key GLOB 'wa:payment_detected:*'
+  OR idempotency_key GLOB 'wa:qris-expired:*'
+  OR idempotency_key GLOB 'wa:text:*'
+  OR idempotency_key GLOB 'wr-email:*')`;
 
 function nextAttemptSql(minutes: number): string {
   return `datetime('now', '+${minutes} minutes')`;
@@ -155,7 +158,7 @@ export async function claimWhatsAppOutboxRow(row: Record<string, unknown>, datab
   return { outcome: "claimed", workerId };
 }
 
-/** Pulihkan lease `sending` basi ke `failed`; pensiunkan sale_completed ke `dead`.
+/** Pulihkan lease `sending` basi; pensiunkan pesan transaksi ke `dead`.
  *
  * Harus dipanggil dari jalur runtime (cron) sebelum mengambil baris due —
  * bukan dari SQL buatan tes. Syarat ketat:
@@ -164,6 +167,10 @@ export async function claimWhatsAppOutboxRow(row: Record<string, unknown>, datab
  * - outcome tercatat ambigu (`lease_recovered:delivery_outcome_unknown`)
  *   karena runtime tidak tahu apakah pesan sempat terkirim sebelum crash;
  *   tanpa janji exactly-once tanpa dukungan provider.
+ * - AU-E2-4: klaim yang crash pada percobaan TERAKHIR tidak boleh berhenti di
+ *   `failed` selamanya (query due mensyaratkan attempt_count < MAX). Baris
+ *   seperti itu dipensiunkan ke `dead` dengan alasan eksplisit agar operator
+ *   melihat hasil akhir yang ambigu, bukan baris menggantung.
  * Mengembalikan jumlah baris dipulihkan atau dipensiunkan.
  */
 export async function recoverStaleWhatsAppLeases(database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
@@ -171,11 +178,20 @@ export async function recoverStaleWhatsAppLeases(database: DatabaseAccess = crea
   try {
     const result = await execRun(
       `UPDATE whatsapp_outbox
-        SET status=CASE WHEN message_type='sale_completed' THEN 'dead' ELSE 'failed' END, worker_id=NULL, locked_until=NULL,
-            last_error=CASE WHEN message_type='sale_completed' THEN 'sales_notifications_retired' ELSE 'lease_recovered:delivery_outcome_unknown' END,
+        SET status=CASE
+              WHEN ${RETIRED_SALES} THEN 'dead'
+              WHEN attempt_count>=? THEN 'dead'
+              ELSE 'failed' END,
+            worker_id=NULL, locked_until=NULL,
+            last_error=CASE
+              WHEN ${RETIRED_SALES} THEN 'sales_notifications_retired'
+              WHEN attempt_count>=? THEN 'lease_recovered_exhausted:delivery_outcome_unknown'
+              ELSE 'lease_recovered:delivery_outcome_unknown' END,
            next_attempt_at=datetime('now'), updated_at=datetime('now')
         WHERE (status='sending' AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now')))
-           OR (message_type='sale_completed' AND status IN ('pending','failed'))`,
+           OR (${RETIRED_SALES} AND status IN ('pending','failed'))`,
+      WA_OUTBOX_MAX_ATTEMPTS,
+      WA_OUTBOX_MAX_ATTEMPTS,
     );
     return Number(result.changes ?? 0);
   } catch {
@@ -201,8 +217,9 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
 
   const fresh = (await queryFirst(`SELECT * FROM whatsapp_outbox WHERE id=?`, id)) ?? row;
   let botIdentity: { botNumber: string; botRevision: string } | undefined;
-  if (fresh.message_type === "sale_completed") {
-    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='sales_notifications_retired',updated_at=datetime('now') WHERE id=? AND worker_id=?", id, workerId);
+  if (['sale_completed', 'payment_detected'].includes(String(fresh.message_type))
+      || /^(wa:(payment_detected|qris-expired|text):|wr-email:)/.test(String(fresh.idempotency_key))) {
+    await execRun(`UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='sales_notifications_retired',updated_at=datetime('now') WHERE id=? AND worker_id=?`, id, workerId);
     return true;
   }
   let message = String(fresh.payload || "");
@@ -242,15 +259,22 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     message = payload.message;
     botIdentity = { botNumber: payload.botNumber, botRevision: payload.botRevision };
   }
+  let welcomeExpiresAt: number | undefined;
   if (fresh.message_type === "group_welcome") {
     try {
       const payload = JSON.parse(message);
       const { normalizeBotNumber, validBotRevision } = await import("./bot-number");
       if (typeof payload.message !== "string" || !payload.message || normalizeBotNumber(payload.botNumber) !== payload.botNumber || !validBotRevision(payload.botRevision)) throw new Error("invalid_welcome");
+      const createdAt = String(fresh.created_at ?? "");
+      welcomeExpiresAt = payload.expiresAt ?? Date.parse(createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z") + WELCOME_TTL_MS;
       message = payload.message;
       botIdentity = { botNumber: payload.botNumber, botRevision: payload.botRevision };
     } catch {
       await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='invalid_welcome_payload' WHERE id=? AND worker_id=?", id, workerId);
+      return true;
+    }
+    if (typeof welcomeExpiresAt !== "number" || !Number.isFinite(welcomeExpiresAt) || welcomeExpiresAt <= Date.now()) {
+      await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='welcome_expired',updated_at=datetime('now') WHERE id=? AND worker_id=?", id, workerId);
       return true;
     }
   }
@@ -261,6 +285,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     promoNotification: fresh.message_type === "promo_digest",
     ...(promoBot ? { promoBotNotification: true } : {}),
     welcomeNotification: fresh.message_type === "group_welcome",
+    ...(welcomeExpiresAt !== undefined ? { welcomeExpiresAt } : {}),
     ...botIdentity,
   });
   if (result.ok) {
@@ -278,8 +303,8 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
     return true;
   }
-  if (fresh.message_type === "group_welcome" && result.error === "bot_configuration_changed") {
-    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='bot_configuration_changed' WHERE id=? AND worker_id=?", id, workerId);
+  if (fresh.message_type === "group_welcome" && ["bot_configuration_changed", "notification_group_mismatch", "welcome_expired"].includes(String(result.error))) {
+    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
     return true;
   }
   const nextAttempts = attempts + 1;
@@ -325,7 +350,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
  * `paused` = sisa antrean yang TIDAK diproses karena auto-pause lunak
  * (3 sinyal bahaya berurutan — gateway mati / 401 / 403).
  */
-export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAccess = createDatabaseAccess()): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number; paused?: number }> {
+export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAccess = createDatabaseAccess(), hasTime = (_ms: number) => true): Promise<{ sent: number; dead: number; recovered?: number; claimErrors?: number; paused?: number }> {
   const { queryFirst, execRun } = database;
   if (!database.canSpend(2)) return { sent: 0, dead: 0, recovered: 0, claimErrors: 0 };
   const recovered = await recoverStaleWhatsAppLeases(database);
@@ -353,8 +378,17 @@ export async function processDueWhatsAppOutbox(limit = 8, database: DatabaseAcce
       continue; // lewati baris ini run ini; due lagi run berikut.
     }
     // Pacing manusiawi antar kirim (bukan sleep sebelum baris pertama).
-    if (attempted > 0) {
-      await new Promise((r) => setTimeout(r, paceDelayMsLive()));
+    const delay = attempted > 0 ? paceDelayMsLive() : 0;
+    // RV-1: a tick starved BEFORE the first row is deferred work, not silence.
+    // Report it like payments_deferred so a zero-work run is visible.
+    if (!hasTime(delay + 16_000)) {
+      paused = rows.length - attempted;
+      break;
+    }
+    if (attempted > 0) await new Promise((r) => setTimeout(r, delay));
+    if (!hasTime(16_000)) {
+      paused = rows.length - attempted;
+      break;
     }
     attempted++;
     let done = false;

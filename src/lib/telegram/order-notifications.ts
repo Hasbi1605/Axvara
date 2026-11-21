@@ -9,7 +9,6 @@ import {
   adminTelegramOrderCreatedMessage,
   adminTelegramOrderPaidMessage,
   adminWebOrderPaidMessage,
-  adminWhatsAppOrderCreatedMessage,
   adminWhatsAppOrderPaidMessage,
   orderPaidMessage,
   orderReminderMessage,
@@ -218,12 +217,12 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
   }
   const profile = await telegramPaidDeliveryProfile(order, database);
   const locale = String((order as Row).locale ?? "") === "en" ? "en" as const : "id" as const;
-  const needsWhatsApp = profile.hasLocalManual
-    && !String(order.customer_wa || "").trim()
-    && !String(order.pending_action || "").trim();
+  // Owner decision 2026-11-21: Telegram delivery is in this bot chat, so a paid
+  // order never asks the buyer for a WhatsApp number. Contact stays optional
+  // (the buyer may still message/admin via the keyboard links).
   const sent = await sendMessage({
     chat_id: chatId,
-    text: orderPaidMessage(String(order.code), productNames(order.items), needsWhatsApp, profile.delivery, { locale }),
+    text: orderPaidMessage(String(order.code), productNames(order.items), profile.delivery, { locale }),
     parse_mode: "HTML",
     reply_markup: orderPaidKeyboard(String(order.code), { locale }),
   }).catch(() => ({ ok: false }));
@@ -242,13 +241,6 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
      WHERE code=? AND telegram_paid_notified_at IS NULL`,
     orderCode,
   ).catch(() => undefined);
-  if (needsWhatsApp) {
-    await execRun(
-      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now')
-       WHERE user_id=? AND (pending_action IS NULL OR trim(pending_action)='')`,
-      `wa_after_paid:${orderCode}`, chatId,
-    ).catch(() => undefined);
-  }
 
   // The order-created message in Axvara_Notif keeps saying "Menunggu
   // pembayaran otomatis" even after the DANA hook marks the order paid, so
@@ -257,61 +249,6 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
   try {
     if (database.canSpend(5)) await notifyTelegramPaidAdmin(orderCode, database);
   } catch { /* Cron retries via telegram_paid_admin_notified_at. */ }
-  return true;
-}
-
-/** Notify Axvara_Notif as soon as a WhatsApp order exists.
- *
- * Idempoten via kolom marker yang sama dengan jalur Telegram
- * (`telegram_order_notified_at`): klaim CAS `IS NULL` + kirim + tandai,
- * sehingga redelivery webhook / retry cron tidak mengirim ganda.
- */
-export async function notifyWhatsAppOrderCreated(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
-  const { queryFirst, execRun } = database;
-  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-  if (!adminChatId || !telegramNotificationsConfigured()) return false;
-
-  const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_name, o.channel_member_id, o.customer_wa,
-            o.payment_method, o.created_at, o.telegram_order_notified_at,
-            pt.payable_amount, o.subtotal
-     FROM orders o
-     LEFT JOIN payment_transactions pt ON pt.order_code=o.code
-     WHERE o.code=? AND o.sales_channel='whatsapp'
-       AND o.telegram_order_notified_at IS NULL`,
-    orderCode,
-  );
-  if (!order) return true;
-
-  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
-  const member = String(order.channel_member_id || order.customer_wa || "");
-  const paymentMethod = String(order.payment_method || "qris");
-  const sent = await sendMessage({
-    chat_id: adminChatId,
-    text: adminWhatsAppOrderCreatedMessage({
-      createdAt: order.created_at,
-      orderCode: String(order.code),
-      productNames: productNames(order.items),
-      amount: Number(order.payable_amount ?? order.subtotal ?? 0),
-      customerName: String(order.customer_name || member || "Pembeli WhatsApp"),
-      channelMember: member,
-      paymentMethod,
-    }),
-    parse_mode: "HTML",
-    reply_markup: webOrderAdminKeyboard({
-      customerWa: member,
-      customerName: String(order.customer_name || "Pembeli WhatsApp"),
-      orderCode: String(order.code),
-      siteUrl,
-    }),
-  });
-  if (!sent.ok) return false;
-
-  await execRun(
-    `UPDATE orders SET telegram_order_notified_at=datetime('now'), updated_at=datetime('now')
-     WHERE code=? AND telegram_order_notified_at IS NULL`,
-    orderCode,
-  );
   return true;
 }
 
@@ -327,6 +264,49 @@ async function recordAdminPaidTimeout(database: DatabaseAccess, orderCode: strin
      VALUES (?, ?, 'telegram', 'failed', 'Request timeout')
      ON CONFLICT(idempotency_key) DO UPDATE SET status='failed', error='Request timeout', updated_at=datetime('now')`,
     `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, orderCode,
+  ).catch(() => undefined);
+}
+
+/** Klaim SEBELUM transport untuk SATU pesan Lunas admin per order (AU-E2-7).
+ *
+ * Membaca `telegram_paid_admin_notified_at IS NULL` saja tidak memagari kiriman
+ * langsung yang lambat dari cron: dua pembaca bisa sama-sama mengirim. Klaim
+ * memakai kunci ledger yang sama dengan timeout (`admin-paid-timeout:<kode>`)
+ * berstatus `sending`. Klaim worker yang crash bisa diambil alih setelah
+ * deadline lease `access_retry_at` (2 menit), bukan dari umur `updated_at`;
+ * cooldown timeout 20 menit (status `failed`) dihormati semua pemanggil. */
+async function claimAdminPaidSend(database: DatabaseAccess, orderCode: string): Promise<{ lease: string } | null> {
+  const lease = crypto.randomUUID();
+  const claimed = await database.execRun(
+    `INSERT INTO buyer_notice_log AS b
+       (idempotency_key, order_code, channel, status, access_attempts, access_lease, access_retry_at)
+     SELECT ?, code, 'telegram', 'sending', 1, ?, datetime('now','+2 minutes')
+     FROM orders WHERE code=? AND sales_channel IN ('telegram','whatsapp')
+       AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL
+     ON CONFLICT(idempotency_key) DO UPDATE SET
+       status='sending', access_attempts=b.access_attempts+1, access_lease=excluded.access_lease,
+       access_retry_at=excluded.access_retry_at, error=NULL, updated_at=datetime('now')
+      WHERE (b.status='sending' AND datetime(b.access_retry_at) <= datetime('now'))
+         OR (b.status='failed' AND julianday(b.updated_at) <= julianday('now','-20 minutes'))`,
+     `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, lease, orderCode,
+  ).catch(() => ({ changes: 0 }));
+  return claimed.changes ? { lease } : null;
+}
+
+async function settleAdminPaidClaim(database: DatabaseAccess, orderCode: string, lease: string): Promise<void> {
+  await database.execRun(
+    `UPDATE buyer_notice_log SET status='sent', access_lease=NULL, updated_at=datetime('now')
+     WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
+    `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, lease,
+  ).catch(() => undefined);
+}
+
+/** Gagal pasti (ditolak Telegram): lepas pagar agar run berikutnya mengulang
+ * seperti sebelumnya (cooldown 20 menit hanya untuk timeout). */
+async function releaseAdminPaidClaim(database: DatabaseAccess, orderCode: string, lease: string): Promise<void> {
+  await database.execRun(
+    `DELETE FROM buyer_notice_log WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
+    `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, lease,
   ).catch(() => undefined);
 }
 
@@ -352,6 +332,10 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
   const member = String(order.channel_member_id || order.customer_wa || "");
   const paymentMethod = String(order.payment_method || "qris");
   const summary = await adminDeliverySummary(order, database);
+  // AU-E2-7: klaim SEBELUM transport — kiriman langsung yang lambat tidak bisa
+  // diduplikasi oleh pass cron yang membaca marker NULL yang sama.
+  const claim = await claimAdminPaidSend(database, orderCode);
+  if (!claim) return false;
   const sent = await sendMessage({
     chat_id: adminChatId,
     text: adminWhatsAppOrderPaidMessage({
@@ -372,13 +356,20 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
       paidMarket: order.order_kind === "apps",
     }),
   });
-  if (!sent.ok) { await recordAdminPaidTimeout(database, orderCode, sent.description); return false; }
+  if (!sent.ok) {
+    await recordAdminPaidTimeout(database, orderCode, sent.description);
+    if (String(sent.description ?? "") !== "Request timeout") {
+      await releaseAdminPaidClaim(database, orderCode, claim.lease);
+    }
+    return false;
+  }
 
   await execRun(
     `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
      WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
     orderCode,
   );
+  await settleAdminPaidClaim(database, orderCode, claim.lease);
   return true;
 }
 
@@ -402,6 +393,9 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
   const username = String(order.username || "").replace(/^@/, "");
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
   const summary = await adminDeliverySummary(order, database);
+  // AU-E2-7: klaim SEBELUM transport (lihat notifyWhatsAppPaidAdmin).
+  const claim = await claimAdminPaidSend(database, orderCode);
+  if (!claim) return false;
   const sent = await sendMessage({
     chat_id: adminChatId,
     text: adminTelegramOrderPaidMessage({
@@ -423,13 +417,20 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
       paidMarket: order.order_kind === "apps",
     }),
   });
-  if (!sent.ok) { await recordAdminPaidTimeout(database, orderCode, sent.description); return false; }
+  if (!sent.ok) {
+    await recordAdminPaidTimeout(database, orderCode, sent.description);
+    if (String(sent.description ?? "") !== "Request timeout") {
+      await releaseAdminPaidClaim(database, orderCode, claim.lease);
+    }
+    return false;
+  }
 
   await execRun(
     `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
      WHERE code=? AND telegram_paid_admin_notified_at IS NULL`,
     orderCode,
   );
+  await settleAdminPaidClaim(database, orderCode, claim.lease);
   return true;
 }
 
@@ -638,7 +639,7 @@ export const WEB_PAID_ADMIN_PENDING_WHERE = `o.sales_channel='web' AND o.status=
  */
 export async function retryPendingTelegramNotifications(limit = 50, only?: {
   created?: boolean; paid?: boolean; paidAdmin?: boolean; paidAdminWeb?: boolean;
-}, database: DatabaseAccess = createDatabaseAccess()): Promise<{
+}, database: DatabaseAccess = createDatabaseAccess(), hasTime = (_ms: number) => true): Promise<{
   created: number;
   paid: number;
   paidAdmin: number;
@@ -685,7 +686,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
       max,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaid) {
-      if (!database.canSpend(6)) break;
+      if (!database.canSpend(6) || !hasTime(11_000)) break;
       try {
         if (await notifyTelegramBuyerPaid(String(order.code), database)) paid++;
       } catch { /* Retry the same durable marker on the next cron run. */ }
@@ -701,7 +702,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
       max,
     ).catch(() => [] as Row[]);
     for (const order of pendingPaidAdmin) {
-      if (!database.canSpend(7)) break;
+      if (!database.canSpend(7) || !hasTime(11_000)) break;
       try {
         const ok = String(order.sales_channel || "telegram") === "whatsapp"
           ? await notifyWhatsAppPaidAdmin(String(order.code), database)
@@ -718,7 +719,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
       max,
     ).catch(() => [] as Row[]);
     for (const order of pendingWeb) {
-      if (!database.canSpend(7)) break;
+      if (!database.canSpend(7) || !hasTime(21_000)) break;
       try {
         if (await notifyWebPaidAdmin(String(order.code), database)) paidAdminWeb++;
       } catch { /* Ledger tetap failed/sending; run berikutnya mencoba lagi. */ }
@@ -749,7 +750,7 @@ const reminderDue = `o.sales_channel='telegram' AND o.status='pending'
   AND (o.telegram_reminder_sent_at IS NULL OR
     ${msBetween("clock.now_jd", "julianday(o.telegram_reminder_sent_at)")} >= MAX(600000, ${reminderLifetime} / 3.0))`;
 
-export async function sendPendingOrderReminders(limit = 50, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+export async function sendPendingOrderReminders(limit = 50, database: DatabaseAccess = createDatabaseAccess(), hasTime = (_ms: number) => true): Promise<number> {
   const { queryAll, execRun } = database;
   if (!telegramNotificationsConfigured()) return 0;
   const pending = await queryAll(
@@ -765,7 +766,7 @@ export async function sendPendingOrderReminders(limit = 50, database: DatabaseAc
   );
   let sent = 0;
   for (const order of pending) {
-    if (!database.canSpend(1)) break;
+    if (!database.canSpend(1) || !hasTime(11_000)) break;
     const code = String(order.code);
     const chatId = String(order.telegram_chat_id || "");
     const expiresMs = parseExpiry(order.expires_at);

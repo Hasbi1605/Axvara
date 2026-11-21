@@ -1,12 +1,11 @@
 import { DANA_AMOUNT_REUSED_SQL } from "@/lib/payments/dana-history";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { execRun, isD1Mode, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import { isFutureIso } from "@/lib/expiry";
 import { activeQrisProvider, isCausallyPlausiblePayment } from "@/lib/payments/dana-qris";
 import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
-import { sendTextMessage } from "@/lib/whatsapp/gateway";
-import { paymentDetectedMessage } from "@/lib/whatsapp/messages";
 import { PAYMENT_ATTENTION_SQL, PAYMENT_ATTENTION_WHERE } from "@/lib/admin-overview-queries";
 
 export const runtime = "edge";
@@ -58,7 +57,9 @@ export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!isD1Mode()) return NextResponse.json({ error: "d1_required" }, { status: 503 });
-  const body = await request.json().catch(() => null) as { event_id?: number; action?: string; order_code?: string; review_note?: string; note?: string; verified?: boolean } | null;
+  const bounded = await readJsonBody(request, 8_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data as { event_id?: number; action?: string; order_code?: string; review_note?: string; note?: string; verified?: boolean } | null;
   const eventId = Number(body?.event_id || 0);
   if (body?.action === "mark_reviewed") return markReviewed(admin.email, eventId, body?.note ?? body?.review_note);
   const manual = body?.action === "confirm_match";
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
   // observed before the candidate invoice was issued cannot be its payment
   // (issue #2) — it stays in reconciliation instead of settling the order.
   const candidates = await queryAll(
-    `SELECT pt.order_code,pt.expires_at,COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,o.sales_channel,o.channel_conversation_id,o.order_kind,
+    `SELECT pt.order_code,pt.expires_at,COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,o.sales_channel,o.order_kind,
        ${DANA_AMOUNT_REUSED_SQL} AS amount_history
      FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider=? AND pt.payable_amount=? AND pt.status='pending'
@@ -139,21 +140,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
   }
   await schedulePaidFulfillment(orderCode, matches[0].order_kind, manual ? "admin_confirm_match" : "admin_retry_match");
-  if (String(matches[0].sales_channel) === "whatsapp" && matches[0].channel_conversation_id) {
-    try {
-      const orderDetail = await queryFirst(`SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`, orderCode);
-      const snap = orderDetail?.variant_snapshot ? JSON.parse(String(orderDetail.variant_snapshot)) : {};
-      await sendTextMessage({
-        target: String(matches[0].channel_conversation_id),
-        message: paymentDetectedMessage({
-          orderCode,
-          productName: snap.product_name,
-          variantLabel: snap.label,
-          total: Number(orderDetail?.subtotal || 0),
-          method: String(orderDetail?.payment_method || "QRIS").toUpperCase(),
-        }),
-      });
-    } catch { /* best effort */ }
+  if (String(matches[0].sales_channel) === "whatsapp") {
     try {
       const { notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
       await notifyWhatsAppPaidAdmin(orderCode).catch(() => false);

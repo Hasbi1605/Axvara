@@ -15,9 +15,9 @@ it("native D1 expiry/stale batches isolate non-Market IDs and preserve apps/lega
             db.prepare('UPDATE products SET stock=50,sold_count=0'),
             db.prepare('UPDATE product_variants SET stock=50'),
             db.prepare("INSERT INTO orders(code,items,order_kind,status,payment_status,expires_at) VALUES(?,?,?,'pending','pending',datetime('now','-1 minute'))").bind(code,JSON.stringify(items),kind),
-            db.prepare("INSERT INTO payment_transactions(order_code,provider,status,expires_at) VALUES(?,'gopay',?,datetime('now','-1 minute'))").bind(code,tx)
+            db.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,status,expires_at,created_at) VALUES(?,'gopay','fixture',?,'fixture',1000,?,datetime('now','-1 minute'),datetime('now','-6 minutes'))").bind(code,code,tx)
           ]);
-          const input={orderCode:code,expectedTransactionStatus:tx,transactionStatus:tx==='pending'?'expired':'failed',orderStatus:tx==='pending'?'kadaluarsa':'dibatalkan',paymentStatus:tx==='pending'?'expired':'failed',items,expiredOnly:tx==='pending'};
+          const input={orderCode:code,expectedTransactionStatus:tx,transactionStatus:tx==='pending'?'expired':'failed',orderStatus:tx==='pending'?'kadaluarsa':'dibatalkan',paymentStatus:tx==='pending'?'expired':'failed',items,expiredOnly:tx==='pending',staleInitializingOnly:tx==='initializing'};
           const changed=await transitionPendingPaymentOrder(input,db);
           const duplicate=await transitionPendingPaymentOrder(input,db);
           const beforeSold=await db.prepare('SELECT stock,sold_count FROM products').first();
@@ -43,13 +43,13 @@ it("native D1 expiry/stale batches isolate non-Market IDs and preserve apps/lega
       db.prepare("CREATE TABLE products(id INTEGER PRIMARY KEY,stock INTEGER,sold_count INTEGER)"),
       db.prepare("CREATE TABLE product_variants(id INTEGER PRIMARY KEY,stock INTEGER,updated_at TEXT)"),
       db.prepare("CREATE TABLE fulfillment_inventory(order_code TEXT,status TEXT,reserved_at TEXT)"),
-      db.prepare("CREATE TABLE payment_transactions(order_code TEXT,provider TEXT,status TEXT,expires_at TEXT,last_error TEXT,updated_at TEXT)"),
+      db.prepare(schema.match(/CREATE TABLE IF NOT EXISTS payment_transactions \([\s\S]+?\n\);/)![0]),
       db.prepare(schema.match(/CREATE TABLE IF NOT EXISTS operation_guards \([\s\S]+?\n\);/)![0]),
       db.prepare("INSERT INTO products VALUES(1,50,0)"),
       db.prepare("INSERT INTO product_variants(id,stock) VALUES(1,50)"),
     ]);
     const response = await runtime.dispatchFetch("https://fixture.test");
-    expect(response.status).toBe(200);
+    expect(response.status, response.ok ? undefined : await response.text()).toBe(200);
     const rows = await response.json() as { kind: string | null; tx: string }[];
     expect(rows).toHaveLength(8);
     for (const row of rows) {

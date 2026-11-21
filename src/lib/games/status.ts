@@ -4,6 +4,11 @@ export type GamesBuyerStatus = "awaiting_payment" | "processing" | "success" | "
 
 const TERMINAL_ORDER = new Set(["kadaluarsa", "dibatalkan", "batal", "expired"]);
 
+export function isGamesManualRefundRequired(order: Record<string, unknown>, item: Record<string, unknown>): boolean {
+  return order.status === "lunas" && order.payment_status === "paid" && item.status === "needs_check"
+    && item.supplier === "sekalipay" && (item.last_error === "supplier_refunded" || item.last_error === "failed: status refunded");
+}
+
 export function gamesBuyerStatus(orderStatus: unknown, itemStatus: unknown): GamesBuyerStatus {
   const item = String(itemStatus ?? "");
   if (item === "success") return "success";

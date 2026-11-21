@@ -8,7 +8,8 @@
 // - slug: lowercase a-z0-9-dash (validasi di API + route).
 // - destination: path internal ("/artikel/...", prioritas — navigasi dalam
 //   toko) atau https full (mailbox supplier, portal resmi, video tutorial).
-//   Skema selain https + path internal ditolak (anti open-redirect).
+//   Saat membuat/mengubah tujuan, HTTP dan URL protocol-relative ditolak.
+//   Jalur baca tetap memakai tujuan tersimpan, termasuk HTTP lama.
 // - redirect 307 (bukan 308): browser selalu cek ulang sehingga ganti tujuan
 //   di admin berlaku seketika tanpa cache permanen.
 // - noindex: link operasional, bukan konten SEO (robots.ts + metadata page).
@@ -42,15 +43,18 @@ export function isValidSupplierSlug(slug: string): boolean {
 }
 
 /**
- * Normalisasi + validasi tujuan. Kembalikan destination kanonis atau null.
- * - Path internal "/..." (artikel/produk/halaman) → apa adanya.
+ * Normalisasi + validasi saat admin menulis tujuan, bukan saat membaca.
+ * Kembalikan destination kanonis atau null.
+ * - Path internal "/..." (artikel/produk/halaman) → apa adanya. TIDAK boleh
+ *   protocol-relative "//host" (audit AU-H2-12: itu open-redirect ke host lain).
  * - Bare axvara.tech/... → path internal.
- * - https://... host lain → URL penuh (hanya http/https).
+ * - https://... host lain → URL penuh (HANYA https; modul kontrak menolak http).
  */
 export function normalizeSupplierDestination(raw: string): string | null {
   const text = String(raw ?? "").trim().replace(/[.,;:!?)\]]+$/, "");
   if (!text || text.length > 2048) return null;
   if (text.startsWith("/")) {
+    if (text.startsWith("//")) return null;
     return /^\/[a-z0-9\-_./?#&=%]*$/i.test(text) ? text : null;
   }
   let candidate = text;
@@ -61,7 +65,7 @@ export function normalizeSupplierDestination(raw: string): string | null {
   } catch {
     return null;
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (parsed.protocol !== "https:") return null;
   if (!parsed.hostname.includes(".")) return null;
   if (/^(?:www\.)?axvara\.tech$/i.test(parsed.hostname)) {
     const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;

@@ -865,7 +865,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
       "Tidak bisa diperpanjang",
       "Pilihan ekstensi: .rocks, .ninja, .games, .codes, .systems, .studio, .email, .works, .software, .engineer, .live, .app, .dev, .page, .foo",
     ],
-    langkah: ["Cek ketersediaan nama domain di axvara.tech/go/cek-domain", "Kirim nama domain pilihanmu ke admin via WhatsApp"],
+    langkah: ["Cek ketersediaan nama domain di axvara.tech/go/cek-domain", "Pesan lewat website atau bot Telegram. Setelah itu, hubungi bantuan admin WhatsApp di axvara.tech/wa dengan kode pesanan dan nama domain pilihanmu"],
   },
   {
     key: "1my1m0jqwjj",

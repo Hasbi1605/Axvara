@@ -405,7 +405,8 @@ OD1, bukan `games_reference_prices`.] `sell_price` dihitung ulang dari
 - §7.4: **terbuka**, belum transaksi nyata yang membuktikan go-live.
 - PM memasang75env (79/128 termasuk4sistem), empat env Digiflazz `secret_text`.
   CNAME/custom domain telah ditambahkan dengan status awal initializing; aktif
-  belum diverifikasi. Tidak ada klaim live/sinkron selesai/pembayaran nyata.
+  belum diverifikasi. Tidak ada klaim live/sinkron selesai/pembayaran nyata
+  (snapshot 9 Nov; status live 18 Nov ada di poin §7.3 di atas).
 
 ### 12.7 Admin data Games (P1–P3, 9 November 2026, lokal → CI)
 
@@ -422,11 +423,13 @@ lewat `readJsonBody`.
   `syncGamesCatalog` membaca map referensi dari tabel ini (bukan dari
   `games_products.reference_price`) lalu menulis cermin `reference_price` +
   `sell_price` saat upsert. Menghapus baris referensi membuat sinkron berikutnya
-  mengembalikan harga ke batas bawah modal.
+  mengembalikan harga ke batas bawah modal. (Catatan 21 Nov 2026: fungsi
+  `syncGamesCatalog`/`src/lib/games/catalog-sync.ts` dihapus sebagai dead code —
+  audit AU-C1-7; cron `games_catalog` memakai `sk-catalog-sync.ts`.)
 - **Seed A2 Oura (lokal, 9 November 2026).** Migrasi `0111_games_reference_seed.sql`
   menambah198 referensi: FREE FIRE16, Free Fire Max8, MOBILE LEGENDS156, PUBG MOBILE18.
-  Generator offline `node scripts/generate-games-reference-seed.mjs <reference.json> <skus.json>`
-  membaca JSON riset R1 di luar repo (bukan kode/SQL executable), memilih `match==='exact'`,
+  Generator offline `scripts/generate-games-reference-seed.mjs` hanya di riwayat Git.
+  Generator itu membaca JSON riset R1 di luar repo (bukan kode/SQL executable), memilih `match==='exact'`,
   hanya kode utama (akhiran `b` adalah cadangan hanya bila kode dasarnya ada),
   bukan utilitas Cek Username, empat brand gelombang1, harga Oura integer positif
   dan rasio harga Oura/modal `[0.5,3.0]` inklusif.383 match =>198 diterima,185 dibuang:
@@ -489,7 +492,7 @@ lewat `readJsonBody`.
   data produksi, atau pengisian tabel harga referensi. Kolom `reference_price` /
   `games_reference_prices` tetap ada di DB untuk kompatibilitas API.
 
-### 12.8 API pembeli B1 + B2 — QRIS, gateway, crypto (9 November 2026, lokal; belum deploy)
+### 12.8 API pembeli B1 + B2 — QRIS, gateway, crypto (snapshot 9 November 2026, lokal; SUPERSEEDED — status live 18 November 2026 di §13–15)
 
 - **Registry:** `src/lib/games/registry.ts` adalah sumber tunggal slug, brand, field
   ID/EN, regex dan `buildCustomerNo`: `free-fire`/`free-fire-max` memakai `playerId`,
@@ -992,6 +995,12 @@ webhook tersimpan (`dana_webhook_events` provider `sekalipay_games`).
   1.013 nama berubah, hasil diperiksa PM.
 
 ### 15.2 Status transaksi SK `refunded`/`cancelled`/`expired` = gagal (18 November 2026, lokal → CI)
+
+FX-11 (lokal): preflight SK yang masih tertunda pada umur paid 24 jam →
+`needs_check` tanpa POST; Ringkasan admin menunjukkan jumlah order paid
+`needs_check` walau notifikasi gagal. Untuk transaksi `refunded`, halaman
+pesanan paid memberi instruksi refund oleh admin via WhatsApp dengan kode
+pesanan. Refund supplier bukan bukti refund pembeli; refund tidak otomatis.
 
 Dipicu order produksi `AXG-20261118-5E9974F2` (ML Weekly Diamond Pass tipe Membership,
 akun region Indonesia): Sekalipay membalas `status: refunded` tanpa hasil H2H/alasan, tetapi

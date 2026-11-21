@@ -55,12 +55,12 @@ it.each(["price", "parent-inactive", "reparented"])("Telegram atomic guard rejec
   expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(100);
 });
 
-it("WhatsApp atomic guard refuses an inactive parent despite an active matching variant", async () => {
+it("Legacy creator guard refuses an inactive parent despite an active matching variant", async () => {
   const variant = await getActiveVariant(1);
   expect(variant).not.toBeNull();
   fx.sql.exec("UPDATE products SET is_active=0");
   await expect(createPendingChannelOrder({
-    salesChannel: "whatsapp", productId: 1, productName: "Fixture", variantId: 1, variant: variant!,
+    salesChannel: "web", productId: 1, productName: "Fixture", variantId: 1, variant: variant!,
     customerId: "fixture-member", customerName: "Fixture", customerWa: "6281234567890", conversationId: "fixture-group",
     idempotencyKey: "fixture-wa-admission", paymentMethod: "qris", paymentAccount: "Fixture",
   })).rejects.toThrow();

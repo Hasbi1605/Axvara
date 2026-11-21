@@ -1,6 +1,7 @@
 // /api/admin/fulfillment — Inventory management: import, count, revoke
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { queryAll, queryFirst } from "@/lib/db";
 import { importInventory, countInventory, revokeInventory, reorderInventory } from "@/lib/fulfillment/inventory";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
@@ -99,7 +100,10 @@ export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const raw = await request.json().catch(() => null);
+  // 100 × 2,000 code units can exceed 512 KB when encoded as UTF-8.
+  const bounded = await readJsonBody(request, 1_000_000);
+  if (!bounded.ok) return bounded.response;
+  const raw = bounded.data;
   if (!raw || typeof raw !== "object") {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
@@ -233,7 +237,9 @@ export async function DELETE(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const body = await request.json().catch(() => ({})) as { inventory_id?: number; inventory_ids?: unknown; product_id?: unknown; variant_id?: unknown };
+  const bounded = await readJsonBody(request, 16_000);
+  if (!bounded.ok) return bounded.response;
+  const body = (bounded.data ?? {}) as { inventory_id?: number; inventory_ids?: unknown; product_id?: unknown; variant_id?: unknown };
   // Hapus massal (16 Nov 2026): dibatasi ke satu produk/varian, maks 100 ID
   // unik. Baris yang sudah dipesan/terkirim dilewati, bukan error seluruhnya.
   if (body.inventory_ids !== undefined) {

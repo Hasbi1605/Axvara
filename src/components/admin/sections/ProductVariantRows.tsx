@@ -1,6 +1,6 @@
 "use client";
 import { Badge, Button, Checkbox, Input, Label, NativeSelect, Textarea } from "@/components/admin/ui";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AsyncConfirmDialog, ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SupplierBadge } from "../supplier-style";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Copy, Trash2 } from "lucide-react";
@@ -81,6 +81,7 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
+  const [confirmOne, setConfirmOne] = useState<number | null>(null);
   const pid = Number(productId);
   const loadGeneration = useRef(0);
   const invalidateLoad = useCallback(() => { loadGeneration.current++; }, []);
@@ -161,8 +162,7 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
       const data = await res.json().catch(() => ({})) as { error?: string };
       if (!res.ok) throw new Error(data.error || "Gagal menghapus");
       toast.success("Stok dihapus."); await load();
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menghapus"); }
-    finally { setLoading(false); }
+    } finally { setLoading(false); }
   };
 
   const toggleOne = (id: number, checked: boolean) => setSelected(prev => {
@@ -311,7 +311,7 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
                   className="h-8 gap-1.5 rounded-lg px-3 text-xs text-admin-danger hover:text-admin-danger"><Trash2 size={13} /> Hapus terpilih{selected.size ? ` (${selected.size})` : ""}</Button>
               </div>
             </div>
-            <CredentialQueue inventory={inventory} disabled={loading} onMove={(id, index) => void moveInventory(id, index)} onRemove={id => void removeOne(id)}
+            <CredentialQueue inventory={inventory} disabled={loading} onMove={(id, index) => void moveInventory(id, index)} onRemove={setConfirmOne}
               selected={selected} onToggle={toggleOne} onCopy={row => void copyRows([row])} />
             <ConfirmDialog open={confirmBulk} loading={loading}
               title={`Hapus ${selected.size} kredensial?`}
@@ -322,6 +322,9 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
           ) : (
             <p className="rounded-xl border border-admin-border bg-admin-subtle px-3 py-2.5 text-xs text-admin-muted">Belum ada stok unik — impor di bawah.</p>
           )}
+          {confirmOne !== null && <AsyncConfirmDialog title={`Tarik kredensial #${confirmOne} dari stok?`}
+            description="Kredensial ini tidak akan dikirim ke pembeli jika masih tersedia."
+            onClose={() => setConfirmOne(null)} onConfirm={() => removeOne(confirmOne)} />}
           <Textarea aria-label="Stok kredensial untuk diimpor" value={inventoryText} onChange={(e) => setInventoryText(e.target.value)} rows={4} placeholder={"Satu link, akun, atau key per baris\nhttps://contoh.com/aktivasi/...\nemail:password\nLICENSE-KEY"} className="mt-3 w-full resize-none rounded-xl border border-admin-border bg-admin-card/65 p-3 font-mono text-xs text-admin-fg outline-none placeholder:text-admin-muted focus:border-admin-accent/40" />
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-admin-muted">Maksimal 100 entri. Impor langsung tersimpan.</p>

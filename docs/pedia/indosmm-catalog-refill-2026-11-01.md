@@ -38,9 +38,10 @@ sebelum Pedia dibuka penuh.
 ## Data dan migrasi
 - 0085: `pedia_service_stats` (avg_time, orders_7d, success/cancel/refill rate,
   ai_score) + `pedia_tiers.drop_label` dan `speed_per_day`; snapshot 1.273 layanan.
-- 0086 (generator `scripts/generate-pedia-indosmm-20261101.mjs`, manifest
+- 0086 (generator historis `scripts/generate-pedia-indosmm-20261101.mjs`, manifest
   `src/lib/pedia/curation-20261101.json` dari
-  `scripts/curate-pedia-indosmm-20261101.py`): 124 layanan baru pada 28 kebutuhan
+  `scripts/curate-pedia-indosmm-20261101.py`; kedua script dan varian tahap 2
+  hanya di riwayat Git, manifest dan migrasi tetap): 124 layanan baru pada 28 kebutuhan
   + 3 produk komentar acak (IG/TikTok/Facebook), label drop/speed/start pada tier
   lama, nama lama "Refill N hari/Tanpa refill" → "Refill N Days/No Refill",
   6 layanan dengan success rate 7 hari rendah dinonaktifkan
@@ -116,7 +117,7 @@ Revisi filter layanan Pedia 1 November 2026 (implementasi lokal untuk publikasi 
 
 ## Revisi nama layanan (2 November)
 
-Revisi nama layanan Pedia 2 November 2026 (implementasi lokal untuk publikasi CI): nama seragam [Metrik] [Wilayah] [Kualitas], mis. Followers Indonesia Real, Likes Post Global HQ, Views Reels Global; keterangan bermakna (durasi Live, Referrer, Akun berpostingan) ditambahkan sesudah "·". Refill/No Refill dan drop hanya chip; "Ekonomis", "Max N", "Mulai N" dihapus; nama kembar tidak lagi diberi akhiran refill. Migrasi0089 (generator `scripts/curate-pedia-names-20261102.py`, manifest `src/lib/pedia/names-20261102.json`) mengganti nama dengan guard nama lama dan menonaktifkan layanan kembar: satu per (wilayah, masa refill, kualitas, keterangan), pemenang success rate terukur → jumlah order → modal termurah; 431→280 layanan aktif. Produk komentar menampilkan harga nyata untuk 10 komentar (`price_ref`, rumus quote) alih-alih per 1.000. Harga kartu lain tetap per 1.000: harga 100 unit terkena minimum order Rp1.000 pada 156 dari 408 layanan sehingga tidak bisa dibandingkan.
+Revisi nama layanan Pedia 2 November 2026 (implementasi lokal untuk publikasi CI): nama seragam [Metrik] [Wilayah] [Kualitas], mis. Followers Indonesia Real, Likes Post Global HQ, Views Reels Global; keterangan bermakna (durasi Live, Referrer, Akun berpostingan) ditambahkan sesudah "·". Refill/No Refill dan drop hanya chip; "Ekonomis", "Max N", "Mulai N" dihapus; nama kembar tidak lagi diberi akhiran refill. Migrasi0089 (generator `scripts/curate-pedia-names-20261102.py` hanya di riwayat Git; manifest `src/lib/pedia/names-20261102.json` tetap) mengganti nama dengan guard nama lama dan menonaktifkan layanan kembar: satu per (wilayah, masa refill, kualitas, keterangan), pemenang success rate terukur → jumlah order → modal termurah; 431→280 layanan aktif. Produk komentar menampilkan harga nyata untuk 10 komentar (`price_ref`, rumus quote) alih-alih per 1.000. Harga kartu lain tetap per 1.000: harga 100 unit terkena minimum order Rp1.000 pada 156 dari 408 layanan sehingga tidak bisa dibandingkan.
 
 ## Revisi copy 3 November
 

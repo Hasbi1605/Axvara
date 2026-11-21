@@ -104,14 +104,47 @@ it("admin telemetry records authorization once per request without IDs/query/tok
   expect(await requireAdmin(new Request(req.url, { method: "PATCH", headers: req.headers }))).not.toBeNull();
 });
 
+it("audits CSV export and single-order buyer input, but not orders list polling", async () => {
+  const { GET: list } = await import("@/app/api/admin/orders/route");
+  const { GET: detail } = await import("@/app/api/admin/orders/[code]/route");
+  const session = await createAdminToken("admin@example.test");
+  const idle = await createIdleToken(session.sid);
+  const code = "AXV-20261121-PRIVATE1";
+  fx.sql.prepare(`INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method)
+    VALUES (?,'Fixture','628123456789','private@example.test',?,5000,'qris')`)
+    .run(code, JSON.stringify([{ variant_id: 1, buyer_fields: { muse_invite_code: "private-muse-invite" } }]));
+  const request = (path: string) => new NextRequest(`https://axvara.test/api/admin/orders${path}`, {
+    headers: { cookie: `axvara_admin_token=${session.token}; axvara_idle=${idle}` },
+  });
+  const events = () => fx.sql.prepare("SELECT event,route,method FROM security_events ORDER BY id").all();
+  const csv = await list(request("?export=csv&q=private"));
+  expect(csv.headers.get("content-type")).toContain("text/csv");
+  expect(await csv.text()).toContain("private@example.test");
+  expect(events()).toHaveLength(1);
+  const buyer = await detail(request(`/${code}`), { params: Promise.resolve({ code }) });
+  expect(await buyer.json()).toMatchObject({ buyerInputs: [{ value: "private-muse-invite" }] });
+  expect((await list(request("?page=1"))).status).toBe(200);
+  expect(events()).toEqual(Array.from({ length: 2 }, () => ({ event: "admin_authorized", route: "/api/admin/sensitive-read", method: "GET" })));
+});
+
 it("cleanup is bounded and preserves active login windows and recent audit history", async () => {
   const now = Math.floor(Date.now() / LOGIN_WINDOW_MS), old = now - 200;
   for (let n = 0; n < 205; n++) fx.sql.prepare("INSERT INTO security_auth_attempts VALUES(?,?,1)").run(`old-${n}`, old);
   fx.sql.prepare("INSERT INTO security_auth_attempts VALUES('active',?,10)").run(now);
-  for (let n = 0; n < 505; n++) fx.sql.exec("INSERT INTO security_events(event,subject_hash,route,method,created_at) VALUES('login_failed','hash','/api/auth/login','POST',datetime('now','-40 days'))");
+  // Owner decision 2026-11-21 keeps security_events for 90 days, so seed
+  // genuinely expired rows (100 days) to exercise the bounded 500/run prune.
+  for (let n = 0; n < 505; n++) fx.sql.exec("INSERT INTO security_events(event,subject_hash,route,method,created_at) VALUES('login_failed','hash','/api/auth/login','POST',datetime('now','-100 days'))");
   fx.sql.exec("INSERT INTO security_events(event,subject_hash,route,method) VALUES('login_succeeded','hash','/api/auth/login','POST')");
   await runMaintenanceCleanup(createDatabaseAccess(fx.db));
   expect(fx.sql.prepare("SELECT COUNT(*) n FROM security_auth_attempts").get()?.n).toBe(6);
   expect(fx.sql.prepare("SELECT attempts FROM security_auth_attempts WHERE client_hash='active'").get()?.attempts).toBe(10);
+  // 505 expired - 500 bounded + 1 recent.
   expect(fx.sql.prepare("SELECT COUNT(*) n FROM security_events").get()?.n).toBe(6);
+  // A 90-day window keeps 40-day-old rows (regression guard against the old
+  // 30-day policy). The second tick also drains the 5 rows left by the bound.
+  fx.sql.exec("INSERT INTO security_events(event,subject_hash,route,method,created_at) VALUES('login_failed','hash','/api/auth/login','POST',datetime('now','-40 days'))");
+  fx.sql.exec("UPDATE store_settings SET value=datetime('now','-61 minutes') WHERE key='maintenance_cleanup_at'");
+  await runMaintenanceCleanup(createDatabaseAccess(fx.db));
+  expect(fx.sql.prepare("SELECT COUNT(*) n FROM security_events").get()?.n).toBe(2);
+  expect(fx.sql.prepare("SELECT julianday('now')-julianday(MAX(created_at)) AS age FROM security_events WHERE event='login_failed'").get()?.age).toBeGreaterThan(39);
 });

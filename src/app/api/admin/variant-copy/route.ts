@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { execRun, isD1Mode, queryAll, queryFirst } from "@/lib/db";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 import {
@@ -63,8 +64,10 @@ export async function PUT(req: NextRequest) {
   }
   if (!(await requireAdmin(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!isD1Mode()) return NextResponse.json({ error: "Butuh database D1" }, { status: 503 });
-  let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
+  // Four 4,000-code-unit fields can take about 96 KB with JSON Unicode escapes.
+  const bounded = await readJsonBody(req, 128_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data;
   const parsed = putSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
 
@@ -129,7 +132,12 @@ export async function PUT(req: NextRequest) {
   // perbaikan kurasi berikutnya dan perubahan supplier tetap mengalir.
   const sameAsAuto = incoming !== null
     && JSON.stringify(serializeVariantCopy(incoming)) === JSON.stringify(serializeVariantCopy(supplier.auto));
-  const clear = incoming === null || sameAsAuto;
+  // Audit AU-H2-7 (21 Nov 2026): dulu "clear" hanya melihat ID lalu menghapus
+  // EN juga — admin menyimpan EN tanpa menimpa ID kehilangan EN diam-diam.
+  // Sekarang ID kosong/identik-otomatis tetap kembali otomatis, TAPI EN yang
+  // diisi admin selalu disimpan sendiri (ID null, EN terisi).
+  const clearId = incoming === null || sameAsAuto;
+  const hasEn = termsEn !== "" || activationEn !== "";
   // Compare sumber dan suntingan dalam UPDATE yang sama, bukan hanya sebelum tulis.
   const result = await execRun(
     `UPDATE product_variants SET admin_terms=?, admin_activation=?, admin_terms_en=?, admin_activation_en=?, admin_copy_fingerprint=?,
@@ -139,8 +147,9 @@ export async function PUT(req: NextRequest) {
         AND pv.wr_variant_id IS ? AND pv.sk_variant_id IS ?
         AND wv.wr_terms IS ? AND wv.wr_delivery_terms IS ?
         AND sp.sk_description IS ? AND sp.sk_seller_note IS ?)`,
-    clear ? null : terms || null, clear ? null : activation || null,
-    clear ? null : termsEn || null, clear ? null : activationEn || null, clear ? null : supplier.supplierKey,
+    clearId ? null : terms || null, clearId ? null : activation || null,
+    hasEn ? termsEn || null : null, hasEn ? activationEn || null : null,
+    !clearId || hasEn ? supplier.supplierKey : null,
     variantId, row.admin_terms ?? null, row.admin_activation ?? null, row.admin_terms_en ?? null, row.admin_activation_en ?? null, row.admin_copy_fingerprint ?? null,
     variantId, row.wr_variant_id ?? null, row.sk_variant_id ?? null,
     row.wr_terms ?? null, row.wr_delivery_terms ?? null, row.sk_description ?? null, row.sk_seller_note ?? null,

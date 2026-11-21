@@ -36,10 +36,11 @@ const SOCIAL_LINKS: { key: SocialKey; label: string; href: string }[] = [
 ];
 
 /** `pediaLayout`: dirender oleh layout Pedia, sehingga path subdomain (`/p/x`) dinormalkan ke `/pedia/p/x`. */
-export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) {
+export function Footer({ pediaLayout = false, gamesLayout = false }: { pediaLayout?: boolean; gamesLayout?: boolean } = {}) {
   const shop = (path: string) => `${SITE.webUrl}${path}`;
   // URL kanonis subdomain: pedia.axvara.tech/lacak, bukan /pedia/lacak (2026-11-01).
   const pedia = (path: string) => `${SITE.pediaUrl}${path}`;
+  const orderGuide = gamesLayout ? `${SITE.gamesUrl}/bantuan` : pediaLayout ? pedia("/bantuan#cara-order") : shop("/cara-order");
   const pathname = usePathname();
   const storeSettings = useStoreSettings();
   const locale = useDisplayLocale();
@@ -141,7 +142,7 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
           </div>
 
           <nav aria-label={t.footerServices}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">{t.footerServices}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/65">{t.footerServices}</p>
             <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
               {AXVARA_SERVICES.map((service) => (
                 <li key={service.id}><Link prefetch={false} href={service.id === "pedia" ? `${service.href}?utm_source=axvara&utm_medium=footer` : service.href} className="text-white/60 transition hover:text-white">{service.name}</Link></li>
@@ -150,9 +151,9 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
           </nav>
 
           <nav aria-label={t.footerHelpAria}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">{t.footerHelp}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/65">{t.footerHelp}</p>
             <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
-              <li><Link prefetch={false} href={pediaLayout ? pedia("/bantuan#cara-order") : shop("/cara-order")} className="text-white/60 transition hover:text-white">{t.footerHowToOrder}</Link></li>
+              <li><Link prefetch={false} href={orderGuide} className="text-white/60 transition hover:text-white">{t.footerHowToOrder}</Link></li>
               <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">{t.footerTrackPedia}</Link></li>
               <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">{t.footerTrackMarket}</Link></li>
               <li><Link prefetch={false} href={`${SITE.gamesUrl}/lacak`} className="text-white/60 transition hover:text-white">{games.footerTrack}</Link></li>
@@ -166,20 +167,20 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
           </nav>
 
           <div className="col-span-2 rounded-[20px] border border-white/10 bg-white/[0.04] p-4 sm:col-span-1 sm:p-5 lg:self-start">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">{t.footerStayUpdated}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/65">{t.footerStayUpdated}</p>
             <p className="mt-2 text-[13px] leading-5 text-white/55">{t.footerStayBody}</p>
             <form onSubmit={subscribe} className="mt-4 flex gap-2">
-              <input aria-label={t.footerEmailAria} type="email" name="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} autoComplete="email" placeholder={t.footerEmailPlaceholder} className="min-w-0 flex-1 h-11 rounded-full border border-white/10 bg-white/[0.06] px-3.5 text-base text-white placeholder:text-white/30 focus:border-[#00E5FF]/40 focus:outline-none" />
+              <input aria-label={t.footerEmailAria} type="email" name="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} autoComplete="email" placeholder={t.footerEmailPlaceholder} className="min-w-0 flex-1 h-11 rounded-full border border-white/10 bg-white/[0.06] px-3.5 text-base text-white placeholder:text-white/65 focus:border-[#00E5FF]/40 focus:outline-none" />
               <button type="submit" disabled={submitting} className="h-11 shrink-0 rounded-full bg-white px-4 text-sm font-bold text-[#080C1E] transition hover:bg-white/90 disabled:opacity-60">{submitting ? t.footerSaving : t.footerSubscribe}</button>
             </form>
-            <div aria-live="polite" className={`mt-3 min-h-4 text-[11px] ${feedback?.type === "error" ? "text-red-300" : "text-white/40"}`}>{feedback?.message ?? t.footerNote}</div>
+            <div aria-live="polite" className={`mt-3 min-h-4 text-[11px] ${feedback?.type === "error" ? "text-red-300" : "text-white/65"}`}>{feedback?.message ?? t.footerNote}</div>
           </div>
         </div>
 
         <FooterPayments locale={locale} />
 
         <div className="mt-6 border-t border-white/10 pt-6">
-          <p className="text-xs text-white/35">© 2026 {storeSettings.name}</p>
+          <p className="text-xs text-white/65">© 2026 {storeSettings.name}</p>
         </div>
       </div>
     </footer>

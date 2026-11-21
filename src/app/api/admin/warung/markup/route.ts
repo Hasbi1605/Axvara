@@ -7,9 +7,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { queryAll, queryFirst, execRun } from "@/lib/db";
+import { readJsonBody } from "@/lib/http-body";
+import { queryAll, queryFirst } from "@/lib/db";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { computeVariantLiveStatus, loadProductGroupLosers } from "@/lib/product-live-status";
 import { calculateSellPrice } from "@/lib/warung-rebahan/sync";
+import { saveSupplierMarkup } from "@/lib/supplier/admin-markup";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -94,43 +97,25 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const parsed = updateSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 2_000);
+  if (!body.ok) return body.response;
+  const parsed = updateSchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "validation_failed" }, { status: 400 });
   }
   const { wr_variant_id, markup_percent, markup_fixed } = parsed.data;
-  const row = await queryFirst(`SELECT wr_price, axvara_variant_id FROM wr_variants WHERE wr_variant_id=?`, wr_variant_id);
-  if (!row) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
-  const now = new Date().toISOString();
-  if (markup_percent == null) {
-    return NextResponse.json({ error: "nothing_to_update" }, { status: 400 });
-  }
-  const sellPrice = calculateSellPrice(Number(row.wr_price), markup_percent, markup_fixed);
-  await execRun(
-    `UPDATE wr_variants SET markup_percent=?, markup_fixed=?, axvara_sell_price=?,
-      last_synced_at=?, updated_at=? WHERE wr_variant_id=?`,
-    markup_percent,
-    markup_fixed,
-    sellPrice,
-    now,
-    now,
-    wr_variant_id,
-  );
-  if (row.axvara_variant_id != null) {
-    // Harga coret milik admin (ownership.ts): bila harga jual baru menyamai/
-    // melampaui coret lama, CHECK product_variants (compare_price > price)
-    // menolak UPDATE dan storefront macet di harga lama (insiden Alight/Viu
-    // 2026-10-06: registry 6500 tersimpan, katalog tetap 2500/1000/500).
-    // Jujur: coret yang tak lagi membentuk diskon valid di-NULL-kan, bukan
-    // gagal diam-diam (.catch di bawah menelan error D1).
-    await execRun(
-      `UPDATE product_variants SET price=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now') WHERE id=?`,
-      sellPrice,
-      sellPrice,
-      Number(row.axvara_variant_id),
-    ).catch(() => undefined);
+  const db = createDatabaseAccess();
+  if (!db.d1) return NextResponse.json({ error: "update_failed" }, { status: 503 });
+  try {
+    const row = await db.queryFirst(`SELECT wr_price FROM wr_variants WHERE wr_variant_id=?`, wr_variant_id);
+    if (!row) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
+    if (markup_percent == null) return NextResponse.json({ error: "nothing_to_update" }, { status: 400 });
+    const sellPrice = calculateSellPrice(Number(row.wr_price), markup_percent, markup_fixed);
+    await saveSupplierMarkup(db.d1, "warung", wr_variant_id, markup_percent, markup_fixed, sellPrice, new Date().toISOString());
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-    await bumpCatalogRevision("market");
+    await bumpCatalogRevision("market", db);
+    return NextResponse.json({ ok: true, wr_variant_id, sell_price: sellPrice });
+  } catch {
+    return NextResponse.json({ error: "update_failed" }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, wr_variant_id, sell_price: sellPrice });
 }

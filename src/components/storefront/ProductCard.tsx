@@ -89,6 +89,9 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
   };
 
   const img = responsiveImg(product.image);
+  const [failedImage, setFailedImage] = useState<string | null>(null);
+  if (failedImage !== null && failedImage !== img.src) setFailedImage(null);
+  const imgFailed = failedImage === img.src;
   // Kartu di atas lipatan (hero-adjacent) dilukis lebih awal: 4 pertama
   // eager + fetchPriority high agar LCP mobile tidak menunggu lazy queue.
   // Selebihnya tetap lazy agar Speed Index tidak kebanjiran unduhan.
@@ -109,7 +112,8 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
           {discount > 0 && !outOfStock && (
             <span className="absolute top-1.5 right-1.5 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[9px] font-bold px-1.5 py-0.5 leading-none">-{discount}%</span>
           )}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {imgFailed ? <div className="flex w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/65 text-[10px] text-center p-2">{displayName}</div> : (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={img.src}
             srcSet={img.srcSet}
@@ -119,14 +123,13 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
             loading={eager ? "eager" : "lazy"}
             fetchPriority={eager ? "high" : "auto"}
             decoding="async"
-            onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display="none"; const ph=el.nextElementSibling as HTMLElement|null; if(ph) ph.style.display="flex"; }}
-          />
+            onError={() => setFailedImage(img.src)}
+          />)}
           {outOfStock && (
             <span className="absolute inset-0 z-[5] flex items-center justify-center bg-black/45">
               <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-2.5 py-1 text-[9px] font-bold tracking-[0.08em] text-white">{t.soldOutOverlay}</span>
             </span>
           )}
-          <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-[10px] text-center p-2">{displayName}</div>
         </div>
         <div className="px-2.5 pt-2 pb-2.5 sm:px-3.5 sm:pt-3 sm:pb-3.5 flex-1 flex flex-col">
           {!hideCategory && <p className="text-[9px] sm:text-[11px] tracking-[0.07em] text-[#00E5FF]/70 font-semibold uppercase truncate">{marketCategoryName(product.categorySlug, prices.locale)}</p>}
@@ -135,7 +138,7 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
             <span className="font-bold text-[13px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
               <Price idr={displayPrice} prices={prices} />
             </span>
-            {showCompare && <span className="text-[10px] sm:text-xs text-white/30 line-through leading-none"><Price idr={product.comparePrice!} prices={prices} /></span>}
+            {showCompare && <span className="text-[10px] sm:text-xs text-white/65 line-through leading-none"><Price idr={product.comparePrice!} prices={prices} /></span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-1">
             <span className="min-w-0 truncate whitespace-nowrap text-[10px] sm:text-xs text-white/65 font-medium">{product.soldCount ? t.soldCount(product.soldCount) : t.soldBare}</span>
@@ -159,7 +162,8 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
       )}
       <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(displayName) : undefined} className="block flex-1">
         <div className="relative aspect-[4/3] overflow-hidden bg-white/[0.04] m-1 sm:m-1.5 rounded-[12px] sm:rounded-[16px]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {imgFailed ? <div className="flex w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/65 text-xs text-center p-4">{displayName}</div> : (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={img.src}
             srcSet={img.srcSet}
@@ -169,21 +173,13 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
             loading={eager ? "eager" : "lazy"}
             fetchPriority={eager ? "high" : "auto"}
             decoding="async"
-            onError={(e) => {
-              const el = e.currentTarget as HTMLImageElement;
-              el.style.display = "none";
-              const ph = el.nextElementSibling as HTMLElement | null;
-              if (ph) ph.style.display = "flex";
-            }}
-          />
+            onError={() => setFailedImage(img.src)}
+          />)}
           {outOfStock && (
             <span className="absolute inset-0 z-[5] flex items-center justify-center bg-black/45">
               <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-3.5 py-1.5 text-[11px] sm:text-xs font-bold tracking-[0.08em] text-white">{t.soldOutOverlay}</span>
             </span>
           )}
-          <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-xs text-center p-4">
-            {displayName}
-          </div>
         </div>
         <div className="px-2.5 sm:px-4 pt-2.5 sm:pt-3 pb-1 sm:pb-2">
           {!hideCategory && <p className="text-[10px] sm:text-[11px] tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase truncate">{marketCategoryName(product.categorySlug, prices.locale)}</p>}
@@ -204,7 +200,7 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
         return (
           <div className="px-2 sm:px-3 pb-2.5 sm:pb-3 pt-1 grid grid-cols-2 gap-1.5 sm:gap-2">
             {outOfStock ? (
-              <span className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.06] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white/40 flex items-center justify-center">
+              <span className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.06] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white/65 flex items-center justify-center">
                 {t.soldOut}
               </span>
             ) : (

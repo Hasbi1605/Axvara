@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
@@ -19,15 +19,21 @@ export function PediaNavbar() {
   const q = usePediaSearch((s) => s.q);
   const setQ = usePediaSearch((s) => s.setQ);
   const [mobileSearch, setMobileSearch] = useState(false);
+  const mobileToggle = useRef<HTMLButtonElement>(null);
   // 2026-11-07: bahasa mengikuti cookie axv_locale yang sama dengan Market.
   const t = pediaCopy(useDisplayLocale());
 
-  const onSearch = (v: string) => {
-    setQ(v);
-    if (v.trim()) {
-      if (path && path !== "/pedia" && path !== "/pedia/layanan") router.push("/pedia/layanan");
-      document.getElementById("pedia-catalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+  const onCatalog = path === "/pedia" || path === "/pedia/layanan";
+  const scrollToCatalog = () => document.getElementById("pedia-catalog")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  const onSearch = (value: string) => {
+    setQ(value);
+    if (onCatalog && value.trim()) scrollToCatalog();
+  };
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!q.trim()) return;
+    if (onCatalog) scrollToCatalog();
+    else router.push("/pedia/layanan");
   };
 
   return (
@@ -54,22 +60,22 @@ export function PediaNavbar() {
         </Link>
         {/* Field cari ala navbar Market 1:1 — pill rounded-full + ikon kiri + tombol clear. */}
         <div className="hidden lg:flex min-w-0 flex-1 max-w-[520px] mx-2">
-          <div className="relative w-full">
+          <form className="relative w-full" onSubmit={submitSearch} onKeyDown={(event) => { if (event.key === "Escape" && q) { event.preventDefault(); setQ(""); event.currentTarget.querySelector("input")?.focus(); } }}>
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60">
               <IosIcon name="search" size={16} tint="white" />
             </span>
             <input aria-label={t.searchAria} type="search" value={q} onChange={(e) => onSearch(e.target.value)} placeholder={t.searchPlaceholder} className="w-full h-10 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
             {q && (
-              <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label={t.clear}>
+              <button type="button" onClick={(event) => { setQ(""); event.currentTarget.form?.querySelector("input")?.focus(); }} className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label={t.clear}>
                 <X className="w-3.5 h-3.5 text-white/70" />
               </button>
             )}
-          </div>
+          </form>
         </div>
         <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
           {/* Urutan 1:1 Market: ServicesMenu dulu, tombol search sesudahnya. */}
           <ServicesMenu active="pedia" />
-          <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label={t.searchToggle} aria-expanded={mobileSearch}>
+          <button ref={mobileToggle} type="button" onClick={() => setMobileSearch((v) => !v)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label={t.searchToggle} aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
           <nav aria-label={t.navAria} className="hidden items-center gap-1 text-sm text-white/70 xl:flex">
@@ -85,17 +91,17 @@ export function PediaNavbar() {
       </div>
       {mobileSearch && (
         <div className="lg:hidden px-4 pb-3">
-          <div className="relative">
+          <form className="relative" onSubmit={submitSearch} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setMobileSearch(false); mobileToggle.current?.focus(); } }}>
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60">
               <IosIcon name="search" size={16} tint="white" />
             </span>
             <input aria-label={t.searchAria} type="search" autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder={t.searchShort} className="w-full h-11 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-base text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
             {q && (
-              <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label={t.clear}>
+              <button type="button" onClick={(event) => { setQ(""); event.currentTarget.form?.querySelector("input")?.focus(); }} className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label={t.clear}>
                 <X className="w-3.5 h-3.5 text-white/70" />
               </button>
             )}
-          </div>
+          </form>
         </div>
       )}
     </header>

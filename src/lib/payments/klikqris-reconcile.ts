@@ -4,7 +4,7 @@ import { claimKlikQrisPollReconcile, isKlikQrisConfigured, reconcileKlikQrisPaym
 // Callback remains primary. This bounded GET-only fallback also runs when the
 // buyer closes the page. Visible-page polls share last_checked_at and the CAS.
 export const KLIKQRIS_BACKGROUND_LIMIT = 20;
-export async function reconcileDueKlikQrisPayments(db: DatabaseAccess) {
+export async function reconcileDueKlikQrisPayments(db: DatabaseAccess, admit = (_remaining: number) => true) {
   const out = { payments_checked: 0, payments_confirmed: 0, payments_failed: 0 };
   if (!isKlikQrisConfigured()) return out;
   const due = await db.queryAll(
@@ -17,7 +17,8 @@ export async function reconcileDueKlikQrisPayments(db: DatabaseAccess) {
      ORDER BY COALESCE(pt.last_checked_at,pt.created_at) ASC,pt.id ASC LIMIT ?`,
     KLIKQRIS_BACKGROUND_LIMIT,
   );
-  for (const row of due) {
+  for (const [index, row] of due.entries()) {
+    if (!admit(due.length - index)) break;
     const code = String(row.order_code);
     if (!await claimKlikQrisPollReconcile(code)) continue;
     out.payments_checked++;

@@ -7,7 +7,7 @@ import { aivaultSellPrice } from "@/lib/aivault/families";
 import { formatRupiah } from "@/lib/utils";
 import { TUNVN_BUFF_MARKUP_PERCENT } from "@/lib/tunvn/pricing";
 import { isTunvnExcludedProduct } from "@/lib/tunvn/families";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AsyncConfirmDialog, ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Spinner } from "@/components/ui/Loading";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, NativeSelect, PageHeader, Skeleton, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsContent, TabsList, TabsTrigger } from "./ui";
 import { SupplierTabs, VariantStatusBadge, type SupplierTabId } from "./SupplierTabs";
@@ -128,6 +128,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(!isWrSk);
   const [busy, setBusy] = useState<string | null>(null);
+  const [exclusionToDelete, setExclusionToDelete] = useState<ExclusionRow | null>(null);
   const [busyOrderAction, setBusyOrderAction] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [bulk, setBulk] = useState<{ item: CatalogItem; trigger: HTMLButtonElement } | null>(null);
@@ -555,8 +556,6 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
       if (!res.ok) throw new Error(mapSupplierError(body.error, "Gagal menghapus exclusion"));
       setSuccess("Exclusion dihapus.");
       await loadWrSkExclusions();
-    } catch (cause) {
-      setActionError(`Aturan: ${cause instanceof Error ? cause.message : "Gagal menghapus exclusion"}`);
     } finally {
       setBusy(null);
     }
@@ -1089,7 +1088,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
                         <TableCell>
                           <div className="flex justify-end">
                             <Button variant="ghost" size="icon" className="min-h-11 min-w-11 text-admin-danger md:min-h-0 md:min-w-0" disabled={locked}
-                              title="Hapus exclusion" onClick={() => void deleteExclusion(rule.id)} aria-label={`Hapus exclusion ${rule.pattern}`}><Trash2 /></Button>
+                              title="Hapus exclusion" onClick={() => setExclusionToDelete(rule)} aria-label={`Hapus exclusion ${rule.pattern}`}><Trash2 /></Button>
                           </div>
                         </TableCell>
                       </TableRow>)}
@@ -1137,6 +1136,9 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
 
     {bulk && <BulkMarkupDialog item={bulk.item} trigger={bulk.trigger} busy={locked} failure={bulkError} onClose={() => setBulk(null)}
       onSave={tiers => mutateStandard("Markup", `products/${encodeURIComponent(String(bulk.item.id))}`, { bulk_markup_tiers: tiers }, `Harga grosir ${bulk.item.label} disimpan.`, { patch: true, bulk: true })} />}
+
+    {exclusionToDelete && <AsyncConfirmDialog title={`Hapus aturan ${name}?`} description={`Exclusion “${exclusionToDelete.pattern}” tidak lagi berlaku saat sinkronisasi.`}
+      onClose={() => setExclusionToDelete(null)} onConfirm={() => deleteExclusion(exclusionToDelete.id)} />}
 
     <ConfirmDialog
       open={bulkConfirm !== null}

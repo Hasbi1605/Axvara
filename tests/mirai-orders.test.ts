@@ -508,3 +508,49 @@ it("Should-Fix 2/5 & NIT-1: batch creates multi-line Mirai links, dirty trigger 
     last_error: "source_changed",
   });
 });
+
+it("H2-1: a sent order still GET-recovers and delivers after the variant is disabled", async () => {
+  insertTestOrder(f.sql, orderCode, { status: "lunas", channel: "web", items: [item(1)] });
+  timeoutPost = true;
+  await tick();
+  expect(link()).toMatchObject({ status: "pending", attempt_count: 1, request_sent_at: expect.any(String) });
+
+  // Admin disables the variant (stop NEW sales) before the recovery tick.
+  f.sql.exec("UPDATE product_variants SET is_active=0 WHERE id=1");
+  timeoutPost = false;
+  getOrderStatus = 200;
+  getOrderBody = {
+    success: true,
+    data: {
+      order_code: "MO-RECOVERED-DISABLED",
+      external_order_id: `${orderCode}-0`,
+      package_code: pkgCode,
+      quantity: 1,
+      redeem_codes: ["MR-DIS-1"],
+      status: "fulfilled",
+    },
+  };
+  due();
+  await tick();
+  expect(orderGets()).toHaveLength(1);
+  expect(buys()).toHaveLength(1);
+  expect(link()).toMatchObject({ status: "completed", attempt_count: 1, provider_order_code: "MO-RECOVERED-DISABLED" });
+});
+
+it("H2-2: a GET transport error past the 24h cap escalates instead of looping", async () => {
+  insertTestOrder(f.sql, orderCode, { status: "lunas", channel: "web", items: [item(1)] });
+  const { createMiraiOrderLinks } = await import("@/lib/mirai/orders");
+  await createMiraiOrderLinks(orderCode, createDatabaseAccess(f.db));
+  f.sql.exec(`UPDATE mirai_order_links SET attempt_count=3, request_sent_at=datetime('now','-2 days')`);
+
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (init?.method === "GET" && new URL(String(url)).pathname.includes("/orders/")) {
+      throw new Error("fixture GET timeout");
+    }
+    return original(url, init);
+  });
+  await tick();
+  expect(buys()).toHaveLength(0);
+  expect(link()).toMatchObject({ status: "needs_admin", last_error: "attempts_exhausted", attempt_count: 3 });
+});

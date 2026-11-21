@@ -6,8 +6,8 @@ export function isPaymentMaintenanceEnabled(): boolean {
   return process.env.NEXT_PUBLIC_PAYMENTS_MAINTENANCE === "true";
 }
 
-export const PAYMENT_MAINTENANCE_MESSAGE = "Pembayaran otomatis sedang maintenance. Untuk sementara, silakan order manual lewat WhatsApp.";
-export const PAYMENT_MANUAL_ORDER_URL = `${SITE.webUrl}${waHubLink("Halo AXVARA, saya ingin order manual selama pembayaran maintenance.")}`;
+export const PAYMENT_MAINTENANCE_MESSAGE = "Pembayaran otomatis sedang maintenance. Jika butuh bantuan, hubungi admin. Pemesanan hanya lewat website atau bot Telegram.";
+export const PAYMENT_MANUAL_ORDER_URL = `${SITE.webUrl}${waHubLink("Halo AXVARA, saya perlu bantuan saat pembayaran maintenance.")}`;
 
 export function paymentMaintenanceResponse(): Response {
   return Response.json({

@@ -36,6 +36,8 @@ export type ScreenSourceMeta = {
   isPhoto?: boolean;
   isCatalogPhoto?: boolean;
   isProtected?: boolean;
+  /** Telegram update_id of this callback (journal key for idempotent mutations). */
+  updateId?: string;
 };
 
 export const TG_WELCOME_BANNER_VERSION = "20261120";

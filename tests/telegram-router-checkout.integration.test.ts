@@ -386,6 +386,9 @@ describe("Telegram router cart consent with real D1", () => {
     await click(await cartConfirmation());
     const code = String(orders()[0].code);
     fx.sql.exec("UPDATE orders SET telegram_invoice_sent_at=NULL; UPDATE telegram_users SET buyer_email=NULL; UPDATE products SET require_email=1,is_active=0");
+    // AU-E2-2: photo sends take an atomic claim whose freshness stamp lives in
+    // orders.updated_at; simulate an unsent invoice whose claim is already stale.
+    fx.sql.exec("UPDATE orders SET updated_at=datetime('now','-2 minutes')");
     fx.control.fail = query => query.includes("FROM telegram_carts") || query.includes("SELECT buyer_email") || query.includes("SELECT pv.id, pv.product_id, wv.wr_type");
     vi.mocked(sendPhoto).mockClear();
     await click(callback);

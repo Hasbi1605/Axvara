@@ -57,16 +57,8 @@ async function cronRun() {
 // Order WA wajib masuk grup Telegram admin — judul WA, bukan judul Telegram,
 // memakai marker idempoten yang sama agar redelivery/cron tidak ganda.
 describe("WhatsApp orders notify the Telegram admin group", () => {
-  it("formats created + paid admin messages for WhatsApp", async () => {
-    const { adminWhatsAppOrderCreatedMessage, adminWhatsAppOrderPaidMessage } = await import("@/lib/telegram/messages");
-    const created = adminWhatsAppOrderCreatedMessage({
-      createdAt: "2026-10-24 00:37:00",
-      orderCode: "AXV-1", productNames: "Fixture ×1", amount: 10000,
-      customerName: "628111", channelMember: "628111", paymentMethod: "qris",
-    });
-    expect(created).toContain("Order Baru — WhatsApp");
-    expect(created).toContain("07.37 WIB");
-    expect(created).toContain("AXV-1");
+  it("formats paid admin message for WhatsApp", async () => {
+    const { adminWhatsAppOrderPaidMessage } = await import("@/lib/telegram/messages");
     const paid = adminWhatsAppOrderPaidMessage({
       orderCode: "AXV-1", productNames: "Fixture ×1", amount: 10000,
       customerName: "628111", channelMember: "628111", paymentMethod: "qris",
@@ -75,21 +67,19 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(paid).toContain("AXV-1");
   });
 
-  it("notifies order-created for a pending WhatsApp order and marks it once", async () => {
+  it("order-created WhatsApp notice has no live path (owner 2026-10-10)", async () => {
     seedWhatsAppOrder("WA-CREATED", "pending");
-    const { notifyWhatsAppOrderCreated } = await import("@/lib/telegram/order-notifications");
     const { sendMessage } = await import("@/lib/telegram/api");
     vi.mocked(sendMessage).mockClear();
-    expect(await notifyWhatsAppOrderCreated("WA-CREATED")).toBe(true);
-    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(sendMessage).mock.calls[0]?.[0]).toMatchObject({ chat_id: "999" });
-    expect(String((vi.mocked(sendMessage).mock.calls[0]?.[0] as unknown as Record<string, unknown>)?.text || "")).toContain("Order Baru — WhatsApp");
+    const BOUND = 8;
+    for (let i = 0; i < BOUND; i++) {
+      const r = await cronRun();
+      expect(r.status).toBe(200);
+    }
+    const texts = vi.mocked(sendMessage).mock.calls.map((c) => String(((c[0] as unknown) as Record<string, unknown>)?.text || ""));
+    expect(texts.some((t) => t.includes("Order Baru — WhatsApp"))).toBe(false);
     expect(fixture.sql.prepare("SELECT telegram_order_notified_at FROM orders WHERE code='WA-CREATED'").get()
-      ?.telegram_order_notified_at).not.toBeNull();
-    // Idempoten: panggilan kedua tidak mengirim lagi.
-    vi.mocked(sendMessage).mockClear();
-    expect(await notifyWhatsAppOrderCreated("WA-CREATED")).toBe(true);
-    expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
+      ?.telegram_order_notified_at).toBeNull();
   });
 
   it("cron TIDAK mengirim Order Baru — hanya Lunas yang masuk grup (owner 2026-10-10, paritas Web)", async () => {
@@ -203,6 +193,60 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     const cron = fs.readFileSync("src/app/api/cron/operations/route.ts", "utf8")
       + fs.readFileSync("src/lib/cron-queues.ts", "utf8");
     expect(cron).toContain("sales_channel IN ('telegram','whatsapp')");
+  });
+
+  // AU-E2-7: reading the NULL marker then sending left a window where a slow
+  // direct send and the cron retry both reached transport.
+  it("a slow direct paid-admin send with a live lease is not duplicated by cron", async () => {
+    seedWhatsAppOrder("WA-RACE", "lunas");
+    fixture.sql.prepare("UPDATE orders SET telegram_order_notified_at=datetime('now') WHERE code='WA-RACE'").run();
+    const { sendMessage } = await import("@/lib/telegram/api");
+    const { createDatabaseAccess } = await import("@/lib/db-access");
+    const { retryPendingTelegramNotifications, notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
+    const db = createDatabaseAccess(fixture.db);
+    vi.mocked(sendMessage).mockClear();
+
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const enteredP = new Promise<void>((resolve) => { entered = resolve; });
+    vi.mocked(sendMessage).mockImplementationOnce((async () => {
+      entered();
+      await gate;
+      return { ok: true, result: { message_id: 1 } };
+    }) as never);
+
+    const direct = notifyWhatsAppPaidAdmin("WA-RACE", db);
+    await enteredP;
+    // Simulate >2 minutes of audit-row age while transport is in flight and
+    // the lease deadline is still in the future. SQLite uses its own clock.
+    fixture.sql.exec(`UPDATE buyer_notice_log SET updated_at=datetime('now','-3 minutes')
+      WHERE idempotency_key='admin-paid-timeout:WA-RACE'`);
+    const cron = await retryPendingTelegramNotifications(50, { paidAdmin: true }, db);
+    release();
+    expect(await direct).toBe(true);
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(cron.paidAdmin).toBe(0);
+    expect(fixture.sql.prepare("SELECT telegram_paid_admin_notified_at FROM orders WHERE code='WA-RACE'").get()
+      ?.telegram_paid_admin_notified_at).not.toBeNull();
+  });
+
+  it("cron recovers a crashed paid-admin send after its lease expires", async () => {
+    seedWhatsAppOrder("WA-CRASH", "lunas");
+    const { sendMessage } = await import("@/lib/telegram/api");
+    const { retryPendingTelegramNotifications, notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
+    vi.mocked(sendMessage).mockClear().mockRejectedValueOnce(new Error("worker interrupted"));
+    await expect(notifyWhatsAppPaidAdmin("WA-CRASH")).rejects.toThrow("worker interrupted");
+
+    // Expire only the lease; a fresh audit timestamp must not keep it locked.
+    fixture.sql.exec(`UPDATE buyer_notice_log SET access_retry_at=datetime('now','-1 second')
+      WHERE idempotency_key='admin-paid-timeout:WA-CRASH'`);
+    const cron = await retryPendingTelegramNotifications(50, { paidAdmin: true });
+    expect(cron.paidAdmin).toBe(1);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(fixture.sql.prepare(`SELECT status, access_attempts FROM buyer_notice_log
+      WHERE idempotency_key='admin-paid-timeout:WA-CRASH'`).get()).toMatchObject({ status: "sent", access_attempts: 2 });
   });
 
   it("migration 0023 backfills pre-existing WhatsApp orders so deploy does not replay history", async () => {

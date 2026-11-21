@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     `SELECT pt.order_code, pt.status, pt.expires_at, pt.qris_payload, COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,
             o.status AS order_status,
             ${DANA_AMOUNT_REUSED_SQL} AS amount_history,
-            o.sales_channel, o.channel_conversation_id, o.order_kind
+            o.sales_channel, o.order_kind
      FROM payment_transactions pt
      JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='gopay' AND pt.payable_amount=?
@@ -179,35 +179,7 @@ export async function POST(request: NextRequest) {
 
   await schedulePaidFulfillment(orderCode, transaction.order_kind, "gopay");
 
-  if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
-    try {
-      const orderDetail = await queryFirst(
-        `SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`,
-        orderCode,
-      );
-      const snap = orderDetail?.variant_snapshot ? JSON.parse(String(orderDetail.variant_snapshot)) : {};
-      const { paymentDetectedMessage } = await import("@/lib/whatsapp/messages");
-      const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
-      const queued = await enqueueWhatsAppMessage(
-        waOutboxKey("payment_detected", orderCode),
-        String(transaction.channel_conversation_id),
-        paymentDetectedMessage({
-          orderCode,
-          productName: snap.product_name,
-          variantLabel: snap.label,
-          total: Number(orderDetail?.subtotal || 0),
-          method: String(orderDetail?.payment_method || "QRIS").toUpperCase(),
-        }),
-      );
-      if (queued) {
-        const { processWhatsAppOutboxRow } = await import("@/lib/whatsapp/outbox");
-        const row = await queryFirst(
-          `SELECT * FROM whatsapp_outbox WHERE idempotency_key=?`,
-          waOutboxKey("payment_detected", orderCode),
-        );
-        if (row) await processWhatsAppOutboxRow(row).catch(() => {});
-      }
-    } catch { /* Antrean bertahan; cron operations memproses yang due. */ }
+  if (String(transaction.sales_channel) === "whatsapp") {
     try {
       const { notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
       await notifyWhatsAppPaidAdmin(orderCode).catch(() => false);

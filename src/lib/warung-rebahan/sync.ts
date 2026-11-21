@@ -1163,7 +1163,7 @@ export async function syncProducts(
   let slice: Awaited<ReturnType<typeof fetchProductsSlice>> = null;
   try {
     if (!applyOnly && options.useProxySlices && fetchFn === fetchProducts) {
-      slice = await fetchProductsSlice(state.cursor, maxProducts);
+      slice = await fetchProductsSlice(state.cursor, maxProducts, hasTimeBudget ? timeLeftMs() : undefined);
     }
     products = applyOnly
       ? applyOnly.products

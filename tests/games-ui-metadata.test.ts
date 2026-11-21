@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+// React's request-scoped cache runs under the Next.js server renderer, not Vitest.
+vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof import("react")>(), cache: <T,>(fn: T) => fn }));
 vi.mock("@/lib/i18n/server-locale", () => ({ requestLocale: async () => "en" }));
 vi.mock("@/lib/games/catalog", () => ({ getGamesDetail: async (slug: string) => ["free-fire", "mobile-legends"].includes(slug) ? { game: { slug, name: slug === "free-fire" ? "Free Fire" : "Mobile Legends" }, products: slug === "free-fire" ? [{}] : [] } : null, getGamesCatalog: async () => [] }));
 import { generateMetadata as home } from "@/app/games/layout";
@@ -17,6 +19,8 @@ describe("Games UI metadata", () => {
   it("noindexes registered games with no enabled SKUs, without changing stocked game indexing", async () => {
     expect((await game({ params: Promise.resolve({ slug: "mobile-legends" }) })).robots).toEqual({ index: false, follow: true });
     expect((await game({ params: Promise.resolve({ slug: "free-fire" }) })).robots).toBeUndefined();
-    expect(await game({ params: Promise.resolve({ slug: "unknown-game" }) })).toEqual({});
+    expect(await game({ params: Promise.resolve({ slug: "unknown-game" }) })).toMatchObject({ alternates: { canonical: null }, robots: { index: false, follow: false } });
+    expect((await home()).openGraph?.images).toBeTruthy();
+    expect((await home()).twitter).toMatchObject({ card: "summary_large_image" });
   });
 });

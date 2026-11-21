@@ -103,6 +103,21 @@ afterEach(() => {
 });
 
 describe("revisioned catalog cache & memoization", () => {
+  it("does not serve a pre-allowlist catalog detail cached at the current revision", async () => {
+    seedBaseMarketCatalog();
+    const legacyKey = new Request("https://axvara.tech/__catalog-cache/d1-v2/market/0/catalog:v=true&slug=chatgpt-plus");
+    await cache.put(legacyKey, Response.json({ product: { variants: [{ id: 1, wr_type: "Invite" }] } }));
+    const { GET } = await import("@/app/api/catalog/route");
+    const request = () => new Request("https://axvara.tech/api/catalog?slug=chatgpt-plus");
+    const response = await GET(request());
+    const body = await response.json();
+    expect(body.product.variants[0]).toMatchObject({ id: 1, supplier_variant: false });
+    expect(body.product.variants[0]).not.toHaveProperty("wr_type");
+    const hit = await GET(request());
+    expect(hit.headers.get("X-Axvara-Cache")).toBe("HIT");
+    expect(await hit.json()).toEqual(body);
+  });
+
   it("memoizes revision per isolate for 5s, rotates d1-v2 cache key on bump, and isolates scopes", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-18T00:00:00Z"));
@@ -262,7 +277,7 @@ describe("checkout, restock, expiry, and inventory invalidation", () => {
     expect(readRevisionRow("market")).toBe(revAfterTg);
 
     await createPendingChannelOrder({
-      salesChannel: "whatsapp",
+      salesChannel: "web",
       productId: 1,
       productName: "ChatGPT Plus",
       variantId: 1,

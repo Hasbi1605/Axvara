@@ -136,7 +136,7 @@ async function setStatus(
   now: number,
 ): Promise<void> {
   await db.execRun(
-    "UPDATE supplier_topups SET status=?, error=?, updated_at=? WHERE id=?",
+    "UPDATE supplier_topups SET status=?, error=?, updated_at=? WHERE id=? AND status NOT IN ('paid','failed')",
     status,
     error === null ? null : sanitizeError(error),
     now,
@@ -147,25 +147,11 @@ async function setStatus(
 /** Gagal MEMERIKSA status bukan bukti invoice gagal/lunas: status tetap,
  *  hanya error terakhir + updated_at yang dicatat (refresh berikutnya aman). */
 async function noteCheckError(db: DatabaseAccess, id: number, error: string, now: number): Promise<void> {
-  await db.execRun("UPDATE supplier_topups SET error=?, updated_at=? WHERE id=?", sanitizeError(error), now, id);
+  await db.execRun("UPDATE supplier_topups SET error=?, updated_at=? WHERE id=? AND status NOT IN ('paid','failed')", sanitizeError(error), now, id);
 }
 
 async function touch(db: DatabaseAccess, id: number, now: number): Promise<void> {
-  await db.execRun("UPDATE supplier_topups SET updated_at=? WHERE id=?", now, id);
-}
-
-async function assertPendingAllowed(db: DatabaseAccess, supplier: SupplierTopupSupplier, now: number): Promise<void> {
-  const row = await db.queryFirst(
-    `SELECT COUNT(*) AS n FROM supplier_topups
-     WHERE supplier=? AND status IN ('creating','pending','unknown')
-       AND (expires_at > ? OR (expires_at IS NULL AND created_at > ?))`,
-    supplier,
-    now,
-    now - SUPPLIER_TOPUP_UNDATED_PENDING_MS,
-  );
-  if (Number(row?.n ?? 0) >= SUPPLIER_TOPUP_MAX_PENDING) {
-    throw new SupplierTopupError(429, "too_many_pending");
-  }
+  await db.execRun("UPDATE supplier_topups SET updated_at=? WHERE id=? AND status NOT IN ('paid','failed')", now, id);
 }
 
 export type CreateSupplierTopupInput =
@@ -201,15 +187,20 @@ export async function createSupplierTopup(
   const now = opts.now ?? Date.now();
   const normalized = normalizeCreateInput(input);
   assertSupplierGate(normalized.supplier);
-  await assertPendingAllowed(db, normalized.supplier, now);
 
   const refId = createSupplierTopupRefId(now);
   const channel = normalized.supplier === "sekalipay" ? normalized.code : "USDT_BEP20";
   const currency = normalized.supplier === "sekalipay" ? "IDR" : "USDT";
-  const inserted = await db.execRun(
+  // Reserve a slot atomically before calling the supplier. A read followed by
+  // an insert lets concurrent requests all observe the same spare capacity.
+  const inserted = await db.queryFirst(
     `INSERT INTO supplier_topups
        (supplier,ref_id,channel,currency,requested_amount,status,created_at,updated_at)
-     VALUES (?,?,?,?,?,'creating',?,?)`,
+     SELECT ?,?,?,?,?,'creating',?,?
+      WHERE (SELECT COUNT(*) FROM supplier_topups
+              WHERE supplier=? AND status IN ('creating','pending','unknown')
+                AND (expires_at > ? OR (expires_at IS NULL AND created_at > ?))) < ?
+     RETURNING id`,
     normalized.supplier,
     refId,
     channel,
@@ -217,8 +208,13 @@ export async function createSupplierTopup(
     normalized.amount,
     now,
     now,
+    normalized.supplier,
+    now,
+    now - SUPPLIER_TOPUP_UNDATED_PENDING_MS,
+    SUPPLIER_TOPUP_MAX_PENDING,
   );
-  const id = Number(inserted.lastInsertRowid);
+  if (!inserted) throw new SupplierTopupError(429, "too_many_pending");
+  const id = Number(inserted.id);
 
   try {
     if (normalized.supplier === "sekalipay") {
@@ -247,7 +243,7 @@ function storeSkInvoice(db: DatabaseAccess, id: number, invoice: SkTopupInvoice,
     `UPDATE supplier_topups
         SET supplier_ref=?, pay_amount=?, credit_amount=?, fee_amount=?,
             status='pending', payment_json=?, error=NULL, expires_at=?, updated_at=?
-      WHERE id=?`,
+      WHERE id=? AND status NOT IN ('paid','failed')`,
     invoice.invoice,
     invoice.pay_amount,
     invoice.credit_amount,
@@ -330,7 +326,7 @@ async function createTunvnTopup(
     `UPDATE supplier_topups
         SET supplier_ref=?, channel='USDT_BEP20', pay_amount=?, credit_amount=?,
             status='pending', payment_json=?, error=NULL, expires_at=?, updated_at=?
-      WHERE id=?`,
+      WHERE id=? AND status NOT IN ('paid','failed')`,
     deposit.payment_code,
     deposit.wallet_transfer.exact_amount,
     deposit.amount_usdt,
@@ -367,10 +363,17 @@ export async function refreshSupplierTopup(
   const now = opts.now ?? Date.now();
   const item = await loadItem(db, id);
   if (!item) throw new SupplierTopupError(404, "not_found");
-  // paid/failed terminal: tidak ada yang bisa diperiksa lagi.
-  if (item.status === "paid" || item.status === "failed") return item;
+  if (item.status === "paid") return item;
+  // No authoritative supplier lookup is possible without the invoice/code.
+  if (item.status === "failed" && !item.supplier_ref) return item;
   if (now - item.updated_at < SUPPLIER_TOPUP_REFRESH_MIN_MS) throw new SupplierTopupError(429, "too_soon");
   assertSupplierGate(item.supplier);
+  if (item.status === "failed") {
+    // Pace read-only checks without overwriting the create failure or a winning paid write.
+    const check = await db.execRun("UPDATE supplier_topups SET updated_at=? WHERE id=? AND status='failed' AND updated_at<=?",
+      now, id, now - SUPPLIER_TOPUP_REFRESH_MIN_MS);
+    if (!check.changes) throw new SupplierTopupError(429, "too_soon");
+  }
   if (item.supplier === "sekalipay") await refreshSekalipayTopup(db, item, now);
   else await refreshTunvnTopup(db, item, now);
   const refreshed = await loadItem(db, id);
@@ -381,23 +384,74 @@ export async function refreshSupplierTopup(
 async function refreshSekalipayTopup(db: DatabaseAccess, item: SupplierTopupItem, now: number): Promise<void> {
   const payment = item.payment ?? {};
   const hasLink = Boolean(payment.payment_link || payment.payment_url || payment.qr_link);
-  const needsRepost = !item.supplier_ref || !hasLink;
+  const invoice = item.supplier_ref;
+  // An invoice is enough to reconcile credit; a missing link must not block
+  // payment/expiry checks, even when the same ref_id cannot be posted again.
+  if (invoice) {
+    let credit;
+    try {
+      credit = await findSkTopupCredit(invoice);
+    } catch (error) {
+      const cls = classifySkTopupFailure(error);
+      await noteCheckError(db, item.id, cls.code, now);
+      throw new SupplierTopupError(502, cls.code);
+    }
+    if (credit) {
+      await db.execRun(
+        "UPDATE supplier_topups SET status='paid', paid_at=?, credit_amount=?, error=NULL, updated_at=? WHERE id=? AND status<>'paid'",
+        now,
+        credit.amount ?? item.credit_amount,
+        now,
+        item.id,
+      );
+      return;
+    }
+    if (item.status === "failed") return;
+    if (item.expires_at !== null && now > item.expires_at) {
+      if (item.status !== "expired") await setStatus(db, item.id, "expired", item.error, now);
+      else await touch(db, item.id, now);
+      return;
+    }
+  }
 
-  if (needsRepost) {
+  if (!invoice || !hasLink) {
+    // A link recovery failure is not proof a known invoice cannot be paid.
+    const noteRepostFailure = (status: SupplierTopupStatus, error: string) => invoice
+      ? noteCheckError(db, item.id, error, now)
+      : setStatus(db, item.id, status, error, now);
     const code = item.channel ?? "";
     const amount = Math.trunc(item.requested_amount);
     if (!code) {
-      await setStatus(db, item.id, "unknown", "missing_channel", now);
+      await noteRepostFailure("unknown", "missing_channel");
+      return;
+    }
+    // A create that failed its channel read leaves no local status/range proof;
+    // re-validate channels here so a repost never bypasses a disabled/out-of-range channel.
+    let channels: SkTopupChannel[];
+    try {
+      channels = await fetchSkTopupChannels();
+    } catch (error) {
+      const cls = classifySkTopupFailure(error);
+      await noteRepostFailure(cls.kind, cls.code);
+      throw new SupplierTopupError(502, cls.code);
+    }
+    const repostChannel = channels.find((c) => c.service === code);
+    if (!repostChannel || repostChannel.status !== "on") {
+      await noteRepostFailure("failed", "channel_unavailable");
+      return;
+    }
+    if (amount < repostChannel.minimum || amount > repostChannel.maximum) {
+      await noteRepostFailure("failed", "amount_out_of_range");
       return;
     }
     try {
-      const invoice = await createSkTopup({ refId: item.ref_id, code, amount });
-      await storeSkInvoice(db, item.id, invoice, now);
+      const recovered = await createSkTopup({ refId: item.ref_id, code, amount });
+      await storeSkInvoice(db, item.id, recovered, now);
       return;
     } catch (error) {
       if (isSkRefIdAlreadyExists(error)) {
         // Ref sudah dipakai: pertahankan data tersimpan, JANGAN ganti ref_id.
-        if (!item.supplier_ref && !hasLink) {
+        if (!invoice && !hasLink) {
           await setStatus(db, item.id, "unknown", "ref_exists_no_data", now);
         } else {
           await touch(db, item.id, now);
@@ -405,40 +459,12 @@ async function refreshSekalipayTopup(db: DatabaseAccess, item: SupplierTopupItem
         return;
       }
       const cls = classifySkTopupFailure(error);
-      await setStatus(db, item.id, cls.kind, cls.code, now);
+      await noteRepostFailure(cls.kind, cls.code);
       if (cls.kind === "failed") throw new SupplierTopupError(502, cls.code);
       return;
     }
   }
 
-  const invoice = item.supplier_ref;
-  if (!invoice) {
-    await touch(db, item.id, now);
-    return;
-  }
-  let credit;
-  try {
-    credit = await findSkTopupCredit(invoice);
-  } catch (error) {
-    const cls = classifySkTopupFailure(error);
-    await noteCheckError(db, item.id, cls.code, now);
-    throw new SupplierTopupError(502, cls.code);
-  }
-  if (credit) {
-    await db.execRun(
-      "UPDATE supplier_topups SET status='paid', paid_at=?, credit_amount=?, error=NULL, updated_at=? WHERE id=?",
-      now,
-      credit.amount ?? item.credit_amount,
-      now,
-      item.id,
-    );
-    return;
-  }
-  if (item.expires_at !== null && now > item.expires_at) {
-    if (item.status !== "expired") await setStatus(db, item.id, "expired", item.error, now);
-    else await touch(db, item.id, now);
-    return;
-  }
   await touch(db, item.id, now);
 }
 
@@ -463,11 +489,19 @@ async function refreshTunvnTopup(db: DatabaseAccess, item: SupplierTopupItem, no
   }
   if (parsed.paid) {
     await db.execRun(
-      "UPDATE supplier_topups SET status='paid', paid_at=?, error=NULL, updated_at=? WHERE id=?",
+      "UPDATE supplier_topups SET status='paid', paid_at=?, error=NULL, updated_at=? WHERE id=? AND status<>'paid'",
       now,
       now,
       item.id,
     );
+    return;
+  }
+  if (item.status === "failed") return;
+  // Upstream can expire an undated invoice (no expires_in_minutes) without a
+  // local deadline; honour that status instead of leaving it pending forever.
+  if (parsed.status.toLowerCase() === "expired") {
+    if (item.status !== "expired") await setStatus(db, item.id, "expired", item.error, now);
+    else await touch(db, item.id, now);
     return;
   }
   if (item.expires_at !== null && now > item.expires_at) {

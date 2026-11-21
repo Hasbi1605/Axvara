@@ -68,6 +68,7 @@ INSERT INTO crypto_market_snapshot(id,coins_json,coins_refreshed_at) VALUES(1,'[
 
 const WORKER_SRC = `import {handleCallback} from './src/lib/telegram/handlers/callback';
 import {parsePayq1State} from './src/lib/telegram/payment-quote';
+let callbackSeq=0;
 export default {async fetch(req,env){
   (globalThis as any).DB=env.DB;
   // Real api.ts runs; Telegram HTTP is intercepted by the host outboundService
@@ -77,7 +78,7 @@ export default {async fetch(req,env){
     const body=await req.json() as any;
     for(const [k,v] of Object.entries(body.env??{})){ if(v===null) delete process.env[k]; else process.env[k]=String(v); }
     const from={id:Number(body.fromId??777001),first_name:'W'};
-    if(body.op==='click'){try{await handleCallback(String(body.data),Number(body.chatId??from.id),21,from,'cb-'+Math.random());}catch(e){return Response.json({handlerError:String((e as Error)?.message??e),sent,edited},{status:500});}}
+    if(body.op==='click'){try{await handleCallback(String(body.data),Number(body.chatId??from.id),21,from,'cb-'+(++callbackSeq));}catch(e){return Response.json({handlerError:String((e as Error)?.message??e),sent,edited},{status:500});}}
     if(body.op==='seed'){const db=env.DB;await db.batch([db.prepare("INSERT OR REPLACE INTO telegram_users(user_id,chat_id,locale,buyer_email) VALUES(?,?,?,?)").bind(String(from.id),from.id,body.locale??'en','buyer@example.test'),db.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").bind(String(from.id),1,1,2)]);return Response.json({ok:true,sent,edited});}
     if(body.op==='cart'){const m=await import('./src/lib/telegram/cart');const s=await (m as any).getCartSummary(String(from.id));return Response.json({summary:s,sent,edited});}
     if(body.op==='email'){const m=await import('./src/lib/telegram/checkout-email');const c=await import('./src/lib/telegram/cart');const s=await (c as any).getCartSummary(String(from.id));try{const r=await (m as any).readCheckoutEmail(String(from.id),s.lines);return Response.json({email:r,sent,edited});}catch(e){return Response.json({emailError:String((e as Error)?.stack??(e as Error)?.message??e),sent,edited});}}

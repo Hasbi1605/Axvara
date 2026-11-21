@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Calculator, CalendarDays, Link2, Search } from "lucide-react";
 import Link from "next/link";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { AsyncConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AdminPortalContext } from "@/components/admin/ui/portal";
 import { MARKET_INVOICE, prorata, termEnd, wibInputSeconds, type Estimate } from "@/lib/refund/calculate";
 import { requestRefund } from "@/lib/refund/client";
 import { BuyerRefundLookup } from "./BuyerRefundLookup";
@@ -24,6 +26,8 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [revokeInvoice, setRevokeInvoice] = useState<string | null>(null);
+  const [dialogHost, setDialogHost] = useState<HTMLDivElement | null>(null);
   const locale = admin ? "id" : estimateLocale ?? browserLocale;
   const en = locale === "en";
   const t = (id: string, english: string) => en ? english : id;
@@ -44,7 +48,10 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
       if (result.token) setShare(`${window.location.origin}/kalkulator-refund/bagikan#s=${result.token}`);
       if (action === "revoke") { setShare(""); setNotice("Link dinonaktifkan."); }
       return true;
-    } catch (err) { setError(err instanceof Error ? err.message : "unavailable"); return false; }
+    } catch (err) {
+      if (action === "revoke") throw new Error("Gagal mencabut link. Coba lagi.", { cause: err });
+      setError(err instanceof Error ? err.message : "unavailable"); return false;
+    }
     finally { setBusy(false); }
   }, []);
   useEffect(() => {
@@ -123,7 +130,7 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
           </>} />
           {(estimate.lines.some(line => line.amount != null) || activeShare) && <div className="mt-5 flex flex-wrap gap-2">
             {estimate.lines.some(line => line.amount != null) && <button className={refundButton} disabled={busy || !selected.length} onClick={() => void adminRequest("share", invoice, { items: selected })}><Link2 size={16} aria-hidden />{activeShare ? "Ganti Link" : "Buat Link Bagikan"}</button>}
-            {activeShare && <button className={refundButton} disabled={busy} onClick={() => void adminRequest("revoke", invoice)}>Cabut Link</button>}
+            {activeShare && <button className={refundButton} disabled={busy} onClick={() => setRevokeInvoice(invoice)}>Cabut Link</button>}
           </div>}
           {share && <div className="mt-4 space-y-2">
             <label className="block space-y-2 text-xs font-semibold text-white/70">Link hanya-baca · aktif 7 hari<input readOnly value={share} onFocus={event => event.target.select()} className={`${refundInput} !text-sm`} /></label>
@@ -146,6 +153,12 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
         {notice && <p role="status" className="mt-3 text-sm text-white/75">{notice}</p>}
       </>}
     </div>
+    {admin && <div ref={setDialogHost} className="admin-theme !min-h-0" data-admin-theme="dark">
+      <AdminPortalContext.Provider value={dialogHost}>
+        {revokeInvoice && <AsyncConfirmDialog title="Cabut link refund?" description={`Link estimasi untuk invoice ${revokeInvoice} tidak dapat dibuka lagi.`}
+          confirmLabel="Cabut link" onClose={() => setRevokeInvoice(null)} onConfirm={async () => { await adminRequest("revoke", revokeInvoice); }} />}
+      </AdminPortalContext.Provider>
+    </div>}
   </section>;
 }
 

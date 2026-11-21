@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import {
-  buildWhatsAppOrderIdempotencyKey,
   isReusablePendingOrder,
 } from "@/lib/commerce";
 
@@ -384,26 +383,6 @@ describe("Migration 0014: Telegram cart + reminder markers", () => {
   });
 });
 
-describe("Deterministic Idempotency Key (P0.4)", () => {
-  it("reuses one inbound pay event but allows a later purchase of the same variant", () => {
-    const groupId = "120363024823948293@g.us";
-    const memberId = "628123456789";
-    const variantId = 42;
-
-    const key1 = buildWhatsAppOrderIdempotencyKey(groupId, memberId, "98234123", variantId);
-    const retryKey = buildWhatsAppOrderIdempotencyKey(groupId, memberId, "98234123", variantId);
-    const laterPurchaseKey = buildWhatsAppOrderIdempotencyKey(groupId, memberId, "98234124", variantId);
-
-    expect(key1).toBe(retryKey);
-    expect(laterPurchaseKey).not.toBe(key1);
-    expect(key1).not.toContain(String(Date.now()));
-  });
-
-  it("refuses to create an order idempotency key without a Baileys inbox id", () => {
-    expect(() => buildWhatsAppOrderIdempotencyKey("group", "member", "", 42)).toThrow(/inbox/i);
-  });
-});
-
 describe("Reusable WhatsApp pending order", () => {
   const now = Date.parse("2026-09-04T12:00:00.000Z");
 
@@ -516,15 +495,6 @@ describe("Variant stock expiry lifecycle", () => {
     expect(telegram).toContain("product_name: productName");
     expect(telegram).toContain("transitionPendingOrder");
     expect(delivery).toContain("fulfillmentModeFromOrderSnapshot");
-  });
-
-  it("uses the persisted order snapshot for WhatsApp payment copy", () => {
-    const commerce = read("src/lib/commerce.ts");
-    const dana = read("src/app/api/webhook/dana/route.ts");
-    expect(commerce).toContain("product_name: input.productName");
-    // Copy pembayaran WA kini hanya dipakai notifikasi "terdeteksi" untuk
-    // order historis (webhook DANA/GoPay), bukan alur pemesanan grup.
-    expect(dana).toContain("paymentDetectedMessage");
   });
 
   it("fails closed when a shared variant has no encrypted delivery secret", () => {

@@ -8,7 +8,7 @@
 // untuk kedua cabang: siap → form retrieval, belum siap → info pengiriman.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, screen, cleanup, waitFor } from "@testing-library/react";
+import { act, render, screen, cleanup, waitFor, within } from "@testing-library/react";
 import OrderStatusPage from "@/app/(shop)/pesanan/[code]/page";
 
 const CODE = "AXV-20260918-AB12CD34";
@@ -61,13 +61,12 @@ afterEach(() => {
 });
 
 describe("/pesanan/[code] — blok pasca-pembayaran", () => {
-  it("credentials_ready=false → info pengiriman ke kontak checkout, TANPA form verifikasi WA", async () => {
+  it("credentials_ready=false tanpa email → arahkan ke halaman pesanan, tanpa janji kirim atau form verifikasi WA", async () => {
     mockFetch(orderPayload());
     render(<OrderStatusPage />);
-    await waitFor(() => expect(screen.getByText("Pengiriman Produk")).toBeTruthy());
-    // Order lama TANPA email: nomor WA tersamar jadi satu-satunya tujuan.
-    expect(screen.getByText(/Detail produk dikirim ke/).textContent).toContain("WhatsApp");
-    expect(screen.getByText("08213****7434")).toBeTruthy();
+    const delivery = await screen.findByRole("region", { name: "Pengiriman Produk" });
+    expect(within(delivery).getByText("Pesanan sedang diproses. Cek detail produk di halaman ini, atau hubungi admin dengan kode pesanan jika butuh bantuan.")).toBeTruthy();
+    expect(delivery.textContent).not.toMatch(/WhatsApp|08213|dikirimkan di email/i);
     // Form mati tidak boleh ada lagi.
     expect(screen.queryByText("Detail Akun Digital")).toBeNull();
     expect(screen.queryByRole("button", { name: "Tampilkan" })).toBeNull();
@@ -312,13 +311,14 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     expect(screen.queryByText(/5–15 menit/)).toBeNull();
   });
 
-  it("order lama tanpa email yang sudah terkirim → 'Produk sudah dikirim ke WhatsApp', bukan copy email", async () => {
+  it("order lama tanpa email yang sudah terkirim → cek halaman atau hubungi admin, tanpa klaim kirim WA/email", async () => {
     stubLiveOrder({ order: { fulfillment_status: "delivered", customer_email: null } });
     render(<OrderStatusPage />);
     await advance(50);
-    expect(screen.getByText(/Produk sudah dikirim ke/).textContent).toContain("08213");
-    expect(screen.queryByText(/Cek juga folder spam/)).toBeNull();
-    expect(screen.queryByText(/sedang diproses/)).toBeNull();
+    const delivery = screen.getByRole("region", { name: "Pengiriman Produk" });
+    expect(within(delivery).getByText("Cek detail produk di halaman ini.")).toBeTruthy();
+    expect(within(delivery).getByText(/hubungi admin .* dengan menyebut kode pesanan/)).toBeTruthy();
+    expect(delivery.textContent).not.toMatch(/WhatsApp|08213|email|folder spam|sedang diproses/i);
   });
 
   it("WR kirim otomatis tetap memakai jadwal lama: tidak ada poll cepat", async () => {

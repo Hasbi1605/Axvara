@@ -18,12 +18,12 @@ export function eligibleAivaultLine(value: unknown): Row | null {
 }
 export const AIVAULT_RETRYABLE_SQL = `status='needs_admin' AND attempt_count=0 AND request_sent_at IS NULL AND provider_order_id IS NULL
   AND receipt_ciphertext IS NULL AND receipt_iv IS NULL AND completed_at IS NULL
-  AND last_error IN ('quote_unavailable','stock_unavailable','insufficient_balance','price_conflict','preflight_unavailable')
+  AND last_error IN ('quote_unavailable','stock_unavailable','insufficient_balance','price_conflict','price_increased','preflight_unavailable')
   AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
   AND EXISTS(SELECT 1 FROM orders o WHERE o.code=aivault_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram'))
   AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.aivault_link_id=aivault_order_links.id AND f.order_code=aivault_order_links.order_code AND f.item_index=aivault_order_links.item_index
     AND f.status IN ('queued','retry','failed','manual_required') AND f.fulfillment_mode='manual' AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL
-    AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.inventory_id IS NULL)`;
+    AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.storebat_link_id IS NULL AND f.mirai_link_id IS NULL AND f.inventory_id IS NULL)`;
 export async function createAivaultOrderLinks(code: string, db: DatabaseAccess = createDatabaseAccess()): Promise<number> {
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled() || !db.canSpend(5)) return 0;
   const order = await db.queryFirst("SELECT * FROM orders WHERE code=?",code);
@@ -49,7 +49,11 @@ async function settle(db: DatabaseAccess, link: Row, status: string, error: stri
     completed_at=CASE WHEN ?='completed' THEN datetime('now') ELSE completed_at END,updated_at=datetime('now')
     WHERE id=? AND lease_owner=? AND status!='completed'`,status,error,status,status,link.id,link.lease_owner);
   if (!result.changes) return;
-  if (status === "needs_admin") await db.execRun("UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL WHERE aivault_link_id=? AND status NOT IN ('delivered','sending') AND EXISTS(SELECT 1 FROM aivault_order_links WHERE id=? AND status='needs_admin' AND lease_owner IS NULL)",link.id,link.id);
+  if (status === "needs_admin") {
+    await db.execRun("UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL WHERE aivault_link_id=? AND status NOT IN ('delivered','sending') AND delivered_ciphertext IS NULL AND delivered_iv IS NULL AND EXISTS(SELECT 1 FROM aivault_order_links WHERE id=? AND status='needs_admin' AND lease_owner IS NULL)",link.id,link.id);
+    const { escalateSupplierManual } = await import("@/lib/fulfillment/supplier-escalation");
+    await escalateSupplierManual(db,String(link.order_code),"aivault",link.id);
+  }
 }
 /** Pre-send failures (no POST yet): auto re-preflight 5x over ~30 min (2,4,8,16 min) before needs_admin; attempt_count untouched. */
 async function retryPreflight(db: DatabaseAccess, link: Row, error: string) {
@@ -93,13 +97,16 @@ async function interpret(db: DatabaseAccess, link: Row, r: { status: number; tex
   const products=Array.isArray(json.products) ? json.products : [];
   const credentials=products.every(x => typeof x==="string" && x.trim()) ? products as string[] : [];
   await db.execRun(`UPDATE aivault_order_links SET provider_order_id=?,receipt_json=? WHERE id=? AND lease_owner=? AND status!='completed'`,provider,JSON.stringify({ received:credentials.length, requested:link.quantity, charged_usd:cost }),link.id,link.lease_owner);
+  // Keep the in-memory row in sync: a later transient D1 fault must poll the
+  // known ID instead of downgrading a fulfilled order to needs_admin.
+  link.provider_order_id=provider;
   if (json.status === "failed") { await settle(db,link,"needs_admin","provider_failed"); return true; }
   if (["queued","processing","pending"].includes(String(json.status))) { await settle(db,link,"processing",null); return true; }
   const success = poll ? json.status==="delivered" && r.status===200 : [200,201].includes(r.status) && json.success===true && (json.status==null || json.status==="delivered");
   if (!success || credentials.length<Number(link.quantity)) { await settle(db,link,"needs_admin","incomplete_receipt"); return true; }
   const secret=await encryptSecret(credentials.slice(0,Number(link.quantity)).join("\n\n"));
   const saved=await db.execRun(`UPDATE fulfillment_items SET delivered_ciphertext=?,delivered_iv=?,status='queued',last_error=NULL,locked_until=NULL
-    WHERE aivault_link_id=? AND order_code=? AND item_index=? AND status NOT IN ('delivered','sending') AND wr_link_id IS NULL AND sk_link_id IS NULL AND tunvn_link_id IS NULL AND inventory_id IS NULL
+    WHERE aivault_link_id=? AND order_code=? AND item_index=? AND status NOT IN ('delivered','sending') AND wr_link_id IS NULL AND sk_link_id IS NULL AND tunvn_link_id IS NULL AND storebat_link_id IS NULL AND mirai_link_id IS NULL AND inventory_id IS NULL
     AND EXISTS(SELECT 1 FROM aivault_order_links WHERE id=? AND lease_owner=? AND status!='completed' AND datetime(lease_expires_at)>datetime('now'))`,secret.ciphertext,secret.iv,link.id,link.order_code,link.item_index,link.id,link.lease_owner);
   if (!saved.changes) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return true; }
   // Queue before clearing the lease; a crash repeats this step from the encrypted receipt.
@@ -123,8 +130,8 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     let fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index);
     if (!fulfillment) { await ensureFulfillmentItems(order,db); fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index); }
     if (!fulfillment) { await settle(db,link,"pending","fulfillment_missing"); return { claimed: true, rateLimited: false }; }
-    if (fulfillment.product_id!==link.product_id || fulfillment.variant_id!==link.variant_id || fulfillment.qty!==link.quantity || fulfillment.fulfillment_mode!=="manual" || ["delivered","sending"].includes(String(fulfillment.status)) || fulfillment.inventory_id || fulfillment.wr_link_id || fulfillment.sk_link_id || fulfillment.tunvn_link_id || (fulfillment.aivault_link_id && fulfillment.aivault_link_id!==id)) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return { claimed: true, rateLimited: false }; }
-    const bound=await db.execRun(`UPDATE fulfillment_items SET aivault_link_id=? WHERE id=? AND (aivault_link_id IS NULL OR aivault_link_id=?) AND wr_link_id IS NULL AND sk_link_id IS NULL AND tunvn_link_id IS NULL AND inventory_id IS NULL AND status NOT IN ('delivered','sending')`,id,fulfillment.id,id);
+    if (fulfillment.product_id!==link.product_id || fulfillment.variant_id!==link.variant_id || fulfillment.qty!==link.quantity || fulfillment.fulfillment_mode!=="manual" || ["delivered","sending"].includes(String(fulfillment.status)) || fulfillment.inventory_id || fulfillment.wr_link_id || fulfillment.sk_link_id || fulfillment.tunvn_link_id || fulfillment.storebat_link_id || fulfillment.mirai_link_id || (fulfillment.aivault_link_id && fulfillment.aivault_link_id!==id)) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return { claimed: true, rateLimited: false }; }
+    const bound=await db.execRun(`UPDATE fulfillment_items SET aivault_link_id=? WHERE id=? AND (aivault_link_id IS NULL OR aivault_link_id=?) AND wr_link_id IS NULL AND sk_link_id IS NULL AND tunvn_link_id IS NULL AND storebat_link_id IS NULL AND mirai_link_id IS NULL AND inventory_id IS NULL AND status NOT IN ('delivered','sending')`,id,fulfillment.id,id);
     if (!bound.changes) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return { claimed: true, rateLimited: false }; }
     if (link.provider_order_id) {
       if (Date.now()>=deadlineMs) { await settle(db,link,"processing","poll_deferred"); return { claimed: true, rateLimited: false }; }
@@ -142,26 +149,34 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     if (Number(link.attempt_count)>=3) { await settle(db,link,"needs_admin","attempts_exhausted"); return { claimed: true, rateLimited: false }; }
     if (Date.now()>=deadlineMs) { await settle(db,link,"pending","dispatch_deferred"); return { claimed: true, rateLimited: false }; }
     await encryptSecret("aivault-encryption-preflight");
-    const variant=await db.queryFirst(`SELECT pv.*,p.source,p.is_active AS product_active,p.aivault_family,p.wr_product_id,p.sk_product_id,p.wr_auto_managed,p.sk_auto_managed
+    const variant=await db.queryFirst(`SELECT pv.*,p.source,p.is_active AS product_active,p.archived_at,p.aivault_family,p.tunvn_family,p.storebat_family,p.mirai_family,p.wr_product_id,p.sk_product_id,p.wr_auto_managed,p.sk_auto_managed
       FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=?`,link.variant_id,link.product_id);
-    if (!variant || variant.sku!==`AV-${link.service_id}` || variant.aivault_service_id!==link.service_id || !variant.aivault_family || variant.fulfillment_mode!=="manual" || variant.source!=="manual" || variant.is_active!==1 || variant.product_active!==1 || variant.wr_variant_id || variant.sk_variant_id || variant.tunvn_buff_quantity_b || variant.wr_product_id || variant.sk_product_id || Number(variant.wr_auto_managed) || Number(variant.sk_auto_managed)) { await settle(db,link,"needs_admin","source_changed"); return { claimed: true, rateLimited: false }; }
+    const identityOk=!!variant && variant.sku===`AV-${link.service_id}` && variant.aivault_service_id===link.service_id && !!variant.aivault_family && variant.fulfillment_mode==="manual" && variant.source==="manual" && !variant.wr_variant_id && !variant.sk_variant_id && !variant.tunvn_buff_quantity_b && !variant.tunvn_source_product_id && !variant.storebat_product_id && !variant.mirai_package_code && !variant.wr_product_id && !variant.sk_product_id && !Number(variant.wr_auto_managed) && !Number(variant.sk_auto_managed) && !variant.tunvn_family && !variant.storebat_family && !variant.mirai_family;
+    // A POST that was already sent is recovered through the idempotent replay;
+    // disabling or archiving the variant only stops NEW sales.
+    const saleActive=Boolean(link.request_sent_at) || (!!variant && variant.is_active===1 && variant.product_active===1 && variant.archived_at==null);
+    if (!identityOk || !saleActive) { await settle(db,link,"needs_admin","source_changed"); return { claimed: true, rateLimited: false }; }
     if (!link.request_sent_at) {
     const quote=await fetchAivaultQuote(String(link.service_id),Number(link.quantity));
-    if (quote.kind!=="ok" && "status" in quote && quote.status===429) rateLimited=true;
+    if (quote.kind==="ambiguous" && quote.reason==="http_429") rateLimited=true;
     const q=quote.kind==="ok" ? parseAivaultQuote(quote.json) : null;
     let error: string | null=null;
     if (!q || q.service_id!==link.service_id || q.quantity!==link.quantity) error="quote_unavailable";
+    // Owner decision 2026-11-21: cap the live quote against the paid snapshot
+    // (StoreBat/Mirai parity). More than 2% above `cost_usd` never POSTs.
+    else if (q.final_total > Number(link.cost_usd) * 1.02 + 1e-9) error="price_increased";
     else if (q.stock<Number(link.quantity)) error="stock_unavailable";
     else if (!q.sufficient_balance) error="insufficient_balance";
     else if (q.price_conflict) error="price_conflict";
     if (error) { await (["quote_unavailable","stock_unavailable"].includes(error) ? retryPreflight(db,link,error) : settle(db,link,"needs_admin",error)); return { claimed: true, rateLimited }; }
     }
     if (Date.now()>=deadlineMs) { await settle(db,link,"pending","dispatch_deferred"); return { claimed: true, rateLimited: false }; }
+    const activeFence=link.request_sent_at ? "" : "AND v.is_active=1 AND p.is_active=1 AND p.archived_at IS NULL";
     const fenced=await db.execRun(`UPDATE aivault_order_links SET request_sent_at=COALESCE(request_sent_at,?),attempt_count=attempt_count+1,receipt_ciphertext=NULL,receipt_iv=NULL,receipt_http_status=NULL
       WHERE id=? AND lease_owner=? AND status='claimed' AND attempt_count=? AND attempt_count<3 AND datetime(lease_expires_at)>datetime('now')
       AND EXISTS(SELECT 1 FROM orders WHERE code=? AND items=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0)
-      AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.id=? AND f.aivault_link_id=? AND f.status NOT IN ('delivered','sending') AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.inventory_id IS NULL AND f.fulfillment_mode='manual' AND f.product_id=aivault_order_links.product_id AND f.variant_id=aivault_order_links.variant_id AND f.qty=aivault_order_links.quantity)
-      AND EXISTS(SELECT 1 FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=? AND v.product_id=? AND v.aivault_service_id=? AND v.sku=? AND v.is_active=1 AND p.is_active=1 AND v.fulfillment_mode='manual' AND p.source='manual' AND p.aivault_family IS ? AND v.wr_variant_id IS NULL AND v.sk_variant_id IS NULL AND v.tunvn_buff_quantity_b IS NULL AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0)`,new Date().toISOString(),id,owner,link.attempt_count,link.order_code,order.items,fulfillment.id,id,link.variant_id,link.product_id,link.service_id,variant.sku,variant.aivault_family);
+      AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.id=? AND f.aivault_link_id=? AND f.status NOT IN ('delivered','sending') AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.storebat_link_id IS NULL AND f.mirai_link_id IS NULL AND f.inventory_id IS NULL AND f.fulfillment_mode='manual' AND f.product_id=aivault_order_links.product_id AND f.variant_id=aivault_order_links.variant_id AND f.qty=aivault_order_links.quantity)
+      AND EXISTS(SELECT 1 FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=? AND v.product_id=? AND v.aivault_service_id=? AND v.sku=? ${activeFence} AND v.fulfillment_mode='manual' AND p.source='manual' AND p.aivault_family IS ? AND v.wr_variant_id IS NULL AND v.sk_variant_id IS NULL AND v.tunvn_buff_quantity_b IS NULL AND v.tunvn_source_product_id IS NULL AND v.storebat_product_id IS NULL AND v.mirai_package_code IS NULL AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0 AND p.tunvn_family IS NULL AND p.storebat_family IS NULL AND p.mirai_family IS NULL)`,new Date().toISOString(),id,owner,link.attempt_count,link.order_code,order.items,fulfillment.id,id,link.variant_id,link.product_id,link.service_id,variant.sku,variant.aivault_family);
     if (!fenced.changes) { await settle(db,link,"needs_admin","send_guard_changed"); return { claimed: true, rateLimited: false }; }
     link.attempt_count=Number(link.attempt_count)+1; sent=true;
     const response=await buyAivaultProduct(String(link.service_id),Number(link.quantity),String(link.external_order_id));
@@ -185,9 +200,30 @@ export async function retryAivaultOrder(db: DatabaseAccess, id: number): Promise
 export async function processAivaultOrders(db: DatabaseAccess = createDatabaseAccess(), options: { orderCode?: string; deadlineMs?: number; limit?: number } = {}): Promise<number> {
   const deadlineMs = options.deadlineMs ?? Infinity;
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled() || !db.canSpend(35) || Date.now() >= deadlineMs) return 0;
+  // Match eligibleAivaultLine BEFORE LIMIT so an invalid older snapshot cannot
+  // monopolize the 8 orphan slots and starve a valid younger order (TUNVN F5a).
+  const item = "CASE WHEN j.type='object' THEN j.value ELSE '{}' END";
+  const field = (path: string) => `json_extract(${item},'$.${path}')`;
+  const type = (path: string) => `json_type(${item},'$.${path}')`;
+  const integer = (path: string) => `(${type(path)}='integer' AND ${field(path)} BETWEEN 1 AND 9007199254740991)`;
   const orphans = options.orderCode ? [{ code: options.orderCode }] : await db.queryAll(`SELECT o.code FROM orders o WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram')
-    AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) j WHERE json_extract(j.value,'$.aivault_eligibility.version')=1 AND json_extract(j.value,'$.aivault_eligibility.cost_usd')>0
-      AND NOT EXISTS(SELECT 1 FROM aivault_order_links l WHERE l.order_code=o.code AND l.item_index=CAST(j.key AS INTEGER))) ORDER BY o.id LIMIT ?`, AIVAULT_ORPHANS_PER_RUN);
+    AND json_type(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END)='array'
+    AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) j
+      WHERE j.type='object'
+        AND ${type('aivault_eligibility')}='object'
+        AND ${type('aivault_eligibility.version')}='integer' AND ${field('aivault_eligibility.version')}=1
+        AND ${type('aivault_eligibility.service_id')}='text' AND length(CAST(${field('aivault_eligibility.service_id')} AS BLOB)) BETWEEN 1 AND 160
+          AND ${field('aivault_eligibility.service_id')} NOT GLOB '*[^A-Za-z0-9_-]*'
+        AND ${integer('aivault_eligibility.source_variant_id')} AND ${field('aivault_eligibility.source_variant_id')}=${field('variant_id')}
+        AND ${integer('aivault_eligibility.quantity')} AND ${field('aivault_eligibility.quantity')}=${field('qty')}
+        AND ${integer('qty')} AND ${field('qty')} BETWEEN 1 AND 100
+        AND ${integer('variant_id')} AND ${integer('product_id')}
+        AND ${type('aivault_eligibility.cost_usd')} IN ('integer','real') AND ${field('aivault_eligibility.cost_usd')}>0 AND ${field('aivault_eligibility.cost_usd')}<=1.7976931348623157e308
+        AND (${type('unique_units')} IS NULL OR ${type('unique_units')} IN ('null','false')
+          OR (${type('unique_units')}='integer' AND ${field('unique_units')}=0)
+          OR (${type('unique_units')}='text' AND ${field('unique_units')}=''))
+        AND NOT EXISTS(SELECT 1 FROM aivault_order_links l WHERE l.order_code=o.code AND l.item_index=CAST(j.key AS INTEGER)))
+    ORDER BY o.id LIMIT ?`, AIVAULT_ORPHANS_PER_RUN);
   for (const orphan of orphans) {
     if (Date.now() >= deadlineMs || !db.canSpend(30)) break;
     await createAivaultOrderLinks(String(orphan.code), db);

@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { isSkEnabled, createSkSandboxOrder } from "@/lib/sekalipay/client";
 import { checkRateLimit } from "@/lib/rateLimit";
 
@@ -17,7 +18,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "60" } });
   }
   if (!isSkEnabled()) return NextResponse.json({ error: "sekalipay_disabled" }, { status: 503 });
-  const body = await request.json().catch(() => null);
+  const bounded = await readJsonBody(request, 2_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data as Record<string, unknown> | null;
   const productId = Number(body?.product_id);
   const variantId = Number(body?.variant_id);
   const quantity = Math.max(1, Math.min(10, Math.floor(Number(body?.quantity ?? 1) || 1)));

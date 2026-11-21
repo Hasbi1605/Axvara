@@ -28,3 +28,14 @@ export function isFutureIso(value: unknown, now = Date.now()): boolean {
   const parsed = parseExpiry(value);
   return parsed === null || parsed > now;
 }
+
+/**
+ * Expiry candidates. The `datetime(expires_at) <= datetime('now')` filter plus
+ * the matching ORDER BY let `idx_orders_expires_dt (status, datetime(expires_at))`
+ * serve both the range and the ordering, so a quiet tick reads no pending row
+ * (audit X23-8). It stays a superset of `isExpiredIso()` (millisecond values are
+ * truncated down, legacy space/offset formats normalize the same way), and the
+ * JS filter below remains the authority for the final decision.
+ */
+export const EXPIRED_ORDER_CANDIDATES_SQL =
+  "SELECT code,items,expires_at FROM orders WHERE status='pending' AND expires_at IS NOT NULL AND datetime(expires_at) <= datetime('now') ORDER BY datetime(expires_at) ASC LIMIT 200";

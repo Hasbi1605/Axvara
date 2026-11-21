@@ -58,9 +58,17 @@ it.each(["manual","delivered","completed","unpaid","telegram"])("suppresses proc
   if(state==="telegram")fixture.sql.exec("UPDATE orders SET sales_channel='telegram'");
   expect(await notifyBuyerTunvnProcessing(code,linkId(),createDatabaseAccess(fixture.db))).toBe(false);expect(mail).not.toHaveBeenCalled();
 });
-it("does not announce processing before supplier acceptance or on insufficient balance",async()=>{
-  balance=0;await tick();expect(mail).not.toHaveBeenCalled();
+it("sends only the manual-handling notice on insufficient balance, never a processing announcement",async()=>{
+  balance=0;await tick();
+  expect(fixture.sql.prepare("SELECT status,last_error,request_sent_at FROM tunvn_order_links").get()).toMatchObject({status:"needs_admin",last_error:"insufficient_balance",request_sent_at:null});
+  expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url).endsWith("/buff/order"))).toBe(false);
   expect(await notifyBuyerTunvnProcessing(code,linkId(),createDatabaseAccess(fixture.db))).toBe(false);
+  expect(mail).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    to:"buyer@example.test",subject:`Pengiriman pesanan ${code} bermasalah`,text:expect.stringContaining("akan mengirimkannya manual"),
+  }));
+  expect(fixture.sql.prepare("SELECT idempotency_key,status FROM buyer_notice_log WHERE channel='email'").all()).toEqual([
+    {idempotency_key:`email:delivery-failed:${code}`,status:"sent"},
+  ]);
 });
 it("renders English using the immutable order locale",async()=>{
   fixture.sql.exec("UPDATE orders SET locale='en'");await tick();

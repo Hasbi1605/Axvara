@@ -10,7 +10,6 @@ import path from "node:path";
 import { resolveRecipient } from "@/lib/fulfillment/deliver";
 import {
   groupCheckoutRedirectMessage,
-  groupDeliveryNoticeMessage,
   privateChatDeepLink,
 } from "@/lib/telegram/messages";
 
@@ -57,9 +56,6 @@ describe("private-only recipient resolution (mock identitas dummy)", () => {
     const redirect = groupCheckoutRedirectMessage("Axvara_bot");
     expect(redirect).toContain("t.me/Axvara_bot?start=");
     expect(redirect).not.toMatch(/<code>[^<]*[@:][^<]*<\/code>/);
-    const notice = groupDeliveryNoticeMessage();
-    expect(notice).toContain("chat pribadi");
-    expect(notice).not.toContain(GROUP_ID);
   });
 });
 

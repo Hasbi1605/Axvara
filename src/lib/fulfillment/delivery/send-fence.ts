@@ -14,7 +14,7 @@ type SendResult = { ok: boolean; messageId?: string; definiteFailure?: boolean }
 
 /** Only automatic item sends enter here; admin resend intentionally does not. */
 export async function sendFencedCredential(
-  database: DatabaseAccess, itemId: number, leaseFence: string, channel: "telegram" | "whatsapp",
+  database: DatabaseAccess, itemId: number, leaseFence: string, channel: "telegram",
   messages: string[], send: (text: string) => Promise<SendResult>,
 ): Promise<string> {
   if (!messages.length) throw new Error("credential_send_empty");

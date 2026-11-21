@@ -128,6 +128,28 @@ it("reopens expired history without showing transfer instructions, allows late r
   expect(await dialog.findByText("Saldo masuk")).toBeTruthy();
 });
 
+it("allows manual status checks for failed topups with a supplier ref, without reopening payment", async () => {
+  const fetch = setup({ items: [
+    { ...pending, status: "failed", supplier_ref: "TUN-123" },
+    { ...pending, id: 14, ref_id: "AXVTU-NO-REF", status: "failed", supplier_ref: null },
+  ], paidImmediately: true });
+  const user = userEvent.setup();
+  const action = await screen.findByRole("button", { name: "Cek status topup TUNVN AXVTU-FIXTURE" });
+  expect(screen.getAllByRole("button", { name: /Cek status topup/ })).toEqual([action]);
+  expect(screen.queryByRole("button", { name: /Lihat topup/ })).toBeNull();
+  action.focus(); await user.keyboard("{Enter}");
+  const dialog = within(screen.getByRole("dialog"));
+  expect(dialog.queryByText(address)).toBeNull();
+  expect(dialog.queryByRole("button", { name: /Buat (topup|tagihan)/ })).toBeNull();
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+  await user.click(dialog.getByRole("button", { name: "Cek status" }));
+  expect(await dialog.findByText("Saldo masuk")).toBeTruthy();
+  expect(dialog.queryByRole("button", { name: "Cek status" })).toBeNull();
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST").map(([url]) => url)).toEqual([`${TOPUPS}/13/refresh`]);
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Riwayat topup" })));
+});
+
 it("offers a manual recheck when an SK link has not arrived", async () => {
   const fetch = setup({ items: [{ ...pending, id: 12, supplier: "sekalipay", currency: "IDR", payment: null }] });
   fireEvent.click(await screen.findByRole("button", { name: /Lihat topup Sekalipay/ }));

@@ -46,7 +46,7 @@ const lease = () => {
 };
 
 describe("durable automatic credential-send fence", () => {
-  it.each(["telegram", "whatsapp"].flatMap(channel => ["shared", "unique"].map(mode => [channel, mode])))
+  it.each(["telegram"].flatMap(channel => ["shared", "unique"].map(mode => [channel, mode])))
   ("%s/%s: two executors including item-lease takeover invoke transport once", async (channel, mode) => {
     const { order, database } = await setup(channel, mode);
     let started!: () => void;
@@ -70,7 +70,7 @@ describe("durable automatic credential-send fence", () => {
     if (mode === "unique") expect(fixture.sql.prepare("SELECT status FROM fulfillment_inventory WHERE id=1").get()?.status).toBe("delivered");
   });
 
-  it.each(["telegram", "whatsapp"])("%s: definite rejection retries; ambiguous response waits beyond ten minutes", async channel => {
+  it.each(["telegram"])("%s: definite rejection retries; ambiguous response waits beyond ten minutes", async channel => {
     const { order, database } = await setup(channel);
     if (channel === "telegram") vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, error_code: 403 } as never);
     else vi.mocked(sendTextMessage).mockResolvedValueOnce({ ok: false, outcomeUnknown: false, error: "target_not_allowed" });
@@ -177,13 +177,13 @@ describe("durable automatic credential-send fence", () => {
     expect(ledger()).toBeUndefined();
   });
 
-  it("WhatsApp 500 without outcomeUnknown is still ambiguous, not an immediate retry", async () => {
+  it("historical WhatsApp manifest routes to manual without touching the send ledger", async () => {
     const { order, database } = await setup("whatsapp");
-    vi.mocked(sendTextMessage).mockResolvedValue({ ok: false, outcomeUnknown: false, error: "send_failed" });
     await processItem(order, item(), undefined, database);
-    await processItem(order, item(), undefined, database);
-    expect(sendTextMessage).toHaveBeenCalledTimes(1);
-    expect(ledger().status).toBe("sending");
+    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(item().status).toBe("manual_required");
+    expect(ledger()).toBeUndefined();
   });
 
   it("a successful send whose checkpoint fails remains sending until the stale window", async () => {

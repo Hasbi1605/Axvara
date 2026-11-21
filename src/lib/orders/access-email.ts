@@ -16,8 +16,19 @@
 // - Hanya order pin6 berversi + email valid + non-WA yang dikirim; WA,
 //   non-pin6, tanpa email, legacy v0 di-exhaust tanpa kirim.
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { keyPrefixRange } from "@/lib/db/key-prefix";
 import { ACCESS_PIN_EMAIL_PREFIX } from "./access-email-queue";
 export { ACCESS_PIN_EMAIL_PREFIX, credentialAccessEmailStatement } from "./access-email-queue";
+
+/**
+ * BINARY range covering the credential-access key namespace. `LIKE 'prefix%'`
+ * is case-insensitive by default and cannot use the TEXT primary-key index
+ * (full SCAN); the range form SEARCHes it (audit AU-G2-4).
+ */
+export function credentialAccessKeyRange(column = "idempotency_key"): string {
+  const { start, end } = keyPrefixRange(ACCESS_PIN_EMAIL_PREFIX);
+  return `${column} >= '${start}' AND ${column} < '${end}'`;
+}
 
 export const ACCESS_PIN_SEND_TIMEOUT_MS = 8_000;
 export const ACCESS_PIN_MAX_ATTEMPTS = 5;
@@ -155,7 +166,7 @@ export async function processCredentialAccessEmails(
         `UPDATE buyer_notice_log SET status='failed', access_lease=NULL, updated_at=datetime('now')
           WHERE idempotency_key IN (
             SELECT idempotency_key FROM buyer_notice_log
-             WHERE idempotency_key LIKE '${ACCESS_PIN_EMAIL_PREFIX}%'
+             WHERE ${credentialAccessKeyRange()}
                AND order_code=? AND status='sending'
                AND julianday(updated_at) < julianday('now','-${ACCESS_PIN_STALE_MINUTES} minutes')
              LIMIT 1)`,
@@ -166,7 +177,7 @@ export async function processCredentialAccessEmails(
         `UPDATE buyer_notice_log SET status='failed', access_lease=NULL, updated_at=datetime('now')
           WHERE idempotency_key IN (
             SELECT idempotency_key FROM buyer_notice_log
-             WHERE idempotency_key LIKE '${ACCESS_PIN_EMAIL_PREFIX}%'
+             WHERE ${credentialAccessKeyRange()}
                AND status='sending'
                AND julianday(updated_at) < julianday('now','-${ACCESS_PIN_STALE_MINUTES} minutes')
              LIMIT 1)`,
@@ -182,7 +193,7 @@ export async function processCredentialAccessEmails(
     due = onlyCode
       ? await db.queryAll(
         `SELECT idempotency_key, order_code, access_attempts FROM buyer_notice_log
-          WHERE idempotency_key LIKE '${ACCESS_PIN_EMAIL_PREFIX}%'
+          WHERE ${credentialAccessKeyRange()}
             AND order_code=? AND status='failed' AND access_attempts < ?
             AND (access_retry_at IS NULL OR datetime(access_retry_at) <= datetime('now'))
           ORDER BY created_at ASC LIMIT ?`,
@@ -190,7 +201,7 @@ export async function processCredentialAccessEmails(
       )
       : await db.queryAll(
         `SELECT idempotency_key, order_code, access_attempts FROM buyer_notice_log
-          WHERE idempotency_key LIKE '${ACCESS_PIN_EMAIL_PREFIX}%'
+          WHERE ${credentialAccessKeyRange()}
             AND status='failed' AND access_attempts < ?
             AND (access_retry_at IS NULL OR datetime(access_retry_at) <= datetime('now'))
           ORDER BY created_at ASC LIMIT ?`,

@@ -83,6 +83,15 @@ describe("ACC manual QRIS (hook gagal, dana benar masuk)", () => {
     expect(order().status).toBe("pending");
   });
 
+  it("settles a historical WhatsApp order without a group paid notice", async () => {
+    await checkout();
+    fixture.sql.prepare("UPDATE orders SET sales_channel='whatsapp',channel_conversation_id='fixture@g.us' WHERE code=?").run(A);
+    expect((await acc({ status: "lunas", action: "paid_qris", admin_note: "Mutasi masuk dari rekening Fixture" })).status).toBe(200);
+    expect(order().payment_status).toBe("paid");
+    expect(tx().status).toBe("paid");
+    expect(fixture.sql.prepare("SELECT * FROM whatsapp_outbox").all()).toEqual([]);
+  });
+
   it("menolak untuk non-QRIS dan order non-pending", async () => {
     await checkout();
     fixture.sql.prepare("UPDATE orders SET payment_method='seabank' WHERE code=?").run(A);

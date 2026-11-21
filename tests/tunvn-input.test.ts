@@ -136,7 +136,7 @@ describe("atomic snapshot and eligibility",() => {
   it("unsupported WA factory refuses before any order/invoice",async () => {
     const { getActiveVariant }=await import("@/lib/catalog");
     const variant=await getActiveVariant(1);
-    await expect(createPendingChannelOrder({ salesChannel:"whatsapp",productId:1,productName:"Muse",variantId:1,variant:variant!,customerId:"123",customerName:"Fixture",idempotencyKey:"wa-test" })).rejects.toThrow("unsupported_buyer_input");
+    await expect(createPendingChannelOrder({ salesChannel:"web",productId:1,productName:"Muse",variantId:1,variant:variant!,customerId:"123",customerName:"Fixture",idempotencyKey:"wa-test" })).rejects.toThrow("unsupported_buyer_input");
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()).toEqual({ n:0 });
   });
   it("Telegram approval binds the code and config without including code in callback",async () => {

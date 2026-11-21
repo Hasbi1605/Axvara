@@ -4,8 +4,6 @@ import path from "node:path";
 import * as jose from "jose";
 import { NextRequest } from "next/server";
 import { createAdminToken, createIdleToken, verifyCheckoutQuoteToken } from "@/lib/auth";
-import * as retiredQuoteRoute from "@/app/api/admin/payments/test/quote/route";
-import * as retiredOrdersRoute from "@/app/api/admin/payments/test/orders/route";
 import { POST as publicQuote } from "@/app/api/checkout/quote/route";
 import { POST as publicOrder } from "@/app/api/orders/route";
 import { buildMethodOptions } from "@/lib/payments/method-options";
@@ -60,20 +58,6 @@ it("retires /admin/payments/test page, scope helper, and isPaymentAdminTestEnabl
   expect(fs.existsSync(path.join(process.cwd(), "src/app/(shop)/admin/payments/test/page.tsx"))).toBe(false);
   expect(fs.existsSync(path.join(process.cwd(), "src/components/storefront/PaymentTestScope.tsx"))).toBe(false);
   expect("isPaymentAdminTestEnabled" in rails).toBe(false);
-});
-
-it("retired /api/admin/payments/test/{quote,orders} endpoints return 410 Gone across methods even with admin session and legacy env", async () => {
-  for (const route of [retiredQuoteRoute, retiredOrdersRoute]) {
-    for (const handler of [route.GET, route.POST, route.PUT, route.PATCH, route.DELETE]) {
-      const response = await handler();
-      expect(response.status).toBe(410);
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(await response.json()).toEqual({ error: "Tes pembayaran admin sudah dipensiunkan." });
-    }
-  }
-  expect(fetch).not.toHaveBeenCalled();
-  expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
-  void cookie;
 });
 
 it("PAYMENT_ADMIN_TEST_ENABLED=true never enables crypto/gateway; public quote ignores test query/body", async () => {

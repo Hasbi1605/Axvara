@@ -7,14 +7,13 @@
 // Saat pemasok mengubah teksnya, suntingan admin tetap tampil ke pembeli
 // (tidak jatuh ke teks mentah supplier), namun ditandai stale/changed agar
 // admin meninjau ulang. Kurasi di kode tetap berhenti saat sidik jari berubah.
-import type { ProductDetail, VariantSummary } from "@/lib/catalog";
+import { buyerDeliveryKind, hasAutomaticProcessing, supplierVariantOf, variantLabelDuration, type ProductDetail, type VariantSummary } from "@/lib/catalog";
 import { CURATED_VARIANT_COPY, type CuratedVariantCopy } from "./curated";
 import { CURATED_VARIANT_COPY_EN, type CuratedVariantCopyEn } from "./curated-en";
 import type { Locale } from "@/lib/i18n/locale";
 import { buildSections, parseAdminVariantCopy, supplierVariantCopy, type ActivationGroup, type VariantCopy } from "./format";
 import { sanitizeSupplierCopy, type SupplierLinkMap } from "./sanitize";
 import { supplierFingerprint } from "./text";
-import { deriveSkDuration } from "@/lib/catalog-duration";
 
 const CURATED = new Map(CURATED_VARIANT_COPY.map((entry) => [entry.key, entry]));
 
@@ -93,23 +92,25 @@ export function resolveVariantCopyDetailed(
   const adminCopyEn = admin ? parseAdminVariantCopy(admin.termsEn, admin.activationEn) : null;
   const fingerprint = admin?.fingerprint ?? "";
   const hasAdmin = adminCopy !== null;
-  const adminFresh = hasAdmin && fingerprint === supplierKey;
-  const adminStale = !adminFresh && (hasAdmin || adminCopyEn !== null);
-  // Suntingan admin tetap tampil walau sidik jari supplier berubah; EN hanya
-  // memakai admin EN bila diisi, tanpa EN jatuh ke kurasi EN/WR.
-  const copy = hasAdmin ? (locale === "en" ? adminCopyEn ?? auto : adminCopy) : auto;
-  const status: VariantCopyStatus = hasAdmin
-    ? (locale === "en" ? (adminCopyEn ? "admin" : auto ? auto.source : "none") : "admin")
+  const hasAdminEn = adminCopyEn !== null;
+  const noOverride = !hasAdmin && !hasAdminEn;
+  const adminFresh = !noOverride && fingerprint === supplierKey;
+  const adminStale = !noOverride && !adminFresh;
+  // Suntingan admin tetap tampil walau sidik jari supplier berubah. EN memakai
+  // suntingan EN bila diisi, TANPA bergantung pada override ID (audit AU-H2-7):
+  // dulu `hasAdmin ? … : auto` membuat EN-only tak pernah terlihat pembeli EN.
+  const copy = locale === "en" ? (hasAdminEn ? adminCopyEn : auto) : (hasAdmin ? adminCopy : auto);
+  const localeOverride = locale === "en" ? hasAdminEn : hasAdmin;
+  const status: VariantCopyStatus = localeOverride
+    ? "admin"
     : auto ? auto.source : "none";
-  // Tinjauan dihitung dari salinan ID (bukan locale): admin menyunting teks ID.
-  // "reviewed" = teks supplier yang tampil persis sama dengan sidik jari yang
-  // sudah ditandai admin, tanpa override ID.
+  // Bahasa tampilan tidak mengubah status tinjauan. Simpan override di salah
+  // satu bahasa mencatat sidik jari; `reviewed` khusus tanda tanpa override.
   const idStatus: VariantCopyStatus = hasAdmin ? "admin" : auto ? auto.source : "none";
-  const noOverride = !hasAdmin;
   const reviewed = noOverride && fingerprint !== "" && fingerprint === supplierKey && idStatus === "pemasok";
   let reviewKind: VariantCopyReviewKind = null;
   if (adminStale || (noOverride && fingerprint !== "" && fingerprint !== supplierKey && idStatus === "pemasok")) reviewKind = "changed";
-  else if (idStatus === "pemasok" && !reviewed) reviewKind = "raw";
+  else if (idStatus === "pemasok" && !reviewed && !adminFresh) reviewKind = "raw";
   return { copy, status, adminStale, auto, supplierKey, reviewKind, reviewed };
 }
 
@@ -132,37 +133,62 @@ export function adminCopyOf(variant: Pick<VariantSummary, "admin_terms" | "admin
   return { terms: variant.admin_terms, activation: variant.admin_activation, fingerprint: variant.admin_copy_fingerprint, termsEn: variant.admin_terms_en, activationEn: variant.admin_activation_en };
 }
 
-export type StorefrontVariant = VariantSummary & { copy: VariantCopy | null; copy_en: VariantCopy | null };
+export type StorefrontVariant = ReturnType<typeof publicVariant>;
 export type StorefrontProductDetail = Omit<ProductDetail, "variants"> & { variants: StorefrontVariant[] };
+
+function publicVariant(v: VariantSummary, links?: SupplierLinkMap) {
+  const admin = adminCopyOf(v);
+  const copy = resolveVariantCopy(v.terms, v.delivery_terms, admin, "id");
+  const copyEn = resolveVariantCopy(v.terms, v.delivery_terms, admin, "en");
+  const supplier = supplierVariantOf(v);
+  const deliveryKind = buyerDeliveryKind(v);
+  // Allowlist: jangan spread baris varian; kolom supplier baru tetap server-only.
+  return {
+    id: v.id,
+    product_id: v.product_id,
+    label: v.label,
+    label_duration: variantLabelDuration(v),
+    warranty_type: v.warranty_type,
+    warranty_value: v.warranty_value,
+    warranty_unit: v.warranty_unit,
+    warranty_label: v.warranty_label,
+    price: v.price,
+    compare_price: v.compare_price,
+    stock: v.stock,
+    min_qty: v.min_qty,
+    max_qty: v.max_qty,
+    buyer_field_key: v.buyer_field_key,
+    fulfillment_mode: v.fulfillment_mode,
+    is_active: v.is_active,
+    bulk_pricing_enabled: v.bulk_pricing_enabled,
+    bulk_pricing_tiers: v.bulk_pricing_tiers,
+    bulk_pricing_invalid: v.bulk_pricing_invalid,
+    inventory_available: v.inventory_available,
+    // Placeholder lama; isi hanya dikirim melalui copy/copy_en.
+    terms: null,
+    delivery_terms: null,
+    supplier_variant: supplier !== null,
+    delivery_kind: deliveryKind,
+    ...(supplier === "wr" && deliveryKind === "queued" ? { queue_has_eta: true } : {}),
+    ...(hasAutomaticProcessing(v) ? { automatic_processing: true } : {}),
+    ...(v.automatic_delivery ? { automatic_delivery: true } : {}),
+    copy: links ? sanitizeSupplierCopy(copy, links) : copy,
+    copy_en: links ? sanitizeSupplierCopy(copyEn, links) : copyEn,
+  };
+}
 
 /**
  * Detail produk untuk storefront: teks mentah (WR & admin) diganti salinan
  * siap tampil. Kedua locale dikirim sekaligus agar cache publik `/api/catalog`
  * tidak bergantung cookie; klien memilih `copy_en` saat EN.
  * Salinan bersumber "pemasok" ikut disanitasi memakai link aktif.
+ *
+ * Penanda pengiriman dan durasi label hanya membawa perilaku pembeli,
+ * bukan identitas atau konfigurasi internal supplier (AU-C1-1).
  */
 export function withVariantCopy(detail: ProductDetail, links?: SupplierLinkMap): StorefrontProductDetail {
   return {
     ...detail,
-    variants: detail.variants.map((variant) => {
-      const admin = adminCopyOf(variant);
-      const copy = resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "id");
-      const copyEn = resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "en");
-      const skDuration = variant.sk_duration ?? deriveSkDuration(variant);
-      return {
-        ...variant,
-        terms: null,
-        delivery_terms: null,
-        sk_description: undefined,
-        sk_duration: skDuration ?? null,
-        admin_terms: undefined,
-        admin_activation: undefined,
-        admin_terms_en: undefined,
-        admin_activation_en: undefined,
-        admin_copy_fingerprint: undefined,
-        copy: links ? sanitizeSupplierCopy(copy, links) : copy,
-        copy_en: links ? sanitizeSupplierCopy(copyEn, links) : copyEn,
-      };
-    }),
+    variants: detail.variants.map((variant) => publicVariant(variant, links)),
   };
 }

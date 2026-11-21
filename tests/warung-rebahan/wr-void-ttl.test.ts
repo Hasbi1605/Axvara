@@ -2,8 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { createD1Fixture } from "../helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { reconcileBlockedBalance, WR_BLOCKED_MAX_AGE_HOURS } from "@/lib/warung-rebahan/order";
+import { notifyBuyerWrBlocked } from "@/lib/notify-buyer";
+import { sendForwardEmail } from "@/lib/warung-rebahan/forward-sender";
+import { createWrOrderLink, processWrPendingOrders, reconcileBlockedBalance, WR_BLOCKED_MAX_AGE_HOURS } from "@/lib/warung-rebahan/order";
 import { seedWrCatalog, seedWrFulfillmentItem, seedWrOrder, setupWrFixture } from "./helpers";
+
+vi.mock("@/lib/warung-rebahan/forward-sender", () => ({
+  sendForwardEmail: vi.fn(async () => ({ ok: true, providerId: "mock-email" })),
+}));
 
 // Scope B (2026-09-28, zombie-order fix): route void CAS + TTL auto-revive
 // + kabar buyer saat blocked_balance.
@@ -229,40 +235,49 @@ describe("B: TTL reconcileBlockedBalance", () => {
 });
 
 describe("B: kabar buyer saat blocked_balance", () => {
-  it("masuk blocked → satu pesan outbox idempoten, tidak spam", async () => {
-    const fx = await setupWrFixture();
-    try {
-      seedWrCatalog(fx);
-      seedWrOrder(fx, "AXV-BLOCKED-NOTICE");
-      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
-      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
-      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
-      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async (url: string) => {
-          if (String(url).includes("/balance")) {
-            return { ok: true, json: async () => ({ success: true, message: "ok", data: { balance: 100000, currency: "IDR" } }) };
-          }
-          return { ok: true, json: async () => ({ success: false, message: "Saldo tidak mencukupi", data: null }) };
-        }),
-      );
-      const { createWrOrderLink, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
-      const db = createDatabaseAccess(fx.db);
-      await createWrOrderLink("AXV-BLOCKED-NOTICE", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
-      const result = await processWrPendingOrders(createDatabaseAccess(fx.db));
-      expect(result.blocked).toBe(1);
-      const key = "wa:text:wr-blocked:AXV-BLOCKED-NOTICE";
-      const msg = fx.sql.prepare("SELECT destination, status FROM whatsapp_outbox WHERE idempotency_key=?").get(key) as { destination: string; status: string } | undefined;
-      expect(msg).toBeTruthy();
-      expect(String(msg?.destination)).toContain("628");
-      // Panggil lagi → tidak duplikat.
-      const { notifyBuyerWrBlocked } = await import("@/lib/notify-buyer");
-      await notifyBuyerWrBlocked("AXV-BLOCKED-NOTICE", createDatabaseAccess(fx.db));
-      const count = Number((fx.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE idempotency_key=?").get(key) as { n: number }).n);
-      expect(count).toBe(1);
-    } finally {
-      fx.close();
-    }
+  const code = "AXV-BLOCKED-NOTICE";
+
+  async function blockWebOrder(email: string | null) {
+    vi.mocked(sendForwardEmail).mockClear();
+    seedWrCatalog(fixture);
+    seedWrOrder(fixture, code);
+    fixture.sql.prepare("UPDATE orders SET customer_email=? WHERE code=?").run(email, code);
+    vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+    // Preflight sees enough balance, but the purchase is rejected for insufficient balance.
+    stubBalance(100000);
+    const db = createDatabaseAccess(fixture.db);
+    await createWrOrderLink(code, [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+    expect((await processWrPendingOrders(db)).blocked).toBe(1);
+    return db;
+  }
+
+  it("web dengan email → satu email saat diblokir, idempoten, tanpa outbox WA", async () => {
+    const email = "buyer@example.test";
+    const db = await blockWebOrder(email);
+    expect(sendForwardEmail).toHaveBeenCalledTimes(1);
+    expect(sendForwardEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: email, subject: `Pesanan ${code} tertunda sementara`,
+    }));
+    expect(fixture.sql.prepare("SELECT idempotency_key, channel, status FROM buyer_notice_log WHERE order_code=?").all(code))
+      .toEqual([{ idempotency_key: `email:wr-blocked:${code}`, channel: "email", status: "sent" }]);
+    expect(await notifyBuyerWrBlocked(code, db)).toBe(true);
+    expect(sendForwardEmail).toHaveBeenCalledTimes(1);
+    expect(fixture.sql.prepare("SELECT idempotency_key FROM whatsapp_outbox").all()).toEqual([]);
+  });
+
+  it("web tanpa email → false, tanpa push WA, tetap terlihat di antrean WR admin", async () => {
+    const db = await blockWebOrder(null);
+    expect(await notifyBuyerWrBlocked(code, db)).toBe(false);
+    expect(sendForwardEmail).not.toHaveBeenCalled();
+    expect(fixture.sql.prepare("SELECT idempotency_key FROM buyer_notice_log WHERE order_code=?").all(code)).toEqual([]);
+    expect(fixture.sql.prepare("SELECT idempotency_key FROM whatsapp_outbox").all()).toEqual([]);
+
+    const { GET } = await import("@/app/api/admin/warung/orders/route");
+    const res = await GET(await adminRequest("/api/admin/warung/orders?status=blocked_balance"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      total: 1,
+      orders: [{ order_code: code, status: "blocked_balance", order_status: "lunas", sales_channel: "web", customer_email: null }],
+    });
   });
 });

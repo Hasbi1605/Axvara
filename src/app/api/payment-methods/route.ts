@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { execRun, queryAll, queryFirst } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -50,7 +51,9 @@ export async function PUT(req: NextRequest) {
   if (!(await queryFirst("SELECT * FROM payment_methods WHERE id=?", id))) {
     return NextResponse.json({ error: "Metode pembayaran tidak ditemukan" }, { status: 404 });
   }
-  const parsed = updateSchema.safeParse(await req.json().catch(() => null));
+  const bounded = await readJsonBody(req, 8_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = updateSchema.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }
@@ -76,7 +79,9 @@ export async function POST(req: NextRequest) {
   if (!(await requireAdmin(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const parsed = createSchema.safeParse(await req.json().catch(() => null));
+  const bounded = await readJsonBody(req, 8_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = createSchema.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }

@@ -17,7 +17,7 @@ beforeEach(() => {
   process.env.WHATSAPP_ENABLED = "true";
   process.env.FULFILLMENT_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 });
-afterEach(() => { fixture.close(); });
+afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 async function overview() {
   const { createAdminToken, createIdleToken } = await import("@/lib/auth");
@@ -35,6 +35,81 @@ async function overview() {
 // R11: sinyal health harus mencerminkan database aktual — matched terkini
 // ikut dihitung, antrean macet tak tertutup kirim baru, kanal nonaktif jujur.
 describe("R11 overview reflects the real database state", () => {
+  it("reads Telegram backlog and WA disconnection sampled by cron, without fetching from overview", async () => {
+    vi.stubEnv("CRON_SECRET", "health-fixture");
+    vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", "health-webhook");
+    const { canonicalWebhookUrl } = await import("@/lib/telegram/api");
+    let pending = 51;
+    let gateway = { connected: false, promoBot: { configured: true, connected: true, blocked: false } };
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/getWebhookInfo")) return Response.json({ ok: true, result: { url: canonicalWebhookUrl(), pending_update_count: pending } });
+      if (String(input) === "https://wa.example/health") {
+        expect(init?.method ?? "GET").toBe("GET");
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+        expect(init?.headers).toBeUndefined();
+        return Response.json(gateway);
+      }
+      throw new Error(`unexpected request: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchFn);
+    const { POST } = await import("@/app/api/cron/lite/route");
+    const tick = (job: string) => POST(new NextRequest(`http://localhost/api/cron/lite?job=${job}`, {
+      method: "POST", headers: { authorization: "Bearer health-fixture" },
+    }));
+    for (const job of ["tg_webhook", "cleanup", "cleanup"]) expect((await tick(job)).status).toBe(200);
+    const calls = fetchFn.mock.calls.length;
+    const body = await overview();
+    expect(fetchFn.mock.calls.length).toBe(calls);
+    expect(body.system_details.telegram).toMatchObject({ level: "degraded", detail: expect.stringContaining("51") });
+    expect(body.system_details.whatsapp.level).toBe("degraded");
+    expect(fetchFn.mock.calls.filter(([url]) => String(url).endsWith("/health"))).toHaveLength(1);
+
+    fixture.sql.exec("UPDATE store_settings SET updated_at=datetime('now','-21 minutes') WHERE key IN ('tg_webhook_health','wa_gateway_health')");
+    expect((await overview()).system_details).toMatchObject({ telegram: { level: "configured" }, whatsapp: { level: "configured" } });
+    pending = 0;
+    gateway = { connected: true, promoBot: { configured: true, connected: true, blocked: true } };
+    expect((await tick("tg_webhook")).status).toBe(200);
+    expect((await tick("cleanup")).status).toBe(200);
+    expect((await overview()).system_details).toMatchObject({
+      telegram: { level: "healthy" }, whatsapp: { level: "degraded", detail: expect.stringContaining("dijeda") },
+    });
+  });
+
+  it("ignores unrelated event providers and surfaces KlikQRIS cron poll failures", async () => {
+    vi.stubEnv("KLIKQRIS_ENABLED", "true");
+    vi.stubEnv("KLIKQRIS_API_KEY", "fixture");
+    vi.stubEnv("KLIKQRIS_MERCHANT_ID", "42");
+    vi.stubEnv("CRON_SECRET", "health-fixture");
+    fixture.sql.exec(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,provider,processed_at)
+      VALUES('x1','h',10000,'failed','nowpayments',datetime('now')),
+            ('x2','h',10000,'matched','gopay',datetime('now'));
+      INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,expires_at)
+        VALUES('KQ','X','6280','[]',10000,'qris','pending','pending',datetime('now','+10 minutes'));
+      INSERT INTO payment_transactions(order_code,provider,provider_mode,requested_amount,payable_amount,status,provider_signature,provider_order_id,merchant_id,expires_at)
+        VALUES('KQ','klikqris','dynamic',10000,10001,'pending','signature','KQ','42',datetime('now','+10 minutes'));`);
+    expect((await overview()).system_details.qris.level).toBe("healthy");
+    fixture.sql.exec("INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,provider) VALUES('gopay-failure','h',10000,'failed','gopay')");
+    expect((await overview()).system_details.qris).toMatchObject({ level: "degraded", detail: expect.stringContaining("1 event gagal") });
+    fixture.sql.exec("DELETE FROM dana_webhook_events WHERE event_key='gopay-failure'");
+    let down = true;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toMatch(/\/api\/qris\/status\/KQ$/);
+      return down ? new Response(null, { status: 503 }) : Response.json({ status: true, data: { order_id: "KQ", amount: 10000, total_amount: 10001, status: "PENDING" } });
+    }));
+    const { POST } = await import("@/app/api/cron/lite/route");
+    const tick = () => POST(new NextRequest("http://localhost/api/cron/lite?job=payments", {
+      method: "POST", headers: { authorization: "Bearer health-fixture" },
+    }));
+    expect(await (await tick()).json()).toMatchObject({ payments_failed: 1 });
+    expect(fixture.sql.prepare("SELECT value FROM store_settings WHERE key='klikqris_health_poll_failed'").get()).toEqual({ value: "1" });
+    const body = await overview();
+    expect(body.system_details.qris).toMatchObject({ level: "degraded", detail: expect.stringContaining("KlikQRIS") });
+    down = false;
+    fixture.sql.exec("UPDATE payment_transactions SET last_checked_at=NULL WHERE order_code='KQ'");
+    expect(await (await tick()).json()).toMatchObject({ payments_checked: 1, payments_failed: 0 });
+    expect((await overview()).system_details.qris.level).toBe("healthy");
+  });
+
   it("recent matched event marks qris healthy, not silent null", async () => {
     fixture.sql.prepare(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,processed_at)
       VALUES('m1','h',10000,'matched',datetime('now'))`).run();

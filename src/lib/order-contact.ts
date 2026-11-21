@@ -6,6 +6,14 @@ import { constantTimeEqual } from "@/lib/security";
 export type BuyerContact = { kind: "email"; value: string } | { kind: "wa"; value: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Nomor WA checkout web/Pedia/Games: 08…/+62…/62… lalu "8" + 8–13 digit
+// (10–15 digit total). Satu aturan untuk SEMUA kanal, termasuk Telegram.
+const WA_NUMBER_RE = /^(\+62|62|0)8\d{8,13}$/;
+
+/** Validator nomor WA kanonis web (spasi/tanda hubung diabaikan). */
+export function isValidWaNumber(raw: unknown): boolean {
+  return WA_NUMBER_RE.test(String(raw ?? "").replace(/[\s-]/g, ""));
+}
 
 /** Input berisi "@" dianggap email, selain itu No. WA. `null` = format tidak valid. */
 export function parseBuyerContact(raw: unknown): BuyerContact | null {
@@ -16,7 +24,7 @@ export function parseBuyerContact(raw: unknown): BuyerContact | null {
     return email.length <= 254 && EMAIL_RE.test(email) ? { kind: "email", value: email } : null;
   }
   const compact = text.replace(/[\s-]/g, "");
-  return /^(\+62|62|0)8\d{8,13}$/.test(compact) ? { kind: "wa", value: normalizeWa(compact) } : null;
+  return isValidWaNumber(compact) ? { kind: "wa", value: normalizeWa(compact) } : null;
 }
 
 /** 08… / +62… / 62… → 62… */

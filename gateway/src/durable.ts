@@ -55,6 +55,10 @@ export async function initializeDurable(onLost: () => void) {
     phone TEXT PRIMARY KEY, next_send_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     paused_until TIMESTAMPTZ, group_id TEXT, last_ack_at TIMESTAMPTZ, last_sent_at TIMESTAMPTZ
   )`);
+  await lease.query(`CREATE TABLE IF NOT EXISTS axvara_wa_welcome_inbox (
+    key TEXT PRIMARY KEY, payload JSONB NOT NULL, expires_at TIMESTAMPTZ NOT NULL,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(), attempts INTEGER NOT NULL DEFAULT 0
+  )`);
   await lease.query(`CREATE TABLE IF NOT EXISTS axvara_wa_runtime (
     id INTEGER PRIMARY KEY CHECK(id=1), phone TEXT NOT NULL, revision TEXT NOT NULL,
     group_id TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -97,6 +101,9 @@ export async function deliveryClaim(key: string, target: string, text: string, p
 export async function settleDelivery(key: string, messageId?: string, phone = BOT_NUMBER, message?: string) {
   await pool.query("UPDATE axvara_wa_delivery SET status=$2,message_id=$3,payload=COALESCE($4,payload),updated_at=now() WHERE key=$1 AND (status!='sent' OR $2='sent')", [key, messageId ? "sent" : "unknown", messageId ?? null, messageId ? message ?? null : null]);
   if (messageId) await pool.query("UPDATE axvara_wa_control SET last_sent_at=now() WHERE phone=$1", [phone]);
+}
+export async function releaseUnsentDelivery(key: string) {
+  await pool.query("UPDATE axvara_wa_delivery SET status='queued',updated_at=now() WHERE key=$1 AND status='sending'", [key]);
 }
 export async function pauseOutbound(minutes = 15, phone = BOT_NUMBER) {
   await pool.query("UPDATE axvara_wa_control SET paused_until=now()+($2 * interval '1 minute') WHERE phone=$1", [phone, minutes]);
