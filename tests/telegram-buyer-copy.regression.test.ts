@@ -45,7 +45,7 @@ describe("plain Indonesian Telegram buyer copy", () => {
       cartCheckoutSummaryMessage([item], 10000),
       invoiceMessage({ orderCode, productName: "Produk A", payableAmount: 10123, expiresAt }),
       orderReminderMessage({ orderCode, payableAmount: 10123, expiresMs: Date.parse(expiresAt), now: Date.parse(expiresAt) - 300_000 }),
-      orderPaidMessage(orderCode, "Produk A"), orderPaidMessage(orderCode, "Produk A", false, "instant"),
+      orderPaidMessage(orderCode, "Produk A"), orderPaidMessage(orderCode, "Produk A", "instant"),
       orderExpiredMessage(orderCode), orderCancelledMessage(orderCode),
       outOfStockMessage(), errorMessage(), qrisRenewRejectedMessage("amount_unavailable"),
       ...credentialMessages({ plaintext: "account:password" }),

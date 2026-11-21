@@ -9,22 +9,22 @@ vi.mock("@/lib/auth",()=>({requireAdmin:vi.fn(async()=>({sid:"fixture"}))}));
 const queued=vi.hoisted(()=>vi.fn(async()=>undefined));
 vi.mock("@cloudflare/next-on-pages",()=>({getRequestContext:()=>({env:{ORDER_FULFILLMENT_QUEUE:{send:queued}},ctx:{waitUntil:vi.fn()}})}));
 vi.mock("@/lib/fulfillment/delivery/buyer-email",async original=>({...await original<object>(),sendWebDeliveryEmail:vi.fn(async()=>({ok:true}))}));
-let f:ReturnType<typeof createD1Fixture>,postStatus:number,post:Record<string,unknown>,poll:Record<string,unknown>,stock:number,fundable:boolean,timeout:boolean;
+let f:ReturnType<typeof createD1Fixture>,postStatus:number,post:Record<string,unknown>,poll:Record<string,unknown>,stock:number,fundable:boolean,timeout:boolean,unitPrice:number,finalTotal:number;
 const sid="service_gemini_plus_6m",code="AXV-20261115-AVTEST01";
 const item=()=>({product_id:1,variant_id:1,name:"Gemini",price:13500,qty:1,aivault_eligibility:{version:1,service_id:sid,source_variant_id:1,quantity:1,cost_usd:0.5}});
 const link=()=>f.sql.prepare("SELECT * FROM aivault_order_links").get()!;
 const due=()=>f.sql.exec("UPDATE aivault_order_links SET next_attempt_at=datetime('now','-1 minute'),lease_expires_at=NULL");
 const tick=async()=>{const b=createBudgetedDatabase(40,2,f.db);await processAivaultOrders(b.access);expect(b.used).toBeLessThanOrEqual(38);};
-const buys=()=>vi.mocked(fetch).mock.calls.filter(([,init])=>init?.method==="POST");
+const buys=()=>vi.mocked(fetch).mock.calls.filter(([url,init])=>init?.method==="POST" && String(url).includes("supplier.test"));
 beforeEach(()=>{
   f=createD1Fixture();vi.stubEnv("AIVAULT_ENABLED","true");vi.stubEnv("AIVAULT_SYNC_ENABLED","true");vi.stubEnv("AIVAULT_API_KEY","fixture");vi.stubEnv("AIVAULT_BASE_URL","https://supplier.test");stubFulfillmentKey();
   f.sql.exec(`INSERT INTO products(id,name,slug,price,stock,aivault_family) VALUES(1,'Gemini','gemini-plus-av',13500,10,'gemini');INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,aivault_service_id) VALUES(1,1,'AV-${sid}','6 Bulan',13500,10,'manual','${sid}');INSERT INTO aivault_products(service_id,name,stock,unit_price_usd,pricing_tiers_json) VALUES('${sid}','Gemini',10,0.5,'[]');`);
-  postStatus=201;stock=10;fundable=true;timeout=false;
+  postStatus=201;stock=10;fundable=true;timeout=false;unitPrice=0.5;finalTotal=0.5;
   post={success:true,order_id:"API_TEST",external_order_id:`${code}-0`,service_id:sid,quantity:1,total_cost:0.5,currency:"USD",products:["buyer-secret"]};
   poll={order_id:"API_TEST",service_id:sid,quantity:1,total_cost:0.5,currency:"USD",status:"delivered",products:["buyer-secret"]};
   vi.stubGlobal("fetch",vi.fn(async(url,init)=>{
     const path=new URL(String(url)).pathname;
-    if(path.endsWith("/quote"))return Response.json({service_id:sid,quantity:1,currency:"USD",stock,sufficient_balance:fundable,pricing:{unit_price:0.5,final_total:0.5}});
+    if(path.endsWith("/quote"))return Response.json({service_id:sid,quantity:1,currency:"USD",stock,sufficient_balance:fundable,pricing:{unit_price:unitPrice,final_total:finalTotal}});
     if(init?.method==="POST"){expect(link().request_sent_at).toBeTruthy();if(timeout)throw new Error("fixture timeout");return Response.json(post,{status:postStatus});}
     if(path.endsWith("/order/API_TEST") || path.endsWith("/order/API1VLJZG0"))return Response.json(poll);
     throw new Error("Unexpected fixture request");
@@ -72,6 +72,24 @@ it("stock recovering during auto-retry completes the order without admin",async(
 });
 it("insufficient balance stays an immediate needs_admin without preflight retries",async()=>{
   insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;await tick();expect(link()).toMatchObject({status:"needs_admin",last_error:"insufficient_balance",preflight_attempts:0});
+});
+it("FX-16 AU-H2-4: a live quote within 2% of the paid snapshot still buys",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});finalTotal=0.5*1.02;await tick();
+  expect(buys()).toHaveLength(1);expect(link().status).toBe("completed");
+});
+it("FX-16 AU-H2-4: a live quote above snapshot+2% blocks without POST and one admin alert",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});finalTotal=0.6;
+  vi.stubEnv("TELEGRAM_BOT_ENABLED","true");vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID","123");vi.stubEnv("TELEGRAM_BOT_TOKEN","fixture");
+  const send=vi.fn(async()=>Response.json({ok:true,result:{message_id:1}}));
+  const original=vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async(url,init)=>String(url).includes("api.telegram.org") ? send() : original(url,init));
+  await tick();due();await tick();
+  expect(buys()).toHaveLength(0);
+  expect(link()).toMatchObject({status:"needs_admin",last_error:"price_increased",attempt_count:0,request_sent_at:null});
+  expect(f.sql.prepare("SELECT status FROM fulfillment_items").get()).toMatchObject({status:"manual_required"});
+  // One deduped admin alert through the shared FX-11 escalation path.
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(f.sql.prepare("SELECT COUNT(*) n FROM buyer_notice_log WHERE idempotency_key=?").get(`admin:supplier-manual:${code}`)?.n).toBe(1);
 });
 it("FX-11: a terminal supplier item repairs a delivered aggregate and pages once", async () => {
   insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});

@@ -83,6 +83,25 @@ describe("recurring generation",() => {
     expect(await materializeRecurring(createDatabaseAccess(f.db),now)).toBe(1);
     expect(f.sql.prepare("SELECT recurring_id FROM operating_expenses").get()?.recurring_id).toBe(4);
   });
+  it("FX-16 AU-A1-8: resuming after a pause books the resume month only, never the paused months",async () => {
+    f.sql.exec("INSERT INTO expense_recurring(category,amount,day_of_month,start_month,last_generated_month,active) VALUES('hosting',100,5,'2026-01','2026-01',0)");
+    const db = createDatabaseAccess(f.db);
+    // April resume (WIB 2026-04-16): cursor moves to 2026-03, materialize books April only.
+    await updateRecurring(1,{active:true},db,new Date("2026-04-16T10:00:00Z"));
+    expect(f.sql.prepare("SELECT last_generated_month FROM expense_recurring").get()?.last_generated_month).toBe("2026-03");
+    expect(await materializeRecurring(db,new Date("2026-04-16T10:00:00Z"))).toBe(1);
+    expect(f.sql.prepare("SELECT recurring_month,spent_on FROM operating_expenses").all()).toEqual([{recurring_month:"2026-04",spent_on:"2026-04-05"}]);
+  });
+  it("FX-16 AU-A1-8: a resume does not rewind a cursor already ahead of the resume month",async () => {
+    f.sql.exec("INSERT INTO expense_recurring(category,amount,day_of_month,start_month,last_generated_month,active) VALUES('hosting',100,5,'2026-01','2026-04',0)");
+    const db = createDatabaseAccess(f.db);
+    await updateRecurring(1,{active:true},db,new Date("2026-04-16T10:00:00Z"));
+    expect(f.sql.prepare("SELECT last_generated_month FROM expense_recurring").get()?.last_generated_month).toBe("2026-04");
+    expect(await materializeRecurring(db,new Date("2026-04-16T10:00:00Z"))).toBe(0);
+    // Active-template catch-up (cron downtime) is unchanged: May+June are booked.
+    expect(await materializeRecurring(db,new Date("2026-06-16T10:00:00Z"))).toBe(2);
+    expect(f.sql.prepare("SELECT recurring_month FROM operating_expenses ORDER BY recurring_month").all()).toEqual([{recurring_month:"2026-05"},{recurring_month:"2026-06"}]);
+  });
 });
 
 describe("financial reports",() => {

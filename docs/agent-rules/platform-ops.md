@@ -93,6 +93,17 @@
 - Tiap sambungan `AND` pada rantai datar menambah kedalaman ekspresi. Setelah penambahan kondisi StoreBat/Mirai, guard `createOrderWithStock` melebihi batas D1 100 tingkat dan `POST /api/orders` gagal 500. Kelompokkan kondisi berdasarkan snapshot supplier saat menambah syarat.
 - `tests/market-order-reservation.workerd.test.ts` menjalankan reservasi aktual di D1 lokal melalui Miniflare. Runtime ini menerapkan batas 100 tingkat, sementara fixture `node:sqlite` standar menerima ekspresi yang lebih dalam.
 
+### Retensi log murni (keputusan owner 21 November 2026, lokal)
+
+- `runMaintenanceCleanup` (`src/lib/maintenance-cleanup.ts`) kini memangkas **hanya** tabel log append-only murni, tiap tabel dibatasi 500 baris/tick dan dilewati bila statement budget ketat (penanda sukses tetap ditulis; tick berikut melanjutkan):
+  - `wr_sync_log`/`sk_sync_log` > 30 hari, dengan lantai "baris terbaru per `sync_type`+`status`" agar kartu admin dan watchdog tetap punya bukti terakhir walau sumber berhenti.
+  - `wr_saldo_log`/`sk_saldo_log`/`pedia_supplier_balance_log` > 30 hari, lantai "baris terbaru per `source`/`supplier`".
+  - `telegram_updates` > 14 hari (jendela dedupe update_id hanya jam-an; order tetap idempoten lewat guard sendiri).
+  - `broadcast_deliveries` > 90 hari **hanya** untuk campaign `status='completed'` dan status terminal; baris antre aktif tidak disentuh.
+  - `security_events` kini disimpan **90 hari** (naik dari 30), bounded 500/tick.
+- **Tidak pernah** disentuh: ledgers uang/order (`orders`, `payment_transactions`, `payment_invoice_history`, `order_item_costs`), bukti webhook yang masih menunggu review (baris `dana_webhook_events` yang cocok `PAYMENT_ATTENTION_WHERE`, termasuk baris FX-1), ledger notice/dedupe (`buyer_notice_log`, dsb.), `fulfillment_send_claims`, klaim/lease aktif, `whatsapp_outbox` terminal, dan `operation_guards`.
+- Timestamp dibandingkan lewat `julianday()`/`datetime()` agar format campuran (`datetime('now')` vs ISO `toISOString()`) tetap benar. Status: implementasi lokal + test; publikasi via CI.
+
 ### Prioritas Workers Paid dan kuota D1 — 19 November 2026 (keputusan owner)
 
 - Utamakan kelancaran dan operasi real-time. Tambahan read/write D1 dapat diterima selama proyeksi tetap dalam jatah bulanan Workers Paid (**25 miliar baca / 50 juta tulis**), dipantau lewat `.github/workflows/d1-usage.yml`. Optimalkan hanya bila proyeksi mendekati jatah atau latensi memburuk.
@@ -100,7 +111,7 @@
 
 ### Anggaran watchdog — 19 November 2026 (lokal)
 
-- `cleanup` menjalankan watchdog sesudah maintenance maksimal 10 statement, sebelum materialisasi pengeluaran dan drain grup/copy/FX. Cadangan invalidasi revisi katalog dipertahankan saat drain. Budget request tetap 40 (2 statement tail); urutan job Worker tidak berubah.
+- `cleanup` menjalankan watchdog sesudah maintenance, sebelum materialisasi pengeluaran dan drain grup/copy/FX. Cadangan invalidasi revisi katalog dipertahankan saat drain. Budget request tetap 40 (2 statement tail); urutan job Worker tidak berubah. Sejak 21 November 2026 maintenance memakai hingga 17 statement (9 inti + 7 prune log baru, masing-masing admission-gated) dan tiap prune berhenti memakai budget saat sisa < 2 sehingga tick lain tidak kelaparan.
 
 ### Cache edge Games ditunda — 18 November 2026
 

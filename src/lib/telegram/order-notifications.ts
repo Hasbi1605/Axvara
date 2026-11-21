@@ -218,12 +218,12 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
   }
   const profile = await telegramPaidDeliveryProfile(order, database);
   const locale = String((order as Row).locale ?? "") === "en" ? "en" as const : "id" as const;
-  const needsWhatsApp = profile.hasLocalManual
-    && !String(order.customer_wa || "").trim()
-    && !String(order.pending_action || "").trim();
+  // Owner decision 2026-11-21: Telegram delivery is in this bot chat, so a paid
+  // order never asks the buyer for a WhatsApp number. Contact stays optional
+  // (the buyer may still message/admin via the keyboard links).
   const sent = await sendMessage({
     chat_id: chatId,
-    text: orderPaidMessage(String(order.code), productNames(order.items), needsWhatsApp, profile.delivery, { locale }),
+    text: orderPaidMessage(String(order.code), productNames(order.items), profile.delivery, { locale }),
     parse_mode: "HTML",
     reply_markup: orderPaidKeyboard(String(order.code), { locale }),
   }).catch(() => ({ ok: false }));
@@ -242,13 +242,6 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
      WHERE code=? AND telegram_paid_notified_at IS NULL`,
     orderCode,
   ).catch(() => undefined);
-  if (needsWhatsApp) {
-    await execRun(
-      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now')
-       WHERE user_id=? AND (pending_action IS NULL OR trim(pending_action)='')`,
-      `wa_after_paid:${orderCode}`, chatId,
-    ).catch(() => undefined);
-  }
 
   // The order-created message in Axvara_Notif keeps saying "Menunggu
   // pembayaran otomatis" even after the DANA hook marks the order paid, so

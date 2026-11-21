@@ -26,6 +26,21 @@
   `sendTelegramCredentialParts`) termasuk pengiriman awal; status: implementasi
   lokal + test, publikasi CI/deployment belum diverifikasi.
 
+## Kebijakan kontak Telegram (keputusan owner 21 November 2026)
+
+- Telegram **tidak memerlukan kontak pembeli sama sekali** untuk pengiriman
+  produk: kanal otoritatif adalah chat bot pembeli itu sendiri. Kabar lunas,
+  status, dan kredensial dikirim ke chat privat pemilik (`telegram_user_id`
+  kanonis), bukan ke WhatsApp/email.
+- Prompt/reminder pasca-bayar yang meminta nomor WhatsApp (mis. `needsWhatsApp`
+  pada `orderPaidMessage`, pending action `wa_after_paid` dari
+  `notifyTelegramBuyerPaid`) **dihapus**. Nomor WA/email hanya disimpan bila
+  pembeli sendiri memasukkannya lewat alur input yang sah (mis. varian wajib
+  email atau ongkos kirim gateway); tidak ada lagi "kejar-kejaran" kontak
+  setelah bayar. Input WA manual yang sudah ada (callback `wainput`/`wa_after_paid`
+  legacy) tetap kompatibel bila benar-benar diinisiasi pembeli/admin, tetapi
+  tidak dipasang otomatis.
+
 ## Cookie perangkat d1 (30 hari) — keputusan owner 18 November 2026
 
 - Menggantikan sebagian aturan28Oktober "proof hanya sessionStorage/tab": owner

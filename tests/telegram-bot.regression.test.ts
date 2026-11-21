@@ -517,15 +517,15 @@ describe("Telegram buyer messages", () => {
     expect(msg).toContain("Ketuk untuk menyalin");
   });
 
-  it("paid message confirms automatic detection, then asks WA only for manual delivery", () => {
-    const msg = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", true);
+  it("paid message confirms delivery in chat and never asks for a WhatsApp number (FX-16 owner decision)", () => {
+    const msg = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", "manual");
     expect(msg).toContain("Pembayaran lunas");
     expect(msg).toContain("Produk akan dikirim admin ke chat pribadi ini");
-    expect(msg).toContain("cadangan");
-    expect(msg).toContain("nomor WhatsApp aktif");
+    expect(msg).not.toContain("cadangan");
+    expect(msg).not.toContain("nomor WhatsApp aktif");
     expect(msg).not.toContain("Tetap standby");
-    const auto = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", false);
-    expect(auto).toContain("Produk akan dikirim admin ke chat pribadi ini");
+    const auto = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", "instant");
+    expect(auto).toContain("dikirim otomatis ke chat ini");
     expect(auto).not.toContain("nomor WhatsApp aktif");
   });
 

@@ -491,6 +491,18 @@ Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.
   2026-01-01 ditolak; `order_code` wajib ada (`order_not_found`).
 - **Cron**: job lite `cleanup` (tiap 5 menit, tanpa trigger baru) memanggil
   `materializeRecurring` — idempoten lewat UNIQUE, maks 3 bulan susulan per run, budget-aware.
+  Resume setelah jeda (keputusan owner 21 November 2026): `updateRecurring(active 0→1)`
+  memindahkan `last_generated_month` ke bulan WIB sebelumnya sehingga bulan selagi dijeda
+  tidak dibukukan (cash basis); catch-up template aktif saat cron downtime tetap.
+- **Maintenance cleanup** (`src/lib/maintenance-cleanup.ts`, keputusan owner 21
+  November 2026): prune dibatasi 500 baris/tabel/tick dan admission-gated terhadap
+  statement budget untuk tabel log murni (`wr_sync_log`/`sk_sync_log` >30 hari
+  dengan lantai baris terbaru per `sync_type`+`status`, `wr_saldo_log`/`sk_saldo_log`/
+  `pedia_supplier_balance_log` >30 hari dengan lantai terbaru per source/supplier,
+  `telegram_updates` >14 hari, `broadcast_deliveries` >90 hari hanya campaign
+  `completed`). `security_events` naik ke 90 hari (bounded 500/tick). Ledger
+  uang/order, bukti webhook yang menunggu review, notice/dedupe, `payment_invoice_history`
+  dan lease/klaim aktif tidak pernah disentuh; detail retensi di `platform-ops.md`.
 - **Laporan** `src/lib/dashboard-report.ts`: `PeriodReport` + `ReportPoint`
   menambah `ReportFinance`/`ReportPointFinance`. `payment_fees` = `gateway_fee`
   + MDR × payable per provider QRIS (sekali per order); `unique_code_bonus` =
@@ -2164,7 +2176,7 @@ Notifikasi paid memakai `buyer_notice_log` existing dengan key
 claim CAS, lease basi10menit, maksimal5percobaan/backoff1/5/15/60menit,
 settlement fenced, maksimal4 kandidat dalam budget40statement existing.
 Penerima kredensial/paid hanya ID pribadi kanonis `telegram_user_id`; stored
-chat_id tidak menjadi fallback akun lain. Input WA cadangan hanya saat idle.
+chat_id tidak menjadi fallback akun lain. Kabar lunas tidak lagi meminta nomor WA (keputusan owner 21 November 2026: Telegram tidak memerlukan kontak; input WA opsional hanya bila diinisiasi pembeli).
 Status/resend menyajikan semua item dan error parsial secara eksplisit.
 Semantik transport bounded at-least-once, bukan exactly-once. Tidak ada schema,
 env, trigger cron, integrasi gateway atau UI web baru.
