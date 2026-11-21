@@ -534,9 +534,9 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | T3 | T | lokal | 33 `it.fails` untuk B3b/B4b/B5/2C |
 | T4 | T | lokal | 72 kunci + urutan; sebelum 3A masih wajib T4b |
 | T4b | T | belum | Sisa gap sebelum 3A (review Wonder): asimetri drain `games_catalog`, isolasi kegagalan budget `drainDirtyGroupsIfBudget`, `applyOnly` saat budget habis |
-| T5 | T | belum | |
+| T5 | T | lokal (commit T5/T7) | Wonder APPROVE-WITH-NITS; race diperkuat barrier dua-kedatangan |
 | T6 | T | lokal | |
-| T7 | T | belum | |
+| T7 | T | lokal (commit T5/T7) | |
 | A1 AIVault | E | lokal (commit A1) | Wonder APPROVE |
 | A2 Mirai | E | lokal (commit A2) | Wonder APPROVE |
 | A3 StoreBat | E | lokal (commit A3) | Wonder APPROVE. Catatan: bila kelak predikat JS disatukan, bentuk ketat `=== 0` adalah kanonis dan itu perubahan kelas B |
