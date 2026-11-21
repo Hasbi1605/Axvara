@@ -2101,7 +2101,8 @@ axvara/
 │   │   └── dana-history.ts     # predikat riwayat nominal untuk webhook/retry/guard atomik
 │   ├── cron/
 │   │   ├── phase-state.ts      # rotasi fase operations, state deferred, poison-pill, heartbeat (3C-1)
-│   │   └── catalog-sweep.ts    # gerbang waktu sweep WR/SK 14/60 mnt + freshness diff 10 mnt (3C-1)
+│   │   ├── catalog-sweep.ts    # gerbang waktu sweep WR/SK 14/60 mnt + freshness diff 10 mnt (3C-1)
+│   │   └── operations-context.ts # kontrak OperationsContext beku untuk 6 fase + skeleton hasil berurutan; hasTime memakai wall clock route (3C-2)
 │   ├── cron/lite/
 │   │   ├── jobs.ts             # daftar job dan tipe LiteJob, tanpa impor
 │   │   ├── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis

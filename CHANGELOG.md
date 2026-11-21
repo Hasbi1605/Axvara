@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3C-2 (kelas E): `OperationsContext` dibekukan di `src/lib/cron/operations-context.ts` (gabungan 36 capture keenam fase + skeleton hasil 33 kunci berurutan); route membangun ctx, badan fase masih inline, `hasTime` tetap wall clock dari `runStartedAt` route, `deferredOut` tetap array dengan urutan sisipan — `src/lib/cron/operations-context.ts`, `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 154 test fokus sebelum/sesudah; full suite `--maxWorkers=2` worktree bersih 622 file 8554 lulus; review Wonder APPROVE)
+
 - 2026-11-22 — Roadmap 3A-2b (kelas E): badan job cron lite `cleanup` (beserta refresh market privat) dipindah verbatim ke `src/lib/cron/lite/jobs/cleanup.ts`; backstop `decideDirtyWinners`, marker, kunci hasil dan budget tidak berubah; dispatch tetap `await import()` — `src/lib/cron/lite/jobs/cleanup.ts`, `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: full suite worktree bersih gabungan 622 file 8554 lulus; review Wonder APPROVE)
 
 - 2026-11-22 — Roadmap 3A-2a (kelas E): badan job cron lite `promo` dipindah verbatim ke `src/lib/cron/lite/jobs/promo.ts` (budget broadcast bersarang 400/4 via `unwrapD1(db.getD1())` tetap); route tetap dispatch lewat `await import()` di dalam cabang, marker hanya saat sukses — `src/lib/cron/lite/jobs/promo.ts`, `src/app/api/cron/lite/route.ts` — (verifikasi: full suite worktree bersih dengan diff ini saja 622 file 8554 lulus; tsc 0; review Wonder APPROVE)
