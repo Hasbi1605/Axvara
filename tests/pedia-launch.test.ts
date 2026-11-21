@@ -1,4 +1,4 @@
-// tests/pedia-launch.test.ts — PEDIA M6: LaunchCards + AppSwitcher + /link + footer + digest.
+// tests/pedia-launch.test.ts — PEDIA M6: promo, navigation, /link, footer, and digest.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -17,13 +17,6 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(read("src/components/shared/CrossServicePromo.tsx")).toContain("ArrowUpRight");
     expect(community).toContain("flex-row");
     expect(community).not.toContain("Grup WhatsApp");
-    // Komponen tersimpan utuh, tidak diimpor siapa pun.
-    const cards = read("src/components/storefront/LaunchCards.saved.tsx");
-    expect(cards).toContain("Axvara Pedia");
-    expect(cards).toContain("Axvara AI");
-    expect(cards).toContain("utm_source=axvara");
-    expect(cards).toContain("aria-label");
-    expect(cards).toContain("aria-hidden");
   });
 
   it("PD-61: both navbars use the same live-services menu, without AI pills", () => {
@@ -128,20 +121,6 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(plat).not.toContain("name.slice(0, 2)");
   });
 
-  it("Focus ring Pedia biru Axvara satu outline luar (tanpa outline ganda)", () => {
-    const hero = read("src/components/pedia/LinkPasteHero.tsx");
-    // Ring dikunci via state fokus React + fallback :focus-within
-    // (dua-duanya di CONTAINER yang sama = tetap satu garis): container
-    // SATU ring biru, input TANPA ring.
-    expect(hero).toContain("onFocus");
-    expect(hero).toContain("onBlur");
-    expect(hero).toContain("pedia-link-box:focus-within");
-    expect(hero).toContain('borderColor: "#00E5FF"');
-    expect(hero).toContain("rgba(0,229,255,.35)");
-    expect(hero).toContain("focus:outline-none");
-    expect(hero).not.toContain("139,92,246");
-  });
-
   it("PD-62: kartu Pedia DISEMBUNYIKAN dari /link (2026-10-08 owner) + footer Jelajah + digest flag", () => {
     const link = read("src/app/(shop)/link/link-bio-client.tsx");
     // Kartu disembunyikan tapi kode DISIMPAN (1 baris comment siap kembalikan).
@@ -165,11 +144,5 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     const link = read("src/app/(shop)/link/link-bio-client.tsx");
     expect(link).toContain("Bot Telegram");
     expect(link).toContain("Grup WhatsApp");
-  });
-
-  it("AC-08: reduced-motion mematikan animasi promo", () => {
-    const css = read("src/app/globals.css");
-    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(css).toContain(".ax-launch::before");
   });
 });

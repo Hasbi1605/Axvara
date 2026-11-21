@@ -6,7 +6,6 @@ import { PediaNavbar } from "@/components/pedia/PediaNavbar";
 import { GamesTrack } from "@/app/games/lacak/track-client";
 import { GAMES_RECENT_KEY } from "@/lib/games/order-copy";
 import { BuyerOrderPin } from "@/components/storefront/BuyerOrderPin";
-import { OrderTicker } from "@/components/pedia/OrderTicker";
 import { usePediaSearch } from "@/stores/pedia-search";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -51,10 +50,4 @@ it("shows a non-retrying PIN notice for a denied request", async () => {
   render(<BuyerOrderPin code="AXV-20261121-TEST1234" credentialToken="fixture" locale="en" />);
   await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Could not load the PIN"));
   expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
-});
-
-it("localizes the decorative ticker without exposing it to assistive tech", () => {
-  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
-  render(<OrderTicker items={[{ text: "Instagram" }]} />);
-  expect(screen.getByText(/just now: Instagram/i).getAttribute("aria-hidden")).toBe("true");
 });

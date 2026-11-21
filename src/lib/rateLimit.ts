@@ -52,7 +52,6 @@ export const RATE_LIMITS = {
   // Webhook Sekalipay: pola sama dengan WR (provider retry; scope khusus agar
   // tidak berbagi bucket dengan lookup pembeli; verifikasi SHA256 garis depan).
   "webhook:sekalipay": 60,
-  "proof:upload": 5,
   "upload:admin": 20,
   "products:write": 20,
   // Reorder: aksi admin yang sah bisa bertubi-tubi saat merapikan katalog

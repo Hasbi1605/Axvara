@@ -750,7 +750,7 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
   rate limit existing, JSON maksimum2048byte, no-store. Create memakai D1 batch
   atomik; UNIQUE dan trigger memagari konflik/arsip/kapasitas. Hapus anggota
   membersihkan prefer dan menghapus grup bila tersisa <2, satu batch; hapus grup
-  memakai FK cascade. Endpoint `/api/admin/supplier-pairs*` lama menjawab410.
+  memakai FK cascade. Endpoint `/api/admin/supplier-pairs*` lama dihapus; gunakan `/api/admin/product-groups` dan `/decide` di bawahnya.
 - Filter grup dipakai `/api/products?active=1`, daftar `/api/catalog`, Telegram
   katalog/cari/bestseller/promo serta markup/liveStatus admin. URL PDP pecundang
   redirect ke winner aktif non-Arsip; exception redirect tidak tertelan catch.
@@ -2063,7 +2063,7 @@ axvara/
 │   │   ├── agent/               # Content API scoped Bearer token
 │   │   ├── cron/                # Publish artikel + expire order terjadwal
 │   │   │   └── auth/
-│   │   ├── pedia/               # API Pedia (docs/PEDIA-PRD.md §9.7): catalog/ticker/quote/orders/[code]+refill/credits/check, lookup di orders/lookup, admin pedia/*
+│   │   ├── pedia/               # API Pedia (docs/PEDIA-PRD.md §9.7): catalog/quote/orders/[code]+refill, lookup di orders/lookup, admin pedia/*
 │   └── globals.css
 ├── src/components/
 │   ├── ui/                      # Button, Input, Badge, Modal, Drawer, Toast,
@@ -2079,7 +2079,7 @@ axvara/
 │       ├── PediaManager.tsx     # shell admin Pedia: status strip + 4 tab (Pesanan · Produk · Layanan IndoSMM · Pengaturan); ?tab= lama dipetakan
 │       ├── pedia/               # OrdersPanel/ProductsPanel/ProductEditor/ServicesPanel/SettingsPanel/shared: per-tab loading, payload mutasi tetap
 │   ├── shared/                  # ServicesMenu + CrossServicePromo (Market/Pedia; URL src/lib/site.ts)
-│   ├── pedia/                   # PediaNavbar (client + field cari pill ala Market via usePediaSearch), PediaBottomNav, LinkPasteHero (komponen hidup, tak dipakai beranda sejak 2026-10-12), PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Bot Telegram), PediaWhatsAppLink (CTA Hubungi Admin → hub /wa), OrderTicker (tidak dirender), StatusWidgets
+│   ├── pedia/                   # PediaNavbar (client + field cari pill ala Market via usePediaSearch), PediaBottomNav, PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Games), PediaWhatsAppLink (CTA Hubungi Admin → hub /wa), StatusWidgets
 ├── src/hooks/
 │   ├── useDesktopMotion.ts      # Media query dinamis ≥768px/fine/hover/tanpa reduced motion; shared Spotlight/ScrollRope
 │   ├── useModalA11y.ts          # Escape + focus trap + scroll lock + restore fokus — SATU
@@ -2420,7 +2420,6 @@ mengubah `games_products`/enabled. Harga jual baru dihitung sinkron berikutnya (
 | POST | /api/payments/qris/:code/reissue | Terbitkan QRIS baru untuk order yang masih hidup tetapi QR-nya sudah kedaluwarsa (<15 menit). Hanya boleh saat invoice lama SUDAH mati — syarat itulah yang mencegah pemegang kode order lain membatalkan QR yang sedang dipakai. Maks 1x/order, rate limit 5/menit/IP | code order |
 | POST | /api/orders/[code]/cancel | Batal mandiri pembeli (2026-10-11): verifikasi kode + WA/email checkout pola lookup (404 generik), hanya pending+unpaid, CAS `transitionPendingOrder` (kalah race vs webhook = 409), stok kembali detik itu juga; tombol di `/pesanan/[code]` + `/lacak-pesanan` | kontak checkout |
 | POST | /api/webhook/dana | Terima notifikasi QRIS Hook, dedup, cocokkan nominal, lunasi order | X-Webhook-Secret |
-| POST | /api/proof/upload | ⏸️ maintenance 2026-09-17: selalu 503 (upload bukti disembunyikan di WEB; QRIS saja) | same-origin |
 | GET | /api/admin/bukti/:key | Preview/download bukti | admin |
 | POST | /api/upload | Upload WebP produk/artikel/banner ke R2 | admin |
 | * | /api/agent/* | Context, artikel, media, dan audit | agent scope |
@@ -2669,7 +2668,7 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
     `ip.src` saja). Verifikasi: GET entrypoint `http_ratelimit` = 1 rule enabled.
   - In-memory `src/lib/rateLimit.ts` hanyalah lapis kedua (defense in depth
     per isolate, bukan proteksi DDoS global): checkout:orders 10/mnt,
-    checkout:quote 20/mnt, proof:upload 5/mnt, upload:admin 20/mnt,
+    checkout:quote 20/mnt, upload:admin 20/mnt,
     orders:lookup 20/mnt, auth:login 5/mnt, newsletter:subscribe 5/mnt, semua
     429 + `Retry-After: 60`. IP anti-spoof: `cf-connecting-ip` utama,
     fallback hanya `x-real-ip`; `x-forwarded-for` TIDAK dipakai (spoofable).
@@ -4887,7 +4886,7 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
   → `custom_comments` di token/snapshot → dispatch `add` + `comments` (newline).
   Tipe layanan wajib cocok (`pediaServiceTypeFor`): comments↔"Custom Comments",
   lainnya↔"Default" di katalog, harga, quote, order, sync, admin.
-- Kebijakan supplier jual (12 November 2026, implementasi lokal): `src/lib/pedia/sales-policy.ts`
+- Kebijakan supplier jual (snapshot historis 12 November 2026, digantikan 13 November): `src/lib/pedia/sales-policy.ts`
   menetapkan `PEDIA_SALE_PROVIDER='providersmm'` dan `PEDIA_LEGACY_PROVIDER='indosmm'`
   sebagai satu-satunya sumber gate katalog/pembanding/quote/order/draft admin/shortlist/overview.
   Penjualan baru IndoSMM ditolak 409 `provider_retired`, tetapi retry order tersimpan
@@ -4905,8 +4904,10 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
 Implementasi lokal; publikasi lewat CI. Bagian 12 November (16.10b/16.10c-bis) adalah snapshot historis yang digantikan.
 - `src/lib/pedia/sales-policy.ts`: `PEDIA_SALE_PROVIDER='indosmm'`, tanpa supplier riwayat. Katalog publik,
   pembanding harga, quote, order, draft/aktivasi admin, shortlist, dan overview hanya IndoSMM. Baris
-  supplier lain yang masih aktif di D1 tidak dijual; retry order tersimpan tetap dicari lewat `quote_id`
-  sebelum gate.
+  supplier lain yang masih aktif di D1 tidak dijual. Quote menolak tier non-IndoSMM dengan 409
+  layanan tidak tersedia; verifikasi token order menolak supplier non-IndoSMM dengan 409 quote tidak
+  valid. Sesudah token valid, retry tersimpan dicari lewat `quote_id` sebelum guard pembuatan baru.
+  `provider_retired` tetap dipakai admin produk untuk mapping/aktivasi yang tidak diizinkan.
 - Dihapus: `src/lib/pedia/auto-catalog.ts`, `metadata-refresh.ts`, `supplier-descriptions.ts`; client
   `/psmm/*` dan `callPsmmProxy`; jalur materialisasi/deskripsi/`managedTermsFresh`; checkpoint
   `pedia_diff_*`; kolom/field API khusus katalog otomatis. PEDIA_PROVIDERS = `["indosmm"]`.
@@ -4948,7 +4949,7 @@ Implementasi lokal; publikasi lewat CI. Bagian 12 November (16.10b/16.10c-bis) a
 ### 16.10c-bis Katalog otomatis Pedia + deskripsi resmi + gate syarat (12 November 2026) — HISTORI, digantikan 13 November 2026
 Implementasi lokal; publikasi lewat CI. Bootstrap produksi, deployment, dan QA admin produksi belum dijalankan.
 
-**Kebijakan supplier.** `src/lib/pedia/sales-policy.ts` menetapkan `PEDIA_SALE_PROVIDER='providersmm'`
+**Kebijakan supplier pada snapshot 12 November.** `src/lib/pedia/sales-policy.ts` menetapkan `PEDIA_SALE_PROVIDER='providersmm'`
 dan `PEDIA_LEGACY_PROVIDER='indosmm'` sebagai satu-satunya gate katalog/pembanding/quote/order/draft
 admin/shortlist/overview. Penjualan baru IndoSMM ditolak 409 `provider_retired`, tetapi retry order
 tersimpan dicari lewat `quote_id` sebelum gate. Diff VPS ProviderSMM ditulis ke cermin D1
@@ -5033,7 +5034,7 @@ Implementasi lokal; publikasi lewat CI; deployment belum diverifikasi. Data-only
 - Verifikasi akhir lokal (3 Nov 2026; bukan deployed/live): vitest penuh 312 file/3975 tes, tsc, `build:pages` lulus; Chromium 89/89 + 16/16 kasus perbaikan; smoke D1 workerd (Miniflare lokal, skrip sementara di luar repo) menerapkan 0090→0093 nyata: koreksi tier 47/388, edit admin + snapshot tak berubah, idempoten, tier 285 tetap 90, CAS `start_count` 0→8278 dengan positif konflik dipertahankan dan konkuren tanpa geser. Batas: tanpa D1 remote/produksi; migrasi remote tetap lewat CI; sumber cache 1 Nov.
 
 ### 16.10b Nama layanan Pedia + perapian — migrasi 0089 (2 November 2026)
-Data-only: UPDATE `pedia_tiers.public_name`/`is_active` per id dengan guard `COALESCE(public_name,label_note)` = nama ekspor, idempoten, tanpa DELETE/remap supplier. Order lama memakai snapshot. Katalog publik menambah `price_ref {qty,price}` khusus produk `metric='comments'` (jumlah acuan 10 bila valid, selain itu minimum), dihitung `computePediaPrice` yang sama dengan quote. Generator/manifest: `scripts/curate-pedia-names-20261102.py`, `src/lib/pedia/names-20261102.json`.
+Data-only: UPDATE `pedia_tiers.public_name`/`is_active` per id dengan guard `COALESCE(public_name,label_note)` = nama ekspor, idempoten, tanpa DELETE/remap supplier. Order lama memakai snapshot. Katalog publik menambah `price_ref {qty,price}` khusus produk `metric='comments'` (jumlah acuan 10 bila valid, selain itu minimum), dihitung `computePediaPrice` yang sama dengan quote. Manifest `src/lib/pedia/names-20261102.json` tetap; generator `scripts/curate-pedia-names-20261102.py` hanya di riwayat Git.
 
 ### 16.10c Info layanan Pedia terpadu - migrasi 0090 (2 November 2026)
 
@@ -6248,8 +6249,8 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 
 - **Seed A2 (lokal, belum deploy):** `drizzle/migrations/0111_games_reference_seed.sql`
   berisi198 SKU utama (FF16/FF MAX8/ML156/PUBG18), source `ourastore.com riset 2026-11-09`,
-  captured_at/updated_at tetap `2026-11-09T08:28:15Z`. Generator stdlib offline
-  `scripts/generate-games-reference-seed.mjs <reference.json> <skus.json>` membaca JSON
+  captured_at/updated_at tetap `2026-11-09T08:28:15Z`. Generator offline historis
+  `scripts/generate-games-reference-seed.mjs` hanya di riwayat Git. Dulu membaca JSON
   saja, menolak kode tidak valid/duplikat, memilih exact, kode utama menurut aturan
   `isBackup` catalog-sync, non-utilitas via guard bersama, empat brand gelombang1,
   harga Oura integer>0 dan rasio Oura/modal `[0.5,3.0]`.383 kandidat:198 dipilih,
@@ -6331,7 +6332,7 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 
 ### 16.21 Tes pembayaran admin terisolasi — 6 November 2026 (DIPENSIUNKAN 18 November 2026, lokal G1)
 
-- **Status 18 November 2026 (lokal G1):** fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah terbukti jalan di publik: `src/app/(shop)/admin/payments/test/page.tsx` dan `PaymentTestScope.tsx` dihapus; `/api/admin/payments/test/{quote,orders}` mengembalikan `410` `{error:"Tes pembayaran admin sudah dipensiunkan."}` (`Cache-Control: no-store`); `isPaymentAdminTestEnabled` dan seluruh mode `adminTest`/`admin_payment_test` dihapus dari `rails.ts`, `method-options.ts`, `nowpayments.ts`, `sekalipay-gateway.ts`, `checkout/quote`, `orders/route.ts`, dan `checkout/page.tsx`; `verifyCheckoutQuoteToken` menolak token lama yang membawa `admin_payment_test`. `PAYMENT_ADMIN_TEST_ENABLED` tidak lagi dibaca (owner boleh menghapusnya kelak dari Pages dengan prosedur backup env). Kolom DB (`orders.supplier_purchase_disabled`, dll.) tetap dipertahankan untuk histori order lama, dan gate `supplier_purchase_disabled=0` kini diterapkan seragam di WR (`src/lib/warung-rebahan/order.ts`), SK (`src/lib/sekalipay/order.ts`), TUNVN, dan AIVault (link/riwayat lama tidak diubah).
+- **Pensiun 18 November 2026 (G1); endpoint dihapus 21 November (lokal):** fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah terbukti jalan di publik: `src/app/(shop)/admin/payments/test/page.tsx` dan `PaymentTestScope.tsx` dihapus; stub `410` `/api/admin/payments/test/{quote,orders}` sudah dihapus; `isPaymentAdminTestEnabled` dan seluruh mode `adminTest`/`admin_payment_test` dihapus dari `rails.ts`, `method-options.ts`, `nowpayments.ts`, `sekalipay-gateway.ts`, `checkout/quote`, `orders/route.ts`, dan `checkout/page.tsx`; `verifyCheckoutQuoteToken` menolak token lama yang membawa `admin_payment_test`. `PAYMENT_ADMIN_TEST_ENABLED` tidak lagi dibaca (owner boleh menghapusnya kelak dari Pages dengan prosedur backup env). Kolom DB (`orders.supplier_purchase_disabled`, dll.) tetap dipertahankan untuk histori order lama, dan gate `supplier_purchase_disabled=0` kini diterapkan seragam di WR (`src/lib/warung-rebahan/order.ts`), SK (`src/lib/sekalipay/order.ts`), TUNVN, dan AIVault (link/riwayat lama tidak diubah).
 - Catatan 6 November di bawah adalah snapshot historis sebelum pensiun:
 
 - Route edge dinamis baru: `src/app/(shop)/admin/payments/test/page.tsx`, `/api/admin/payments/test/quote` dan `/api/admin/payments/test/orders`. Halaman server memeriksa `requireAdmin`, redirect unauthorized ke `/admin`, noindex/nofollow, notice saat nonaktif. `PaymentTestScope.tsx` menyediakan context defaultfalse hanya untuk memilih endpoint UI; bukan otorisasi. Checkout existing dipakai ulang, termasuk keranjang, quote, harga, stok, instruksi dan notifikasi nyata.

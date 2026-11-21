@@ -428,8 +428,8 @@ lewat `readJsonBody`.
   audit AU-C1-7; cron `games_catalog` memakai `sk-catalog-sync.ts`.)
 - **Seed A2 Oura (lokal, 9 November 2026).** Migrasi `0111_games_reference_seed.sql`
   menambah198 referensi: FREE FIRE16, Free Fire Max8, MOBILE LEGENDS156, PUBG MOBILE18.
-  Generator offline `node scripts/generate-games-reference-seed.mjs <reference.json> <skus.json>`
-  membaca JSON riset R1 di luar repo (bukan kode/SQL executable), memilih `match==='exact'`,
+  Generator offline `scripts/generate-games-reference-seed.mjs` hanya di riwayat Git.
+  Generator itu membaca JSON riset R1 di luar repo (bukan kode/SQL executable), memilih `match==='exact'`,
   hanya kode utama (akhiran `b` adalah cadangan hanya bila kode dasarnya ada),
   bukan utilitas Cek Username, empat brand gelombang1, harga Oura integer positif
   dan rasio harga Oura/modal `[0.5,3.0]` inklusif.383 match =>198 diterima,185 dibuang:

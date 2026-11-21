@@ -127,8 +127,8 @@ Audit awal codebase menunjukkan varian belum ada sebagai entitas:
 - bot Telegram langsung bergerak dari produk ke konfirmasi/order.
 - fulfillment_mode dan shared secret saat ini berada pada level produk.
 - payment_methods D1 sudah menyimpan metode aktif, rekening, nama pemilik, dan URL QRIS.
-- /api/proof/upload sudah memvalidasi image maksimal 5 MB dan menyimpan bukti private di
-  R2, tetapi autentikasinya khusus same-origin checkout web.
+- Snapshot historis: upload bukti web dulu memvalidasi gambar maksimal 5 MB dan
+  menyimpan bukti privat di R2. `/api/proof/upload` sudah dihapus; bukan jalur untuk bot.
 - kebijakan Telegram saat ini berasal dari warrantyFullMessage yang menggabungkan
   warrantyTermsMessage dan warrantyClaimMessage.
 
@@ -928,10 +928,9 @@ Satu order boleh mempunyai bukti pengganti setelah bukti sebelumnya rejected, te
 hanya satu bukti submitted/approved yang aktif. Admin action harus diaudit dan bersifat
 idempotent.
 
-Webhook WhatsApp tidak boleh memanggil atau melemahkan proteksi same-origin pada
-/api/proof/upload. Ekstrak validator magic bytes/size dan R2 writer menjadi helper
-internal bersama; route web tetap memakai proteksi browser, sedangkan webhook hanya
-memanggil helper setelah signature, group, member, dan order lolos validasi.
+Rencana historis (digantikan): webhook WhatsApp tidak akan memanggil route upload
+web secara langsung. `/api/proof/upload` sudah dihapus; jangan mengekstrak atau
+menghidupkan kembali alur unggah bukti pembeli dari rancangan ini.
 
 ---
 

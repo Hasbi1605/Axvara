@@ -189,7 +189,7 @@ Mengikuti `DESIGN.md` §3 (Space Grotesk untuk display/harga, Inter untuk body, 
 | Label chip | 14 px | 600 |
 | Helper/microcopy | 12.5 / 13 px | 400 |
 
-Angka dinamis (total, progres, ticker) memakai `font-variant-numeric: tabular-nums` agar tidak "goyang".
+Angka dinamis (total, progres) memakai `font-variant-numeric: tabular-nums` agar tidak "goyang".
 
 ---
 
@@ -219,7 +219,7 @@ Lacak memakai container 720px `px-4 py-10 sm:px-6`, eyebrow cyan 11px, h1 30/36p
 
 ### 6.0 Implementasi Saat Ini (Working-Tree 2026-10-12, Belum Deployed)
 
-**Beranda:** hero ala Market 1:1 (2026-10-12, tanpa card: glow section-level cyan+gold, h1 `font-display` 42/56px tight "Satu tempat untuk / optimasi media sosial." putih statis, typewriter dihapus 15 Nov 2026 (keputusan owner: bersaing dengan orbit), sub 15px/white-60 "…harga murah. Order cepat dan otomatis tanpa perlu login." ala Market + CTA Lihat Layanan (putih, `#pedia-catalog`) + Hubungi Admin (glass + ikon chat via `PediaWhatsAppLink` → hub /wa) + trust strip "Order cepat tanpa login • Garansi reffil • Support WA admin" 1:1 Market; tanpa eyebrow AXVARA PEDIA; gap hero→kartu→katalog 1:1 Market: inner hero `pb-4`, kartu ganda DI LUAR section hero seperti CommunityBar, katalog `pt-2`). Grid teks-orbit `1fr_auto` + `PediaOrbit` kanan (mobile center di bawah teks): mesin animasi 1:1 `OrbitHero` Market (refs+rAF, compositor-only, reduced-motion, hemat mobile SEMUA 8 planet tampil + 24fps/idle-defer — 2026-10-12 owner: dulu 4, terlalu sepi; trail/label/shadow dinamis tetap desktop-only, drag pointer-fine, `touch-action: pan-y`), 8 planet sosmed (YouTube/Spotify badge resmi `/icons/`, sisanya glyph asli `/icons/platforms/`; Threads/X putih → sphere gelap; sudut awal tiap ring di-stagger `RING_PHASE` agar tersebar merata), inti mark Pedia (`pedia-mark.svg` + filter putih + label PEDIA di sphere kaca). Kartu ganda `PediaServiceCards` (Market + Bot Telegram Market, kembar compact `min-h-[64px]` `ax-glass-card`, panah `ArrowUpRight` sama, `flex-row` berdampingan di mobile). Search navbar pill + filter platform berikon (`aria-pressed`); kartu Cari lewat link DIHAPUS dari beranda 2026-10-12 atas permintaan owner (`LinkPasteHero` tetap hidup sebagai komponen). Awal maks 8 featured Pilihan AXVARA; tanpa featured fallback 6 Jelajahi layanan TANPA sub-teks (2026-10-12: "Beberapa layanan…" dihapus). Tampilkan semua/cari/filter menjangkau seluruh produk AXVARA terbit, bukan supplier mentah. Reset/empty state tetap; section Cara pemesanan + Sebelum memesan (FAQ) DIHAPUS dari beranda 2026-10-12 atas permintaan owner (setelah layanan langsung footer 1:1 Market; info bantuan tetap di /pedia/bantuan + footer). Tanpa laris/ticker. `/layanan` semua produk/platform; `/p/[platform]` filter jenis dan grid compact sama. Kurasi data produksi belum disetujui hanya karena featured telah diimplementasikan.
+**Beranda:** hero ala Market 1:1 (2026-10-12, tanpa card: glow section-level cyan+gold, h1 `font-display` 42/56px tight "Satu tempat untuk / optimasi media sosial." putih statis, typewriter dihapus 15 Nov 2026 (keputusan owner: bersaing dengan orbit), sub 15px/white-60 "…harga murah. Order cepat dan otomatis tanpa perlu login." ala Market + CTA Lihat Layanan (putih, `#pedia-catalog`) + Hubungi Admin (glass + ikon chat via `PediaWhatsAppLink` → hub /wa) + trust strip "Order cepat tanpa login • Garansi reffil • Support WA admin" 1:1 Market; tanpa eyebrow AXVARA PEDIA; gap hero→kartu→katalog 1:1 Market: inner hero `pb-4`, kartu ganda DI LUAR section hero seperti CommunityBar, katalog `pt-2`). Grid teks-orbit `1fr_auto` + `PediaOrbit` kanan (mobile center di bawah teks): mesin animasi 1:1 `OrbitHero` Market (refs+rAF, compositor-only, reduced-motion, hemat mobile SEMUA 8 planet tampil + 24fps/idle-defer — 2026-10-12 owner: dulu 4, terlalu sepi; trail/label/shadow dinamis tetap desktop-only, drag pointer-fine, `touch-action: pan-y`), 8 planet sosmed (YouTube/Spotify badge resmi `/icons/`, sisanya glyph asli `/icons/platforms/`; Threads/X putih → sphere gelap; sudut awal tiap ring di-stagger `RING_PHASE` agar tersebar merata), inti mark Pedia (`pedia-mark.svg` + filter putih + label PEDIA di sphere kaca). Kartu ganda `PediaServiceCards` (Market + Games, kembar compact `min-h-[64px]` `ax-glass-card`, panah `ArrowUpRight` sama, `flex-row` berdampingan di mobile). Search navbar pill + filter platform berikon (`aria-pressed`); kartu Cari lewat link dihapus dari beranda 2026-10-12 atas permintaan owner, lalu komponen `LinkPasteHero` dihapus 21 November. Awal maks 8 featured Pilihan AXVARA; tanpa featured fallback 6 Jelajahi layanan TANPA sub-teks (2026-10-12: "Beberapa layanan…" dihapus). Tampilkan semua/cari/filter menjangkau seluruh produk AXVARA terbit, bukan supplier mentah. Reset/empty state tetap; section Cara pemesanan + Sebelum memesan (FAQ) DIHAPUS dari beranda 2026-10-12 atas permintaan owner (setelah layanan langsung footer 1:1 Market; info bantuan tetap di /pedia/bantuan + footer). Tanpa laris/ticker. `/layanan` semua produk/platform; `/p/[platform]` filter jenis dan grid compact sama. Kurasi data produksi belum disetujui hanya karena featured telah diimplementasikan.
 
 **Kartu bersama:** catalogCard memasangkan harga terendah/jumlah/tier/**refill** dari entri yang sama, quantity wajib paket produk; seri harga → jumlah terkecil. Radius 16px, padding 12/16px, gradien putih 6%→1.5%, ikon 20px di kotak 32px, nama membungkus (tagline TIDAK dirender di kartu sejak 2026-10-12 owner — hapus AI slop; field tetap di data/admin), harga tabular dan Untuk N · paket Tingkat. Refill cyan/Tanpa refill gold, Lihat paket pada baris min-height 44px. Hover border/glow ringan dan lift motion-safe, tanpa backdrop blur berulang. Tidak ada badge asal akun/laris/refill tier lain. Tagline juga TIDAK tampil di detail/order; description_md adalah field katalog publik opsional, tampil di detail/order sebagai teks literal escaped dengan newline dipertahankan (`whitespace-pre-line`), bukan Markdown/HTML. Tidak ditambahi link-helper teknis. Panel visual kartu (2026-10-15, permintaan owner): tile Axvara-style per platform ala Market — gambar 16:10 R2 `/r2/products/pedia-platform-<platform>.webp` (Instagram/TikTok/YouTube/Facebook/Threads/Spotify/Shopee/X, 1600x900 WebP ~20KB, compose via muse dari logo Simple Icons + gaya canva+gsuite), label platform + kata metrik tetap di atas gambar (drop-shadow), 4 kartu pertama eager + fetchPriority high; `image: string|null` di `PediaCatalogProduct` + `ProductCardData` (path statis per platform, bukan kolom DB — 17 produk berbagi 8 gambar; platform tak dikenal → null → fallback gradasi brand lama).
 
@@ -375,13 +375,13 @@ Mobile
 
 ## 7. Katalog Komponen Awal (Historis 2026-10-07)
 
-Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel: QuantityChips/TierSelector/TierCompareSheet tidak terpisah, ticker tidak dirender, ProductCard menampilkan tagline opsional dan hanya badge refill paket yang sesuai, AppSwitcher **dihapus**, LaunchCards.saved tetap arsip. Komponen baru aktual ServicesMenu/CrossServicePromo (Typewriter dihapus 15 Nov 2026).
+Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel: QuantityChips/TierSelector/TierCompareSheet tidak terpisah, ProductCard menampilkan tagline opsional dan hanya badge refill paket yang sesuai. LinkPasteHero, OrderTicker (termasuk endpoint), AppSwitcher dan LaunchCards sudah dihapus. Komponen aktif: ServicesMenu/CrossServicePromo (Typewriter dihapus 15 Nov 2026).
 
 | Komponen | Spesifikasi kunci |
 |---|---|
 | `PediaNavbar` | `ax-glass-strong` + `border-b border-white/10`, tinggi 64 px, container `max-w-[1280px]` — SAMA dengan navbar pusat; lockup kiri: mark 36×32 + `AXVARA PEDIA` (`font-display` 22px, tracking 0.16em, tanpa `|`), `AppSwitcher` tengah (desktop) / kanan (mobile, versi ringkas ikon), tombol "Lacak" kanan |
 | `AppSwitcher` | Segmented pill 3 opsi: **Apps** (→ axvara.tech) · **Pedia** · **AI** (badge "Segera", menuju waitlist). Indikator aktif = pill latar `--px-violet-soft` + teks putih, geser 300 ms `--ease-apple`. Tinggi 36 px, target sentuh tetap ≥ 44 px lewat padding. Dipakai juga di navbar axvara.tech (opsi Apps aktif) |
-| `LinkPasteHero` | Input 56 px, radius 16, `ax-glass-card` + border 1 px `--ax-border`; fokus → border gradien Pedia + glow `0 0 0 4px rgba(139,92,246,0.18)`; ikon link kiri, tombol "Tempel" kanan (cyan) |
+| `LinkPasteHero` (historis) | Input 56 px, radius 16, `ax-glass-card` + border 1 px `--ax-border`; fokus → border gradien Pedia + glow `0 0 0 4px rgba(139,92,246,0.18)`; ikon link kiri, tombol "Tempel" kanan (cyan) |
 | `DetectChip` | Pill 32 px: ikon platform 18 px + "Instagram · Postingan" + username tersamar + ✓ |
 | `PlatformTile` | 72×84 px (mobile), ikon 32 px dalam lingkaran 52 px latar `rgba(255,255,255,0.05)`, label 12.5 px; hover/tekan: lift 2 px + garis bawah 2 px warna platform |
 | `ProductCard` | `ax-glass-card` radius 20, padding 16; ikon platform 28 px + nama + tagline 1 baris; baris badge (maks 2: "Akun Indonesia", "Garansi 30 hari"); "mulai Rp2.400" + satuan paket; seluruh kartu dapat diklik (`<a>`), panah kanan 16 px |
@@ -395,9 +395,9 @@ Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel:
 | `OrderTimeline` | 3–4 titik; selesai = violet, aktif = cyan berdenyut (mati saat reduced-motion), belum = abu |
 | `StatusPill` | Warna status existing; label §5.3 PRD |
 | `CreditCard` | Kartu gold-tipis: "Kode Kredit Rp4.000" + kode `PDK-XXXX-XXXX` (JetBrains Mono) + [Salin] + "Berlaku sampai …"; dikirim juga ke email |
-| `OrderTicker` | Satu baris, fade bergantian tiap 4 dtk; dot hijau 6 px; jeda saat hover/fokus; disembunyikan saat reduced-motion (tampil statis 1 item) |
+| `OrderTicker` (historis) | Satu baris, fade bergantian tiap 4 dtk; dot hijau 6 px; jeda saat hover/fokus; tampil statis saat reduced motion |
 | `PediaBottomNav` | Pola `MobileBottomNav` toko pusat, 4 tab, indikator violet |
-| `LaunchCards` | Kartu promo di axvara.tech (§9) |
+| `LaunchCards` (historis) | Kartu promo lama di axvara.tech (§9) |
 
 ### Ikon platform - pemetaan 2 November 2026
 
@@ -430,7 +430,7 @@ Logo lama mayoritas berasal dari Simple Icons (CC0). Aset tambahan mengikuti ket
 
 Revisi 2026-10-16: dekorasi desktop `Spotlight` (seluruh layout Pedia) dan `ScrollRope` (beranda) memakai komponen Market, dengan guard dinamis `useDesktopMotion` sesuai pembaruan di awal dokumen.
 
-Tabel motion awal bukan kontrak current. Lokal sekarang glow hero statis, transisi warna/border/glow kartu dan lift hover motion-safe; fade hasil deteksi lama sudah dihapus. Tidak ada animasi angka/step/ticker atau border conic berulang. Reduced-motion global tetap.
+Tabel motion awal bukan kontrak saat ini. Lokal sekarang glow hero statis, transisi warna/border/glow kartu dan lift hover motion-safe; komponen deteksi beranda, ticker, dan gaya conic LaunchCards sudah dihapus. Reduced-motion global tetap.
 
 Token dari `DESIGN.md` §6 (`--ease-apple`, `--ease-out`, durasi 180/300/420 ms).
 
@@ -442,17 +442,17 @@ Token dari `DESIGN.md` §6 (`--ease-apple`, `--ease-out`, durasi 180/300/420 ms)
 | Langkah selesai | nomor → ✓ dengan `scale(0.8)→1` 180 ms |
 | Tombol tekan | `scale(0.98)` 100 ms |
 | Progress ring | dashoffset 600 ms saat data baru |
-| Ticker | crossfade 300 ms tiap 4 dtk |
+| Ticker (historis) | crossfade 300 ms tiap 4 dtk |
 
-**Reduced motion:** semua animasi berulang mati (ticker statis, denyut timeline mati, shimmer mati, kartu promo statis dengan border gradien diam). Transisi state tetap instan.
+**Reduced motion (rancangan awal):** semua animasi berulang mati (ticker statis, denyut timeline mati, shimmer mati, kartu promo statis dengan border gradien diam). Transisi state tetap instan.
 
-**Larangan:** animasi `width/height/top/left`, `backdrop-filter` pada elemen berulang, animasi tak terbatas di luar kartu promo & ticker, parallax di halaman order.
+**Larangan pada rancangan awal:** animasi `width/height/top/left`, `backdrop-filter` pada elemen berulang, animasi tak terbatas di luar kartu promo & ticker, parallax di halaman order.
 
 ---
 
-## 9. Promosi di axvara.tech — Arsip `LaunchCards`
+## 9. Promosi di axvara.tech — Rancangan historis `LaunchCards`
 
-**Historis/disimpan sejak 2026-10-08:** CommunityBar Grup WA+Bot, AppSwitcher tersembunyi pusat/footer Pedia sendiri adalah riwayat **superseded lokal** oleh promo Pedia+Bot, ServicesMenu dan Footer bersama §6.0. LaunchCards.saved tidak diimpor, kartu Pedia /link tetap tersembunyi. §9.1–9.2 arsip, bukan permintaan mengaktifkan AI atau border conic.
+**Historis:** `LaunchCards.saved.tsx` dan gaya conic khususnya dihapus 21 November; kodenya hanya di riwayat Git. `CrossServicePromo`, ServicesMenu dan Footer bersama tetap; kartu Pedia `/link` masih tersembunyi. §9.1–9.2 arsip visual, bukan permintaan mengaktifkan AI atau border conic.
 
 ### 9.1 Struktur
 ```
@@ -577,11 +577,11 @@ Gaya: kalimat pendek, "kamu", tanpa tanda seru beruntun, tanpa huruf kapital sem
 Status 2026-10-12: source/diff lokal telah diaudit, BELUM deployed, secret/flag tidak diubah atau diverifikasi, tanpa order supplier nyata. Preview storefront tersimpan terpenuhi; unsaved live preview di luar scope. Hasil final aktual MAIN setelah preview: `npx vitest run --run` 2288 test pada 184 file pass, `tsc` pass, `build:pages` selesai exit 0 (log temp `pedia-final-build.log`); lint sebelumnya pass dengan warning existing. Obscura route nyata home/Pedia/admin dan CSS 200; screenshot fixture hydrated desktop/mobile diperiksa, termasuk preview tersimpan dengan komponen aktual. Batas renderer radio/SVG/fixed tetap dicatat; ini bukan bukti produksi penuh atau kelulusan seluruh daftar/gate live berikut. QA overhaul 2026-10-11 tetap historis. Tidak ada klaim Lighthouse/gate supplier/live-data; bukti currency/rate-unit live dan kurasi awal produksi/approval owner pending.
 
 1. Beranda compact/featured/fallback/all/cari/platform/reset, harga-jumlah-tier-refill sepadan, headline statis, Footer bersama; tanpa laris/trust strip/ticker.
-2. Tempel link IG post → chip deteksi + saran tampil.
+2. Historis: tempel link IG post di beranda → chip deteksi + saran (komponen dihapus). Validasi link pada halaman order tetap berlaku.
 3. Order tiga kelompok/radio native/null selection, invalid tier quantity reset null, fokus/validasi, satu CTA/nominal-change+kredit consent, expiry/invalidation/408/429/ambigu retry token sama; tutup hanya pesan CTA tanpa kontak. Tanpa compare sheet/jumlah bebas.
 4. Status pesanan (mock): menunggu bayar, berjalan 62%, selesai sebagian + kartu kredit, needs_check.
 5. Admin: daftar/readiness/filter, edit terpisah, assignment supplier, recovery/konfirmasi, kredit/settings, loading/error/empty/partial failure jujur.
-6. ServicesMenu kedua host keyboard/Escape/focus/overflow, promo dua arah/UTM, Footer newsletter/kategori/bantuan/pelacakan absolut dan spacing nav/CTA; Market regression. AppSwitcher dihapus, LaunchCards arsip.
+6. ServicesMenu kedua host keyboard/Escape/focus/overflow, promo dua arah/UTM, Footer newsletter/kategori/bantuan/pelacakan absolut dan spacing nav/CTA; Market regression. AppSwitcher dan LaunchCards dihapus; promo aktif `CrossServicePromo`.
 7. Target performa/aksesibilitas tetap mengikuti PRD; jangan menyatakan skor Lighthouse baru tanpa pengukuran.
 
 ### Konsistensi panel admin — 2026-10-15

@@ -12,7 +12,6 @@ import { computePediaPrice } from "@/lib/pedia/pricing";
 import { pediaMinOrderRp } from "@/lib/pedia/ops-config";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { isPediaProvider } from "@/lib/pedia/proxy";
-import { isPediaSaleProvider } from "@/lib/pedia/sales-policy";
 import { capturePediaServiceCopy } from "@/lib/pedia/service-copy";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { readJsonBody } from "@/lib/http-body";
@@ -68,10 +67,6 @@ export async function POST(req: NextRequest) {
   ).catch(() => null);
   if (!tier) return NextResponse.json({ error: pick(locale, "Tingkat kualitas tidak tersedia.", "This quality level is not available.") }, { status: 404 });
   if (!isPediaProvider(tier.supplier)) return NextResponse.json({ error: pick(locale, "Layanan sedang tidak tersedia.", "The service is temporarily unavailable.") }, { status: 409 });
-  // INDO-POLICY-20: quotes are issued for the sale supplier only. Tier rows of
-  // a retired supplier may remain in DB for saved-order recovery, but a new
-  // quote for one is rejected before pricing.
-  if (!isPediaSaleProvider(tier.supplier)) return NextResponse.json({ error: "provider_retired", message: pick(locale, "Layanan ini sudah tidak dijual. Pilih layanan lain yang tersedia.", "This service is no longer sold. Choose another available service.") }, { status: 409 });
   const live = await db.queryFirst(
     `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type=? AND rate_idr_per_1k>0`,
     tier.supplier, Number(tier.supplier_service_id), pediaServiceTypeFor(tier.input_kind),

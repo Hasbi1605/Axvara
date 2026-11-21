@@ -210,7 +210,7 @@ Bagian visual dapat dikerjakan paralel memakai fixture saat fondasi provider dib
 ## Area / File Terkait
 
 - Ekosistem: `src/components/storefront/{CommunityBar,Navbar,Footer}.tsx`, `src/components/pedia/{PediaNavbar,AppSwitcher,PediaBottomNav}.tsx`, `src/app/{(shop),pedia}/layout.tsx`, konfigurasi URL yang ada, `src/app/(shop)/link/link-bio-client.tsx` bila akses komunitas disesuaikan.
-- Storefront: `src/app/pedia/{home-client,p/[platform]/platform-client,o/[slug]/order-client}.tsx`, `src/components/pedia/{PlatformGrid,LinkPasteHero}.tsx`, `src/app/globals.css` bila token/motion bersama diperlukan.
+- Storefront: `src/app/pedia/{home-client,p/[platform]/platform-client,o/[slug]/order-client}.tsx`, `src/components/pedia/PlatformGrid.tsx`, `src/app/globals.css` bila token/motion bersama diperlukan. Komponen `LinkPasteHero` pada rancangan ini sudah dihapus.
 - Backend: `src/lib/pedia/{proxy,sync,pricing,quote,dispatch,notify}.ts`, API `pedia/{catalog,quote,orders}`, API `admin/pedia/*`, `src/app/api/supplier-sync/*` dan cron Pedia yang relevan.
 - Admin/data: `src/components/admin/PediaManager.tsx`, `drizzle/schema.sql`, migrasi hanya bila model yang ada tidak cukup, test adapter database lokal bila kontrak SQL berubah.
 - Lintas repo: `/Users/macbookair/axvara-wr-proxy` untuk API/sync/secret supplier. File konkret ditentukan setelah audit repo proxy, bukan ditebak di planning.
