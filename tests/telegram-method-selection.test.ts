@@ -22,8 +22,9 @@ const send = vi.mocked(sendMessage);
 const edit = vi.mocked(safeEditOrSend);
 let fx: ReturnType<typeof createD1Fixture>;
 
+let callbackSeq = 0;
 const click = (data: string, chatId = buyer.id, from = buyer) =>
-  handleCallback(data, chatId, 11, from, `cb-${data.slice(0, 20)}-${Math.random()}`);
+  handleCallback(data, chatId, 11, from, `cb-${data.slice(0, 20)}-${++callbackSeq}`);
 const userState = () =>
   fx.sql.prepare("SELECT pending_action, buyer_email FROM telegram_users WHERE user_id=?").get(String(buyer.id))!;
 const lastText = (): string => {

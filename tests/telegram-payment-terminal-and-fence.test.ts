@@ -27,8 +27,9 @@ const send = vi.mocked(sendMessage);
 const edit = vi.mocked(safeEditOrSend);
 let fx: ReturnType<typeof createD1Fixture>;
 
+let callbackSeq = 0;
 const click = (data: string, chatId = buyer.id, from = buyer) =>
-  handleCallback(data, chatId, 21, from, `cb-${Math.random()}`);
+  handleCallback(data, chatId, 21, from, `cb-${++callbackSeq}`);
 const userRaw = () =>
   String(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer.id))?.pending_action ?? "");
 

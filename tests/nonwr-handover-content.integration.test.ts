@@ -53,9 +53,10 @@ async function paidManualOrder(code = CODE, email: string | null = "pembeli@cont
   emails = [];
 }
 
+let requestSeq = 0;
 function req(url: string, method: string, body?: unknown) {
   return new NextRequest(`http://localhost${url}`, {
-    method, headers: { "content-type": "application/json", "x-forwarded-for": `10.0.0.${Math.floor(Math.random() * 200)}` },
+    method, headers: { "content-type": "application/json", "x-forwarded-for": `10.0.0.${++requestSeq}` },
     body: body === undefined ? undefined : JSON.stringify(body),
   }) as unknown as import("next/server").NextRequest;
 }

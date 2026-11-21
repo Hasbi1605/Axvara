@@ -4,6 +4,11 @@ import path from "path";
 import { generateOrderCode, checkMagicBytes, isAllowedImageType, aggregateQty, isValidOrderCode } from "@/lib/security";
 import { rateLimit } from "@/lib/rateLimit";
 
+// Deterministic source IPs keep rate-limit buckets isolated per test without
+// unseeded randomness (AU-J2-7).
+let ipSeq = 0;
+function nextIp() { return `10.0.0.${++ipSeq}`; }
+
 // Helper to mock NextRequest minimal for rateLimit
 function mockReq(ip: string) {
   return {
@@ -35,7 +40,7 @@ describe("F-High: Order enumeration — code entropy + format", () => {
   });
 
   it("rateLimit untuk public lookup: 20允许, 21 ditolak", () => {
-    const ip = `10.0.0.${Math.floor(Math.random() * 200) + 10}`;
+    const ip = nextIp();
     for (let i = 0; i < 20; i++) expect(rateLimit(`lookup:${ip}`, 20)).toBe(true);
     expect(rateLimit(`lookup:${ip}`, 20)).toBe(false);
   });

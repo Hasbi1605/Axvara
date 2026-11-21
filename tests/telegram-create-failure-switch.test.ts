@@ -37,7 +37,8 @@ const send = vi.mocked(sendMessage);
 const edit = vi.mocked(safeEditOrSend);
 let fx: ReturnType<typeof createD1Fixture>;
 
-const click = (data: string) => handleCallback(data, buyer.id, 21, buyer, `cb-${Math.random()}`);
+let callbackSeq = 0;
+const click = (data: string) => handleCallback(data, buyer.id, 21, buyer, `cb-${++callbackSeq}`);
 const userRaw = () => String(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer.id))?.pending_action ?? "");
 const count = (table: string) => Number(fx.sql.prepare(`SELECT COUNT(*) n FROM ${table}`).get()?.n ?? 0);
 const stock = () => Number(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock ?? 0);
