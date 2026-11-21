@@ -319,9 +319,11 @@ perbaiki diam-diam, dan jangan ubah `src/`.
 - (i) Snapshot golden **seluruh** objek `results` cron operations, yaitu 72 kunci terukur
   (33 di skeleton dan 39 yang di-assign fase), termasuk urutan kunci.
 - (ii) Matriks kapan `cron_lite_<job>_ok_at` **tidak** ditulis.
-- (iii) Asimetri publish katalog 4 supplier:
-  - `storebat` memakai `!("unchanged" in synced)`, berbeda dari tiga supplier lain;
-  - `mirai`/`storebat` mengembalikan 503 saat `!ok`, sedangkan `tunvn`/`aivault` lanjut.
+- (iii) Perilaku publish katalog 4 supplier. **Koreksi 22 Nov (T4, diverifikasi Wonder):**
+  keempatnya seragam mengembalikan 503 pada `ok:false` sebelum marker/pairs drain
+  (`lite/route.ts` cabang aivault/storebat/mirai/tunvn). Klaim MAP-1 bahwa tunvn/aivault
+  lanjut itu salah. Asimetri nyata yang tersisa: `storebat` memakai
+  `!("unchanged" in synced)`. Perilaku 503 seragam adalah kontrak saat ini dan dipertahankan 3A.
 - (iv) `sampleWhatsAppGateway` dan nested budget 400 `processBroadcasts`.
 
 **T5: order web** (prasyarat 3B; MAP-1 (d)§5)
@@ -530,9 +532,10 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | T1 | T | lokal (WR/SK `f3fd8cca`, supplier kecil commit T2) | Premium sukses 5 stmt (6 invite) di luar scan; angka Jaspay 29 khusus fixture, bukan batas umum |
 | T2 | T | lokal | Terukur: create 2/2/2/3, process sukses 21/21/21/23, retryable 18/18/18/23, retry sukses 13/13/13/14, retry retryable 10/10/10/14 (menggantikan angka MAP-2). TUNVN menyelesaikan receipt terlambat pada lease kedaluwarsa pemilik sama = perilaku sah (§3.3), A4 tidak boleh menyamakan. Total TUNVN 23 memakai notify-buyer asli: perubahan notify bisa mengubahnya |
 | T3 | T | lokal | 33 `it.fails` untuk B3b/B4b/B5/2C |
-| T4 | T | belum | |
+| T4 | T | lokal | 72 kunci + urutan; sebelum 3A masih wajib T4b |
+| T4b | T | belum | Sisa gap sebelum 3A (review Wonder): asimetri drain `games_catalog`, isolasi kegagalan budget `drainDirtyGroupsIfBudget`, `applyOnly` saat budget habis |
 | T5 | T | belum | |
-| T6 | T | belum | |
+| T6 | T | lokal | |
 | T7 | T | belum | |
 | A1 AIVault | E | belum | |
 | A2 Mirai | E | belum | |
