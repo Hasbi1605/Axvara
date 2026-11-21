@@ -42,15 +42,6 @@ export type RouteDeps = {
     payment?: unknown;
     status?: unknown;
   }>;
-  readSavedGatewayRow: (code: unknown) => Promise<Record<string, unknown> | null>;
-  createSekalipayGatewayInvoice: (
-    code: string,
-    subtotal: number,
-    channel: string,
-    buyer: { name: string; email: string; phone: string },
-    fee: number,
-  ) => Promise<unknown>;
-  reconcileSekalipayGateway: (code: string) => Promise<{ payment: unknown; deferred: boolean }>;
 };
 
 /**
@@ -176,7 +167,6 @@ export async function existingCheckoutResponse(
 
 export type CreatedCheckoutInput = {
   code: string;
-  quoteId: string;
   subtotal: number;
   locale: CheckoutLocale;
   qrisInvoice: {
@@ -187,7 +177,7 @@ export type CreatedCheckoutInput = {
   } | null;
   cryptoView: unknown | null;
   gatewayView: unknown | null;
-  proofs: BuyerProofs & { quote_id: string };
+  proofs: BuyerProofs;
 };
 
 /**
@@ -195,8 +185,7 @@ export type CreatedCheckoutInput = {
  * in the same order, same conditional `payment` spread, same 201 + no-store.
  */
 export function createdCheckoutResponse(input: CreatedCheckoutInput) {
-  const { code, quoteId, subtotal, locale, qrisInvoice, cryptoView, gatewayView, proofs } = input;
-  void quoteId;
+  const { code, subtotal, locale, qrisInvoice, cryptoView, gatewayView, proofs } = input;
   return NextResponse.json({
     code,
     buyer_access_session: proofs.buyer_access_session,

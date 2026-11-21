@@ -558,7 +558,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | C1 (H4 migrasi) | B | belum | D1 disetujui |
 | C2 (H4 aktivasi) | B | belum | D1 disetujui |
 | 3A | E | 3A-1 lokal (kerangka jobs/context) | Wonder APPROVE. Catatan: modul job baru tidak boleh menambah import runtime selain yang sudah dimuat route |
-| 3B | E | 3B-1, 3B-2 lokal (GET flags/detail-view; respons POST) | Wonder APPROVE-WITH-NITS (diperbaiki) |
+| 3B | E | 3B-1..3B-3 lokal (GET flags/detail-view; respons POST; guard) | Wonder APPROVE-WITH-NITS (diperbaiki) |
 | 3C | E | 3C-1 lokal (phase-state, catalog-sweep) | Wonder APPROVE; `OperationsContext` dibekukan di 3C-2 |
 | 3D | E | belum | |
 | 3E | E (UI) | belum | |

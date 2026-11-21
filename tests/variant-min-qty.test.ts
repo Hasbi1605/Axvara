@@ -77,9 +77,13 @@ describe("variant min_qty — guard server", () => {
 
   it("orders menegakkan ulang minimum dari DB (409) + batas 100", () => {
     const orders = read("src/app/api/orders/route.ts");
+    const guards = read("src/lib/orders/checkout/guards.ts");
     expect(orders).toContain("minimal pembelian");
-    expect(orders).toContain("min_qty");
-    expect(orders).toContain("qtyByVariant");
+    // 3B-3: aggregation + copy moved to guards.ts; the route keeps the call
+    // and the 409 responses. Guard both the call site and the moved code.
+    expect(orders).toContain("decideMinCap");
+    expect(guards).toContain("qtyByVariant");
+    expect(guards).toContain("min_qty");
     expect(orders).toContain("qty: z.coerce.number().int().min(1).max(100)");
   });
 

@@ -11,6 +11,7 @@ import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema, withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
 import { createdCheckoutResponse, existingCheckoutResponse, paymentMethodProblem } from "@/lib/orders/checkout/response";
+import { decideEmailNeed, decideMinCap, findStalePriceItem } from "@/lib/orders/checkout/guards";
 import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
@@ -77,9 +78,6 @@ function routeDeps() {
       if (!payment || payment.state === "initializing") return { kind: "generic" as const };
       return { kind: "reused" as const, payment };
     },
-    readSavedGatewayRow: null as never,
-    createSekalipayGatewayInvoice: null as never,
-    reconcileSekalipayGateway: null as never,
   };
 }
 
@@ -189,9 +187,12 @@ export async function POST(req: NextRequest) {
   try {
     const { needsEmailForVariant } = await import("@/lib/warung-rebahan/delivery-class");
     const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
-    let emailNeeded = false;
+    // DB reads stay HERE (same queries, same order) — guards.ts only owns
+    // the pure computation over the fetched rows.
+    let variantRows: Record<string, unknown>[] = [];
+    let productRows: Record<string, unknown>[] = [];
     if (variantIds.length > 0) {
-      const rows = await queryAll(
+      variantRows = await queryAll(
         `SELECT pv.id, wv.wr_type AS wr_type, p.require_email AS require_email
          FROM product_variants pv
          LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
@@ -199,23 +200,19 @@ export async function POST(req: NextRequest) {
          WHERE pv.id IN (${variantIds.map(() => "?").join(",")})`,
         ...variantIds,
       );
-      for (const r of rows) {
-        if (needsEmailForVariant({
-          wrType: r.wr_type != null ? String(r.wr_type) : null,
-          requireEmail: Number(r.require_email ?? 0),
-        })) { emailNeeded = true; break; }
-      }
     } else {
       const productIds = [...new Set(quote.items.map((i) => Number(i.product_id || 0)).filter((v) => v > 0))];
       if (productIds.length > 0) {
-        const rows = await queryAll(
+        productRows = await queryAll(
           `SELECT require_email FROM products WHERE id IN (${productIds.map(() => "?").join(",")})`,
           ...productIds,
         );
-        emailNeeded = rows.some((r) => Number(r.require_email ?? 0) === 1);
       }
     }
-    const emailOk = typeof customer_email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email.trim());
+    const { emailNeeded, emailOk } = decideEmailNeed(
+      { variantRows, productRows, hasVariants: variantIds.length > 0, customerEmail: customer_email },
+      needsEmailForVariant,
+    );
     if (emailNeeded && !emailOk) {
       return NextResponse.json({ error: "Produk ini dikirim via email invite — tulis email aktif yang benar sebelum bayar." }, { status: 422 });
     }
@@ -235,6 +232,7 @@ export async function POST(req: NextRequest) {
   try {
     const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
     if (variantIds.length > 0) {
+      // Same single query, same order — rows flow into the pure decider.
       const rows = await queryAll(
         `SELECT pv.id, pv.min_qty AS min_qty, pv.label AS label, p.name AS product_name,
                 pv.wr_variant_id AS wr_variant_id, wv.wr_delivery_class AS wr_delivery_class, wv.wr_max_quantity AS wr_max_quantity,
@@ -245,46 +243,12 @@ export async function POST(req: NextRequest) {
          WHERE pv.id IN (${variantIds.map(() => "?").join(",")})`,
         ...variantIds,
       );
-      const minById = new Map<number, { min: number; name: string }>();
-      const capById = new Map<number, { cap: number | null; jaspay: boolean; name: string }>();
-      for (const r of rows) {
-        if (!wrNewSaleAllowed(r)) return NextResponse.json({ error: "Paket ini tidak lagi tersedia. Pilih paket otomatis terbaru." }, { status: 409 });
-        minById.set(Number(r.id), {
-          min: Math.max(1, Number(r.min_qty ?? 1) || 1),
-          name: `${String(r.product_name ?? "Produk")} — ${String(r.label ?? "")}`.trim(),
-        });
-        const wrId = r.wr_variant_id == null ? "" : String(r.wr_variant_id).trim();
-        if (wrId.startsWith("jaspay:")) {
-          const capRaw = r.wr_max_quantity;
-          const cap = capRaw == null ? null : Math.floor(Number(capRaw));
-          capById.set(Number(r.id), {
-            cap: cap != null && Number.isFinite(cap) && cap >= 1 ? cap : null,
-            jaspay: true,
-            name: `${String(r.product_name ?? "Produk")} — ${String(r.label ?? "")}`.trim(),
-          });
-        }
-      }
-      // Qty agregat per varian (keranjang bisa kirim baris ganda varian sama).
-      const qtyByVariant = new Map<number, number>();
-      for (const qi of quote.items) {
-        const vid = Number(qi.variant_id || 0);
-        if (vid > 0) qtyByVariant.set(vid, (qtyByVariant.get(vid) ?? 0) + Number(qi.qty || 0));
-      }
-      for (const [vid, qty] of qtyByVariant) {
-        const rule = minById.get(vid);
-        const need = rule?.min ?? 1;
-        if (need > 1 && qty < need) {
-          return NextResponse.json({ error: `${rule?.name ?? "Produk ini"} minimal pembelian ${need} (kamu pilih ${qty}). Tambah jumlahnya lalu checkout ulang.` }, { status: 409 });
-        }
-        const capRule = capById.get(vid);
-        if (capRule) {
-          if (capRule.cap == null) {
-            return NextResponse.json({ error: `${capRule.name} sedang tidak tersedia.` }, { status: 409 });
-          }
-          if (qty > capRule.cap) {
-            return NextResponse.json({ error: `${capRule.name} maksimal pembelian ${capRule.cap} (kamu pilih ${qty}). Kurangi jumlahnya lalu checkout ulang.` }, { status: 409 });
-          }
-        }
+      const { violation } = decideMinCap({ rows, quoteItems: quote.items, isNewSaleAllowed: wrNewSaleAllowed });
+      if (violation) {
+        if (violation.kind === "unavailable") return NextResponse.json({ error: "Paket ini tidak lagi tersedia. Pilih paket otomatis terbaru." }, { status: 409 });
+        if (violation.kind === "below_min") return NextResponse.json({ error: `${violation.name} minimal pembelian ${violation.need} (kamu pilih ${violation.qty}). Tambah jumlahnya lalu checkout ulang.` }, { status: 409 });
+        if (violation.cap === -1) return NextResponse.json({ error: `${violation.name} sedang tidak tersedia.` }, { status: 409 });
+        return NextResponse.json({ error: `${violation.name} maksimal pembelian ${violation.cap} (kamu pilih ${violation.qty}). Kurangi jumlahnya lalu checkout ulang.` }, { status: 409 });
       }
     }
   } catch {
@@ -298,6 +262,7 @@ export async function POST(req: NextRequest) {
   try {
     const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
     if (variantIds.length > 0) {
+      // Same query + JOIN (bulk only for manual products), same order.
       const rows = await queryAll(
         `SELECT pv.id, pv.price, pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
                 p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
@@ -307,19 +272,8 @@ export async function POST(req: NextRequest) {
           WHERE pv.id IN (${variantIds.map(() => "?").join(",")})`,
         ...variantIds,
       );
-      const priceById = new Map(rows.map((r) => [Number(r.id), r]));
       const { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct } = await import("@/lib/bulk-pricing");
-      const stale = quote.items.find((qi) => {
-        const vid = Number(qi.variant_id || 0);
-        if (vid <= 0) return false;
-        const live = priceById.get(vid);
-        if (!live) return true;
-        try {
-          const qty = quote.items.filter((item) => item.variant_id === vid).reduce((n, item) => n + item.qty, 0);
-          const current = resolveBulkPriceForProduct(Number(live.price), qty, live.bulk_pricing_enabled, live.bulk_pricing_tiers, bulkOwnerFromJoinedRow(live));
-          return current.price !== qi.price || (qi.base_price !== undefined && qi.base_price !== Number(live.price)) || current.tier !== qi.applied_tier_min_qty;
-        } catch { return true; }
-      });
+      const stale = findStalePriceItem({ rows, quoteItems: quote.items, bulkOwnerFromJoinedRow, resolveBulkPriceForProduct });
       if (stale) {
         return NextResponse.json(
           {
@@ -572,7 +526,6 @@ export async function POST(req: NextRequest) {
   // buyer proofs and wraps.
   return createdCheckoutResponse({
     code,
-    quoteId: quote.quote_id,
     subtotal: quote.subtotal,
     locale: quote.locale ?? "id",
     qrisInvoice: qrisInvoice ? {
@@ -586,7 +539,6 @@ export async function POST(req: NextRequest) {
     proofs: {
       buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
       checkout_credential_grant: await createCheckoutCredentialGrant({ code, quote_id: quote.quote_id, buyer_access_version: 1, buyer_access_format: "pin6" }),
-      quote_id: quote.quote_id,
     },
   });
 }

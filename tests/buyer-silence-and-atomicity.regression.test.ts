@@ -82,17 +82,20 @@ describe("T-H1: pembatalan Telegram tidak boleh merusak order yang sudah lunas",
 describe("C-H1: harga divalidasi ulang antara quote dan pembuatan order", () => {
   it("order menolak 409 price_changed bila harga DB bergeser dari quote", () => {
     const route = read("src/app/api/orders/route.ts");
+    const guards = read("src/lib/orders/checkout/guards.ts");
     // Token quote berlaku 1 jam (auth.ts), sementara sync WR menulis harga
     // tiap ~5 menit — snapshot subtotal bisa usang saat pembeli menekan bayar.
     expect(route).toContain("price_changed");
     // Bulk foundation: guard atomik kini mengikat base + konfigurasi tier
-    // aktif (bukan harga mentah saja). Regex menuntut SELECT id + price
-    // dengan klausa bulk agar klaim usang tidak lolos sebagai buku baru.
+    // aktif (bukan harga mentah saja).
     // 2026-11-08: query ikut JOIN products (kolom p_*) karena grosir hanya
     // berlaku untuk produk manual.
     expect(route).toMatch(/SELECT pv\.id, pv\.price, pv\.bulk_pricing_enabled, pv\.bulk_pricing_tiers/);
     expect(route).toContain("JOIN products p ON p.id = pv.product_id");
     expect(route).toContain("resolveBulkPriceForProduct");
+    expect(guards).toContain("current.price !== qi.price");
+    expect(guards).toContain("findStalePriceItem");
+    expect(route).toContain("findStalePriceItem");
     // Guard harga wajib SEBELUM order dibuat.
     expect(route.indexOf("price_changed")).toBeLessThan(route.indexOf("await createOrderWithStock("));
   });

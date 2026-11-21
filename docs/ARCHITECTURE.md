@@ -2112,7 +2112,8 @@ axvara/
 │   ├── orders/                  # (sebagian) helper order bersama
 │   │   ├── status-flags.ts      # SQL flag kesiapan + re-query penyegar supplier, dipakai GET /api/orders dan POST /api/orders/lookup (3B-1)
 │   │   ├── detail-view.ts       # pembentuk body GET /api/orders dari baris pasca-refresh (3B-1)
-│   │   └── checkout/response.ts # body POST reused/closed/created + wiring proof (3B-2; guard/pembayaran/createOrder tetap di route)
+│   │   ├── checkout/response.ts # body POST reused/closed/created + wiring proof (3B-2; guard/pembayaran/createOrder tetap di route)
+│   │   └── checkout/guards.ts   # komputasi guard murni (email wajib, min/max qty, price_changed) atas baris yang dibaca route; baca DB, urutan, early return tetap di route (3B-3)
 │   ├── suppliers/
 │   │   ├── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault, Mirai, StoreBat; TUNVN hanya predikat JS)
 │   │   └── purchase-state.ts    # WR/SK: backoff, predikat paid/enabled dan Retry, CAS klaim fresh/inline dan send fence sebelum POST
