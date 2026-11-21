@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3A-4b (kelas E): pindahkan `pedia_orders` ke `src/lib/cron/lite/jobs/pedia.ts`; dispatch/poll, checkpoint saldo IndoSMM, log/notifikasi, statistik, error subjob inti, serta marker tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/pedia.md` — (verifikasi terintegrasi: 623 file, 8.559 test lulus, 29 expected-fail, 3 TODO; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3A-4a (kelas E): pindahkan job order TUNVN/AIVault/StoreBat/Mirai dan pemeriksaan saldo ke `src/lib/cron/lite/jobs/small-suppliers.ts`; deadline, key hasil, error saldo, yield budget dan marker tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/platform-ops.md` — (verifikasi: 244 test fokus pada overlay terisolasi; badan fungsi cocok dengan baseline)
 
 - 2026-11-22 — Roadmap 3B-4 (kelas E): preflight crypto, gateway dan QRIS dipindah ke `src/lib/orders/checkout/methods.ts`; retry dengan quote crypto tersimpan tetap melewati pembacaan snapshot pasar, dan slot/pembuatan order/invoice tetap di route — `src/app/api/orders/route.ts`, `tests/characterization/orders-crypto-saved-retry.test.ts`, `docs/agent-rules/payments.md` — (verifikasi: fixture retry lulus di baseline dan hasil ekstraksi, gagal pada versi ekstraksi yang membaca snapshot lebih dulu)

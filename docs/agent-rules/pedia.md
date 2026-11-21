@@ -1,5 +1,7 @@
 # Aturan agent — Pedia (SMM)
 
+Job `pedia_orders` dimuat dinamis dari `src/lib/cron/lite/jobs/pedia.ts`. Dispatch/poll tetap berjalan sebelum cek saldo IndoSMM (checkpoint 5 menit) dan refresh statistik layanan. Gagal dispatch tetap ditandai sebagai subjob inti gagal; penanda sukses dikelola route.
+
 ## Simpan harga kurasi dari admin — 21 November 2026 (lokal)
 
 - POST tier menyimpan `input_kind`, `drop_label`, `speed_per_day` dan harga paket pada INSERT yang sama; bila tidak ada paket yang dapat dihargai, gagal tanpa menulis tier. Custom Comments memakai batas jumlah yang sama dengan quote.
