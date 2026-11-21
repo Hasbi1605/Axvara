@@ -141,7 +141,7 @@ describe("T-H1: kegagalan Warung Rebahan akhirnya mengabari pembeli", () => {
     vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
     const db = createDatabaseAccess(fx.db);
     await createWrOrderLink(CODE, [{ product_id: 1, variant_id: 1, qty: 1 }], db);
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("boom"); }));
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ success: false, message: "Order rejected" }, { status: 422 })));
     for (let i = 0; i < 3; i++) {
       fx.sql.prepare("UPDATE wr_order_links SET next_attempt_at=datetime('now','-1 minute')").run();
       await processWrPendingOrders(createDatabaseAccess(fx.db));

@@ -478,7 +478,7 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
       refId,
       carts: [{ item_id: skVariantId, quantity: qty }],
     });
-    await execRun(
+    const assigned = await execRun(
       `UPDATE sk_order_links SET status='processing', sk_invoice=?,
          last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
          updated_at=datetime('now') WHERE id=? AND status='claimed'
@@ -487,6 +487,7 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
       id,
       String(created.invoice),
     );
+    if (!Number(assigned.changes ?? 0)) return "retried";
     return "succeeded";
   } catch (error) {
     return handleSkOrderError(link, claim.leaseOwner, error, attempt, db);

@@ -96,7 +96,7 @@ export async function advanceSkLinkMonotonic(
     return true;
   }
   const now = new Date().toISOString();
-  const sets = [`status='${toStatus}'`, `last_event_at='${now}'`];
+  const sets = [`status='${toStatus}'`, `last_event_at='${now}'`, "lease_owner=NULL", "lease_expires_at=NULL"];
   const values: unknown[] = [];
   if (eventId) {
     sets.push(`last_event_id=?`);

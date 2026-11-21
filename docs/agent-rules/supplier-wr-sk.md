@@ -1,5 +1,18 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## FX-20 — 21 November 2026 (lokal)
+
+- WR Premium/Jaspay: `WrNetworkError` yang mungkin sudah terkirim masuk
+  `submitted`, tetap menyimpan `request_sent_at`. Guard URL pra-kirim tidak
+  menambah ambiguitas; aturan pesan/5xx dan retry konfigurasi tetap berlaku.
+  Jaspay tetap pulih via exact-ref. Sweep klaim usang hanya requeue bila tanpa invoice.
+- Admin Retry WR/SK mensyaratkan order `lunas`/`paid` dan pembelian supplier
+  aktif saat baca dan saat CAS. SK menghapus lease saat status maju; receipt
+  yang kalah CAS dihitung `retried`, bukan sukses.
+- H4 ditunda: kehabisan percobaan WR masih bisa menandai mixed cart gagal dan
+  mengabari pembeli saat item lain masih antre. Penyelesaian per item + agregat
+  perlu cadangan statement pada percobaan terakhir; admission tidak diubah.
+
 ## Kabar saldo WR tertahan — FX-15 (21 November 2026, lokal)
 
 - `blocked_balance`: pembeli web hanya menerima email jika ada; tanpa email,

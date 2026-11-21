@@ -35,6 +35,7 @@ describe("SK admin retry: pre-send only, CAS, no fence erasure", () => {
     ["cancelled order", "UPDATE orders SET status='dibatalkan',payment_status='failed'"],
     ["refunded order", "UPDATE orders SET payment_status='refunded'"],
     ["unpaid order", "UPDATE orders SET status='pending',payment_status='pending'"],
+    ["purchase-disabled paid order", "UPDATE orders SET supplier_purchase_disabled=1"],
     ["completed link", "UPDATE sk_order_links SET status='completed'"],
   ])("rejects %s without writes or dispatch", async (_name, sql) => {
     f.sql.exec(sql);
@@ -76,6 +77,22 @@ describe("SK admin retry: pre-send only, CAS, no fence erasure", () => {
     expect(await response.json()).toMatchObject({ error: "retry_race_lost" });
     expect(processSkPendingOrders).not.toHaveBeenCalled();
     expect(row()?.status).not.toBe("retry");
+  });
+
+  it("does not change link history or dispatch when purchase is disabled during the retry CAS", async () => {
+    const before = row();
+    let disabled = false;
+    f.control.beforeRun = async query => {
+      if (!query.startsWith("UPDATE sk_order_links SET status='retry'")) return;
+      f.sql.exec("UPDATE orders SET supplier_purchase_disabled=1");
+      disabled = true;
+    };
+    const response = await call();
+    expect(disabled).toBe(true);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "retry_race_lost" });
+    expect(row()).toEqual(before);
+    expect(processSkPendingOrders).not.toHaveBeenCalled();
   });
 
   it("keeps auth, enabled, id and not-found guards", async () => {

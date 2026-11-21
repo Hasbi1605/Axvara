@@ -136,7 +136,7 @@ export class WrOutOfStockError extends WrApiError {
 }
 
 export class WrNetworkError extends Error {
-  constructor(message: string, public endpoint: string) {
+  constructor(message: string, public endpoint: string, public readonly preSend = false) {
     super(message);
     this.name = "WrNetworkError";
   }
@@ -246,13 +246,13 @@ function assertAllowedUrl(url: string, endpoint: string): void {
   try {
     parsed = new URL(url);
   } catch {
-    throw new WrNetworkError("invalid_wr_url", endpoint);
+    throw new WrNetworkError("invalid_wr_url", endpoint, true);
   }
   // Token proxy tidak boleh lewat plaintext (kecuali localhost untuk dev).
   const host = parsed.hostname.toLowerCase();
   const isLocal = host === "localhost" || host === "127.0.0.1";
   if (parsed.protocol !== "https:" && !isLocal) {
-    throw new WrNetworkError("wr_insecure_protocol", endpoint);
+    throw new WrNetworkError("wr_insecure_protocol", endpoint, true);
   }
   if (host === WR_ALLOWED_HOST || host.endsWith(`.${WR_ALLOWED_HOST}`)) return;
   // Mode proxy: host proxy (Heroku) juga diizinkan — nilainya dari env
@@ -263,10 +263,10 @@ function assertAllowedUrl(url: string, endpoint: string): void {
       const proxyHost = new URL(proxyUrl).hostname.toLowerCase();
       if (host === proxyHost) return;
     } catch {
-      throw new WrNetworkError("invalid_wr_proxy_url", endpoint);
+      throw new WrNetworkError("invalid_wr_proxy_url", endpoint, true);
     }
   }
-  throw new WrNetworkError("wr_host_not_allowed", endpoint);
+  throw new WrNetworkError("wr_host_not_allowed", endpoint, true);
 }
 
 export function classifyWrError(
@@ -312,7 +312,7 @@ export async function wrFetch<T>(
   if (proxyUrl) headers["x-proxy-token"] = getWrProxyToken();
   const controller = new AbortController();
   const timeoutMs = proxyUrl && path === "/products-slice" ? Math.min(35_000, sliceBudgetMs) : WR_API_TIMEOUT_MS;
-  if (timeoutMs <= 0) throw new WrNetworkError("wr_request_timeout", endpoint);
+  if (timeoutMs <= 0) throw new WrNetworkError("wr_request_timeout", endpoint, true);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {

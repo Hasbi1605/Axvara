@@ -397,9 +397,10 @@ produksi; daily-admin-summary tidak diubah. Deployment/data ingest belum terbukt
   Recovery exact-ref Jaspay existing tidak berubah. JSON valid `success:false`
   tetap memakai klasifikasi penolakan saldo/stok existing.
 - `POST /api/admin/sekalipay/orders/[id]/retry`: pre-read JOIN order + CAS UPDATE
-  mensyaratkan order lunas/paid, invoice kosong, sent-fence NULL dan bukan
+  mensyaratkan order lunas/paid, `supplier_purchase_disabled=0` (FX-20),
+  invoice kosong, sent-fence NULL dan bukan
   `cancelled_by_admin%`. Invoice/sent →409 `reconciliation_required`; void atau
-  nonpaid →409 `not_retryable`. Retry tidak menghapus sent-fence. `failed`
+  nonpaid / purchase-disabled →409 `not_retryable`. Retry tidak menghapus sent-fence. `failed`
   pra-kirim boleh reset attempt0 (termasuk kuota habis); status retryable lain
   tetap mempertahankan counter dan batas existing. Dispatch memakai
   `skipOrphanProbe:true`; autentikasi tidak berubah.

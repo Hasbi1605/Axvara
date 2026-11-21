@@ -3,9 +3,12 @@ import { NextRequest } from "next/server";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { parseExpiry } from "@/lib/expiry";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
-import { processSkPendingOrders, reconcileBlockedSkBalance, reconcileSkInvoiceNow, recoverStaleSkClaims, retryFailedSkOrders } from "@/lib/sekalipay/order";
+import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
+import { computeSkSignature } from "@/lib/sekalipay/client";
+import { handleSkOrderPaid, processSkPendingOrders, reconcileBlockedSkBalance, reconcileSkInvoiceNow, recoverStaleSkClaims, retryFailedSkOrders } from "@/lib/sekalipay/order";
 import { processWrPendingOrders, reconcileBlockedBalance, reconcileStuckWrOrders, recoverStaleClaims, retryFailedWrOrders } from "@/lib/warung-rebahan/order";
 import { POST as retryWr } from "@/app/api/admin/warung/orders/[id]/retry/route";
+import { POST as skWebhook } from "@/app/api/webhook/sekalipay/route";
 import { seedWrCatalog, seedWrFulfillmentItem, seedWrOrder, setupWrFixture } from "../warung-rebahan/helpers";
 
 vi.mock("@/lib/auth", () => ({ requireAdmin: async () => ({ email: "admin@fixture.test" }) }));
@@ -23,6 +26,7 @@ afterEach(() => {
   fixture = undefined;
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  clearRateLimitBucketsForTest();
 });
 
 function due() {
@@ -63,14 +67,15 @@ async function setup(supplier: Supplier) {
   return { fx, p, code, ref, row, set, db: createDatabaseAccess(fx.db) };
 }
 
-function supplierFetch(supplier: Supplier, purchase?: () => Response | Promise<Response>, lookup?: (path: string) => Response) {
+function supplierFetch(supplier: Supplier, purchase?: () => Response | Promise<Response>, lookup?: (path: string) => Response, pathOverride?: string) {
   const calls: string[] = [];
-  const purchaseKey = `POST ${policy[supplier].purchase}`;
+  const purchaseKey = `POST ${pathOverride ?? policy[supplier].purchase}`;
   vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const path = new URL(String(url)).pathname;
+    const { hostname, pathname: path } = new URL(String(url));
     const key = `${init?.method ?? "GET"} ${path}`;
     calls.push(key);
     if (key === purchaseKey && purchase) return purchase();
+    if (hostname === "api.resend.com" && key === "POST /emails") return Response.json({ id: "fixture-mail" });
     if (supplier === "WR" && key === "POST /api/v1/balance") return Response.json({ success: true, data: { balance: 100000 } });
     if (supplier === "SK" && key === "GET /api/v1/item/1095") {
       return Response.json({ data: { id: 1095, price: 5000, stock: 10, order_process: "auto" } });
@@ -258,14 +263,136 @@ describe("WR Premium purchase and admin retry", () => {
     expect(http.calls).toEqual([]);
   });
 
-  // A typed transport failure with an arbitrary reason can miss the message regex and clear the fence.
-  it.todo("BUG? WR must keep the sent fence on every transport error, not just recognized message text");
-  // The bulk crash sweep lacks SK's invoice-empty predicate when the send timestamp is absent.
-  it.todo("BUG? WR should not rearm an expired claimed row that already has an invoice");
-  // The WR retry route does not recheck paid or purchase-disabled state before rearming the row.
-  it.todo("BUG? WR admin Retry should not mutate unpaid or purchase-disabled work");
-  // Direct dispatch exhaustion bypasses fulfillment item settlement and the mixed-cart aggregate.
-  it.todo("BUG? WR exhausted purchase should not mark the whole order failed while sibling items are queued");
+  it.each([
+    ["not lunas", "status='pending'"],
+    ["not paid", "payment_status='pending'"],
+    ["purchase disabled", "supplier_purchase_disabled=1"],
+  ])("rejects admin retry when order is %s", async (_label, gate) => {
+    const { fx, row, set } = await setup("WR");
+    set("status='failed', attempt_count=max_attempts, last_error='definitive_rejection'");
+    fx.sql.exec(`UPDATE orders SET ${gate}`);
+    const before = row();
+    const http = supplierFetch("WR");
+    const response = await callWrRetry();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "not_retryable", status: "failed" });
+    expect(row()).toEqual(before);
+    expect(http.calls).toEqual([]);
+  });
+
+  it.each(["failed", "retry"])("rejects a disable racing the %s admin retry CAS", async status => {
+    const { fx, row, set } = await setup("WR");
+    set(`status='${status}', attempt_count=2, last_error='definitive_rejection'`);
+    const before = row();
+    const http = supplierFetch("WR");
+    let disabled = false;
+    fx.control.beforeRun = async sql => {
+      if (!sql.startsWith("UPDATE wr_order_links SET status='retry'")) return;
+      fx.sql.exec("UPDATE orders SET supplier_purchase_disabled=1");
+      disabled = true;
+    };
+    const response = await callWrRetry();
+    expect(disabled).toBe(true);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "retry_race_lost", status });
+    expect(row()).toEqual(before);
+    expect(http.calls).toEqual([]);
+  });
+
+  it("requeues only expired unsent claims without invoices", async () => {
+    const { fx, db, code, row, set } = await setup("WR");
+    set("status='claimed', wr_order_id='WR-KNOWN', lease_owner='old', lease_expires_at=datetime('now','-1 minute')");
+    fx.sql.prepare(`INSERT INTO wr_order_links(id,order_code,wr_variant_id,wr_cost,status,lease_owner,lease_expires_at)
+      VALUES(2,?,'var-1',5000,'claimed','old',datetime('now','-1 minute'))`).run(code);
+    const before = row();
+    expect(await recoverStaleClaims(db)).toBe(1);
+    expect(row()).toEqual(before);
+    expect(fx.sql.prepare("SELECT status, lease_owner, lease_expires_at FROM wr_order_links WHERE id=2").get())
+      .toEqual({ status: "pending", lease_owner: null, lease_expires_at: null });
+  });
+});
+
+describe.each(["premium", "jaspay"] as const)("WR %s transport and receipt", family => {
+  const endpoint = family === "jaspay" ? "/api/v1/jaspay/order" : "/api/v1/order";
+  async function setupFamily() {
+    const fixture = await setup("WR");
+    if (family === "jaspay") {
+      fixture.fx.sql.exec(`UPDATE wr_variants SET wr_variant_id='jaspay:PROD:PACK', wr_max_quantity=5;
+        UPDATE product_variants SET wr_variant_id='jaspay:PROD:PACK';
+        UPDATE wr_order_links SET wr_variant_id='jaspay:PROD:PACK'`);
+    }
+    return fixture;
+  }
+  const receipt = () => family === "jaspay"
+    ? Response.json({ success: true, data: { invoice: "WR-FIXTURE", product: "PROD", status: "processing", quantity: 1 } })
+    : acceptedReceipt("WR");
+
+  it.each(["boom", "Failed to fetch", "socket hang up", "connection reset", "Network connection lost."])(
+    "keeps the sent fence on %s and makes no second purchase across three dispatch ticks", async message => {
+      const { db, row, set } = await setupFamily();
+      const sent: unknown[] = [];
+      const http = supplierFetch("WR", () => {
+        sent.push(row().request_sent_at);
+        if (sent.length === 1) throw new Error(message);
+        return receipt();
+      }, undefined, endpoint);
+      expect(await processWrPendingOrders(db, due())).toMatchObject({ processed: 1, retried: 1 });
+      expect(sent).toEqual([expect.any(String)]);
+      for (let tick = 0; tick < 3; tick++) {
+        expect(row()).toMatchObject({ status: "submitted", request_sent_at: sent[0], wr_order_id: null, attempt_count: 1 });
+        if (tick === 2) break;
+        set("next_attempt_at=datetime('now','-1 minute')");
+        expect(await processWrPendingOrders(db, due())).toMatchObject({ processed: 0 });
+      }
+      expect(http.calls).toEqual([`POST ${endpoint}`]);
+    },
+  );
+
+  it.each([
+    ["bad host", { WARUNG_REBAHAN_BASE_URL: "https://disallowed.fixture.test/api/v1" }, "wr_host_not_allowed"],
+    ["missing key", { WARUNG_REBAHAN_API_KEY: "" }, "WARUNG_REBAHAN_API_KEY not configured"],
+    ["missing proxy token", { WARUNG_REBAHAN_PROXY_URL: "https://proxy.fixture.test", WARUNG_REBAHAN_PROXY_TOKEN: "" }, "WARUNG_REBAHAN_PROXY_TOKEN not configured"],
+  ] as const)("keeps %s pre-send and retryable without a POST", async (_label, env, lastError) => {
+    const { db, row } = await setupFamily();
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    const http = supplierFetch("WR", receipt, undefined, endpoint);
+    expect(await processWrPendingOrders(db, due())).toMatchObject({ processed: 1, retried: 1 });
+    expect(row()).toMatchObject({ status: "retry", request_sent_at: null, wr_order_id: null, attempt_count: 1, last_error: lastError });
+    expect(http.calls).toEqual([]);
+  });
+
+  it("assigns an invoice and exits claimed atomically on the normal purchase path", async () => {
+    const { db, row } = await setupFamily();
+    const atPurchase: ReturnType<typeof row>[] = [];
+    const http = supplierFetch("WR", () => { atPurchase.push(row()); return receipt(); }, undefined, endpoint);
+    expect(await processWrPendingOrders(db, due())).toMatchObject({ succeeded: 1 });
+    expect(atPurchase).toMatchObject([{ status: "claimed", wr_order_id: null, request_sent_at: expect.any(String) }]);
+    const persisted = row();
+    expect(persisted).toMatchObject({ status: "processing", wr_order_id: "WR-FIXTURE", request_sent_at: atPurchase[0].request_sent_at,
+      lease_owner: null, lease_expires_at: null });
+    expect(await recoverStaleClaims(db)).toBe(0);
+    expect(row()).toEqual(persisted);
+    expect(http.calls).toEqual([`POST ${endpoint}`]);
+  });
+
+  it.todo("BUG? WR purchase exhaustion must wait for queued siblings before marking the order failed or emailing (deferred FX-20: needs statement budget for item+aggregate on final attempt)", async () => {
+    const { fx, db, row, set } = await setupFamily();
+    set("attempt_count=max_attempts-1, fulfillment_item_id=1");
+    fx.sql.exec(`UPDATE fulfillment_items SET wr_link_id=1;
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(2,1,'SIBLING','Sibling',5000,1,'manual');
+      UPDATE orders SET customer_email='buyer@fixture.test', items='[{"product_id":1,"variant_id":1,"qty":1},{"product_id":1,"variant_id":2,"qty":1}]';
+      INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,recipient_channel,status)
+        SELECT code,1,1,2,1,'manual','web','queued' FROM orders`);
+    vi.stubEnv("RESEND_API_KEY", "fixture");
+    vi.stubEnv("FORWARD_FROM_EMAIL", "sender@fixture.test");
+    const http = supplierFetch("WR", () => Response.json({ success: false, message: "OUT_OF_STOCK" }, { status: 409 }), undefined, endpoint);
+    expect(await processWrPendingOrders(db, due())).toMatchObject({ failed: 1 });
+    expect(row()).toMatchObject({ status: "failed", request_sent_at: null, attempt_count: 3 });
+    expect(fx.sql.prepare("SELECT status FROM fulfillment_items ORDER BY item_index").all())
+      .toEqual([{ status: "failed" }, { status: "queued" }]);
+    expect(fx.sql.prepare("SELECT fulfillment_status FROM orders").get()?.fulfillment_status).toBe("queued");
+    expect(http.calls).toEqual([`POST ${endpoint}`]);
+  });
 });
 
 function callWrRetry() {
@@ -384,10 +511,54 @@ describe("SK premium purchase recovery", () => {
     expect(http.buys()).toBe(1);
   });
 
-  // A terminal lookup goes straight to settlement, bypassing the lease-clearing processing update.
-  it.todo("BUG? SK terminal recovery directly from a sent claim should clear its expired lease");
-  // A late receipt can miss its CAS after a webhook and still increment succeeded.
-  it.todo("BUG? SK late purchase receipt should not report success after losing the receipt CAS");
-  // SK's retry route checks paid state but omits purchase-disabled in the retry CAS.
-  it.todo("BUG? SK admin Retry should not mutate purchase-disabled work");
+  it("clears the expired lease on SK terminal recovery while keeping the send fence", async () => {
+    const { fx, db, ref, row, set } = await setup("SK");
+    set("status='claimed', attempt_count=1, request_sent_at=datetime('now','-5 minutes'), lease_owner='dead-worker', lease_expires_at=datetime('now','-3 minutes'), fulfillment_item_id=1");
+    fx.sql.exec("UPDATE fulfillment_items SET sk_link_id=1");
+    const sent = row().request_sent_at;
+    const http = supplierFetch("SK", undefined, () => Response.json({ data: { invoice: "SK-FIXTURE", ref_id: ref, status: "completed",
+      items: [{ variant_id: 1095, product_license: "FIXTURE-LICENSE" }] } }));
+    expect(await recoverStaleSkClaims(db)).toBe(1);
+    expect(http.calls).toEqual([`GET /api/v1/trx/${encodeURIComponent(ref)}`]);
+    expect(row()).toMatchObject({ status: "completed", sk_invoice: "SK-FIXTURE", request_sent_at: sent, attempt_count: 1,
+      lease_owner: null, lease_expires_at: null });
+    expect(fx.sql.prepare("SELECT status FROM fulfillment_items").get()?.status).toBe("delivered");
+    expect(fx.sql.prepare("SELECT fulfillment_status FROM orders").get()?.fulfillment_status).toBe("delivered");
+  });
+
+  it("clears the purchase lease when the paid handler advances a sent claim to processing", async () => {
+    const { db, row, set } = await setup("SK");
+    set("status='claimed', sk_invoice='SK-FIXTURE', attempt_count=1, request_sent_at=datetime('now'), lease_owner='worker', lease_expires_at=datetime('now','+3 minutes')");
+    const sent = row().request_sent_at;
+    expect(await handleSkOrderPaid("SK-FIXTURE", db)).toBe(true);
+    expect(row()).toMatchObject({ status: "processing", request_sent_at: sent, attempt_count: 1,
+      lease_owner: null, lease_expires_at: null });
+  });
+
+  it("does not count a late SK receipt after a signed terminal webhook won the CAS", async () => {
+    const { fx, db, ref, row, set } = await setup("SK");
+    set("fulfillment_item_id=1");
+    fx.sql.exec("UPDATE fulfillment_items SET sk_link_id=1");
+    const secret = "fixture-webhook-key";
+    vi.stubEnv("SEKALIPAY_WEBHOOK_SECRET", secret);
+    const canceled = { invoice: "SK-FIXTURE", ref_id: ref, status: "canceled" };
+    const signature = await computeSkSignature(ref, canceled.invoice, canceled.status, secret);
+    let webhookStatus: number | undefined;
+    let terminal: ReturnType<typeof row> | undefined;
+    const http = supplierFetch("SK", async () => {
+      const response = await skWebhook(new NextRequest("https://fixture.test/api/webhook/sekalipay", {
+        method: "POST", headers: { "content-type": "application/json", "x-signature": signature },
+        body: JSON.stringify({ event: "order.canceled", data: canceled }),
+      }));
+      webhookStatus = response.status;
+      terminal = row();
+      return Response.json({ data: { ...canceled, status: "paid" } });
+    });
+    const result = await processSkPendingOrders(db, due());
+    expect(webhookStatus).toBe(200);
+    expect(terminal).toMatchObject({ status: "failed", sk_invoice: "SK-FIXTURE", request_sent_at: expect.any(String) });
+    expect(row()).toEqual(terminal);
+    expect(http.calls).toEqual(["GET /api/v1/item/1095", "GET /api/v1/balance", "POST /api/v1/trx"]);
+    expect(result).toMatchObject({ processed: 1, succeeded: 0, retried: 1 });
+  });
 });

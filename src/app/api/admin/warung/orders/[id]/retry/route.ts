@@ -28,8 +28,9 @@ export async function POST(
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
   const link = await queryFirst(
-    `SELECT id, status, attempt_count, max_attempts, request_sent_at, wr_order_id, last_error
-     FROM wr_order_links WHERE id=?`,
+    `SELECT l.id, l.status, l.attempt_count, l.max_attempts, l.request_sent_at, l.wr_order_id, l.last_error,
+       o.status AS order_status, o.payment_status, o.supplier_purchase_disabled
+     FROM wr_order_links l JOIN orders o ON o.code=l.order_code WHERE l.id=?`,
     linkId,
   );
   if (!link) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -37,7 +38,8 @@ export async function POST(
   if (!(WR_LINK_STATUSES as readonly string[]).includes(status)) {
     return NextResponse.json({ error: "unknown_status", status }, { status: 500 });
   }
-  if (!RETRYABLE.includes(status)) {
+  if (!RETRYABLE.includes(status) || link.order_status !== "lunas" || link.payment_status !== "paid"
+    || Number(link.supplier_purchase_disabled) !== 0) {
     return NextResponse.json({ error: "not_retryable", status }, { status: 409 });
   }
   // Percobaan habis (2026-10-10): `failed` karena 3 kegagalan PRA-KIRIM
@@ -82,7 +84,9 @@ export async function POST(
       `UPDATE wr_order_links SET status='retry', next_attempt_at=datetime('now'),
          last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
          request_sent_at=NULL, attempt_count=0, updated_at=datetime('now')
-       WHERE id=? AND status='failed' AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL`,
+       WHERE id=? AND status='failed' AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code
+           AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
       linkId,
       Number(link.attempt_count || 0),
     ).catch(() => ({ changes: 0 as number | undefined }));
@@ -98,7 +102,9 @@ export async function POST(
     `UPDATE wr_order_links SET status='retry', next_attempt_at=datetime('now'),
        last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
        request_sent_at=NULL, attempt_count=?, updated_at=datetime('now')
-     WHERE id=? AND status=? AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL`,
+     WHERE id=? AND status=? AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL
+       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code
+         AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
     preSendFailure ? 0 : Number(link.attempt_count || 0),
     linkId,
     status,

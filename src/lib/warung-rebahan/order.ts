@@ -38,6 +38,7 @@ import {
   WrInsufficientBalanceError,
   WrOutOfStockError,
   WrApiError,
+  WrNetworkError,
   type WrTransaction,
 } from "./client";
 import { decodeJaspayVariantId, isJaspayVariantId } from "./jaspay";
@@ -891,7 +892,8 @@ async function handleJaspayOrderError(
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
   const { WrInsufficientBalanceError, WrOutOfStockError, WrApiError } = await import("./client");
   const isTimeout = /timeout|abort|network|fetch failed|504|wr_proxy_unreadable_response/i.test(message)
-    || (error instanceof WrApiError && error.status >= 500);
+    || (error instanceof WrApiError && error.status >= 500)
+    || (error instanceof WrNetworkError && !error.preSend);
   if (isTimeout) {
     // Ambigu Jaspay: submitted + lease dilepas. Pulih HANYA via exact-ref
     // POST identik / invoice eksak / poll invoice dikenal — jangan beli ulang.
@@ -972,7 +974,8 @@ async function handleOrderError(
   const { execRun } = db;
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
   const isTimeout = /timeout|abort|network|fetch failed|504|wr_proxy_unreadable_response/i.test(message)
-    || (error instanceof WrApiError && error.status >= 500);
+    || (error instanceof WrApiError && error.status >= 500)
+    || (error instanceof WrNetworkError && !error.preSend);
   if (isTimeout) {
     // Timeout = vendor MUNGKIN sudah menerima. Tandai submitted (ambigu),
     // HAPUS lease agar reconciler bisa verifikasi — tetapi JANGAN beli ulang.
@@ -1558,6 +1561,7 @@ export async function recoverStaleClaims(database?: DatabaseAccess): Promise<num
          lease_expires_at=NULL, last_error='stale_claim_recovered',
          updated_at=datetime('now')
        WHERE status='claimed' AND request_sent_at IS NULL
+         AND COALESCE(wr_order_id,'')=''
          AND lease_expires_at IS NOT NULL
          AND datetime(lease_expires_at) <= datetime('now')`,
     );

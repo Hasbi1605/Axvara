@@ -26,7 +26,7 @@ export async function POST(
   }
   const link = await queryFirst(
     `SELECT l.id, l.status, l.attempt_count, l.max_attempts, l.sk_invoice,
-       l.request_sent_at, l.last_error, o.status AS order_status, o.payment_status
+       l.request_sent_at, l.last_error, o.status AS order_status, o.payment_status, o.supplier_purchase_disabled
      FROM sk_order_links l JOIN orders o ON o.code=l.order_code WHERE l.id=?`,
     linkId,
   );
@@ -36,7 +36,7 @@ export async function POST(
     return NextResponse.json({ error: "unknown_status", status }, { status: 500 });
   }
   if (String(link.last_error || "").startsWith("cancelled_by_admin")
-    || link.order_status !== "lunas" || link.payment_status !== "paid") {
+    || link.order_status !== "lunas" || link.payment_status !== "paid" || Number(link.supplier_purchase_disabled) !== 0) {
     return NextResponse.json({ error: "not_retryable", message: "Pesanan dibatalkan atau belum lunas; retry supplier ditolak." }, { status: 409 });
   }
   if (link.sk_invoice || link.request_sent_at) {
@@ -57,7 +57,7 @@ export async function POST(
        AND request_sent_at IS NULL AND COALESCE(sk_invoice,'')=''
        AND COALESCE(last_error,'') NOT LIKE 'cancelled_by_admin%'
        AND EXISTS(SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code
-         AND o.status='lunas' AND o.payment_status='paid')`,
+         AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
     preSendFailure ? 0 : Number(link.attempt_count || 0),
     linkId,
     status,

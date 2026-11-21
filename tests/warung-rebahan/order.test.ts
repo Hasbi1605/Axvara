@@ -328,15 +328,10 @@ describe("Warung Rebahan process pending orders", () => {
       vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
       vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
-      stubWrApi(() => {
-        throw new Error("boom");
-      });
       expect(WR_MAX_ATTEMPTS).toBe(3);
       const db = createDatabaseAccess(fx.db);
       await createWrOrderLink("AXV-20260911-AAAAFFFF", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
-      vi.stubGlobal("fetch", vi.fn(async () => {
-        throw new Error("boom");
-      }));
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ success: false, message: "Order rejected" }, { status: 422 })));
       // Paksa due berkali-kali dengan memajukan next_attempt_at.
       for (let i = 0; i < 3; i++) {
         fx.sql.prepare("UPDATE wr_order_links SET next_attempt_at=datetime('now','-1 minute')").run();
