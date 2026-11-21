@@ -572,7 +572,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
       `UPDATE wr_order_links SET status='processing', wr_order_id=?,
         last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
          updated_at=datetime('now') WHERE id=? AND status='claimed'
-         AND (wr_order_id IS NULL OR wr_order_id=?)
+         AND (COALESCE(wr_order_id,'')='' OR wr_order_id=?)
          AND NOT EXISTS (SELECT 1 FROM wr_order_links used WHERE used.wr_order_id=? AND used.id!=?)`,
       String(order.order_id),
       id,
@@ -689,7 +689,7 @@ async function processOneJaspayLink(
       `UPDATE wr_order_links SET status='processing', wr_order_id=?,
          last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
          updated_at=datetime('now') WHERE id=? AND status='claimed'
-         AND (wr_order_id IS NULL OR wr_order_id=?)
+         AND (COALESCE(wr_order_id,'')='' OR wr_order_id=?)
          AND NOT EXISTS (SELECT 1 FROM wr_order_links used WHERE used.wr_order_id=? AND used.id!=?)`,
       invoice,
       id,

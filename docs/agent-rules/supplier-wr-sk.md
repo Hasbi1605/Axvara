@@ -1,5 +1,12 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## B2b 22 Nov (lokal)
+
+- CAS penerimaan invoice dari POST awal WR Premium dan Jaspay menerima `NULL`
+  atau `''` warisan, serta invoice yang sama. Invoice berbeda atau sudah dimiliki
+  link lain tetap ditolak. Bukti kirim dipertahankan; tidak ada jalur beli ulang
+  baru. Recovery exact-ref Jaspay tetap memakai ref dan body identik.
+
 ## FX-20 — 21 November 2026 (lokal)
 
 - WR Premium/Jaspay: `WrNetworkError` yang mungkin sudah terkirim masuk

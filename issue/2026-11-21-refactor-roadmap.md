@@ -549,7 +549,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | A4 TUNVN | E | lokal (commit A4) | Wonder APPROVE |
 | B1 | E | lokal (commit B1) | Wonder APPROVE-WITH-NITS; rank status tetap lokal (di deliver.ts) |
 | B2 | E | lokal (commit B2) | Wonder APPROVE. Tindak lanjut E kecil: fence menerima `db`, bukan `execRun` terlepas |
-| B2b (invoice kosong) | B | belum | |
+| B2b (invoice kosong) | B | lokal (commit B2b) | Premium + Jaspay; Sol repro + Wonder APPROVE |
 | B3 | E | belum | |
 | B3b (R1) | B | belum | |
 | B4 | E | belum | |

@@ -222,7 +222,26 @@ describe.each(["premium", "sk"] as const)("T3 %s", family => {
   });
 });
 
-it.todo("BUG? WR bulk sweep accepts a blank invoice, but receipt CAS does not attach the accepted invoice to that row");
+it.each([
+  ["premium", "''"], ["premium", "NULL"], ["jaspay", "''"], ["jaspay", "NULL"],
+] as const)("T3 B2b %s attaches the accepted receipt after sweep with invoice %s", async (family, value) => {
+  const f = setup(family);
+  f.set(`status='claimed', attempt_count=max_attempts, ${expired}, wr_order_id=${value}`);
+  expect(await f.recover(f.db)).toBe(1);
+  expect(f.row()).toMatchObject({ status: "pending", attempt_count: 2, request_sent_at: null });
+  const budget = f.budget();
+  const http = wire({ [f.buy]: () => {
+    expect(f.row()).toMatchObject({ status: "claimed", attempt_count: 3, request_sent_at: expect.any(String) });
+    return f.receipt(family === "jaspay" ? "queued" : "processing");
+  } });
+  const result = await f.process(budget.access, due);
+  expect(http.calls).toEqual([f.buy]);
+  expect(f.row()).toMatchObject({ status: "processing", wr_order_id: invoice, request_sent_at: expect.any(String), attempt_count: 3 });
+  expect(result).toMatchObject({ processed: 1, succeeded: 1, retried: 0 });
+  expect(budget.used).toBe(6);
+  expect(await f.process(f.db, due)).toMatchObject({ processed: 0 });
+  expect(http.calls).toEqual([f.buy]);
+});
 
 describe("T3 B2 recovery wire", () => {
   describe.each(["premium", "jaspay"] as const)("%s H1", family => {
