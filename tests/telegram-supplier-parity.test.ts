@@ -226,9 +226,9 @@ describe("WR delivery Telegram: format seragam + requeue setelah START", () => {
     expect(row).toMatchObject({ delivery_status: "queued", delivery_attempt_count: 0 });
   });
 
-  it("supplierCredentialMessage memuat kode, produk, dan detail ter-escape", async () => {
-    const { supplierCredentialMessage } = await import("@/lib/telegram/messages");
-    const msg = supplierCredentialMessage("AXV-1", "Netflix <Premium>", "Email: a@b.c\nPassword: x<y");
+  it("credentialMessages memuat kode, produk, dan detail ter-escape", async () => {
+    const { credentialMessages } = await import("@/lib/telegram/messages/credential");
+    const msg = credentialMessages({ orderCode: "AXV-1", productName: "Netflix <Premium>", plaintext: "Email: a@b.c\nPassword: x<y" }).join("\n\n");
     expect(msg).toContain("AXV-1");
     expect(msg).toContain("Netflix &lt;Premium&gt;");
     expect(msg).toContain("<pre>Email: a@b.c\nPassword: x&lt;y</pre>");

@@ -147,35 +147,6 @@ export function adminDeliveryFailedNotification(orderCode: string, error: string
   ].join("\n");
 }
 
-export function adminWhatsAppOrderCreatedMessage(params: {
-  createdAt?: unknown;
-  orderCode: string;
-  productNames: string;
-  amount: number;
-  customerName: string;
-  channelMember: string;
-  paymentMethod: string;
-}): string {
-  const { orderCode, productNames, amount, customerName, channelMember, paymentMethod } = params;
-  const member = channelMember.trim().replace(/^\+/, "") || "—";
-  const methodLabel = paymentMethod.trim().toUpperCase() || "QRIS";
-  // Stabil vs jalur Telegram: nominal + identitas + status menunggu bayar.
-  // Member WA mentah (tanpa @) agar admin bisa chat balik manual bila perlu.
-  return [
-    "🔔 <b>Order Baru — WhatsApp</b>",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `📦 ${escapeHtml(truncate(productNames, 120))}`,
-    `🔢 <code>${escapeHtml(orderCode)}</code>`,
-    `💰 ${formatRupiah(amount)}`,
-    `👤 ${escapeHtml(truncate(customerName, 50))}`,
-    `💬 ${escapeHtml(truncate(member, 30))}`,
-    `💳 ${escapeHtml(methodLabel)}`,
-    "",
-    ...createdStatus(params.createdAt),
-  ].join("\n");
-}
-
 export function adminWhatsAppOrderPaidMessage(params: {
   orderCode: string;
   productNames: string;

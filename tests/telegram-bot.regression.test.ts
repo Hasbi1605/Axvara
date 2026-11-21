@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import {
   escapeHtml, welcomeMessage, formatWIBTime, catalogFlatMessage,
-  productDetailMessage, invoiceMessage, helpMessage, deliveryMessage,
+  productDetailMessage, invoiceMessage, helpMessage,
   warrantyTermsMessage, warrantyClaimMessage, warrantyFullMessage,
   confirmBuyMessage, confirmVariantBuyMessage, chooseVariantMessage, chooseQtyMessage,
   reviewPurchaseMessage, orderPaidMessage, waSavedAfterPaymentMessage,
@@ -511,12 +511,6 @@ describe("Telegram buyer messages", () => {
     expect(msg).toContain("Lunas.");
   });
 
-  it("delivery message has tap-to-copy hint", () => {
-    const msg = deliveryMessage("acc@email.com:pass123");
-    expect(msg).toContain("<code>");
-    expect(msg).toContain("Ketuk untuk menyalin");
-  });
-
   it("paid message confirms delivery in chat and never asks for a WhatsApp number (FX-16 owner decision)", () => {
     const msg = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", "manual");
     expect(msg).toContain("Pembayaran lunas");
@@ -591,13 +585,11 @@ describe("Telegram order and payment flow wiring", () => {
     expect(cartInvoice).not.toMatch(/await notifyTelegramOrderCreated\(/);
     expect(cartInvoice).not.toMatch(/import \{[^}]*notifyTelegramOrderCreated/);
     // Blok created di retryPendingTelegramNotifications = no-op: tidak ada
-    // SELECT antrean "pending created" tanpa filter lunas. Query
-    // notifyTelegramOrderCreated / notifyWhatsAppOrderCreated yang tersisa
-    // hanya pemanggil langsung (fungsi tetap ada, cron tidak memakainya).
+    // SELECT antrean "pending created" tanpa filter lunas.
     const notifications = read("src/lib/telegram/order-notifications.ts");
     const retryFn = notifications.slice(notifications.indexOf("export async function retryPendingTelegramNotifications"));
     expect(retryFn).not.toMatch(/notifyTelegramOrderCreated\(String\(order\.code\)/);
-    expect(retryFn).not.toMatch(/notifyWhatsAppOrderCreated\(String\(order\.code\)/);
+    expect(retryFn).not.toMatch(/notifyWhatsAppOrderCreated\(/);
   });
 
   it("pushes paid notification before checking the auto-fulfillment flag", () => {

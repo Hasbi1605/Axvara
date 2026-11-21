@@ -23,7 +23,6 @@ const FULFILLMENT_LABELS_EN: Record<string, string> = {
   retry: "Awaiting redelivery",
   failed: "Delivery failed",
 };
-import { credentialMessages } from "./credential";
 
 /**
  * Cara produk sampai ke pembeli Telegram, per order (2026-10-04, paritas Web):
@@ -61,19 +60,6 @@ export function orderPaidMessage(
     deliveryLine,
   ];
   return lines.join("\n");
-}
-
-export function deliveryMessage(secret: string, opts?: TgLocaleOpts): string {
-  return credentialMessages({ plaintext: secret, secretTag: "code", locale: opts?.locale ?? "id" }).join("\n\n");
-}
-
-/**
- * Detail produk hasil auto-order (WR/SK) ke chat pribadi pembeli Telegram.
- * Satu template untuk dua sumber agar pembeli melihat format yang sama
- * dengan produk stok sendiri (`deliveryMessage`) + nama produk + kode order.
- */
-export function supplierCredentialMessage(orderCode: string, productName: string, plaintext: string, opts?: TgLocaleOpts): string {
-  return credentialMessages({ orderCode, productName, plaintext, locale: opts?.locale ?? "id" }).join("\n\n");
 }
 
 export function whatsAppInputPromptMessage(orderCode: string, opts?: TgLocaleOpts): string {

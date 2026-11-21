@@ -605,7 +605,6 @@ Respons publik TIDAK pernah memuat `supplier_service_id`, nama layanan supplier,
 |---|---|---|---|
 | `PEDIA_ENABLED` | Pages secret_text | `false` | Storefront Pedia + rewrite host |
 | `PEDIA_ORDERS_ENABLED` | Pages | `false` | Boleh membuat order (false = notice katalog-only, kontak tidak dirender, lanjut pembayaran disabled) |
-| `PEDIA_DISPATCH_ENABLED` | Pages | `false` | Job kirim ke supplier |
 | `PEDIA_HOST` | Pages | `pedia.axvara.tech` | Host rewrite |
 | `PEDIA_PROMO_DIGEST_ENABLED` | Pages | `false` | Baris Pedia di Daily Promo Digest |
 | `PEDIA_BALANCE_ALERT_RP` | Pages | `100000` | Ambang alert saldo supplier |
@@ -732,9 +731,9 @@ Rencana awal ini arsip implementasi pertama, bukan pekerjaan atau wireframe curr
 | M2 | Admin Pedia | Sub-tab Layanan Supplier & Produk (kurasi + pratinjau margin), seed kurasi §7.3 (nonaktif) | M1 |
 | M3 | Storefront | Logo final Pedia via Muse image generator/compose sesuai `PEDIA-DESIGN.md` §2.2 (konsep A dipilih owner), routing host, layout & komponen `src/components/pedia/*`, beranda, platform, halaman order, parser link (+test tabel §9.6) | M2 |
 | M4 | Checkout & dispatch | Quote, orders, QRIS, finalisasi lunas per `order_kind`, job `pedia_orders` (dispatch + poll), alert | M3 |
-| M5 | Pasca-bayar | Halaman status, refill, kredit (terbit/pakai/cek), email, notif Telegram, lacak | M4 |
+| M5 | Pasca-bayar | Halaman status, refill, email, notif Telegram, lacak (kredit terbit/pakai/cek dipensiunkan owner 24 Okt 2026; stub `src/lib/pedia/credits.ts` dihapus) | M4 |
 | M6 | Integrasi pusat | LaunchCards, App Switcher, `/link`, footer, digest (flag) | M3 |
-| M7 | QA & launch | Semua AC §13, DNS `pedia`, flag bertahap: `PEDIA_ENABLED` → `PEDIA_ORDERS_ENABLED` (beta internal) → `PEDIA_DISPATCH_ENABLED` | M5, M6 |
+| M7 | QA & launch | Semua AC §13, DNS `pedia`, flag bertahap: `PEDIA_ENABLED` → `PEDIA_ORDERS_ENABLED` (beta internal; dispatch tidak punya flag, lihat §9.9) | M5, M6 |
 
 **Pra-launch oleh owner:** deposit providersmm Rp100–200 ribu; uji 6–8 layanan §7.3 (catat mulai/selesai/drop H+3); tanya diskon API (WA 0838-7666-3600); setujui harga final; rotasi API key.
 

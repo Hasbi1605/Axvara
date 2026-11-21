@@ -29,7 +29,7 @@ describe("Performance regression guards", () => {
 describe("predikat penjadwalan memakai index, bukan full scan", () => {
   // Seluruh query cron/lease membandingkan `datetime(kolom)` dan bukan kolomnya
   // langsung — pembungkus itu WAJIB karena baris lama berformat spasi dan baris
-  // baru ISO (lihat D1_EXPIRY_PREDICATE). Efek sampingnya: index biasa pada
+  // baru ISO (lihat SQL expiry `datetime(expires_at)`). Efek sampingnya: index biasa pada
   // kolom TIDAK bisa dipakai planner untuk ekspresi fungsi, sehingga query
   // memindai tabel. Solusinya index atas ekspresi yang sama — tanpa mengubah
   // satu pun query. Test ini memakai EXPLAIN QUERY PLAN sebagai bukti.

@@ -169,11 +169,8 @@ describe("poll + kredit AC-13/14", () => {
     expect(await db.queryAll("SELECT state FROM pedia_followups WHERE order_code='AXP-T1'")).toEqual([{state:"open"}]);
   });
 
-  it("credit issuance and redemption are retired without writes", async () => {
+  it("retired credit ledger stays empty (issuance stub removed)", async () => {
     const db = await seedPaidItem();
-    const { issuePediaCredit, consumePediaCredit } = await import("@/lib/pedia/credits");
-    await expect(issuePediaCredit(db,{email:"t@t.com",amount:10000,sourceKind:"admin"})).rejects.toThrow("credits_retired");
-    await expect(consumePediaCredit(db,"PDK-TEST-TEST","AXP-T1",10000)).rejects.toThrow("credits_retired");
     expect(await db.queryAll("SELECT * FROM pedia_credits")).toEqual([]);
   });
 });

@@ -347,13 +347,13 @@ Mobile
 │ @namakamu                             │
 │                                       │
 │            ╭───────────╮              │
-│           │   62%      │              │ ← ProgressRing 160 px, stroke gradien Pedia
+│           │   62%      │              │ ← ring progres (inline, 160 px) stroke gradien Pedia
 │           │ 155 / 250  │              │
 │            ╰───────────╯              │
 │  Mulai dari 1.204 followers           │
 │  Perkiraan selesai: 1–6 jam           │
 │                                       │
-│  ● Dibayar 22.31  ● Dikirim 22.33  ○ Selesai │ ← OrderTimeline horizontal
+│  ● Dibayar 22.31  ● Dikirim 22.33  ○ Selesai │ ← timeline horizontal (inline)
 │                                       │
 │  [ Ajukan Refill ] (muncul bila berhak) │
 │  Garansi berlaku sampai 7 Nov 2026    │
@@ -375,7 +375,7 @@ Mobile
 
 ## 7. Katalog Komponen Awal (Historis 2026-10-07)
 
-Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel: QuantityChips/TierSelector/TierCompareSheet tidak terpisah, ticker tidak dirender, ProductCard menampilkan tagline opsional dan hanya badge refill paket yang sesuai, AppSwitcher **dihapus**, LaunchCards.saved tetap arsip. Komponen baru aktual ServicesMenu/CrossServicePromo (Typewriter dihapus 15 Nov 2026).
+Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel: QuantityChips/TierSelector/TierCompareSheet tidak terpisah, ticker tidak dirender, ProductCard menampilkan tagline opsional dan hanya badge refill paket yang sesuai, AppSwitcher **dihapus**, LaunchCards.saved tetap arsip. Komponen baru aktual ServicesMenu/CrossServicePromo (Typewriter dihapus 15 Nov 2026). `ProgressRing`/`OrderTimeline` dihapus 21 Nov 2026 (halaman status merender inline).
 
 | Komponen | Spesifikasi kunci |
 |---|---|
@@ -391,8 +391,8 @@ Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel:
 | `PreflightChecklist` | Checkbox 22 px, label 14 px; item dengan tutorial punya tombol "Cara ▾" membuka 3 gambar WebP 320 px (lazy) |
 | `StickyOrderBar` | Fixed bottom, `ax-glass-strong`, tinggi 68 px + safe area; kiri "Total" + angka (animasi angka 200 ms saat berubah), kanan tombol Bayar 48 px |
 | `OrderSummary` | Desktop rail, `ax-glass-card`, baris rincian + total + tombol + logo QRIS |
-| `ProgressRing` | SVG 160 px, stroke 10, track `rgba(255,255,255,0.08)`, isi gradien Pedia, transisi `stroke-dashoffset` 600 ms `--ease-out`; `aria-valuenow` |
-| `OrderTimeline` | 3–4 titik; selesai = violet, aktif = cyan berdenyut (mati saat reduced-motion), belum = abu |
+| `ProgressRing` | SVG 160 px, stroke 10, track `rgba(255,255,255,0.08)`, isi gradien Pedia, transisi `stroke-dashoffset` 600 ms `--ease-out`; `aria-valuenow` — komponen di `StatusWidgets` dihapus 21 Nov 2026; halaman status merender inline |
+| `OrderTimeline` | 3–4 titik; selesai = violet, aktif = cyan berdenyut (mati saat reduced-motion), belum = abu — komponen `ProgressRing`/`OrderTimeline` di `StatusWidgets` dihapus 21 Nov 2026 (tak dipakai); ring/timeline halaman status diimplementasi inline di `src/app/pedia/pesanan/[code]/page.tsx` |
 | `StatusPill` | Warna status existing; label §5.3 PRD |
 | `CreditCard` | Kartu gold-tipis: "Kode Kredit Rp4.000" + kode `PDK-XXXX-XXXX` (JetBrains Mono) + [Salin] + "Berlaku sampai …"; dikirim juga ke email |
 | `OrderTicker` | Satu baris, fade bergantian tiap 4 dtk; dot hijau 6 px; jeda saat hover/fokus; disembunyikan saat reduced-motion (tampil statis 1 item) |

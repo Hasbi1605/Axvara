@@ -9,7 +9,6 @@ import type {
   EditMessageTextParams,
   EditMessageMediaParams,
   EditMessageCaptionParams,
-  EditMessageReplyMarkupParams,
   TelegramMessage,
   WebhookInfo,
 } from "./types";
@@ -108,10 +107,6 @@ export async function editMessageMedia(params: EditMessageMediaParams): Promise<
 
 export async function editMessageCaption(params: EditMessageCaptionParams): Promise<TelegramApiResponse<TelegramMessage>> {
   return callApi<TelegramMessage>("editMessageCaption", params as unknown as Record<string, unknown>);
-}
-
-export async function editMessageReplyMarkup(params: EditMessageReplyMarkupParams): Promise<TelegramApiResponse<TelegramMessage>> {
-  return callApi<TelegramMessage>("editMessageReplyMarkup", params as unknown as Record<string, unknown>);
 }
 
 export async function deleteMessage(chatId: number | string, messageId: number): Promise<TelegramApiResponse> {
