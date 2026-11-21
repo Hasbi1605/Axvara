@@ -10,7 +10,9 @@ import { DELIVERY_LINE_COUNT_SQL } from "@/lib/fulfillment/units";
 
 import { NextRequest, NextResponse } from "next/server";
 import { transitionPendingOrder as rawTransitionPendingOrder, transitionPendingPaymentOrder as rawTransitionPendingPaymentOrder } from "@/lib/db";
-import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
+import { createBudgetedDatabase, QueryBudgetExceeded } from "@/lib/db-access";
+import { catalogSweepDue, CATALOG_SYNC_INTERVAL_MS } from "@/lib/cron/catalog-sweep";
+import { advanceCronPhase, nextPhase, phaseName, readCronPhase, writeCronHeartbeat, writeCronPhase, type CronPhase } from "@/lib/cron/phase-state";
 import { isExpiredIso } from "@/lib/expiry";
 import {
   COST_PER_JOB_FRAME, COST_PER_DELIVERY_ITEM, COST_PER_ORPHAN_LIGHT,
@@ -73,49 +75,6 @@ const COST_PER_WR_WORK = 8;
 // Sekalipay: biaya admission yang sama dengan WR per unit kerja fase.
 const COST_PER_SK_WORK = 8;
 const RESERVE_TAIL = 2;
-// Interval sync katalog WR/SK (2026-10-04: 30 → 15 menit). Sweep dipotong
-// kecil per request di mode `?phase=` sehingga satu putaran penuh selesai
-// dalam satu tick Worker; gerbang ini menentukan seberapa sering putaran baru
-// dimulai = kesegaran katalog maksimum.
-// Ambang 14 menit (bukan 15) agar putaran benar-benar tiap 15 menit: tick
-// Worker datang tepat tiap 5 menit dan `wr_sync_log.created_at` ditulis
-// beberapa detik SETELAH tick dimulai, sehingga pada tick menit ke-15 sync
-// terakhir baru berumur ±14:58 → ambang 15 menit menunda putaran ke tick
-// menit ke-20 (terukur prod 4 Okt: 05:20 → 05:40 WIB).
-const CATALOG_SYNC_INTERVAL_MS = 14 * 60 * 1000;
-// Diff VPS (2026-10-04, `/api/supplier-sync`) menjaga kesegaran tiap ~3 menit.
-// Selama diff sehat (penanda `diff_last_at` < 10 mnt), sweep berpotongan di
-// cron turun menjadi PENGAMAN berkala: putaran penuh tiap 60 mnt diukur dari
-// `products_full_sweep_at` (sejak 4 Okt siang diff tidak menulis *_sync_log;
-// gerbang tetap memakai penanda state). Diff mati → kembali 14 mnt otomatis.
-const DIFF_FRESH_MS = 10 * 60 * 1000;
-const BACKUP_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
-
-/**
- * Gerbang mulai putaran sweep katalog. Mengembalikan true bila putaran baru
- * boleh dimulai (lanjutan cursor ditangani pemanggil).
- */
-async function catalogSweepDue(
-  table: "wr_sync_state" | "sk_sync_state",
-  lastLogTs: number | null,
-  queryAll: DatabaseAccess["queryAll"],
-): Promise<boolean> {
-  const now = Date.now();
-  const rows = await queryAll(
-    `SELECT key, value FROM ${table} WHERE key IN ('diff_last_at','products_full_sweep_at')`,
-  ).catch(() => [] as Record<string, unknown>[]);
-  const read = (k: string) => {
-    const v = rows.find((r) => r.key === k)?.value;
-    const t = v ? Date.parse(String(v)) : NaN;
-    return Number.isFinite(t) ? t : null;
-  };
-  const diffAt = read("diff_last_at");
-  if (diffAt != null && now - diffAt < DIFF_FRESH_MS) {
-    const fullAt = read("products_full_sweep_at");
-    return fullAt == null || now - fullAt >= BACKUP_SWEEP_INTERVAL_MS;
-  }
-  return lastLogTs == null || lastLogTs < now - CATALOG_SYNC_INTERVAL_MS;
-}
 // Potongan sweep per request di mode `?phase=` (Workers Free: ~10 ms CPU per
 // request). Insiden 3 Okt 20:25–23:50 WIB: 41 run beruntun dibunuh runtime
 // (`exceededResources` → 503) karena SATU request memikul expiry + fulfillment
@@ -123,7 +82,6 @@ async function catalogSweepDue(
 // per satu dan mengulang fase sync selama respons `more: true`.
 const WR_CRON_CHUNK = 10;
 const SK_CRON_CHUNK = 25;
-type CronPhase = "expiry" | "fulfillment" | "warung_rebahan" | "sekalipay" | "notify" | "cleanup";
 
 // Expiry restores each distinct product/variant inside one atomic batch.
 // Charge its real size, rather than assuming every order contains one item.
@@ -132,57 +90,6 @@ function expiryCost(raw: unknown): number {
     const items = JSON.parse(String(raw ?? "[]")) as { product_id: number; variant_id?: number }[];
     return 6 + new Set(items.map((i) => i.variant_id ? `v:${i.variant_id}` : `p:${i.product_id}`)).size;
   } catch { return 6; }
-}
-
-async function readCronPhase(database: DatabaseAccess): Promise<{ phase: CronPhase; deferred: CronPhase[] }> {
-  const { queryFirst } = database;
-  try {
-    const row = await queryFirst(`SELECT value FROM store_settings WHERE key='cron_phase'`);
-    const raw = String(row?.value ?? "");
-    const phase: CronPhase = phaseName(raw) ?? "expiry";
-    const defRow = await queryFirst(`SELECT value FROM store_settings WHERE key='cron_deferred'`);
-    let deferred: CronPhase[] = [];
-    try {
-      const parsed = JSON.parse(String(defRow?.value ?? "[]"));
-      if (Array.isArray(parsed)) deferred = parsed.filter((p): p is CronPhase => phaseName(String(p)) != null);
-    } catch { deferred = []; }
-    return { phase, deferred };
-  } catch {
-    return { phase: "expiry", deferred: [] };
-  }
-}
-
-function phaseName(raw: string): CronPhase | null {
-  if (raw === "expiry" || raw === "fulfillment" || raw === "warung_rebahan" || raw === "sekalipay" || raw === "notify" || raw === "cleanup") return raw;
-  return null;
-}
-
-function nextPhase(phase: CronPhase): CronPhase {
-  if (phase === "expiry") return "fulfillment";
-  // WR disisipkan SETELAH fulfillment dan SEBELUM notify: order WR perlu
-  // diproses sebelum notifikasi dikirim (plan §10).
-  if (phase === "fulfillment") return "warung_rebahan";
-  // SK jalan SETELAH WR (supplier kedua): order SK diproses sebelum notify,
-  // dan sweep SK tidak berebut budget/waktu dengan sweep WR dalam satu run.
-  if (phase === "warung_rebahan") return "sekalipay";
-  if (phase === "sekalipay") return "notify";
-  return "expiry"; // cleanup kembali ke awal (cleanup jalan tiap run, ringan)
-}
-
-async function writeCronPhase(next: CronPhase, deferred: CronPhase[], database: DatabaseAccess): Promise<void> {
-  const { execRun } = database;
-  try {
-    await execRun(
-      `INSERT INTO store_settings (key, value, updated_at) VALUES ('cron_phase', ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value=?, updated_at=datetime('now')`,
-      next, next,
-    );
-    await execRun(
-      `INSERT INTO store_settings (key, value, updated_at) VALUES ('cron_deferred', ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value=?, updated_at=datetime('now')`,
-      JSON.stringify(deferred.slice(0, 8)), JSON.stringify(deferred.slice(0, 8)),
-    );
-  } catch { /* fase best-effort; run berikutnya mengulang prioritas default */ }
 }
 
 export async function POST(request: NextRequest) {
@@ -295,29 +202,8 @@ export async function POST(request: NextRequest) {
     if (forcedPhase) results.phase = forcedPhase;
     if (part) results.part = part;
 
-    // POISON-PILL GUARD (2026-09-18). `writeCronPhase` hanya dipanggil di ekor
-    // handler, jadi run yang dibunuh platform di tengah jalan meninggalkan
-    // fase + deferred yang sama untuk run berikutnya. Insiden 17 Sep 13:06 UTC
-    // → 18 Sep 04:55 UTC: fase terkunci di `warung_rebahan`, tiap run 5 menit
-    // mengulang pekerjaan berat yang sama, dipotong pada ~125 s, dan sync
-    // otomatis WR tidak pernah tercatat selama ~16 jam (baris cron terakhir
-    // di wr_sync_log: 17 Sep 11:37 UTC). Majukan rotasi + kosongkan deferred
-    // SEKARANG; ekor menimpa dengan nilai final bila run selesai normal.
-    // Konsekuensi yang disengaja: run yang mati kehilangan hint deferred-nya,
-    // tetapi rotasi tetap bergerak sehingga tidak ada fase yang mengunci cron.
-    if (!forcedPhase) await writeCronPhase(nextPhase(storedPhase), [], database);
-
-    // HEARTBEAT (issue wr-sync-observability, 2026-09-19): bukti "pemicu
-    // memanggil + handler hidup sampai sini". 1 statement ringan, best-effort.
-    // Tanpa ini run yang kepotong deploy vs pemicu yang mati terlihat identik
-    // (keduanya: tanpa baris sync baru). Baca: `cron_last_hit_at` segar +
-    // sync basi = run kepotong; keduanya basi = pemicu mati.
-    try {
-      await execRun(
-        `INSERT INTO store_settings (key, value, updated_at) VALUES ('cron_last_hit_at', datetime('now'), datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
-      );
-    } catch { /* heartbeat tak boleh menggagalkan run */ }
+    if (!forcedPhase) await advanceCronPhase(storedPhase, database);
+    await writeCronHeartbeat(execRun);
 
     // WATCHDOG SYNC BASI — SETIAP RUN (permanen, 2026-09-19 malam). Pelajaran
     // insiden 18:26→23:32 UTC: watchdog lama hanya berjalan di fase WR AKTIF,

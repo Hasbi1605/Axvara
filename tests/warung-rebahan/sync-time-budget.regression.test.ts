@@ -21,6 +21,7 @@
 //
 // Test ini memakai D1 lambat tiruan supaya kondisi "D1 buruk" bisa diuji
 // deterministik tanpa menunggu insiden nyata.
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "../helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
@@ -168,12 +169,8 @@ describe("WR sync — sweep wajib berhenti sebelum invocation dibunuh platform",
   });
 
   it("cron melanjutkan sweep yang belum tuntas tanpa menunggu interval 30 menit", () => {
-    const fs = require("node:fs") as typeof import("node:fs");
-    const path = require("node:path") as typeof import("node:path");
-    const cron = fs.readFileSync(
-      path.join(process.cwd(), "src/app/api/cron/operations/route.ts"),
-      "utf8",
-    );
+    const cron = readFileSync("src/app/api/cron/operations/route.ts", "utf8");
+    const sweep = readFileSync("src/lib/cron/catalog-sweep.ts", "utf8");
     // Saat D1 lambat, sweep berhenti karena WAKTU dengan errors kosong →
     // tercatat 'success'. Tanpa jalur resume, gerbang interval membacanya
     // sebagai "baru sukses" dan menahan lanjutannya 30 menit: katalog 48
@@ -183,15 +180,11 @@ describe("WR sync — sweep wajib berhenti sebelum invocation dibunuh platform",
     expect(cron).toContain("products_cursor");
     expect(cron).toMatch(/resumeNow\s*\|\|\s*await catalogSweepDue\(/);
     expect(cron).toMatch(/Number\(cursorRow\?\.value \?\? 0\) > 0/);
+    expect(sweep).toContain("lastLogTs < now - CATALOG_SYNC_INTERVAL_MS");
   });
 
   it("cron mengoper sisa deadline ke sweep, bukan membiarkannya tanpa batas", () => {
-    const fs = require("node:fs") as typeof import("node:fs");
-    const path = require("node:path") as typeof import("node:path");
-    const cron = fs.readFileSync(
-      path.join(process.cwd(), "src/app/api/cron/operations/route.ts"),
-      "utf8",
-    );
+    const cron = readFileSync("src/app/api/cron/operations/route.ts", "utf8");
     // Sweep harus menerima anggaran waktu yang diturunkan dari deadline run,
     // dengan cadangan untuk ekor yang menulis log + penanda fase.
     expect(cron).toContain("timeBudgetMs");

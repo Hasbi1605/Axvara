@@ -2099,6 +2099,9 @@ axvara/
 │   ├── payments/
 │   │   ├── qris.ts             # invoice + reissue QRIS, masa hidup order vs invoice
 │   │   └── dana-history.ts     # predikat riwayat nominal untuk webhook/retry/guard atomik
+│   ├── cron/
+│   │   ├── phase-state.ts      # rotasi fase operations, state deferred, poison-pill, heartbeat (3C-1)
+│   │   └── catalog-sweep.ts    # gerbang waktu sweep WR/SK 14/60 mnt + freshness diff 10 mnt (3C-1)
 │   ├── cron/lite/
 │   │   ├── jobs.ts             # daftar job dan tipe LiteJob, tanpa impor
 │   │   └── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis
