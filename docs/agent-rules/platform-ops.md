@@ -1,5 +1,7 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+- `cron/lite` memuat job order TUNVN, AIVault, StoreBat dan Mirai dari `src/lib/cron/lite/jobs/small-suppliers.ts` secara dinamis. Dispatch tetap memakai `deadline - 5_000`; cek saldo sesudahnya memakai `db.canSpend(5)`. Error biasa menjadi `<supplier>_balance_error`, sedangkan `QueryBudgetExceeded` dibiarkan naik agar route mencatat yield.
+
 ### Cron pembayaran, notifikasi dan fulfillment — 21 November 2026 (lokal)
 
 - Deadline 45 dtk adalah batas admission per item: sebelum klaim cek ruang

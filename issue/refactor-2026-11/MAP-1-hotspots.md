@@ -383,7 +383,7 @@ The dispatcher must keep being written as `if/else + await import()` (constraint
 - **Highest churn (54/60d)** → rebase per commit; the split will be obsolete if landed as one big diff. One job per commit, each ≤1 day of drift.
 - `LITE_JOBS` has a duplicate `/wr/sk orders` list line in the header comment (1-42) that must stay in sync — cosmetic but a reviewer trap.
 - Any accidental static import of `@/lib/telegram*` etc. breaks `cron-lite:459-464` **and** the CPU rationale; run that test after every commit.
-- `runSupplierBalanceCheck` swallows budget exhaustion into `*_balance_error: "balance_failed"` (663-666) — moving must not convert it into a thrown `QueryBudgetExceeded` (would 500 the job).
+- **Correction (3A-4):** `runSupplierBalanceCheck` catches ordinary failures as `*_balance_error: "balance_failed"`, but rethrows `QueryBudgetExceeded`. The route turns that exception into a successful budget yield, not HTTP 500. The extraction preserves both paths.
 - `runPromo` nested budget uses `unwrapD1(db.getD1())` (811); the context must expose the raw D1 or the nested budget cannot be built.
 - `runWrOrders`/`runSkOrders` import `orders` module namespace (`await import("@/lib/warung-rebahan/order")` then `order.process…`) — an object-spread refactor here is the one place where a typo won't be caught by types.
 

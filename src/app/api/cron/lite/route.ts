@@ -148,7 +148,10 @@ export async function POST(request: NextRequest) {
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db, deadline));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db, failedCore));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db, failedCore));
-    else if (job === "aivault_orders") Object.assign(result, await runAivaultOrders(db, deadline));
+    else if (job === "tunvn_orders" || job === "aivault_orders" || job === "storebat_orders" || job === "mirai_orders") {
+      const { run } = await import("@/lib/cron/lite/jobs/small-suppliers");
+      Object.assign(result, await run({ job, db, deadline, result, failedCore }, job));
+    }
     else if (job === "aivault_catalog") {
       const { isAivaultConfigured,isAivaultSyncEnabled }=await import("@/lib/aivault/client");
       if (!isAivaultConfigured() || !isAivaultSyncEnabled()) result.skipped="not_configured";
@@ -168,7 +171,6 @@ export async function POST(request: NextRequest) {
         if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
       }
     }
-    else if (job === "storebat_orders") Object.assign(result, await runStorebatOrders(db, deadline));
     else if (job === "storebat_catalog") {
       const { isStorebatConfigured,isStorebatSyncEnabled }=await import("@/lib/storebat/client");
       if (!isStorebatConfigured() || !isStorebatSyncEnabled()) result.skipped="not_configured";
@@ -188,7 +190,6 @@ export async function POST(request: NextRequest) {
         if ("ok" in synced && synced.ok && !("unchanged" in synced)) await drainDirtyGroupsIfBudget(db, result);
       }
     }
-    else if (job === "mirai_orders") Object.assign(result, await runMiraiOrders(db, deadline));
     else if (job === "mirai_catalog") {
       const { isMiraiConfigured, isMiraiSyncEnabled } = await import("@/lib/mirai/client");
       if (!isMiraiConfigured() || !isMiraiSyncEnabled()) result.skipped = "not_configured";
@@ -208,7 +209,6 @@ export async function POST(request: NextRequest) {
         if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
       }
     }
-    else if (job === "tunvn_orders") Object.assign(result, await runTunvnOrders(db, deadline));
     else if (job === "tunvn_catalog") {
       const { isTunvnSyncEnabled, isTunvnConfigured } = await import("@/lib/tunvn/client");
       if (!isTunvnSyncEnabled() || !isTunvnConfigured()) result.skipped = "not_configured";
@@ -604,73 +604,6 @@ async function runSkOrders(db: Db, failedCore: string[]) {
       if (error instanceof QueryBudgetExceeded) throw error;
     }
   }
-  return out;
-}
-
-async function runSupplierBalanceCheck(
-  db: Db,
-  out: Record<string, unknown>,
-  prefix: "tunvn" | "aivault" | "storebat" | "mirai",
-  loadAndCheck: () => Promise<{ checked: boolean; balance?: number; alerted?: boolean; error?: string }>,
-) {
-  if (!db.canSpend(5)) return;
-  try {
-    const bal = await loadAndCheck();
-    if (!bal.checked) return;
-    if (bal.balance !== undefined) out[`${prefix}_balance`] = bal.balance;
-    if (bal.alerted !== undefined) out[`${prefix}_balance_alerted`] = bal.alerted;
-    if (bal.error !== undefined) out[`${prefix}_balance_error`] = bal.error;
-  } catch (error) {
-    if (error instanceof QueryBudgetExceeded) throw error;
-    out[`${prefix}_balance_error`] = "balance_failed";
-  }
-}
-
-async function runTunvnOrders(db: Db, deadline: number) {
-  const { processTunvnOrders } = await import("@/lib/tunvn/orders");
-  const out: Record<string, unknown> = {
-    tunvn_orders_processed: await processTunvnOrders(db, { deadlineMs: deadline - 5_000 }),
-  };
-  await runSupplierBalanceCheck(db, out, "tunvn", async () => {
-    const { checkTunvnLowBalance } = await import("@/lib/supplier-balance-alert");
-    return checkTunvnLowBalance(db);
-  });
-  return out;
-}
-
-async function runAivaultOrders(db: Db, deadline: number) {
-  const { processAivaultOrders } = await import("@/lib/aivault/orders");
-  const out: Record<string, unknown> = {
-    aivault_orders_processed: await processAivaultOrders(db, { deadlineMs: deadline - 5_000 }),
-  };
-  await runSupplierBalanceCheck(db, out, "aivault", async () => {
-    const { checkAivaultLowBalance } = await import("@/lib/supplier-balance-alert");
-    return checkAivaultLowBalance(db);
-  });
-  return out;
-}
-
-async function runStorebatOrders(db: Db, deadline: number) {
-  const { processStorebatOrders } = await import("@/lib/storebat/orders");
-  const out: Record<string, unknown> = {
-    storebat_orders_processed: await processStorebatOrders(db, { deadlineMs: deadline - 5_000 }),
-  };
-  await runSupplierBalanceCheck(db, out, "storebat", async () => {
-    const { checkStorebatLowBalance } = await import("@/lib/supplier-balance-alert");
-    return checkStorebatLowBalance(db);
-  });
-  return out;
-}
-
-async function runMiraiOrders(db: Db, deadline: number) {
-  const { processMiraiOrders } = await import("@/lib/mirai/orders");
-  const out: Record<string, unknown> = {
-    mirai_orders_processed: await processMiraiOrders(db, { deadlineMs: deadline - 5_000 }),
-  };
-  await runSupplierBalanceCheck(db, out, "mirai", async () => {
-    const { checkMiraiLowBalance } = await import("@/lib/mirai/balance");
-    return checkMiraiLowBalance(db);
-  });
   return out;
 }
 

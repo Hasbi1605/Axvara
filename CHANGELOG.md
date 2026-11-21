@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3A-4a (kelas E): pindahkan job order TUNVN/AIVault/StoreBat/Mirai dan pemeriksaan saldo ke `src/lib/cron/lite/jobs/small-suppliers.ts`; deadline, key hasil, error saldo, yield budget dan marker tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/platform-ops.md` — (verifikasi: 244 test fokus pada overlay terisolasi; badan fungsi cocok dengan baseline)
+
 - 2026-11-22 — Roadmap 3B-4 (kelas E): preflight crypto, gateway dan QRIS dipindah ke `src/lib/orders/checkout/methods.ts`; retry dengan quote crypto tersimpan tetap melewati pembacaan snapshot pasar, dan slot/pembuatan order/invoice tetap di route — `src/app/api/orders/route.ts`, `tests/characterization/orders-crypto-saved-retry.test.ts`, `docs/agent-rules/payments.md` — (verifikasi: fixture retry lulus di baseline dan hasil ekstraksi, gagal pada versi ekstraksi yang membaca snapshot lebih dulu)
 
 - 2026-11-22 — Roadmap B4 (kelas E): rank status vendor dan CAS invoice/status WR/SK dipakai bersama, tanpa mengubah SQL, bind, replay, audit, atau pelepasan lease (tetap khusus SK) — `src/lib/suppliers/purchase-state.ts`, `src/lib/{warung-rebahan,sekalipay}/deliver.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/supplier-wr-sk.md` — (verifikasi: 806 perbandingan SQLite identik, full suite B4 terisolasi 622 file/8.558 lulus, 29 expected-fail tetap)
