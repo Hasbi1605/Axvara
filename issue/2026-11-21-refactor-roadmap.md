@@ -558,7 +558,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | C1 (H4 migrasi) | B | belum | D1 disetujui |
 | C2 (H4 aktivasi) | B | belum | D1 disetujui |
 | 3A | E | 3A-1, 3A-2a promo, 3A-2b cleanup, 3A-3 notify lokal | Wonder APPROVE. Catatan: modul job baru tidak boleh menambah import runtime selain yang sudah dimuat route |
-| 3B | E | 3B-1..3B-3 lokal (GET flags/detail-view; respons POST; guard) | Wonder APPROVE-WITH-NITS (diperbaiki) |
+| 3B | E | 3B-1..3B-4 lokal (GET flags/detail-view; respons POST; guard; metode) | 3B-4: fixture baru mengunci retry crypto tanpa baca snapshot pasar; berikutnya `create.ts` + `invoice.ts` |
 | 3C | E | 3C-1, 3C-2 lokal (phase-state, catalog-sweep, OperationsContext beku) | Wonder APPROVE; berikutnya satu fase per commit |
 | 3D | E | 3D-1, 3D-2 lokal (types/constants/writes; pricing/exclusion) | 3D-1 Wonder APPROVE; 3D-2 Spark APPROVE-WITH-NITS |
 | 3E | E (UI) | belum | |

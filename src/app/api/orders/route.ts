@@ -25,7 +25,6 @@ import { cryptoRailEnabled, cryptoTickerOfMethodId, isCryptoTotalStillPayable, i
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
 import { isNowpaymentsConfigured } from "@/lib/payments/rails";
-import type { NowpaymentsUsdExpected } from "@/lib/payments/nowpayments";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -293,96 +292,40 @@ export async function POST(req: NextRequest) {
   if (wa.startsWith("+62")) wa = wa.slice(1);
   else if (wa.startsWith("0")) wa = "62" + wa.slice(1);
 
-  // Metode terpilih HARUS ada di token bertanda (anti-tamper client).
-  const selected = quote.payment_methods.find((method) => method.id === payment_method);
-  if (!selected) {
-    return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout." }, { status: 409 });
+  // Preflight metode bertanda sebelum mengambil slot atau membuat pesanan.
+  const { resolveCheckoutMethod } = await import("@/lib/orders/checkout/methods");
+  const methodOutcome = await resolveCheckoutMethod(
+    quote,
+    { isCryptoMethod, cryptoTicker, isGatewayMethod },
+    { paymentMethod: payment_method, customer_email, customer_name },
+    {
+      getCryptoAsset: (ticker) => getCryptoAsset(ticker),
+      cryptoPricing: (base, ticker) => cryptoPricing(base, ticker),
+      centsToUsdText,
+      cryptoSurchargeBps: CRYPTO_SURCHARGE_BPS,
+      isNowpaymentsConfigured,
+      cryptoRailEnabled,
+      getCryptoMarketSnapshot: async () => {
+        const { getCryptoMarketSnapshot } = await import("@/lib/payments/market-snapshot");
+        return getCryptoMarketSnapshot();
+      },
+      isCryptoTotalStillPayable,
+      isFxSnapshotAcceptable,
+      isSekalipayGatewayConfigured: async () => {
+        const { isSekalipayGatewayConfigured } = await import("@/lib/payments/rails");
+        return isSekalipayGatewayConfigured();
+      },
+      listSekalipayMethods: async (subtotal) => {
+        const { listSekalipayMethods } = await import("@/lib/payments/sekalipay-gateway");
+        return listSekalipayMethods(subtotal);
+      },
+      readSameConfigQuote: (quoteId) => queryFirst("SELECT code FROM orders WHERE quote_id=?", quoteId),
+    },
+  );
+  if (methodOutcome.kind === "rejected") {
+    return NextResponse.json(methodOutcome.body, { status: methodOutcome.status });
   }
-  // Metode nonaktif (mis. di luar batas min/max merchant) tidak pernah ditandatangani; jaga eksplisit bila payload aneh lolos verifikasi.
-  if ((selected as { available?: unknown }).available === false) {
-    return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout." }, { status: 409 });
-  }
-  const quoteHasQris = quote.payment_methods.some((method) => method.id === "qris");
-  // Web crypto gate: NEW creation requires live config (keys+enabled+asset+
-  // fresh FX). Saved retry (same quote_id) resolves BEFORE these checks below
-  // — same order, same binding, no re-gate, no provider switch.
-  let cryptoUsd: NowpaymentsUsdExpected | null = null;
-  if (isCryptoMethod && cryptoTicker) {
-    const asset = getCryptoAsset(cryptoTicker)!;
-    const stale = (error = "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout.") =>
-      NextResponse.json({ error, code: "quote_stale" }, { status: 409 });
-    if (selected.fee_payer !== "merchant" || selected.fixed_rate !== false) return stale("Perbarui checkout untuk menyetujui biaya pembayaran.");
-    const row = selected as unknown as Record<string, unknown>;
-    const snap = row.usd as Record<string, unknown> | undefined;
-    // Validated extraction, no blind casts: kind/currency/asset/network/
-    // snapshot shape + exact USD price re-derived server-side from BASE cents
-    // (+ biaya layanan crypto). Wrong body overrides (price/currency/FX) =>
-    // rejected (409) or ignored (server values win); tampered token => verify
-    // fails earlier.
-    if (row.kind !== "crypto" || row.currency !== "USD" || !snap || typeof snap !== "object" || Array.isArray(snap)) return stale();
-    if (String(row.pay_currency).toLowerCase() !== cryptoTicker || String(row.network).toLowerCase() !== asset.network
-      || String(snap.pay_currency) !== cryptoTicker || String(snap.network) !== asset.network) return stale();
-    if (typeof row.amount_text !== "string" || !/^[0-9]+\.[0-9]{2}$/.test(row.amount_text)) return stale();
-    const snapCents = typeof snap.cents === "string" && /^[0-9]{1,20}$/.test(snap.cents) ? snap.cents : null;
-    const snapRateNum = typeof snap.rate_num === "string" && /^[0-9]{1,32}$/.test(snap.rate_num) ? snap.rate_num : null;
-    const snapRateDen = typeof snap.rate_den === "string" && /^[0-9]{1,32}$/.test(snap.rate_den) ? snap.rate_den : null;
-    const snapRateText = typeof snap.rate_text === "string" && /^[0-9]+(\.[0-9]+)?$/.test(snap.rate_text.trim())
-      && snap.rate_text.length <= 32 ? snap.rate_text.trim() : null;
-    const snapEffective = typeof snap.effective_at === "string" && Number.isFinite(Date.parse(snap.effective_at)) ? snap.effective_at : null;
-    const snapSubtotal = typeof snap.idr_subtotal === "number" && Number.isSafeInteger(snap.idr_subtotal) && snap.idr_subtotal > 0 ? snap.idr_subtotal : null;
-    if (!snapCents || BigInt(snapCents) <= BigInt(0) || !snapRateNum || BigInt(snapRateNum) <= BigInt(0)
-      || !snapRateDen || BigInt(snapRateDen) <= BigInt(0) || !snapRateText || !snapEffective || snapSubtotal === null) return stale();
-    // Rincian harga diturunkan ulang di server dari base bertanda; field di token hanya dibandingkan.
-    const pricing = cryptoPricing(BigInt(snapCents), cryptoTicker);
-    if (row.surcharge_bps !== CRYPTO_SURCHARGE_BPS || row.base_cents !== Number(pricing.baseCents)
-      || row.surcharge_cents !== Number(pricing.surchargeCents) || row.total_cents !== Number(pricing.totalCents)
-      || pricing.totalCents <= BigInt(0)) return stale();
-    const { getCryptoMarketSnapshot } = await import("@/lib/payments/market-snapshot");
-    const sameConfigQuote = await queryFirst("SELECT code FROM orders WHERE quote_id=?", quote.quote_id);
-    if (!sameConfigQuote) {
-      // Pembuatan BARU: koin harus ada di snapshot segar sekarang dan total bertanda masih memenuhi
-      // minimum terbaru x 1,15. Retry quote yang sama (sameConfigQuote) memakai binding tersimpan tanpa gate ulang.
-      const market = await getCryptoMarketSnapshot();
-      const current = market.fx;
-      const liveOk = isNowpaymentsConfigured() && cryptoRailEnabled() && current !== null;
-      if (!liveOk) {
-        return NextResponse.json({ error: "Pembayaran crypto sedang tidak tersedia. Muat ulang checkout." }, { status: 503 });
-      }
-      if (Number(snap.idr_subtotal) !== Number(quote.subtotal) || !Number.isSafeInteger(Number(snap.idr_subtotal))) {
-        return NextResponse.json({ error: "Harga berubah sejak checkout. Muat ulang checkout." }, { status: 409 });
-      }
-      if (!isCryptoTotalStillPayable(Number(pricing.totalCents), cryptoTicker, market.coins)) {
-        return stale("Koin ini tidak tersedia atau minimumnya berubah. Muat ulang checkout.");
-      }
-      // Kurs otomatis berubah tiap refresh: toleransi 2% + snapshot bertanda <=24 jam
-      // (bukan kesamaan ketat). Harga USD tetap dari cents bertanda di bawah.
-      if (!isFxSnapshotAcceptable(current, { rate_num: snapRateNum, rate_den: snapRateDen, effective_at: snapEffective })) {
-        return stale("Kurs berubah sejak checkout. Muat ulang checkout.");
-      }
-    }
-    // Exact USD re-derived server-side: signed base cents -> total canonical
-    // price. Forged body price overrides ignored (mismatch => tamper => 409).
-    const exactPrice = centsToUsdText(pricing.totalCents);
-    if (exactPrice !== String(row.amount_text)) return stale();
-    cryptoUsd = {
-      cents: snapCents, priceText: exactPrice, rateText: snapRateText,
-      surchargeBps: pricing.surchargeBps, surchargeCents: pricing.surchargeCents.toString(), totalCents: pricing.totalCents.toString(),
-      rateNum: snapRateNum, rateDen: snapRateDen, effectiveAt: snapEffective,
-      idrSubtotal: Number(quote.subtotal), payCurrency: cryptoTicker, network: asset.network,
-    };
-  } else if (isGatewayMethod) {
-    if (selected.kind !== "gateway" || !selected.gateway || selected.currency !== "IDR") return NextResponse.json({ error: "Metode pembayaran berubah." }, { status: 409 });
-    const { isSekalipayGatewayConfigured } = await import("@/lib/payments/rails");
-    if (!isSekalipayGatewayConfigured()) return NextResponse.json({ error: "Metode pembayaran tidak tersedia." }, { status: 503 });
-    const { listSekalipayMethods } = await import("@/lib/payments/sekalipay-gateway");
-    const methods = await listSekalipayMethods(quote.subtotal).catch(() => []);
-    if (!methods.some((m) => m.code === selected.gateway!.channel)) return NextResponse.json({ error: "Metode pembayaran tidak tersedia." }, { status: 503 });
-    if (customer_email.length > 100 || (customer_name?.length ?? 0) > 100) return NextResponse.json({ error: "Data pembeli tidak valid." }, { status: 400 });
-  } else if (payment_method !== "qris") {
-    return NextResponse.json({ error: "E-Wallet & Transfer Bank sedang maintenance. Muat ulang checkout dan bayar via QRIS." }, { status: 503 });
-  } else if (!quoteHasQris) {
-    return NextResponse.json({ error: "E-Wallet & Transfer Bank sedang maintenance. Muat ulang checkout dan bayar via QRIS." }, { status: 503 });
-  }
+  const { selected, cryptoUsd } = methodOutcome;
   const code = generateCode();
   const pm = String(payment_method);
   const paymentId = pm.startsWith("bank:") ? pm.slice(5) : pm;

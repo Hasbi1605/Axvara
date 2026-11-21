@@ -258,11 +258,16 @@ describe("BUG-05: Tidak ada duplicate generateOrderCode lemah di utils.ts", () =
 describe("BUG-06: Checkout block bank placeholder belum aktif", () => {
   it("checkout QRIS-only selama maintenance (quote guard server)", () => {
     const checkout = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/checkout/page.tsx"), "utf-8");
+    // 3B-4: method resolution + preflight moved verbatim to methods.ts; route
+    // keeps the same call + rejection wiring (no weakening, no new paths).
+    const methods = fs.readFileSync(path.join(process.cwd(), "src/lib/orders/checkout/methods.ts"), "utf-8");
     const orders = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
     expect(checkout).toContain("quote_token");
     expect(checkout).toContain("payment_method: payMethod");
     expect(checkout).not.toContain('const payMethod = "qris"');
-    expect(orders).toContain("quoteHasQris");
+    expect(methods).toContain("quoteHasQris");
+    expect(methods).toContain("resolveCheckoutMethod");
+    expect(orders).toContain("resolveCheckoutMethod");
     expect(orders).not.toContain("accountMap");
   });
 });
@@ -288,9 +293,13 @@ describe("BUG-07: Login rate limit 5/menit (bukan 12)", () => {
 describe("BUG-09: Zod enum payment_method tanpa duplikat", () => {
   it("orders route membatasi metode dan mewajibkan metode dalam quote", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
+    // 3B-4: the token-in-quote assertion moved verbatim to methods.ts
+    // (`method.id === payment_method`); route still calls it + wraps rejections.
+    const methods = fs.readFileSync(path.join(process.cwd(), "src/lib/orders/checkout/methods.ts"), "utf-8");
     expect(src).toContain("payment_method: z.string().trim().max(64)");
     expect(src).toContain('payment_method !== "qris" && !isCryptoMethod && !isGatewayMethod');
-    expect(src).toContain("quote.payment_methods.find((method) => method.id === payment_method)");
+    expect(methods).toContain("payment_methods.find((method) => method.id === payment_method)");
+    expect(src).toContain("resolveCheckoutMethod");
     expect(src).not.toContain("bank:bca");
   });
 });
