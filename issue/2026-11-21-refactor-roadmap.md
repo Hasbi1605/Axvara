@@ -539,7 +539,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | T7 | T | belum | |
 | A1 AIVault | E | lokal (commit A1) | Wonder APPROVE |
 | A2 Mirai | E | lokal (commit A2) | Wonder APPROVE |
-| A3 StoreBat | E | belum | |
+| A3 StoreBat | E | lokal (commit A3) | Wonder APPROVE. Catatan: bila kelak predikat JS disatukan, bentuk ketat `=== 0` adalah kanonis dan itu perubahan kelas B |
 | A4 TUNVN | E | belum | |
 | B1 | E | belum | |
 | B2 | E | belum | |

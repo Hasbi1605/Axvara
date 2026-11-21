@@ -2,6 +2,7 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { encryptSecret, decryptSecret } from "@/lib/fulfillment/crypto";
 import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-binding";
 import { storebatEligibility } from "@/lib/buyer-fields";
+import { claimLink, PAID_ORDER_SQL as PAID } from "@/lib/suppliers/link-lease";
 import { isStorebatConfigured, isStorebatEnabled, fetchStorebatBalance, fetchStorebatQuote, parseStorebatBalance, parseStorebatQuote, fetchStorebatOrder, lookupStorebatOrder, money, positiveId, record, validInvite, validReference, type StorebatRaw } from "./client";
 import { buyStorebatProduct } from "./purchase";
 
@@ -10,7 +11,6 @@ type ReceiptSource = "purchase" | "poll" | "lookup";
 export const STOREBAT_ORDERS_PER_RUN = 8;
 export const STOREBAT_ORPHANS_PER_RUN = 8;
 const ENABLED = () => isStorebatConfigured() && isStorebatEnabled();
-const PAID = "status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0 AND COALESCE(order_kind,'apps')='apps' AND sales_channel IN ('web','telegram')";
 const UNOWNED = "wr_link_id IS NULL AND sk_link_id IS NULL AND tunvn_link_id IS NULL AND aivault_link_id IS NULL AND mirai_link_id IS NULL AND inventory_id IS NULL";
 const MANUAL_SOURCE = `p.source='manual' AND p.fulfillment_mode='manual' AND p.is_active=1 AND p.archived_at IS NULL AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.tunvn_family IS NULL AND p.aivault_family IS NULL AND p.mirai_family IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0
     AND v.is_active=1 AND v.fulfillment_mode='manual' AND v.wr_variant_id IS NULL AND v.sk_variant_id IS NULL AND v.tunvn_source_product_id IS NULL AND v.tunvn_buff_quantity_b IS NULL AND v.aivault_service_id IS NULL AND v.mirai_package_code IS NULL`;
@@ -148,8 +148,7 @@ async function recover(db: DatabaseAccess, l: Row): Promise<{ retryPost: boolean
 
 async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity): Promise<{ claimed: boolean; rateLimited: boolean }> {
   const owner = crypto.randomUUID();
-  const claim = await db.execRun(`UPDATE storebat_order_links SET lease_owner=?,lease_expires_at=datetime('now','+90 seconds'),status='claimed'
-    WHERE id=? AND status IN ('pending','claimed','processing') AND datetime(next_attempt_at)<=datetime('now') AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))`,owner,id);
+  const claim = await claimLink(db, "storebat", id, owner);
   if (!claim.changes) return { claimed: false, rateLimited: false };
   const l = await db.queryFirst("SELECT * FROM storebat_order_links WHERE id=? AND lease_owner=?",id,owner);
   if (!l) return { claimed: true, rateLimited: false };
