@@ -69,6 +69,7 @@ pdp-mobile-375.png
 
 # Kredensial AWS agent (2026-10-04)
 .aws-credentials*
+.ops-private*
 .providersmm-credentials*
 .klikqris-credentials*
 .gopay-credentials*

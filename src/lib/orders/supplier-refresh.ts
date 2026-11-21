@@ -2,7 +2,7 @@
 // permintaan, aman dipanggil dari permukaan publik (halaman pembeli) maupun
 // cron, TANPA membakar kuota Workers Free / D1.
 //
-// Masalah (2026-10-13, order Bstation AXV-20261013-E13AB2A8): WR selesai di
+// Masalah (2026-10-13, order Bstation AXV-20261013-E13A****): WR selesai di
 // supplier dalam hitungan detik, tetapi Axvara baru tahu setelah admin klik
 // "Cek status" — reconcile segar hanya hidup di route besar 1×/jam dan
 // penarik lite 5-menitan berambang 2 menit. SK terasa instan karena webhook

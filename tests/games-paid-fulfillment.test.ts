@@ -27,7 +27,7 @@ describe("schedulePaidFulfillment", () => {
   it("still dispatches paid Games if buyer email throws", async () => {
     paidMail.mockRejectedValueOnce(new Error("fixture email down"));
     const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
-    await schedulePaidFulfillment("AXG-20261116-4206447D", "games");
+    await schedulePaidFulfillment("AXG-20991231-00F17004", "games");
     expect(games).toHaveBeenCalledTimes(1);
     expect(pedia).not.toHaveBeenCalled();
   });

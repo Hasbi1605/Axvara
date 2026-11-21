@@ -18,7 +18,7 @@ vi.mock("@/lib/telegram/send-document", () => ({ sendDocument: api.document }));
 
 import { resendTelegramCredentials } from "@/lib/telegram/credential-delivery";
 
-const code = "AXV-20261004-4CC0526E";
+const code = "AXV-20991231-00F1701A";
 const buyer = 12345;
 let fx: ReturnType<typeof createD1Fixture>;
 

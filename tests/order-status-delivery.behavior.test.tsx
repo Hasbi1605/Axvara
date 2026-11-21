@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, cleanup, waitFor, within } from "@testing-library/react";
 import OrderStatusPage from "@/app/(shop)/pesanan/[code]/page";
 
-const CODE = "AXV-20260918-AB12CD34";
+const CODE = "AXV-20991231-00F17007";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ code: CODE }),

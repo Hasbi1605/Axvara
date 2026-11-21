@@ -17,7 +17,7 @@ vi.mock("@/lib/telegram/api", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/telegram/api")>(), sendMessage: vi.fn(),
 }));
 let fx: ReturnType<typeof createD1Fixture>;
-const CODE = "AXG-20261116-4206447D";
+const CODE = "AXG-20991231-00F17004";
 const LABEL = "Mobile Legends — Mobilelegend - 50 Diamond";
 const now = new Date("2026-11-17T00:00:00Z");
 

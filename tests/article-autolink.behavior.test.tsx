@@ -134,7 +134,7 @@ describe("kredensial pasca-bayar: link bisa diklik (CredentialText)", () => {
   // teks mono yang tidak bisa diklik.
   const CRED_SAMPLE = [
     "Netflix — 1 Profile 2 User",
-    "Email: krutehkhan@gmail.com | PASSWORD : Nengflix222@@ | PROFILE : UCIHA |",
+    "Email: netflix-buyer@example.test | PASSWORD : Passw0rd-fixture-2@@ | PROFILE : UCIHA |",
     "CARA LOGIN = axvara.tech/go/netflix-login",
     "AKSES BOT / KODE = axvara.tech/go/otp",
     "- https://www.netflix.com/clearcookies",
@@ -156,7 +156,7 @@ describe("kredensial pasca-bayar: link bisa diklik (CredentialText)", () => {
     expect(screen.getByRole("link", { name: "https://www.netflix.com/clearcookies" })).not.toBeNull();
     // Email kredensial BUKAN link (tidak boleh ada mailto).
     expect(document.querySelector('a[href^="mailto:"]')).toBeNull();
-    expect(document.body.textContent).toContain("krutehkhan@gmail.com");
+    expect(document.body.textContent).toContain("netflix-buyer@example.test");
   });
 });
 

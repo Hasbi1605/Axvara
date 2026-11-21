@@ -68,7 +68,7 @@ export function estimateGatewayFee(amount: number, fee: Fee): number {
 }
 
 /**
- * Transport gateway Sekalipay. Whitelist IP merchant hanya VPS 13.228.147.90 dan Cloudflare Pages tidak punya egress IP tetap, jadi bila
+ * Transport gateway Sekalipay. Whitelist IP merchant hanya IP egress VPS dan Cloudflare Pages tidak punya egress IP tetap, jadi bila
  * SEKALIPAY_PROXY_URL (origin https murni) + SEKALIPAY_PROXY_TOKEN valid, panggilan lewat `${origin}/skg/v1/gateway/<path>` dengan header
  * `x-proxy-token`; tanpa kedua env langsung ke sekalipay.com (harness lokal/tes). Konfigurasi parsial/invalid gagal tertutup. Mode whitelist VPS menandatangani body POST mentah;
  * direct mempertahankan Enhanced HMAC atas path kanonis upstream. Proxy hanya meneruskan header + body mentah apa adanya.

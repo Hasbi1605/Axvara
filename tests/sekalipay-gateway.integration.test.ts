@@ -959,7 +959,7 @@ describe("stale sekalipay_gateway reconciliation and root-cause expiry", () => {
     stubFulfillmentKey();
     try {
       await insertTestProduct(fixture.sql);
-      await seedGatewayOrder(fixture, "AXV-20261107-49A6C50F", {
+      await seedGatewayOrder(fixture, "AXV-20991231-00F17029", {
         orderStatus: "kadaluarsa",
         paymentStatus: "expired",
         txStatus: "initializing",
@@ -980,7 +980,7 @@ describe("stale sekalipay_gateway reconciliation and root-cause expiry", () => {
       const res = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
       expect(res).toEqual({ gateway_stale_checked: 0, gateway_stale_closed: 2, gateway_stale_manual_review: 0 });
       expect(fetchMock).not.toHaveBeenCalled();
-      for (const id of ["AXV-20261107-49A6C50F", "AXV-20261107-EMPTYREF"]) {
+      for (const id of ["AXV-20991231-00F17029", "AXV-20261107-EMPTYREF"]) {
         expect(fixture.sql.prepare("SELECT status,last_checked_at FROM payment_transactions WHERE order_code=?").get(id))
           .toMatchObject({ status: "expired", last_checked_at: expect.any(String) });
       }
@@ -1183,7 +1183,7 @@ describe("stale sekalipay_gateway reconciliation and root-cause expiry", () => {
 
       // 2) Simulate the 6 stuck production rows -> closed in 2 ticks of job=payments without manual mutation
       const stuck = [
-        { code: "AXV-20261107-49A6C50F", orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "initializing" as const, providerPaymentId: null },
+        { code: "AXV-20991231-00F17029", orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "initializing" as const, providerPaymentId: null },
         { code: "AXV-20261116-28FFDCC9", orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" as const, providerPaymentId: "SPY28" },
         { code: "AXV-20261107-BF6D630D", orderStatus: "dibatalkan", paymentStatus: "failed", txStatus: "pending" as const, providerPaymentId: "SPYBF" },
         { code: "AXV-20261107-24858555", orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" as const, providerPaymentId: "SPY24" },

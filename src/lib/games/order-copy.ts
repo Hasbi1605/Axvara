@@ -33,7 +33,7 @@ const copy = {
     // Lacak
     trackKicker: "AXVARA Games", trackTitle: "Lacak pesanan Games", trackIntro: "Masukkan kode pesanan AXG dan WhatsApp atau email yang kamu pakai saat checkout.",
     trackFormAria: "Form lacak pesanan Games", trackFormTitle: "Cari pesanan", trackFormSub: "Kode AXG + kontak checkout",
-    trackCode: "Kode pesanan AXG", trackCodeHint: "Contoh: AXG-20261116-4206447D", trackCodeBad: "Format kode pesanan tidak valid.",
+    trackCode: "Kode pesanan AXG", trackCodeHint: "Contoh: AXG-20991231-00F17004", trackCodeBad: "Format kode pesanan tidak valid.",
     trackContact: "WhatsApp atau email", trackContactPlaceholder: "08xxxx atau nama@email.com", trackContactHint: "Sesuai yang diisi saat checkout.", trackContactBad: "Masukkan WhatsApp atau email yang valid.",
     trackSubmit: "Lacak pesanan", trackLoading: "Mencari pesanan…", trackSlow: "Masih mencari, mohon tunggu…", trackNotFound: "Pesanan tidak ditemukan atau kontak tidak cocok.", trackConnection: "Koneksi bermasalah. Coba lagi.",
     recentTitle: "Terakhir dilacak", recentAria: "Pesanan yang terakhir dilacak", fillContact: "Isi kontak untuk membuka", deleteRecent: "Hapus {code} dari riwayat",
@@ -75,7 +75,7 @@ const copy = {
     error: "Failed to load: {error}", noSelection: "Not selected",
     trackKicker: "AXVARA Games", trackTitle: "Track Games order", trackIntro: "Enter your AXG order code and the WhatsApp number or email used at checkout.",
     trackFormAria: "Games order tracking form", trackFormTitle: "Find order", trackFormSub: "AXG code + checkout contact",
-    trackCode: "AXG order code", trackCodeHint: "Example: AXG-20261116-4206447D", trackCodeBad: "Invalid order code format.",
+    trackCode: "AXG order code", trackCodeHint: "Example: AXG-20991231-00F17004", trackCodeBad: "Invalid order code format.",
     trackContact: "WhatsApp or email", trackContactPlaceholder: "08xxxx or name@email.com", trackContactHint: "As entered at checkout.", trackContactBad: "Enter a valid WhatsApp number or email.",
     trackSubmit: "Track order", trackLoading: "Finding order…", trackSlow: "Still searching, please wait…", trackNotFound: "Order not found or contact does not match.", trackConnection: "Connection problem. Try again.",
     recentTitle: "Recently tracked", recentAria: "Recently tracked orders", fillContact: "Enter contact to open", deleteRecent: "Remove {code} from history",

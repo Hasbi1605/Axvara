@@ -16,7 +16,7 @@ const telegram = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/warung-rebahan/forward-sender", () => ({ sendForwardEmail: send }));
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: telegram }));
 
-const CODE = "AXG-20261116-4206447D";
+const CODE = "AXG-20991231-00F17004";
 const REF = gamesSkPaidWebhook.data.ref_id;
 const INVOICE = gamesSkPaidWebhook.data.invoice;
 const SN = "MLBB1611263232621";

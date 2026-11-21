@@ -167,7 +167,7 @@ Jika port macet/CSS 404, identifikasi proses dan penyebab dahulu; jangan otomati
 `kill -9` seluruh proses port 3000 atau menghapus `.next` milik sesi bersama.
 
 ## Kredensial Cloudflare (WAJIB)
-- File sumber tunggal: `axvara/.cf-credentials` — berisi `CLOUDFLARE_API_KEY` / `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_EMAIL` (account `Sailinnadia1@gmail.com`).
+- File sumber tunggal: `axvara/.cf-credentials` — berisi `CLOUDFLARE_API_KEY` / `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_EMAIL`. Untuk akun operator Cloudflare, Heroku, dan Gmail ingest, lihat `.ops-private.md` lokal (git-ignored).
 - **File ini di-ignore git** (`.gitignore: .cf-credentials*`) — JANGAN pernah commit/push, jangan echo isinya di log/chat.
 - Deploy CI/CD memakai GitHub Actions Secrets `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, dan `CLOUDFLARE_ACCOUNT_ID`. Operasi Cloudflare manual/recovery WAJIB mengambil kredensial dari `.cf-credentials` dengan `set -a; source .cf-credentials; set +a`.
 - Jangan hardcode key di kode/docs/AGENTS.md — rujuk file ini saja.
@@ -192,10 +192,10 @@ Jika port macet/CSS 404, identifikasi proses dan penyebab dahulu; jangan otomati
 - Rotasi: generate baru → update file ini → update 3 Pages Secrets (`secret_text`) → redeploy → update Apps Script.
 
 ## Kredensial AWS (VPS proxy WR/SK) (WAJIB)
-- File sumber tunggal: `axvara/.aws-credentials` (git-ignored `.aws-credentials*`, chmod 600) — berisi `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + `AWS_DEFAULT_REGION=ap-southeast-1` milik IAM user `kiro-monitor`. Pakai: `set -a; source .aws-credentials; set +a` lalu `aws ...` (env var mengalahkan profile `default`/root). JANGAN commit/echo nilainya.
-- Izin `kiro-monitor`: `ReadOnlyAccess` + baca billing/kredit (Cost Explorer, freetier, budgets) + `ec2:Start/Stop/RebootInstances` HANYA untuk `i-022790eb6bb0b1be3` (`axvara-proxy-sg`). Aksi di luar izin (security group, resize, snapshot, resource baru) → minta owner.
-- Ubah isi VPS (deploy proxy, restart service, log) lewat SSH `ec2-user@13.228.147.90` + `~/.ssh/axvara-sg-proxy.pem`, bukan IAM.
-- Cabut akses: IAM → Users → `kiro-monitor` → hapus access key (lalu hapus file ini). Key admin permanen `nasikuning` DINONAKTIFKAN 2026-10-04 — jangan dipakai/diaktifkan lagi tanpa izin owner.
+- File kredensial: `axvara/.aws-credentials` (git-ignored `.aws-credentials*`, chmod 600) — `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + `AWS_DEFAULT_REGION`. Untuk IAM user/policy, instance VPS, SSH target dan key path, lihat `.ops-private.md` lokal (git-ignored) di checkout utama AXVARA. Pakai: `set -a; source .aws-credentials; set +a` lalu `aws ...` (env var mengalahkan profile `default`/root). JANGAN commit/echo nilainya.
+- Izin operator: akses baca-saja + baca billing/kredit (Cost Explorer, freetier, budgets) + `ec2:Start/Stop/RebootInstances` HANYA untuk instance VPS yang tercatat di `.ops-private.md`. Aksi di luar izin (security group, resize, snapshot, resource baru) → minta owner.
+- Ubah isi VPS (deploy proxy, restart service, log) lewat SSH sesuai `.ops-private.md`, bukan IAM.
+- Cabut akses: IAM → Users → pilih user operator sesuai `.ops-private.md` → hapus access key (lalu hapus file kredensial lokal). Key admin permanen lama DINONAKTIFKAN 2026-10-04 — jangan dipakai/diaktifkan lagi tanpa izin owner.
 
 ## Sebelum menyelesaikan percakapan (checklist)
 Agent **wajib** memeriksa butir yang berlaku sebelum jawab "selesai"; butir yang

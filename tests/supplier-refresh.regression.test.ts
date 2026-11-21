@@ -55,12 +55,12 @@ describe("formatter WR bentuk {label, value} (screenshot Bstation 2026-10-13)", 
   it("payload [{product,label,value}...] tampil rapi per baris, nol teks mentah", async () => {
     const { normalizeAccountDetailsForDisplay, formatWrAccountDetails } = await import("@/lib/warung-rebahan/deliver");
     const payload = [
-      { product: "Bstation - Premium 1B", label: "Email", value: "Jarwosuryo2504@gmail.com" },
-      { product: "Bstation - Premium 1B", label: "Password", value: "permisi!!" },
+      { product: "Bstation - Premium 1B", label: "Email", value: "supplier-buyer@example.test" },
+      { product: "Bstation - Premium 1B", label: "Password", value: "Passw0rd-fixture-3!!" },
     ];
     for (const out of [normalizeAccountDetailsForDisplay(payload), formatWrAccountDetails(payload)]) {
-      expect(out).toContain("Email: Jarwosuryo2504@gmail.com");
-      expect(out).toContain("Password: permisi!!");
+      expect(out).toContain("Email: supplier-buyer@example.test");
+      expect(out).toContain("Password: Passw0rd-fixture-3!!");
       expect(out).not.toContain("Label:");
       expect(out).not.toContain("Value:");
       expect(out).not.toContain("Product:");

@@ -2006,7 +2006,7 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
   sore, live): `normalizeAccountDetailsForDisplay` mengupas envelope JSON
   (`{product,details}`), menormalisasi `\r\n`, memisah `key: value` /
   `key:: value`, memberi label Indonesia (Akses OTP, Tautan), dan membuang
-  label ganda — tidak pernah JSON mentah (bukti prod: link 95FC8669 tampil
+  label ganda — tidak pernah JSON mentah (bukti prod: link 95FC**** tampil
   `{"product":...,"details":"email:...\r\npassword:..."}` sebelum ini).
   Bentuk field supplier `{label, value}` (WR, 2026-10-13) dirender
   "Label: nilai" per baris dengan kata kunci mentah dibuang — bukan lagi

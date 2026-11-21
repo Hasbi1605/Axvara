@@ -1137,7 +1137,7 @@ Telegram hanya QRIS + Crypto (LOKAL, 7 November 2026, belum deploy; revisi 8 Nov
 
 Nominal crypto tampil dibulatkan ke atas (LOKAL, 7 November 2026, belum deploy): `displayCryptoAmount(payAmountText, usdTotalText)` di `src/lib/payments/crypto-display.ts` memilih presisi terpendek (mulai 2 desimal) yang kelebihan AKTUAL ≤ US$0,01 dari rasio USD/koin tersimpan; seluruh perbandingan memakai BigInt/string eksak (tanpa Number/float atau kurs live). Dipakai `GatewayPaymentPanel` (tampilan + nilai Salin) dan instruksi Telegram `showProviderInvoiceStatus`. `pay_amount_text`/provider/underpaid check tidak berubah.
 
-Kurasi kanal gateway & copy gangguan (LOKAL, 7 November 2026, belum deploy; revisi sore: DANA_REALTIME ditampilkan lagi): `listSekalipayCatalog` mengecualikan HANYA `SHOPEEPAY_REALTIME` secara eksak (`/^SHOPEEPAY_REALTIME$/i`) dan menawarkan `SHOPEEPAY` biasa (label "ShopeePay") serta `DANA_REALTIME` (label "DANA") di Market web dan Pedia. Bukti produksi read-only: POST create `DANA_REALTIME` konsisten HTTP500 (order `AXV-20261107-0F943ABA`, `AXV-20261107-49A6C50F`), GET by ref 404, kanal lain 201 — owner tetap memilih menampilkannya dan menerima pembeli pindah metode setelah error. Telegram TIDAK terpengaruh: `freezePayq1` memakai `buildMethodOptions(..., { includeGateway:false })` (`src/lib/telegram/payment-quote.ts:208`) sehingga gateway tidak pernah ditawarkan di bot. `gatewayDisplayName`/`GATEWAY_DISPLAY_NAMES` tetap map ID eksak; tidak ada migrasi. Picker mengurutkan E-Wallet dari LABEL tampilan (`EWALLET_FIRST`), sehingga ShopeePay→DANA→GoPay→OVO. `paymentMethodProblem(locale)` di `src/app/api/orders/route.ts` menjadi copy 503 untuk gateway/crypto gagal/ambigu/initializing (ID/EN); jalur QRIS mempertahankan copy persiapannya. Klien checkout Market (`src/app/(shop)/checkout/page.tsx`) dan Pedia (`src/app/pedia/o/[slug]/order-client.tsx`) merespons `error_code: "payment_method_unavailable"` dengan membuang quote (+prefetch Pedia), mengosongkan metode gagal, memuat ulang daftar metode, dan mengambil quote baru; submit berikut memakai token baru. Reuse `orders.quote_id` UNIQUE (`route.ts:197-198`, `drizzle/schema.sql:120-121`) dan semantik klaim server TIDAK diubah. Batas Pedia (diperbaiki 7 November 2026): `createSekalipayGatewayInvoice` melempar `sekalipay_gateway_create_rejected` hanya untuk rejeksi provider yang terbaca (bukan `PAYMENT_ALREADY_EXISTS`, `DUPLICATE_REF_ID`, 502/504, timeout/jaringan, atau `skg_proxy_unreadable_response` — semua itu tetap `create_ambiguous`). Rute Pedia memanggil `confirmGatewayInvoiceAbsent(orderCode)` (GET read-only ber-admission; hanya 404 JSON = `absent`) lalu `markGatewayInvoiceCreateRejected` (TX `failed` + `last_error`, hanya baris `initializing` tanpa invoice id) dan baru membatalkan order + `expirePediaCheckouts`; GET rate-limited/error/200 atau mark gagal = klaim dipertahankan (perilaku lama). Guard duplicate-target (`src/app/api/pedia/orders/route.ts:250-254,275-276`) tidak diubah. Callback/reconcile telat aman: callback tetap 503/200 manual review (`callback/route.ts:45-52`), TX `failed` tidak dipoll (`payment-view.ts:45,56`), dan `order_status !== 'pending'` memblokir paid (`sekalipay-gateway.ts:409-440`). Market web tidak ikut membatalkan (tanpa guard duplikat); reuse `orders.quote_id` tidak diubah.
+Kurasi kanal gateway & copy gangguan (LOKAL, 7 November 2026, belum deploy; revisi sore: DANA_REALTIME ditampilkan lagi): `listSekalipayCatalog` mengecualikan HANYA `SHOPEEPAY_REALTIME` secara eksak (`/^SHOPEEPAY_REALTIME$/i`) dan menawarkan `SHOPEEPAY` biasa (label "ShopeePay") serta `DANA_REALTIME` (label "DANA") di Market web dan Pedia. Bukti produksi read-only: POST create `DANA_REALTIME` konsisten HTTP500 (order `AXV-20261107-0F94****`, `AXV-20261107-49A6****`), GET by ref 404, kanal lain 201 — owner tetap memilih menampilkannya dan menerima pembeli pindah metode setelah error. Telegram TIDAK terpengaruh: `freezePayq1` memakai `buildMethodOptions(..., { includeGateway:false })` (`src/lib/telegram/payment-quote.ts:208`) sehingga gateway tidak pernah ditawarkan di bot. `gatewayDisplayName`/`GATEWAY_DISPLAY_NAMES` tetap map ID eksak; tidak ada migrasi. Picker mengurutkan E-Wallet dari LABEL tampilan (`EWALLET_FIRST`), sehingga ShopeePay→DANA→GoPay→OVO. `paymentMethodProblem(locale)` di `src/app/api/orders/route.ts` menjadi copy 503 untuk gateway/crypto gagal/ambigu/initializing (ID/EN); jalur QRIS mempertahankan copy persiapannya. Klien checkout Market (`src/app/(shop)/checkout/page.tsx`) dan Pedia (`src/app/pedia/o/[slug]/order-client.tsx`) merespons `error_code: "payment_method_unavailable"` dengan membuang quote (+prefetch Pedia), mengosongkan metode gagal, memuat ulang daftar metode, dan mengambil quote baru; submit berikut memakai token baru. Reuse `orders.quote_id` UNIQUE (`route.ts:197-198`, `drizzle/schema.sql:120-121`) dan semantik klaim server TIDAK diubah. Batas Pedia (diperbaiki 7 November 2026): `createSekalipayGatewayInvoice` melempar `sekalipay_gateway_create_rejected` hanya untuk rejeksi provider yang terbaca (bukan `PAYMENT_ALREADY_EXISTS`, `DUPLICATE_REF_ID`, 502/504, timeout/jaringan, atau `skg_proxy_unreadable_response` — semua itu tetap `create_ambiguous`). Rute Pedia memanggil `confirmGatewayInvoiceAbsent(orderCode)` (GET read-only ber-admission; hanya 404 JSON = `absent`) lalu `markGatewayInvoiceCreateRejected` (TX `failed` + `last_error`, hanya baris `initializing` tanpa invoice id) dan baru membatalkan order + `expirePediaCheckouts`; GET rate-limited/error/200 atau mark gagal = klaim dipertahankan (perilaku lama). Guard duplicate-target (`src/app/api/pedia/orders/route.ts:250-254,275-276`) tidak diubah. Callback/reconcile telat aman: callback tetap 503/200 manual review (`callback/route.ts:45-52`), TX `failed` tidak dipoll (`payment-view.ts:45,56`), dan `order_status !== 'pending'` memblokir paid (`sekalipay-gateway.ts:409-440`). Market web tidak ikut membatalkan (tanpa guard duplikat); reuse `orders.quote_id` tidak diubah.
 
 UI pembayaran pending gateway/crypto (LOKAL, 7 November 2026, belum deploy): `usePaymentConsent` menerima `navigate` (default `window.location.assign`) dan, setelah 200, memakai `payment.payment_link ?? payment.checkout_url` (https saja) ketika `payment.state === "pending"` untuk lanjut ke provider di tab yang sama setelah `onAccepted`; tanpa tautan hanya `refresh()`; 409 tetap stale+refresh tanpa auto-approve, dan in-flight/`busy` dijaga selama navigasi. Halaman `/pesanan/[code]` memakai `compactPayment` untuk QRIS DAN gateway/crypto pending (judul dari `orderPanelCopy.title`, detak 1 dtk saat `payment.state=pending`), sementara `GatewayPaymentPanel` memakai satu kartu terpusat untuk gateway dan grid dua kolom QR+detail untuk crypto. Tidak ada perubahan route, schema, env, HMAC/claim/retry, atau perilaku server; `lacak-pesanan-client` tetap memakai header non-ringkas dan `GatewayPaymentPanel` yang sama.
 
@@ -1222,7 +1222,7 @@ status implementasi terkini mengikuti seksi §16 tersebut.
 - **Route (rencana):** `src/app/games/{page,[slug],pesanan/[code],lacak,bantuan,ketentuan}`
   mengikuti pola `src/app/pedia/*`; API `src/app/api/games/*` untuk quote/order dan
   `POST /api/games/digiflazz/webhook`.
-- **Egress Digiflazz:** whitelist IP Digiflazz = VPS `13.228.147.90`; Pages tidak punya
+- **Egress Digiflazz:** whitelist IP Digiflazz = VPS `[IP egress VPS]`; Pages tidak punya
   IP tetap, jadi panggilan runtime lewat route proxy baru di VPS (usulan `/dgf/*`,
   header `x-proxy-token`, allowlist eksak `cek-saldo`, `price-list`, `transaction`),
   mengikuti pola `/skg/*`. Key Digiflazz tetap server-side.
@@ -2998,7 +2998,7 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
 | POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
 | POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dari baris Pesanan dan otorisasi pembayaran manual |
-| POST | `/api/cron/lite?job=expiry\|fulfillment\|wr_orders\|sk_orders\|tunvn_orders\|aivault_orders\|pedia_orders\|promo\|notify_a\|notify_b\|notify\|tg_webhook\|cleanup` | Bearer `CRON_SECRET` | Langkah cron INTI ramping (2026-10-05, Workers Free ~10 ms CPU): impor minimal + modul dinamis per job, budget 40 statement, penanda `store_settings.cron_lite_<job>_ok_at`. Dipanggil Worker SEBELUM route besar `/api/cron/operations` (yang tetap jalan sebagai pelengkap; idempoten). Alarm Telegram: langkah lite inti = hard (2 tick), `lite:promo` (enqueue idempoten promo Telegram ke `broadcast_campaigns`/`broadcast_deliveries` + ringkasan harian admin + worker siaran bounded) + `notify_a`/`notify_b`/`tg_webhook` = soft (6 tick), langkah route besar lain tidak dialarmkan | **Revisi 5 Okt malam:** job `notify` (alarm soft) + `cleanup` (tanpa alarm) ikut lite; route besar `/api/cron/operations` hanya dipanggil Worker di tick menit :00 UTC (sekali per jam, `isHeavyTick`) sebagai pelengkap (stranded ledger, manual-WA, saldo, watchdog, sync cadangan). Tradeoff: fallback sync saat diff VPS berhenti jadi per jam (bukan 15 mnt). Latar: 583/589 request `exceededResources` 24 jam = route besar tiap 5 mnt. **Revisi 9 Okt pagi (insiden 09:50 WIB: 4 langkah lite 503 bareng, pulih sendiri ~30 mnt):** `notify` dipecah `notify_a` (retry Telegram + invoice) + `notify_b` (QRIS + reminder + WA outbox) — satu-satunya job yang mengipas 5 sub-kerjaan/5 import dalam 1 request; `job=notify` lama tetap sebagai alias gabungan A→B. Worker memanggil a/b terpisah + jeda `STEP_DELAY_MS` 2 dtk antar langkah lite (8+ request sedetik saat cold = berebut CPU isolate yang sama). Throttle saldo SMM disamakan WR/SK: 6 jam ATAU turun Rp5.000, state `amount|ms` di `pedia_balance_alert_at` (dulu tiap 1 jam → spam 9×/8 jam saat saldo Rp 0). **Revisi 9 Okt sore (kasus AXV-20261009-DA1ACF56):** probe yatim lunas-tanpa-link (reconcileMissingWrLinks/SkLinks) jalan TANPA gate due di lite wr/sk_orders (hasil ikut buka gate proses + kunci orphan_links_healed) dan fase route besar (wr/sk_orphan_links_healed) — SK cermin WR. **Revisi 17 Nov 2026:** `tunvn_orders` dan `aivault_orders` menjalankan cek saldo rendah (`src/lib/supplier-balance-alert.ts`) dalam `db.canSpend(5)` dengan checkpoint 30 menit + throttle Telegram admin CAS 6 jam atau turun 1 unit (lihat §16.51). **Revisi 20 Nov 2026:** `tg_webhook` (`src/lib/telegram/webhook-guard.ts`, `alarm: "soft"`, `group: "notify"`, tiap 1 menit) memantau `getWebhookInfo`, mereset `deleteWebhook(drop_pending_updates:false)` + `setWebhook(kanonis, drop_pending_updates:false)` maks 1×/5 mnt saat tertahan (`pending_update_count >= 3` & `last_error_date <= 180 dtk`) atau URL salah, mengirim alert admin maks 1×/30 mnt + notifikasi pulih saat antrean 0 (timeout `sendMessage` dihitung terkirim agar tidak dobel). |
+| POST | `/api/cron/lite?job=expiry\|fulfillment\|wr_orders\|sk_orders\|tunvn_orders\|aivault_orders\|pedia_orders\|promo\|notify_a\|notify_b\|notify\|tg_webhook\|cleanup` | Bearer `CRON_SECRET` | Langkah cron INTI ramping (2026-10-05, Workers Free ~10 ms CPU): impor minimal + modul dinamis per job, budget 40 statement, penanda `store_settings.cron_lite_<job>_ok_at`. Dipanggil Worker SEBELUM route besar `/api/cron/operations` (yang tetap jalan sebagai pelengkap; idempoten). Alarm Telegram: langkah lite inti = hard (2 tick), `lite:promo` (enqueue idempoten promo Telegram ke `broadcast_campaigns`/`broadcast_deliveries` + ringkasan harian admin + worker siaran bounded) + `notify_a`/`notify_b`/`tg_webhook` = soft (6 tick), langkah route besar lain tidak dialarmkan | **Revisi 5 Okt malam:** job `notify` (alarm soft) + `cleanup` (tanpa alarm) ikut lite; route besar `/api/cron/operations` hanya dipanggil Worker di tick menit :00 UTC (sekali per jam, `isHeavyTick`) sebagai pelengkap (stranded ledger, manual-WA, saldo, watchdog, sync cadangan). Tradeoff: fallback sync saat diff VPS berhenti jadi per jam (bukan 15 mnt). Latar: 583/589 request `exceededResources` 24 jam = route besar tiap 5 mnt. **Revisi 9 Okt pagi (insiden 09:50 WIB: 4 langkah lite 503 bareng, pulih sendiri ~30 mnt):** `notify` dipecah `notify_a` (retry Telegram + invoice) + `notify_b` (QRIS + reminder + WA outbox) — satu-satunya job yang mengipas 5 sub-kerjaan/5 import dalam 1 request; `job=notify` lama tetap sebagai alias gabungan A→B. Worker memanggil a/b terpisah + jeda `STEP_DELAY_MS` 2 dtk antar langkah lite (8+ request sedetik saat cold = berebut CPU isolate yang sama). Throttle saldo SMM disamakan WR/SK: 6 jam ATAU turun Rp5.000, state `amount|ms` di `pedia_balance_alert_at` (dulu tiap 1 jam → spam 9×/8 jam saat saldo Rp 0). **Revisi 9 Okt sore (kasus AXV-20261009-DA1A****):** probe yatim lunas-tanpa-link (reconcileMissingWrLinks/SkLinks) jalan TANPA gate due di lite wr/sk_orders (hasil ikut buka gate proses + kunci orphan_links_healed) dan fase route besar (wr/sk_orphan_links_healed) — SK cermin WR. **Revisi 17 Nov 2026:** `tunvn_orders` dan `aivault_orders` menjalankan cek saldo rendah (`src/lib/supplier-balance-alert.ts`) dalam `db.canSpend(5)` dengan checkpoint 30 menit + throttle Telegram admin CAS 6 jam atau turun 1 unit (lihat §16.51). **Revisi 20 Nov 2026:** `tg_webhook` (`src/lib/telegram/webhook-guard.ts`, `alarm: "soft"`, `group: "notify"`, tiap 1 menit) memantau `getWebhookInfo`, mereset `deleteWebhook(drop_pending_updates:false)` + `setWebhook(kanonis, drop_pending_updates:false)` maks 1×/5 mnt saat tertahan (`pending_update_count >= 3` & `last_error_date <= 180 dtk`) atau URL salah, mengirim alert admin maks 1×/30 mnt + notifikasi pulih saat antrean 0 (timeout `sendMessage` dihitung terkirim agar tidak dobel). |
 | GET | `/go/:slug` | publik | Shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056): redirect 307 ke destination tersimpan (HTTP lama tetap berfungsi) + `click_count`/`last_clicked_at`; 404 bila slug tak ada/nonaktif/format salah; `X-Robots-Tag: noindex` (tak masuk sitemap) |
 | GET/POST/PUT/DELETE | `/api/admin/supplier-links` | admin | CRUD tabel `supplier_links` (tab admin "Link Supplier"): slug lowercase-dash (min 2, reserved: admin/api/go/produk/artikel/…), tujuan baru/yang diubah harus HTTPS atau path internal (bukan `//host`), toggle `is_active`; POST duplikat → 409 |
 
@@ -3659,7 +3659,7 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
 - **Hook payment:** setelah lunas di 4 jalur (webhook DANA, retry admin, approve bukti,
   konfirmasi admin) → `createWrOrderLinksForOrder` + `processWrPendingOrders` best-effort;
   cron memproses sisanya. Produk WR dikenali dari `product_variants.wr_variant_id`.
-  **2026-10-09 (kasus AXV-20261009-DA1ACF56):** webhook bisa gagal tepat di langkah
+  **2026-10-09 (kasus AXV-20261009-DA1A****):** webhook bisa gagal tepat di langkah
   create-link (lunas durable, link tidak ada, COUNT due = 0) → gate `due > 0` di cron
   menutup `processWrPendingOrders` yang di dalamnya ada `reconcileMissingWrLinks` →
   yatim selamanya. Probe yatim (`reconcileMissingWrLinks`/`reconcileMissingSkLinks`)
@@ -3961,7 +3961,7 @@ mengikat supplier semula.
 
 ### Recovery invoice SK setelah dispatch terputus (2026-10-23, implementasi; publikasi CI)
 
-Insiden `AXV-20261022-1976A303`: link 48 tetap `claimed`, `request_sent_at` terisi, lease sudah habis, invoice NULL; GET supplier dengan `sk:<order_code>:1095:1` membuktikan transaksi `completed` beserta lisensi. Link 29 memiliki pola sama tetapi itemnya sudah delivered dengan penanda `manual_handover` (penanda DB tidak menjadi bukti bahwa owner melakukan klik pada sesi ini). Commit dispatch 22 Oktober mempercepat awal pembelian, tetapi recovery lama hanya mengantrekan klaim tanpa `request_sent_at` dan rekonsiliasi hanya membaca invoice tersimpan.
+Insiden `AXV-20261022-1976****`: link 48 tetap `claimed`, `request_sent_at` terisi, lease sudah habis, invoice NULL; GET supplier dengan `sk:<order_code>:1095:1` membuktikan transaksi `completed` beserta lisensi. Link 29 memiliki pola sama tetapi itemnya sudah delivered dengan penanda `manual_handover` (penanda DB tidak menjadi bukti bahwa owner melakukan klik pada sesi ini). Commit dispatch 22 Oktober mempercepat awal pembelian, tetapi recovery lama hanya mengantrekan klaim tanpa `request_sent_at` dan rekonsiliasi hanya membaca invoice tersimpan.
 
 - `bindSkInvoiceByRef` mencocokkan ref dengan kebutuhan canonical (`order_code`, varian, jumlah; fallback link legacy tanpa `idempotency_key`) dan mengikat invoice lewat UPDATE bersyarat tanpa mengganti invoice berbeda. Webhook memanggilnya **setelah signature valid**, sebelum paid/completed/canceled/item.sent; referensi tidak ditemukan/konflik mendapat HTTP500 agar supplier dapat retry.
 - `recoverStaleSkClaims` mempertahankan pemulihan klaim belum terkirim, lalu memilih maksimal tiga klaim terkirim dengan lease basi atau submitted/ordering yang due. Klaim cooldown atomik `next_attempt_at=now+1minute` mencegah pembacaan serentak dan memberi giliran kandidat lain saat lookup gagal. GET memakai ref_id asli; invoice disimpan sebelum handler completion/failure mencari link. Hasil belum terminal pindah processing; timeout/404 tidak membeli ulang atau mereset attempt/ref. Guard admission memakai budget D1 existing, tanpa cron/env/migrasi baru.
@@ -3971,7 +3971,7 @@ Insiden `AXV-20261022-1976A303`: link 48 tetap `claimed`, `request_sent_at` teri
 
 ### Ketahanan antrean SK (2026-10-19, implementasi; publikasi CI)
 
-Insiden `AXV-20261019-98C8CC33`: probe 12 order lunas terbaru berjalan dua kali sebelum dispatch, memakai 35 dari 38 statement kerja; admission pembelian membutuhkan enam statement sehingga tidak pernah mulai. Retry admin memakai akses DB tanpa budget lokal dan baru mengirim pembelian pertama. Perbaikan:
+Insiden `AXV-20261019-98C8****`: probe 12 order lunas terbaru berjalan dua kali sebelum dispatch, memakai 35 dari 38 statement kerja; admission pembelian membutuhkan enam statement sehingga tidak pernah mulai. Retry admin memakai akses DB tanpa budget lokal dan baru mengirim pembelian pertama. Perbaikan:
 
 - `reconcileMissingSkLinks` menyaring order lunas/paid tujuh hari dengan `json_each` + registry auto + `NOT EXISTS sk_order_links` dalam satu statement, memakai indeks existing. JSON rusak/non-object dilewati. LIMIT diterapkan sesudah filter yatim, sehingga order lama tidak tertutup 12 riwayat terbaru; seluruh status link existing mencegah pembuatan ulang.
 - `processSkPendingOrders(..., {skipOrphanProbe:true})` membolehkan pemanggil mengelola satu probe sendiri. Cron lite memproses link due terlebih dahulu, lalu menyembuhkan maksimal empat order yatim tanpa bergantung pada COUNT due. Bila belum ada pembelian pada tick itu, link pulih diproses segera; bila sudah ada, tetap due untuk tick berikutnya. Maksimal empat upaya pembelian per tick. Cron besar juga melewati probe internal sesudah probe eksplisitnya.
@@ -4003,7 +4003,7 @@ Insiden `AXV-20261019-98C8CC33`: probe 12 order lunas terbaru berjalan dua kali 
 ### Arsitektur terpasang (cermin WR, scope lebih kecil)
 - **Proxy:** route `/sk/*` di proxy WR/SK — pass-through
   method+query+body di bawah prefix `/v1/`, key disuntik server-side, egress
-  IP VPS yang SAMA (`13.228.147.90`, tanpa add-on baru sejak migrasi
+  IP VPS yang SAMA (`[IP egress VPS]`, tanpa add-on baru sejak migrasi
   AWS 2026-10-02 — lihat §16.8). `GET /sk/health` tanpa bocor key.
 - **Modul `src/lib/sekalipay/`:** `client.ts` (fetch edge + klasifikasi error
   + signature), `sync.ts` (registry per-varian + katalog hanya auto + nama
@@ -4145,13 +4145,13 @@ tidak tampil, pagination lama kembali) lalu dipulihkan. Tiga akar + aturan
 kerasnya agar tidak terulang:
 
 ### 16.1 Arsitektur proxy WR terpisah (hasil permanen hari ini)
-- Akun Heroku #1 (`terry.delvon0805@gmail.com`): `axvara-wa-gateway` = WhatsApp SAJA
+- Akun Heroku #1 (`[Heroku account #1; lihat .ops-private.md lokal]`): `axvara-wa-gateway` = WhatsApp SAJA
   (route `/wr/*` mengembalikan 410 `wr_proxy_moved`).
 - **Sejak 2026-10-02 proxy pindah ke AWS** (lihat §16.8): VPS `t4g.nano`
-  Singapore `i-022790eb6bb0b1be3`, EIP `13.228.147.90`,
+  Singapore `[ID instance VPS]`, EIP `[IP egress VPS]`,
   URL `https://wr-proxy.axvara.tech` (Caddy + Let's Encrypt). Source tetap
   `/Users/macbookair/axvara-wr-proxy/` (deploy via rsync + systemd, bukan
-  `git push heroku`). Akun Heroku #2 (`sailinnadia1@gmail.com`) + add-on
+  `git push heroku`). Akun Heroku #2 (`s***@gmail.com`) + add-on
   QuotaGuard Spike DIHAPUS TOTAL 2026-10-02 (verifikasi: `heroku apps` =
   kosong, `heroku addons --all` = No add-ons; tagihan $5/mo ke kartu
   berhenti). IP lama `54.88.136.216, 54.84.188.199` hapus dari whitelist
@@ -4277,11 +4277,11 @@ Perintah akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`; jangan
 
 Kredensial AWS (VPS proxy, 2026-10-04): `.aws-credentials` (git-ignored,
 pola sama dengan `.cf-credentials`; `set -a; source .aws-credentials; set +a`), IAM user
-`kiro-monitor`: `ReadOnlyAccess` + baca billing/kredit + start/stop/reboot
-khusus `i-022790eb6bb0b1be3`.
-Akses isi VPS lewat SSH `ec2-user@13.228.147.90` + `~/.ssh/axvara-sg-proxy.pem`.
+`[IAM operator]`: `[kebijakan baca-saja IAM]` + baca billing/kredit + start/stop/reboot
+khusus `[ID instance VPS]`.
+Akses isi VPS lewat SSH `<target-SSH-VPS>` + `<key-SSH-VPS>`.
 Root hanya via `aws login` (sesi berumur pendek); key admin permanen
-`nasikuning` DINONAKTIFKAN 2026-10-04.
+`[IAM admin lama]` DINONAKTIFKAN 2026-10-04.
 
 ### 16.6 Perilaku sync WR satu sweep (Opsi A, 2026-09-14)
 - `WR_SYNC_PRODUCTS_PER_RUN = 48` + plafon khusus katalog +800 query
@@ -4452,20 +4452,20 @@ bukti/rollback di `issue/sk-vps-reliability-2026-10-25.md`.
 
 Motivasi: add-on QuotaGuard Spike (~$5/mo) adalah third-party sehingga
 TIDAK tercover student credit Heroku dan selalu lari ke kartu kredit.
-Penggantinya: VPS `t4g.nano` Singapore (`i-022790eb6bb0b1be3`, 0.5GB +
+Penggantinya: VPS `t4g.nano` Singapore (`[ID instance VPS]`, 0.5GB +
 1GB swap, 8GB gp3, ~$5/mo dibayar kredit AWS $143.60 — tahan ~28 bulan).
 
-- **URL baru:** `https://wr-proxy.axvara.tech` (EIP `13.228.147.90`, DNS A
+- **URL baru:** `https://wr-proxy.axvara.tech` (EIP `[IP egress VPS]`, DNS A
   unproxied, Caddy + Let's Encrypt auto-renew). Kontrak TIDAK berubah
   (`POST /wr/:endpoint` + `/sk/*` + `x-proxy-token`, key server-side).
 - **Deploy:** rsync `package.json` + `dist/` (build lokal, bukan di nano)
   ke `/opt/axvara/wr-proxy/`, env `/opt/axvara/wr-proxy/.env` (`chmod 600`,
   TANPA `QUOTAGUARDSTATIC_URL` = direct via IP VPS), systemd `wr-proxy` +
-  `caddy` (`Restart=always`, MemoryMax 350M/100M). SSH `ec2-user@` terbatas
-  IP rumah; keypair `axvara-sg-proxy` (`~/.ssh/axvara-sg-proxy.pem`).
+  `caddy` (`Restart=always`, MemoryMax 350M/100M). SSH `<akun-SSH-VPS>@` terbatas
+  IP rumah; keypair `axvara-sg-proxy` (`<key-SSH-VPS>`).
 - **Node 20 wajib** (`nodejs20` AL2023, bukan paket `nodejs` default v18);
   `dnf update` OOM di nano — install bertahap + `max_parallel_downloads=1`.
-- **Whitelist:** `13.228.147.90` DITAMBAHKAN di dashboard WR + SK
+- **Whitelist:** `[IP egress VPS]` DITAMBAHKAN di dashboard WR + SK
   (screenshot owner 2026-10-02, keduanya hijau via proxy baru: WR balance
   Rp47.820, SK Rp50.000). IP QuotaGuard lama + add-on + app Heroku
   DIHAPUS TOTAL 2026-10-02 (bukan "setelah pantau" — verifikasi langsung
@@ -4783,7 +4783,7 @@ ledger `payment_transactions`, sehingga order terminal meninggalkan ledger
 `pending` yatim. Guard `transitionPendingPaymentOrder` mensyaratkan order
 `pending`, jadi yatim selalu no-op; kandidat `runExpiry` diurutkan deadline
 terlama dengan LIMIT kecil sehingga 6 yatim produksi (5 GoPay + 1 KlikQRIS)
-menyumbat slot teratas setiap tick dan pesanan hidup AXV-20261018-AB4D407F
+menyumbat slot teratas setiap tick dan pesanan hidup AXV-20261018-AB4D****
 tidak pernah ter-expiry/stoknya tidak kembali walau cron sehat. `runExpiry`
 kini menyapu yatim lewat deadline menjadi `expired` + `last_error
 orphan_terminal_order` (maks 10/tick) **tanpa menyentuh stok** — stok sudah
@@ -5699,7 +5699,7 @@ library/WhatsApp dan bukti QA: issue/whatsapp-sales-notifications-2026-10-24.md.
 create; username/key kosong + webhook secret acak32byte). `--check` memakai
 Development Key; Production Key hanya dengan `--check --production`. Signature
 MD5 dibuat lokal, hanya username/signature terbatas dikirim lewat stdin SSH ke
-`ec2-user@13.228.147.90`, key existing `~/.ssh/axvara-sg-proxy.pem`; key supplier
+`<target-SSH-VPS>`, key existing `<key-SSH-VPS>`; key supplier
 tidak dikirim/disimpan di VPS atau argv. Tidak ada env Pages baru.
 
 Node remote sementara hanya POST `/v1/cek-saldo` dan `/v1/price-list` pada host
@@ -5709,7 +5709,7 @@ respons1MiB per request, SSH40detik. Laporan saldo + seluruh SKU kategori Games
 availability/region atau mengimpor katalog. Error HTTP hanya mengekspos status
 dan endpoint allowlist, tanpa body upstream.
 Snapshot SSH2November: Node20.20.2, service active, health200/staticProxyfalse,
-egress langsung13.228.147.90. Cek API Development berikutnya lulus: saldo0,
+egress langsung[IP egress VPS]. Cek API Development berikutnya lulus: saldo0,
 73 produk akun, 9 Games dari2brand; Production HTTP400 pada `cek-saldo`. Snapshot publik
 4.380 produk/150brand disimpan lokal git-ignored `.digiflazz-catalog*`, bukan impor
 runtime/konfigurasi seller. Pemilihan seller menunggu sesi dashboard terautentikasi.
@@ -5941,7 +5941,7 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 
 ### 16.35a TUNVN pengiriman langsung setelah beli — 16 November 2026 (lokal)
 
-- Kasus `AXV-20261116-F04356BC`: Retry admin membeli ke TUNVN 14:22:46 WIB, tetapi
+- Kasus `AXV-20261116-F043****`: Retry admin membeli ke TUNVN 14:22:46 WIB, tetapi
   email kredensial baru 14:24:30 karena `settle(completed)` hanya mengantrikan
   `fulfillment_jobs` untuk langkah cron `lite:fulfillment` berikutnya.
 - POST `/api/admin/tunvn/orders` `retry`: bila link menjadi `completed`, route
@@ -6310,7 +6310,7 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 
 - Revisi UI terbaru 6 November: `PaymentMethodPicker` tidak memiliki pencarian di VA/E-Wallet/Lainnya maupun Crypto. `method-logos.ts` memetakan label server secara persis ke SVG/WebP lokal, termasuk BNC (NEO), Permata Alternative, DANA/ShopeePay Realtime, Virgo dan AstraPay; seluruh 18 label snapshot merchant memiliki logo, label ambigu tetap monogram. Tidak mengubah kontrak quote/create, routing, fee, limit, consent atau env. Verifikasi revisi ini: 360 file/4794 tes, typecheck/lint/build Pages lulus (145 edge routes); Chromium ID/EN 1280/390/360 tanpa input pencarian/monogram kanal dikenal/overflow/error konsol, semua logo decode, keyboard/fokus/jaringan eksplisit/deselect/inert/reduced-motion lulus; preview :3003 diperbarui dengan D1 lokal/provider mock. Bukti QA sebelumnya di bawah adalah snapshot sebelum revisi ini, bukan aktivasi produksi.
 - Keputusan owner 6 November 2026: suspensi merchant Sekalipay dicabut dan metode VA/E-Wallet/lainnya (non-QRIS) akan ditampilkan di atas Crypto. Aturan 5 November "disembunyikan" digantikan; rail baru aktif hanya setelah deploy + env + verifikasi akses/visual (bukan di commit ini).
-- Dashboard merchant hanya me-whitelist IP VPS `13.228.147.90` dan Cloudflare Pages tidak punya egress IP tetap, sehingga seluruh panggilan gateway lewat proxy `axvara-wr-proxy` (route `ALL /skg/*`, `https://wr-proxy.axvara.tech`). Kontrak proxy: allowlist `GET /skg/v1/gateway/payment-methods`, `POST /skg/v1/gateway/payment`, `GET /skg/v1/gateway/payment/<ref>` (`<ref>` `^[A-Za-z0-9_-]{1,80}$`); wajib header `x-proxy-token`; hanya meneruskan `X-API-Key`/`X-Timestamp`/`X-Signature` (+Accept/Content-Type) dan body MENTAH apa adanya ke `https://sekalipay.com/api/v1/gateway/...`. Respons: status/JSON upstream diteruskan; POST 2xx tak terbaca = 502 `{"message":"skg_proxy_unreadable_response: network_error"}`; jaringan/timeout = 504 `{"message":"skg_proxy_timeout"}`; auth proxy gagal = 401 `{"status":false,"reason":"unauthorized"}`; path salah = 404 `unknown_skg_path`.
+- Dashboard merchant hanya me-whitelist IP VPS `[IP egress VPS]` dan Cloudflare Pages tidak punya egress IP tetap, sehingga seluruh panggilan gateway lewat proxy `axvara-wr-proxy` (route `ALL /skg/*`, `https://wr-proxy.axvara.tech`). Kontrak proxy: allowlist `GET /skg/v1/gateway/payment-methods`, `POST /skg/v1/gateway/payment`, `GET /skg/v1/gateway/payment/<ref>` (`<ref>` `^[A-Za-z0-9_-]{1,80}$`); wajib header `x-proxy-token`; hanya meneruskan `X-API-Key`/`X-Timestamp`/`X-Signature` (+Accept/Content-Type) dan body MENTAH apa adanya ke `https://sekalipay.com/api/v1/gateway/...`. Respons: status/JSON upstream diteruskan; POST 2xx tak terbaca = 502 `{"message":"skg_proxy_unreadable_response: network_error"}`; jaringan/timeout = 504 `{"message":"skg_proxy_timeout"}`; auth proxy gagal = 401 `{"status":false,"reason":"unauthorized"}`; path salah = 404 `unknown_skg_path`.
 - Transport tunggal `gatewayTransport` di adapter: bila `SEKALIPAY_PROXY_URL` (origin https murni: tanpa kredensial/port/path/query/fragment) dan `SEKALIPAY_PROXY_TOKEN` (env Pages yang sama dengan supplier SK) keduanya terisi dan valid, panggilan ke `${origin}/skg/v1/gateway/<path>` dengan `x-proxy-token`. Hanya bila KEDUA env kosong boleh langsung ke `https://sekalipay.com/api/v1/gateway/<path>` (harness/tes lokal); konfigurasi parsial/invalid melempar `sekalipay_gateway_proxy_config_error` sebelum fetch, tanpa fallback langsung. POST via proxy whitelist memakai HMAC atas body mentah, direct Enhanced atas path kanonis upstream `api/v1/gateway/<path>`; body diserialisasi sekali (`JSON.stringify`) dan dikirim identik. `SEKALIPAY_GATEWAY_API_KEY` diteruskan sebagai `X-API-Key`; `SEKALIPAY_GATEWAY_SECRET_KEY` tetap di Pages untuk HMAC, tidak dikirim atau disimpan di VPS. Kedua env gateway bertipe secret_text.
 - Semantik error: POST `payment` dengan proxy 502 (marker `skg_proxy_unreadable_response`), 504, atau error jaringan/timeout = `sekalipay_gateway_create_ambiguous` (klaim durable `initializing` dipertahankan, tanpa POST ulang, pemulihan GET/refresh/cron/review manual seperti sebelumnya). Proxy 401 `unauthorized` atau 404 `unknown_skg_path` (baca maupun tulis) = `sekalipay_gateway_proxy_config_error` (fail closed, bukan penolakan bisnis; rail katalog tersembunyi, tanpa retry otomatis). Baca (methods/status) lain tetap penanganan lama: kegagalan katalog hanya menyembunyikan rail gateway, QRIS/crypto tidak terpengaruh. Validasi `payment_link` host `sekalipay.com` dan `redirect:"manual"` tidak berubah.
 - Bukti akses: GET katalog bertanda tangan dari VPS pada 6 November HTTP200/status:true, 18 kanal (10 VA/8 E-Wallet), tanpa invoice nyata. Jalur `/skg/*` belum dipasang; env/flag gateway Pages tidak diubah. Tes transport memakai fetch mock. Verifikasi akhir lokal: 360 file/4794 tes lulus, typecheck/lint/build Pages lulus (145 edge routes); QA Chromium EN1280/390 dan ID1280/360, pencarian/empty/reset, keyboard/fokus, exclusive-open/deselect, inert, reduced-motion (`transition-property:none`), SVG BSI berhasil decode, tanpa overflow/error konsol terkait checkout. Consent total akhir diuji dengan invoice mock/D1 lokal; bukan bukti deployment, pembayaran atau settlement nyata.

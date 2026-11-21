@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Regression 16 Nov 2026 (AXV-20261116-F04356BC): admin Retry bought from
+// Regression 16 Nov 2026 (AXV-20991231-00F1702B): admin Retry bought from
 // TUNVN at 14:22:46 but buyer delivery waited for the cron fulfillment tick
 // (14:24:30). A completed purchase must trigger delivery immediately.
 const m = vi.hoisted(() => ({

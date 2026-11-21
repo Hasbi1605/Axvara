@@ -19,7 +19,7 @@ export type ParsedWrEmail = {
   status: string | null;
   product: string | null;
   variant: string | null;
-  /** Email tujuan invite (uji.wr.tes@gmail.com) — BUKAN email buyer Axvara. */
+  /** Email tujuan invite (invitee.fixture@gmail.com) — BUKAN email buyer Axvara. */
   targetEmail: string | null;
   /** Total rupiah bila ada (Rp3.500 → 3500). */
   total: number | null;

@@ -1,7 +1,7 @@
 /**
  * AXVARA WR-INGEST forwarder — Google Apps Script.
  *
- * Pasang SEKALI di akun Gmail ingest (assidiq247@gmail.com):
+ * Pasang SEKALI di akun Gmail ingest (lihat `.ops-private.md` lokal, git-ignored):
  * 1. Buka https://script.google.com → New project → paste seluruh file ini.
  * 2. Ganti WEBHOOK_URL + WEBHOOK_SECRET di bawah (secret SAMA dengan Pages
  *    Secret WR_EMAIL_WEBHOOK_SECRET).

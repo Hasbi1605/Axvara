@@ -241,7 +241,7 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
 });
 
 describe("P0-2: Ambil Ulang permanent missing vs transient failures", () => {
-  const code = "AXV-20261004-4CC0526E";
+  const code = "AXV-20991231-00F1701A";
 
   it("sends permanent honest ID+EN copy without Retry button when delivered rows/ciphertext are absent", async () => {
     insertTestOrder(fx.sql, code, { status: "lunas" });

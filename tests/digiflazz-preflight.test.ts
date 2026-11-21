@@ -65,10 +65,16 @@ describe("Digiflazz preflight (tanpa jaringan/transaksi)", () => {
   });
 
   it("memakai SSH fixed-host, stdin tanpa key, timeout dan tanpa retry saat gagal", () => {
+    vi.stubEnv("AXVARA_VPS_SSH_TARGET", "ec2-user@203.0.113.10");
+    vi.stubEnv("AXVARA_VPS_SSH_KEY", "~/.ssh/fixture-proxy.pem");
     const run = vi.fn().mockReturnValue({ pid: 0, output: [], stderr: "", signal: null, status: 0, stdout: JSON.stringify(responses) });
     expect(runCheck(credentials, false, run).game_products).toBe(3);
     expect(run).toHaveBeenCalledOnce();
-    expect(run).toHaveBeenCalledWith("ssh", expect.arrayContaining(["StrictHostKeyChecking=yes", "ec2-user@13.228.147.90"]), expect.objectContaining({ timeout: 40000 }));
+    expect(run).toHaveBeenCalledWith("ssh", [
+      "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes",
+      "-i", expect.stringMatching(/\/\.ssh\/[^/]+\.pem$/), expect.stringMatching(/^[\w-]+@(?:\d{1,3}\.){3}\d{1,3}$/),
+      expect.any(String),
+    ], expect.objectContaining({ timeout: 40000 }));
     const call = JSON.stringify(run.mock.calls[0]);
     expect(call).not.toContain("dev-key");
     expect(call).not.toContain("prod-key");

@@ -978,7 +978,7 @@ export async function POST(request: NextRequest) {
         // 1. Kapasitas ORDER diprioritaskan SEBELUM sync produk (P0-4):
         //    sync katalog besar tidak boleh membuat WR order starvation.
         //    Probe yatim lunas-tanpa-link jalan DULUAN tanpa gate pendingWrDue
-        //    (2026-10-09, kasus AXV-20261009-DA1ACF56): link yang gagal dibuat
+        //    (2026-10-09, kasus AXV-20261009-DA1A****): link yang gagal dibuat
         //    webhook + COUNT due = 0 membuat gate di bawah tidak pernah
         //    menyala bila probe ikut di dalamnya. Murah (1 SELECT indeks
         //    lunas + INSERT OR IGNORE idempoten); hasilnya ikut membuka gate.

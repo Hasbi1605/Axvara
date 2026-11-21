@@ -228,7 +228,7 @@ function labeledFieldOf(o: Record<string, unknown>): [string, string] | null {
  *  tengah dulu melebur label+value mentah jadi satu baris tak terbaca —
  *  screenshot owner 2026-10-13). Nilai URL/OTP panjang tidak dipotong
  *  per-field (batas 2000 char ditegakkan di tingkat hasil).
- *  Objek PEMBUNGKUS hulu (`{product, details}` — bukti prod 95FC8669) tidak
+ *  Objek PEMBUNGKUS hulu (`{product, details}` — bukti prod 95FC****) tidak
  *  dirender sebagai field: hanya `details`-nya yang dipakai (rekursif),
  *  `product` dibuang (nama produk sudah ada di konteks order/pesan).
  *  Nilai ARRAY/OBJEK direkursi (2026-10-04, kasus F111FD64): payload
@@ -1119,7 +1119,7 @@ export async function processCredentialDelivery(
     const stored = await decryptSecret(String(link.wr_account_details), String(link.wr_account_iv));
     // Normalisasi display di USE-time (2026-09-18 sore): data lama yang
     // tersimpan sebagai JSON mentah `{"product":..,"details":"a:\r\nb"}`
-    // (bukti prod: link 95FC8669 tampil mentah di panel) diformat rapi
+    // (bukti prod: link 95FC**** tampil mentah di panel) diformat rapi
     // SEKARANG untuk SEMUA kanal (panel, email, Telegram) — tanpa
     // mengubah ciphertext yang tersimpan.
     const plaintext = normalizeAccountDetailsForDisplay(stored);

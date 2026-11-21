@@ -20,7 +20,7 @@ const INVITE_HTML = `
 <p>NO. INVOICE: <b>#RBHN-20260916-DCB922</b></p>
 <p>Halo Kak, invite <b>Apple Music</b> telah dikirim. Cek email tujuan lalu klik tautannya untuk mulai menggunakan layanan</p>
 <div>PRODUK<br>Apple Music</div>
-<div>EMAIL TUJUAN<br>uji.wr.tes@gmail.com</div>
+<div>EMAIL TUJUAN<br>invitee.fixture@gmail.com</div>
 <a>Lihat Invoice →</a>
 <p>Terima kasih sudah berbelanja di Warung Rebahan</p></div>`;
 
@@ -52,7 +52,7 @@ describe("parser email WR", () => {
     expect(parsed.kind).toBe("invite_sent");
     expect(parsed.wrInvoice).toBe("RBHN-20260916-DCB922");
     expect(parsed.product).toBe("Apple Music");
-    expect(parsed.targetEmail).toBe("uji.wr.tes@gmail.com");
+    expect(parsed.targetEmail).toBe("invitee.fixture@gmail.com");
     const tpl = buildAxvaraForwardTemplate({
       axvaraOrderCode: "AXV-20260916-AAAAAA",
       buyerName: "Uji Buyer",
@@ -62,7 +62,7 @@ describe("parser email WR", () => {
     });
     expect(tpl.subject).toContain("AXV-20260916-AAAAAA");
     expect(tpl.html).not.toMatch(/warung.?rebahan/i);
-    expect(tpl.html).toContain("uji.wr.tes@gmail.com");
+    expect(tpl.html).toContain("invitee.fixture@gmail.com");
     expect(tpl.html).toContain("https://axvara.tech/pesanan/AXV-20260916-AAAAAA");
     expect(tpl.text).not.toMatch(/warung.?rebahan/i);
     // Revisi buyer 2026-09-17: logo PNG asli navbar + tombol WA + link Axvara.

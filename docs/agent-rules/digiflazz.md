@@ -108,7 +108,7 @@ DigiSwitch tidak diperlukan untuk jalur API JSON website sendiri.
 
 SSH baca-saja pada 2 November 2026 membuktikan Node VPS v20.20.2, service
 `wr-proxy` active, `/health` 200 dengan `staticProxy:false`, dan IP keluar
-langsung `13.228.147.90` melalui api.ipify.org. Ini snapshot egress, bukan bukti
+langsung `[IP egress VPS]` melalui api.ipify.org. Ini snapshot egress, bukan bukti
 whitelist Digiflazz atau koneksi akun sudah berhasil. Jika egress berubah,
 verifikasi ulang sebelum mengubah whitelist. Jangan deploy worktree proxy yang
 berisi perubahan tugas lain hanya untuk persiapan ini.
@@ -132,7 +132,7 @@ berisi perubahan tugas lain hanya untuk persiapan ini.
 ## Yang perlu owner lakukan di dashboard
 
 1. **Atur Koneksi > API > Atur > Pengaturan**: Development IP dan Production IP
-   `13.228.147.90` jika kedua jalur memakai VPS yang sama. Bukan IP Wi-Fi Mac atau
+   `[IP egress VPS]` jika kedua jalur memakai VPS yang sama. Bukan IP Wi-Fi Mac atau
    IP Cloudflare Pages. Simpan dengan OTP/password sendiri.
 2. Ambil Username dan Development Key; isi field JSON lokal. Sesuaikan mode
    dashboard dengan key yang digunakan. Tidak ada fallback/pergantian mode atau
@@ -152,13 +152,15 @@ berisi perubahan tugas lain hanya untuk persiapan ini.
 ## Preflight tanpa pembelian
 
 ```bash
+# Sejak 21 Nov 2026 (FX-19, repo publik): target SSH + path kunci dibaca dari env lokal
+# AXVARA_VPS_SSH_TARGET dan AXVARA_VPS_SSH_KEY (nilai di .ops-private.md, git-ignored).
 node scripts/digiflazz-preflight.mjs --check
 # Hanya bila sengaja memakai Production Key, tetap baca-saja:
 node scripts/digiflazz-preflight.mjs --check --production
 ```
 
-CLI memakai SSH fixed-host `ec2-user@13.228.147.90`, key existing
-`~/.ssh/axvara-sg-proxy.pem`, BatchMode dan StrictHostKeyChecking. Ia menjalankan
+CLI memakai SSH fixed-host `<target-SSH-VPS>`, key existing
+`<key-SSH-VPS>`, BatchMode dan StrictHostKeyChecking. Ia menjalankan
 Node sementara lewat stdin/command tanpa menulis file di VPS atau merestart
 service. Hanya signature terbatas + username dikirim lewat stdin SSH; API key
 tidak dikirim ke VPS atau dimasukkan argv.

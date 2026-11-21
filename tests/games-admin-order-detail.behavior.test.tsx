@@ -12,7 +12,7 @@ vi.mock("@/components/admin/OrderAccessAdmin", () => ({ OrderAccessAdmin: () => 
 
 import { OrdersManager } from "@/components/admin/OrdersManager";
 
-const CODE = "AXG-20261116-4206447D";
+const CODE = "AXG-20991231-00F17004";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const row = { code: CODE, customer_name: "Terry", customer_wa: "6283", customer_email: "t@example.com", items: [{ name: "Mobile Legends — Mobilelegend - 50 Diamond", price: 15600, qty: 1 }], subtotal: 15600, payment_amount: 15657, payment_method: "qris", status: "lunas", payment_status: "paid", sales_channel: "web", order_kind: "games", fulfillment_status: "not_required", created_at: "2026-11-16 13:16:31", supplier_links: [] };
 const games = { order_code: CODE, game_name: "Mobile Legends", product_name: "Mobilelegend - 50 Diamond", customer_no: "161586434|5030", nickname: "VoidWalker", status: "needs_check", sn: null, supplier: "sekalipay", sk_invoice: "SPY1794835064NFVO", supplier_ref: "AXG202611164206447D", last_error: "mismatch: completed tanpa hasil H2H", cost: 14825, max_price: 15568 };

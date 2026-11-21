@@ -99,6 +99,18 @@ export async function remoteReadOnly() {
   }
 }
 
+/** Target SSH VPS dibaca dari env lokal (nilai di `.ops-private.md`, git-ignored), tidak ditulis di repo publik. */
+function sshTarget() {
+  const target = (process.env.AXVARA_VPS_SSH_TARGET || "").trim();
+  if (!/^[\w-]+@(?:\d{1,3}\.){3}\d{1,3}$/.test(target)) throw new Error("Set AXVARA_VPS_SSH_TARGET (user@ip) dari .ops-private.md; tidak ada retry atau pembelian.");
+  return target;
+}
+function sshKeyPath() {
+  const key = (process.env.AXVARA_VPS_SSH_KEY || "").trim();
+  if (!/\.pem$/.test(key)) throw new Error("Set AXVARA_VPS_SSH_KEY (path .pem) dari .ops-private.md; tidak ada retry atau pembelian.");
+  return resolve(key.replace(/^~(?=\/)/, homedir()));
+}
+
 /** @param {(command: string, args: string[], options: import("node:child_process").SpawnSyncOptionsWithStringEncoding) => import("node:child_process").SpawnSyncReturns<string>} [run] */
 export function runCheck(credentials, production = false, run = spawnSync) {
   const requests = requestsFor(credentials, production);
@@ -106,7 +118,7 @@ export function runCheck(credentials, production = false, run = spawnSync) {
   const source = `(${remoteReadOnly.toString()})()`;
   const result = run("ssh", [
     "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes",
-    "-i", resolve(homedir(), ".ssh/axvara-sg-proxy.pem"), "ec2-user@13.228.147.90",
+    "-i", sshKeyPath(), sshTarget(),
     `node -e '${source.replaceAll("'", "'\\''")}'`,
   ], { input: JSON.stringify(requests), encoding: "utf8", timeout: 40000, maxBuffer: 3 * 1024 * 1024 });
   if (result.error || result.status !== 0) {

@@ -299,7 +299,7 @@ describe("SK dispatch", () => {
     expect(item("AXG-20261112-SK000008")).toMatchObject({ status: "success", sn: "SN-OK" });
   });
 
-  it("reads production GET shape where h2h_results is a sibling of data (AXG-20261118-903C42A2)", async () => {
+  it("reads production GET shape where h2h_results is a sibling of data (AXG-20991231-00F17005)", async () => {
     seedOrder("AXG-20261112-SKENV001");
     stubSk({});
     await processGamesPaidOrders(undefined, db());

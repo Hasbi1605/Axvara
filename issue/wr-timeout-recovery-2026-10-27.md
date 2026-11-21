@@ -2,8 +2,8 @@
 
 ## Insiden dan recovery produksi
 
-- AXVARA `AXV-20261027-2664E813`, link36, item876, WR
-  `RBHN-20261027-3C99F5`, Zoom Premium Pro14D Private, qty1, modalRp4000.
+- AXVARA `AXV-20261027-2664****`, link36, item876, WR
+  `RBHN-20261027-3C****`, Zoom Premium Pro14D Private, qty1, modalRp4000.
 - Lunas06:21:59UTC, request06:22:10UTC, timeout06:22:22UTC. Link submitted,
   invoiceNULL, attempt1, item queued tanpa ciphertext. Screenshot owner menunjukkan
   invoice selesai13.22WIB dengan akun. Satu link untuk varian ini; tidak ada

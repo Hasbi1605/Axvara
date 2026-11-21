@@ -96,7 +96,7 @@ describe("cron operations — anti-starvation sync WR", () => {
     // (active = notify, expiry, fulfillment).
     setPhase("notify");
     seedWrHistory(3);
-    seedPendingWrLink("AXV-20260918-STARV001");
+    seedPendingWrLink("AXV-20991231-00F17014");
     const res = await run();
     expect(res.status).toBe(200);
     // Guard memaksa slot: warung_rebahan TIDAK boleh ada di deferred sebagai
@@ -107,7 +107,7 @@ describe("cron operations — anti-starvation sync WR", () => {
 
   it("tanpa histori sync WR, komposisi fase tidak diubah (fixture tetap deterministik)", async () => {
     setPhase("notify");
-    seedPendingWrLink("AXV-20260918-STARV002");
+    seedPendingWrLink("AXV-20991231-00F17015");
     const res = await run();
     expect(res.status).toBe(200);
     // Tidak ada baris wr_sync_log products → guard tidak menyala; WR tetap

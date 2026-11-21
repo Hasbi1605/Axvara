@@ -2,7 +2,7 @@
 
 ## Insiden dan hasil pemulihan
 
-Order AXV-20261025-1D4FACC6, link SK68, varian1095×1. Paid20:26:29WIB;
+Order AXV-20261025-1D4F****, link SK68, varian1095×1. Paid20:26:29WIB;
 penanda request_sent_at20:26:52; invoice kosong/statusclaimed. Proxy mencatat
 POST /sk/v1/trx pada20:26:53WIB aborted/ECONNRESET saat membaca body, tanpa
 forward upstream. Cloudflare mencatat clientDisconnected pada menit yang sama.
@@ -13,7 +13,7 @@ konsisten dengan kode, bukan bukti bahwa pembeli sengaja menutup halaman.
 Owner meminta perbaikan dan pembelian/pengiriman segera, mengizinkan sesi root
 AWS existing untuk akses sementara SSH. Sebelum pembelian: supplier GET404
 TRX_NOT_FOUND, saldoRp46.246, riwayat transaksi dan mutasi tidak memuat order ini.
-Satu POST varian1095×1 memakai ref_id `sk:AXV-20261025-1D4FACC6:1095:1` menghasilkan
+Satu POST varian1095×1 memakai ref_id `sk:AXV-20261025-1D4F****:1095:1` menghasilkan
 invoice SPY17929361970Q2B senilaiRp4.025. Webhook processing20:50:08 dan
 completed20:50:14WIB; order/item799 delivered, ciphertext tersimpan, error kosong.
 Email kredensial pada buyer_notice_log berstatussent20:50:15WIB, provider receipt
@@ -129,12 +129,12 @@ memulihkan snapshot/idempotensi dari backup untuk mengulang transaksi ambigu.
 
 Penutupan SG SSH sementara sempat tertahan26Oktober karena sesi root AWS
 kedaluwarsa. Browser aws login dibuka untuk autentikasi owner; tidak menambah
-key IAM atau mengubah kebijakan user kiro-monitor untuk melewati batas tersebut.
+key IAM atau mengubah kebijakan user [IAM operator] untuk melewati batas tersebut.
 
 Owner menyelesaikan login root existing26Oktober. Pada11:00WIB, AWS menyatakan
 revoke berhasil untuk sgr-06d47e93f292561fb (TCP22,103.3.222.96/32). Describe SG
 memverifikasi aturan sementara sudah tidak ada; hanya aturan SSH semula tersisa.
-Tidak ada key IAM baru atau perluasan izin kiro-monitor. Pemeriksaan final
+Tidak ada key IAM baru atau perluasan izin [IAM operator]. Pemeriksaan final
 homepage/CSS dev200 dan Obscura26Oktober title/heading benar, tanpa overflow;
 screenshot /tmp/axvara-sk-home-26.png diperiksa. Root3141test/259file, tsc dan
 build:pages sebelumnya lulus pada source akhir yang sama. Publikasi Pages lewat

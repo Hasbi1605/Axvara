@@ -5,7 +5,7 @@
 Dua masalah berjalan paralel per 18 Sep 2026 sore:
 
 1. **Sync otomatis mati.** Sweep produk cron terakhir `trigger='cron'` tercatat 17 Sep 11:37 UTC; setelah itu hanya baris `manual` (Force Sync). Guard anti-starvation baru (`84ff08d`, deploy 14:55 WIB) belum menghasilkan sweep tercatat. Rotasi fase bergerak normal (`cron_phase` berpindah, `deferred` kosong) — jadi bukan poison-pill, melainkan sweep tidak dieksekusi/dicatat meski slot diberikan. Tembakan manual ke `/api/cron/operations` mental 401 (secret lokal ≠ Pages), jadi diagnosis lanjut lewat D1 + baca kode.
-2. **Kredensial belum sampai ke pembeli.** Order Meitu pertama (`AXV-20260918-95FC8669` / `RBHN-20260918-10AB7A`) COMPLETED di dashboard WR (detail teks: email + password + akses OTP — bukan screenshot, kabar baik), tapi link Axvara masih `processing` + detail kosong. Jalur kabar status (Email B via forwarder + Resend) sudah jalan sejak secret dicocokkan (2 baris `09:01 UTC`, `buyer_notified_at` terisi). Yang belum: pengiriman **isi kredensial** ke email + WA + lacak web.
+2. **Kredensial belum sampai ke pembeli.** Order Meitu pertama (`AXV-20260918-95FC****` / `RBHN-20260918-10****`) COMPLETED di dashboard WR (detail teks: email + password + akses OTP — bukan screenshot, kabar baik), tapi link Axvara masih `processing` + detail kosong. Jalur kabar status (Email B via forwarder + Resend) sudah jalan sejak secret dicocokkan (2 baris `09:01 UTC`, `buyer_notified_at` terisi). Yang belum: pengiriman **isi kredensial** ke email + WA + lacak web.
 
 Keputusan owner: isi kredensial **tetap dikirim via WA dan email** (bukan hanya kabar + ambil di web).
 
@@ -61,7 +61,7 @@ Keputusan owner: isi kredensial **tetap dikirim via WA dan email** (bukan hanya 
 4. **Formatter + template email kredensial.** Tambah key map di `formatWrAccountDetails`; template "Detail Akun Siap" di `email-forward.ts` (isi kredensial + tombol invoice + peringatan jangan bagikan).
 5. **Perluas delivery web.** Di cabang `web` `processCredentialDelivery`: setelah token + kabar (yang ada), antrekan pesan WA isi kredensial (`wr-delivery:<code>`, reuse `deliverWhatsAppCredential` dengan target `customer_wa`) + kirim email isi kredensial via Resend dengan kunci idempoten `wr-cred-email:<code>` (catat di `wr_email_forward_log`, channel `email-credential`).
 6. **Panel di lacak.** Render `WrCredentialsPanel` di hasil lookup bila order lunas + `credentials_ready`; lewati input WA bila lookup sudah verifikasi (teruskan flag terverifikasi, bukan token mentah ke client).
-7. **Verifikasi hidup.** Tunggu reconcile menarik Meitu (>1 jam + fase aktif) → cek 3 jalur: Email B isi masuk `sailinnadia1@gmail.com`, WA isi masuk `6283878525697`, panel muncul di `/pesanan/[code]` + `/lacak-pesanan`.
+7. **Verifikasi hidup.** Tunggu reconcile menarik Meitu (>1 jam + fase aktif) → cek 3 jalur: Email B isi masuk `s***@gmail.com`, WA isi masuk `08xx****5697`, panel muncul di `/pesanan/[code]` + `/lacak-pesanan`.
 
 ## Rencana Test
 
@@ -74,8 +74,8 @@ Keputusan owner: isi kredensial **tetap dikirim via WA dan email** (bukan hanya 
 ## Kriteria Selesai
 
 - [ ] Kartu 🟢 sync cron tercatat otomatis tanpa Force Sync (2 baris berurutan `trigger='cron'`).
-- [ ] Order Meitu `95FC8669`: detail TERISI, `delivery_status='delivered'`.
-- [ ] Email isi kredensial diterima `sailinnadia1@gmail.com` (template Axvara, bukan mentah WR).
-- [ ] WA isi kredensial diterima `6283878525697`.
+- [ ] Order Meitu `95FC****`: detail TERISI, `delivery_status='delivered'`.
+- [ ] Email isi kredensial diterima `s***@gmail.com` (template Axvara, bukan mentah WR).
+- [ ] WA isi kredensial diterima `08xx****5697`.
 - [ ] Panel kredensial muncul di `/pesanan/[code]` DAN hasil `/lacak-pesanan` untuk order tersebut.
 - [ ] Full test hijau, docs (ARCHITECTURE/README/PRD/CHANGELOG) ikut, commit + push `main`.

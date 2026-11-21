@@ -463,7 +463,7 @@ describe("/api/cron/lite", () => {
     expect(staticImports).not.toMatch(/telegram|whatsapp|fulfillment|warung-rebahan|sekalipay|payments/);
   });
 
-  // 2026-10-09 (kasus AXV-20261009-DA1ACF56): order lunas yang link WR/SK-nya
+  // 2026-10-09 (kasus AXV-20991231-00F1701C): order lunas yang link WR/SK-nya
   // gagal dibuat webhook + COUNT due = 0 → yatim selamanya karena gate due>0
   // menutup reconciler. Probe yatim WAJIB jalan tanpa gate due (lite selalu
   // jadi penjamin; route besar ikut pola yang sama via kunci respons).

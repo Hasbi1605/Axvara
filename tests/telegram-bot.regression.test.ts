@@ -1006,13 +1006,13 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(paidOrderStatusKeyboard("AXV-1").inline_keyboard.flat().map((b) => b.callback_data)).toContain("myorders");
     expect(orderTerminalKeyboard().inline_keyboard.flat().map((b) => b.callback_data)).toContain("myorders");
 
-    const perm = credentialResendOutcomeKeyboard("AXV-20261004-4CC0526E", "permanent");
-    expect(perm.inline_keyboard.flat().map((b) => b.callback_data)).not.toContain("cred:AXV-20261004-4CC0526E");
-    expect(perm.inline_keyboard.flat().map((b) => b.callback_data)).toContain("order:AXV-20261004-4CC0526E");
-    expect(perm.inline_keyboard.flat().map((b) => b.url).some((u) => u?.includes("/wa?pesan=Pesanan%20AXV-20261004-4CC0526E"))).toBe(true);
+    const perm = credentialResendOutcomeKeyboard("AXV-20991231-00F1701A", "permanent");
+    expect(perm.inline_keyboard.flat().map((b) => b.callback_data)).not.toContain("cred:AXV-20991231-00F1701A");
+    expect(perm.inline_keyboard.flat().map((b) => b.callback_data)).toContain("order:AXV-20991231-00F1701A");
+    expect(perm.inline_keyboard.flat().map((b) => b.url).some((u) => u?.includes("/wa?pesan=Pesanan%20AXV-20991231-00F1701A"))).toBe(true);
 
-    const trans = credentialResendOutcomeKeyboard("AXV-20261004-4CC0526E", "transient");
-    expect(trans.inline_keyboard.flat().map((b) => b.callback_data)).toContain("cred:AXV-20261004-4CC0526E");
-    expect(trans.inline_keyboard.flat().map((b) => b.callback_data)).toContain("order:AXV-20261004-4CC0526E");
+    const trans = credentialResendOutcomeKeyboard("AXV-20991231-00F1701A", "transient");
+    expect(trans.inline_keyboard.flat().map((b) => b.callback_data)).toContain("cred:AXV-20991231-00F1701A");
+    expect(trans.inline_keyboard.flat().map((b) => b.callback_data)).toContain("order:AXV-20991231-00F1701A");
   });
 });

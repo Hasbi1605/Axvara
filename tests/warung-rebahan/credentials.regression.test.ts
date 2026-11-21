@@ -96,7 +96,7 @@ describe("POST /api/orders/[code]/credentials", () => {
 // tidak pernah menerima detail akun.
 describe("delivery kredensial — pemulihan lease 'sending' basi", () => {
   it("lease disimpan saat klaim, dan 'sending' basi dipulihkan lalu terkirim", async () => {
-    const code = "AXV-20260918-CC000007";
+    const code = "AXV-20991231-00F1700E";
     const fx = await seedCompletedWeb(code);
     try {
       const { processDueCredentialDeliveries, recoverStaleCredentialDeliveries } = await import(
@@ -143,7 +143,7 @@ describe("delivery kredensial — pemulihan lease 'sending' basi", () => {
   });
 
   it("lease yang MASIH hidup tidak dirampas (tidak ada kirim ganda)", async () => {
-    const code = "AXV-20260918-CC000008";
+    const code = "AXV-20991231-00F1700F";
     const fx = await seedCompletedWeb(code);
     try {
       const { recoverStaleCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
@@ -178,7 +178,7 @@ describe("GET /api/orders?code= — flag credentials_ready", () => {
   };
 
   it("order lunas dengan detail akun WR siap → true", async () => {
-    const code = "AXV-20260918-CC000003";
+    const code = "AXV-20991231-00F1700A";
     const fx = await seedCompletedWeb(code);
     try {
       const body = await lookup(code);
@@ -190,7 +190,7 @@ describe("GET /api/orders?code= — flag credentials_ready", () => {
   });
 
   it("order lunas fulfillment manual (tanpa link WR) → false", async () => {
-    const code = "AXV-20260918-CC000004";
+    const code = "AXV-20991231-00F1700B";
     const fx = await setupWrFixture();
     try {
       seedWrCatalog(fx);
@@ -204,7 +204,7 @@ describe("GET /api/orders?code= — flag credentials_ready", () => {
   });
 
   it("order pending tidak memicu query WR sama sekali → false", async () => {
-    const code = "AXV-20260918-CC000005";
+    const code = "AXV-20991231-00F1700C";
     const fx = await setupWrFixture();
     try {
       seedWrCatalog(fx);
@@ -220,7 +220,7 @@ describe("GET /api/orders?code= — flag credentials_ready", () => {
   });
 
   it("D1 lama tanpa tabel WR → false, bukan 500", async () => {
-    const code = "AXV-20260918-CC000006";
+    const code = "AXV-20991231-00F1700D";
     const fx = await setupWrFixture();
     try {
       seedWrCatalog(fx);
@@ -234,14 +234,14 @@ describe("GET /api/orders?code= — flag credentials_ready", () => {
   });
 });
 
-// Payload JSON-string persis prod 95FC8669 → retrieval rapi di semua titik
+// Payload JSON-string persis prod F1700000 → retrieval rapi di semua titik
 // (panel web, WA, email). Sebelum 2026-09-18 sore: panel menampilkan mentah
 // {"product":..,"details":"email:..\r\npassword:.."} karena cabang string
 // mengembalikan apa pun mentah + \r tidak dinormalisasi.
-describe("retrieval payload JSON-string envelope (bukti prod 95FC8669)", () => {
+describe("retrieval payload JSON-string envelope (bukti prod F1700000)", () => {
   const PROD_RAW = `{"product":"Meitu Premium - Meitu VIP+","details":"email:  angelolvedner5912@gsmail.id\\r\\npassword:  @Masuk123\\r\\nakses otp:  https://gomail.id/angeloledner5912@gsmail.id"}`;
   it("POST credentials mengembalikan details rapi, bukan JSON mentah", async () => {
-    const code = "AXV-20260918-CC000009";
+    const code = "AXV-20991231-00F17010";
     const fx = await setupWrFixture();
     try {
       seedWrCatalog(fx);

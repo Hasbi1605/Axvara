@@ -154,8 +154,8 @@ describe("peringatan umur antrean", () => {
     try {
       vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
-      seed(fx, "AXV-20260918-AGING001", WR_QUEUED_ALERT_HOURS + 2);
-      seed(fx, "AXV-20260918-FRESH001", 3);
+      seed(fx, "AXV-20991231-00F17008", WR_QUEUED_ALERT_HOURS + 2);
+      seed(fx, "AXV-20991231-00F17013", 3);
       const { alertAgingWrOrders } = await import("@/lib/warung-rebahan/order");
       const db = createDatabaseAccess(fx.db);
       expect(await alertAgingWrOrders(db)).toBe(1);
@@ -164,8 +164,8 @@ describe("peringatan umur antrean", () => {
       const rows = fx.sql
         .prepare("SELECT order_code, aging_alerted_at FROM wr_order_links ORDER BY id")
         .all() as { order_code: string; aging_alerted_at: string | null }[];
-      const aged = rows.find((r) => r.order_code.endsWith("AGING001"));
-      const fresh = rows.find((r) => r.order_code.endsWith("FRESH001"));
+      const aged = rows.find((r) => r.order_code === "AXV-20991231-00F17008");
+      const fresh = rows.find((r) => r.order_code === "AXV-20991231-00F17013");
       expect(aged?.aging_alerted_at).toBeTruthy();
       expect(fresh?.aging_alerted_at).toBeNull();
     } finally {
@@ -178,7 +178,7 @@ describe("peringatan umur antrean", () => {
     try {
       vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
       vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
-      seed(fx, "AXV-20260918-DONE0001", WR_QUEUED_ALERT_HOURS + 5);
+      seed(fx, "AXV-20991231-00F17012", WR_QUEUED_ALERT_HOURS + 5);
       fx.sql.prepare("UPDATE wr_order_links SET status='completed'").run();
       const { alertAgingWrOrders } = await import("@/lib/warung-rebahan/order");
       expect(await alertAgingWrOrders(createDatabaseAccess(fx.db))).toBe(0);
@@ -215,11 +215,11 @@ describe("Kredensial WR via email dan panel web", () => {
   it("template Detail Akun Siap: memuat isi + nol jejak supplier", async () => {
     const { buildCredentialReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
     const t = buildCredentialReadyTemplate({
-      axvaraOrderCode: "AXV-20260918-95FC8669",
+      axvaraOrderCode: "AXV-20991231-F1700000",
       buyerName: "hasbi",
       productNames: "Meitu Premium",
       details: "Email: a@b.c · Password: p",
-      invoiceUrl: "https://axvara.tech/pesanan/AXV-20260918-95FC8669",
+      invoiceUrl: "https://axvara.tech/pesanan/AXV-20991231-F1700000",
       supportWa: "089519388264",
     });
     expect(t.subject).toContain("sudah siap");
@@ -241,7 +241,7 @@ describe("Kredensial WR via email dan panel web", () => {
       await insertTestProduct(fx.sql, "manual", 1);
       fx.sql.prepare(
         `INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,sales_channel)
-         VALUES('AXV-20260918-WB0002','Buyer','628000000000','buyer@x.id','[]',10000,'qris','lunas','paid','web')`,
+         VALUES('AXV-20991231-F17016','Buyer','628000000000','buyer-52@example.test','[]',10000,'qris','lunas','paid','web')`,
       ).run();
       vi.stubEnv("RESEND_API_KEY", "test-key");
       vi.stubEnv("FORWARD_FROM_EMAIL", "noreply@axvara.tech");
@@ -250,10 +250,10 @@ describe("Kredensial WR via email dan panel web", () => {
       const { createDatabaseAccess } = await import("@/lib/db-access");
       const db = createDatabaseAccess(fx.db);
       const { deliverWebCredentialViaEmail } = await import("@/lib/warung-rebahan/deliver");
-      await deliverWebCredentialViaEmail("AXV-20260918-WB0002", "Email: a@b.c", db);
-      await deliverWebCredentialViaEmail("AXV-20260918-WB0002", "Email: a@b.c", db);
+      await deliverWebCredentialViaEmail("AXV-20991231-F17016", "Email: a@b.c", db);
+      await deliverWebCredentialViaEmail("AXV-20991231-F17016", "Email: a@b.c", db);
       expect(calls).toBe(1);
-      const log = fx.sql.prepare("SELECT COUNT(*) n FROM wr_email_forward_log WHERE gmail_message_id='wr-cred-email:AXV-20260918-WB0002'").get() as { n: number };
+      const log = fx.sql.prepare("SELECT COUNT(*) n FROM wr_email_forward_log WHERE gmail_message_id='wr-cred-email:AXV-20991231-F17016'").get() as { n: number };
       expect(log.n).toBe(1);
     } finally {
       fx.close();

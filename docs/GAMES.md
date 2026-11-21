@@ -573,7 +573,7 @@ produksi tetap di luar B2, full suite/build milik PM.
 ## 13. Katalog & transaksi Sekalipay Games — P3 (12 November 2026; LIVE, lihat status 18 Nov)
 
 > **Status 18 November 2026:** live di produksi — `ordering_open:true`, order nyata pertama
-> `AXG-20261116-4206447D` sukses di Sekalipay (§15). Supplier order Games = Sekalipay H2H (sejak P3 12 Nov 2026; produksi 18 Nov: `games_products` 1.644 baris `sekalipay` + 601 baris `digiflazz` legacy yang tidak dijual). Gerbang order (`src/lib/games/ordering.ts`): `GAMES_SK_ENABLED=true` + `SEKALIPAY_ENABLED=true` + transport/kredensial SK + bukan `SEKALIPAY_SANDBOX`; kredensial/`DIGIFLAZZ_TESTING` bukan gerbang lagi.
+> `AXG-20261116-4206****` sukses di Sekalipay (§15). Supplier order Games = Sekalipay H2H (sejak P3 12 Nov 2026; produksi 18 Nov: `games_products` 1.644 baris `sekalipay` + 601 baris `digiflazz` legacy yang tidak dijual). Gerbang order (`src/lib/games/ordering.ts`): `GAMES_SK_ENABLED=true` + `SEKALIPAY_ENABLED=true` + transport/kredensial SK + bukan `SEKALIPAY_SANDBOX`; kredensial/`DIGIFLAZZ_TESTING` bukan gerbang lagi.
 >
 > Snapshot 12 Nov: implementasi + tes fixture lokal pada worktree
 > `feat/games-sekalipay-only`. Tidak ada deployment, panggilan supplier nyata,
@@ -935,7 +935,7 @@ perubahan skema di luar migrasi 0122.
 
 ## 15. Perbaikan pasca-order nyata pertama (17 November 2026, lokal → CI)
 
-Dipicu order produksi `AXG-20261116-4206447D` (ML 50 Diamond, QRIS GoPay): top up
+Dipicu order produksi `AXG-20261116-4206****` (ML 50 Diamond, QRIS GoPay): top up
 **sukses di Sekalipay** (SN `MLBB1611263232621`, modal Rp14.825) tetapi AXVARA
 menandainya `needs_check` "completed tanpa hasil H2H". Audit baca-saja D1 + payload
 webhook tersimpan (`dana_webhook_events` provider `sekalipay_games`).
@@ -1013,7 +1013,7 @@ klaim deskripsi supplier "semua region kecuali MY/SG/RU" belum terbukti untuk ak
 
 ### 15.3 GET transaksi SK: `h2h_results` sejajar `data` (18 November 2026, lokal → CI)
 
-Dipicu order produksi `AXG-20261118-903C42A2` (ML 20 Diamond, tipe Lainnya, akun region
+Dipicu order produksi `AXG-20261118-903C****` (ML 20 Diamond, tipe Lainnya, akun region
 Indonesia): top up **sukses di Sekalipay** (SN `MLBB1811263256433`) tetapi AXVARA menandai
 `needs_check` "completed tanpa hasil H2H", sehingga email "Top up berhasil" tidak terkirim.
 Akar masalah: respons GET `v1/trx/{ref}` produksi membawa `h2h_results`/`smm_results`
@@ -1022,7 +1022,7 @@ Akar masalah: respons GET `v1/trx/{ref}` produksi membawa `h2h_results`/`smm_res
 tetapi status otoritatif diambil dari GET. Kini `fetchSkTransaction`
 (`src/lib/sekalipay/client.ts`) menggabungkan kedua field amplop ke `data` bila `data`
 belum membawanya; parser dan guard lain tidak berubah. Bug yang sama kemungkinan membuat
-pemulihan admin §15 untuk `AXG-20261116-4206447D` tidak berhasil (masih `needs_check` per
+pemulihan admin §15 untuk `AXG-20261116-4206****` tidak berhasil (masih `needs_check` per
 cek D1 18 Nov). Setelah deploy, kedua order dipulihkan lewat tombol admin "Cek ulang Sekalipay".
 Bukti region: WDP Membership (varian 1031) ditolak untuk akun ID (dikonfirmasi admin
 Sekalipay), sedangkan Diamond tipe Lainnya berhasil untuk akun ID.

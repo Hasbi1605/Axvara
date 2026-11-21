@@ -367,7 +367,7 @@ async function runExpiry(db: Db) {
   let expired = 0;
   let marketRestocked = false;
   const expiryOpts = { onMarketChanged: () => { marketRestocked = true; } };
-  // Ledger yatim (insiden AXV-20261018-AB4D407F): order sudah dibatalkan
+  // Ledger yatim (insiden AXV-20261018-AB4D****): order sudah dibatalkan
   // mandiri/admin tetapi payment_transactions tertinggal 'pending' (jalur
   // batal tidak menutup ledger dinamis). Guard transisi expiry mensyaratkan
   // order 'pending', jadi ledger seperti ini no-op selamanya DAN — karena
@@ -516,7 +516,7 @@ async function runWrOrders(db: Db, failedCore: string[]) {
   await recover("stale_claims", () => order.recoverStaleClaims(db), 0);
   await recover("blocked_balance", () => order.reconcileBlockedBalance(db, { reportLookupFailure: true }), 0);
   if (process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true") {
-    // 2026-10-09 (kasus AXV-20261009-DA1ACF56): link WR tidak pernah dibuat
+    // 2026-10-09 (kasus AXV-20261009-DA1A****): link WR tidak pernah dibuat
     // webhook + COUNT due = 0 → `processWrPendingOrders` tidak dipanggil →
     // `reconcileMissingWrLinks` di dalamnya tidak pernah jalan → yatim
     // selamanya. Probe yatim WAJIB jalan duluan tanpa gate due (murah: 1

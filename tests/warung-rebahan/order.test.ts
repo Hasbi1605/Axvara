@@ -565,7 +565,7 @@ describe("Warung Rebahan webhook completion", () => {
     }
   });
 
-  it("format detail akun: JSON {product,details} + \\r\\n + envelope (bukti prod 95FC8669)", async () => {
+  it("format detail akun: JSON {product,details} + \\r\\n + envelope (bukti prod F1700000)", async () => {
     // BUKTI PROD 2026-09-18 sore: panel menampilkan mentah
     // {"product":"Meitu Premium - Meitu VIP+","details":"email: a@x.id\r\npassword: p\r\nakses otp: https://..."}
     // karena cabang `typeof raw === "string"` mengembalikan string apa pun
@@ -599,32 +599,32 @@ describe("Warung Rebahan webhook completion", () => {
     const arrPayload = {
       product: "Spotify Premium - Premium",
       details: [
-        { email: "qavzeli583@gmail.com" },
-        { password: "Revacantik1" },
+        { email: "spotify-buyer@example.test" },
+        { password: "Passw0rd-fixture-1" },
         { penting: "Nogar, jangan komplain kalo kena razia/banned" },
         { info: "Jangan login lebih dari 1 device" },
       ],
     };
     const arrOut = normalizeAccountDetailsForDisplay(arrPayload);
     expect(arrOut).not.toContain("[object Object]");
-    expect(arrOut).toContain("qavzeli583@gmail.com");
-    expect(arrOut).toContain("Revacantik1");
+    expect(arrOut).toContain("spotify-buyer@example.test");
+    expect(arrOut).toContain("Passw0rd-fixture-1");
     // formatWrAccountDetails (jalur simpan) ikut rapi untuk bentuk yang sama.
     const saved = formatWrAccountDetails(arrPayload);
     expect(saved).not.toContain("[object Object]");
-    expect(saved).toContain("qavzeli583@gmail.com");
+    expect(saved).toContain("spotify-buyer@example.test");
     expect(normalizeAccountDetailsForDisplay("Email: Email: a@b.c")).toBe("Email: a@b.c");
     expect(normalizeAccountDetailsForDisplay(null)).toBe("");
   });
 
-  it("order LAMA tampil shortlink go/* retroaktif tanpa migrasi data (screenshot owner AXV-20261003-BD58F7ED)", async () => {
+  it("order LAMA tampil shortlink go/* retroaktif tanpa migrasi data (screenshot owner AXV-20991231-00F17019)", async () => {
     // Order 3 Okt 2026 15.19 menyimpan ciphertext berisi link supplier
     // PANJANG (era pra-shortlink). Panel menampilkan mentah — kini
     // normalizeAccountDetailsForDisplay membungkus SAAT TAMPIL.
     const { normalizeAccountDetailsForDisplay } = await import("@/lib/warung-rebahan/deliver");
     const storedLama = [
       "Netflix — 1 Profile 2 User:",
-      "Email: krutehkhan@gmail.com | PASSWORD : Nengflix222@@ | PROFILE : UCIHA |",
+      "Email: netflix-buyer@example.test | PASSWORD : Passw0rd-fixture-2@@ | PROFILE : UCIHA |",
       "CARA LOGIN = https://sekalipay.com/docs/tutorial-login-netflix",
       "AKSES BOT / KODE = https://netflix-codes.sekalipay.com/mailbox",
       "- https://www.netflix.com/clearcookies",
@@ -640,7 +640,7 @@ describe("Warung Rebahan webhook completion", () => {
     expect(out).toContain("https://www.netflix.com/clearcookies");
     expect(out).toContain("https://www.netflix.com/youraccount");
     // Kredensial utuh tidak rusak.
-    expect(out).toContain("krutehkhan@gmail.com");
-    expect(out).toContain("Nengflix222@@");
+    expect(out).toContain("netflix-buyer@example.test");
+    expect(out).toContain("Passw0rd-fixture-2@@");
   });
 });

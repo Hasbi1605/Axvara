@@ -669,9 +669,9 @@ describe("WhatsApp Target Normalization (2026-09-18)", () => {
     const { normalizeWhatsAppTarget } = await import("@/lib/whatsapp/gateway");
     // Bukti prod: baris outbox menyimpan 628… mentah → Baileys jidDecode
     // versi baru melempar (tanpa '@' = undefined) → 4x gagal.
-    expect(normalizeWhatsAppTarget("6283878525697")).toBe("6283878525697@s.whatsapp.net");
-    expect(normalizeWhatsAppTarget("083878525697")).toBe("6283878525697@s.whatsapp.net");
-    expect(normalizeWhatsAppTarget("+62 838-7852-5697")).toBe("6283878525697@s.whatsapp.net");
+    expect(normalizeWhatsAppTarget("6280000000101")).toBe("6280000000101@s.whatsapp.net");
+    expect(normalizeWhatsAppTarget("080000000101")).toBe("6280000000101@s.whatsapp.net");
+    expect(normalizeWhatsAppTarget("+62 800-0000-0101")).toBe("6280000000101@s.whatsapp.net");
     // Grup JID jangan dinormalisasi (salah alamat = bocor ke grup).
     expect(normalizeWhatsAppTarget("120363024823948293@g.us")).toBe("120363024823948293@g.us");
     expect(normalizeWhatsAppTarget("120363024823948293")).toBe("120363024823948293");
@@ -688,9 +688,9 @@ describe("WhatsApp Target Normalization (2026-09-18)", () => {
       interceptedBody = String((options as RequestInit).body);
       return { ok: true, json: async () => ({ status: true, id: "jid_ok" }) };
     }));
-    const res = await sendTextMessage({ target: "6283878525697", message: "halo" });
+    const res = await sendTextMessage({ target: "6280000000101", message: "halo" });
     expect(res.ok).toBe(true);
-    expect(JSON.parse(interceptedBody).target).toBe("6283878525697@s.whatsapp.net");
+    expect(JSON.parse(interceptedBody).target).toBe("6280000000101@s.whatsapp.net");
 
     vi.unstubAllGlobals();
     delete process.env.WHATSAPP_GATEWAY_URL;

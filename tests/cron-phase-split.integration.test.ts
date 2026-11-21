@@ -233,7 +233,7 @@ describe("route ?phase= (satu fase per request)", () => {
     expect(sync.body.wr_deliveries_processed).toBeUndefined();
   });
 
-  // 2026-10-09 (kasus AXV-20261009-DA1ACF56): probe yatim lunas-tanpa-link
+  // 2026-10-09 (kasus AXV-20991231-00F1701C): probe yatim lunas-tanpa-link
   // jalan TANPA gate due di fase route besar juga — cermin lite. Fixture:
   // order lunas + katalog WR, TANPA baris wr_order_links (COUNT due = 0).
   it("fase WR part=orders menyembuhkan order lunas yatim walau COUNT due = 0", async () => {

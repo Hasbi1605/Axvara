@@ -523,7 +523,7 @@ export default function OrderSuccessPage() {
   // stok sendiri tidak memakai estimasi 5–15 menit milik produk WR. Kabar web
   // lewat EMAIL (bot WA mati sejak 18 Sep 2026); nomor WA hanya disebut untuk
   // order lama tanpa email.
-  // Copy 2026-10-02 (laporan owner + screenshot AXV-20261002-201B9EFD): 4 state
+  // Copy 2026-10-02 (laporan owner + screenshot AXV-20261002-201B****): 4 state
   // dengan judul + nada beda. Jalur otomatis TIDAK BOLEH menyebut admin/12 jam
   // — teks fallback darurat ("disiapkan admin") sempat bocor ke order instan
   // yang selesai hitungan detik dan bikin panik. MBO by design (bukan stok
