@@ -239,9 +239,10 @@ export async function POST(request: NextRequest) {
       if (!synced.errors.length) await drainDirtyGroupsIfBudget(db, result);
     }
     else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db, failedCore));
-    else if (job === "notify_a") Object.assign(result, await runNotifyA(db, deadline, failedCore));
-    else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline, failedCore));
-    else if (job === "notify") Object.assign(result, await runNotify(db, deadline, failedCore));
+    else if (job === "notify_a" || job === "notify_b" || job === "notify") {
+      const { run } = await import("@/lib/cron/lite/jobs/notify");
+      Object.assign(result, await run({ job, db, deadline, result, failedCore }, job));
+    }
     else if (job === "cleanup") {
       const { run } = await import("@/lib/cron/lite/jobs/cleanup");
       Object.assign(result, await run({ job, db, deadline, result, failedCore }));
@@ -747,97 +748,9 @@ async function runPediaOrders(db: Db, failedCore: string[]) {
 
 // promo body moved to src/lib/cron/lite/jobs/promo.ts (3A-2 diff 1).
 
-// notify (2026-10-05 malam, dipecah 2026-10-09): retry kabar order Telegram,
-// invoice tertunda, kabar QRIS kedaluwarsa, pengingat order pending, outbox
-// WhatsApp. Tiap pekerjaan berdiri sendiri (satu gagal tidak menghentikan
-// yang lain) dan masing-masing memilih kandidatnya sendiri dengan klaim
-// idempoten.
-//
-// Pecahan (2026-10-09): `notify_a` = telegram_retry + invoice_retry (2 import);
-// `notify_b` = qris_expiry + reminders + whatsapp_outbox (3 import). `notify`
-// = alias gabungan A lalu B. Hasil digabung dengan kunci yang sama sehingga
-// pemantau lama (alarm Worker, dashboard) tidak berubah bentuk respons.
-async function runNotifyA(db: Db, deadline: number, failedCore: string[]) {
-  const out: Record<string, unknown> = {};
-  const guard = async (key: string, fn: () => Promise<unknown>, core = false) => {
-    try { out[key] = await fn(); } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      out[`${key}_error`] = error instanceof Error ? error.message.slice(0, 80) : "failed";
-      if (core) failedCore.push(key);
-    }
-  };
-  await guard("invoice_retry", async () => {
-    const { retryInvoicePendingTelegramInvoices } = await import("@/lib/telegram/invoice-retry");
-    // At most one slow photo plus ambiguity notice, or one slow text retry,
-    // before yielding. Stop if this is the combined job and time is short.
-    const invoiceDeadline = Math.min(deadline, Date.now() + 37_000);
-    return retryInvoicePendingTelegramInvoices(25, db, ms => Date.now() + ms <= invoiceDeadline);
-  });
-  await guard("telegram_retry", async () => {
-    const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
-    return retryPendingTelegramNotifications(50, undefined, db, ms => Date.now() + ms <= deadline);
-  }, true);
-  return out;
-}
-
-async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
-  const out: Record<string, unknown> = {};
-  const guard = async (key: string, fn: () => Promise<unknown>, core = false) => {
-    try { out[key] = await fn(); } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      out[`${key}_error`] = error instanceof Error ? error.message.slice(0, 80) : "failed";
-      if (core) failedCore.push(key);
-    }
-  };
-  const hasTime = (ms: number) => Date.now() + ms <= deadline;
-  // cleanup has no Worker alarm; feed its durable failure into the monitored
-  // notify step without delaying either buyer lane or sending another alert.
-  await guard("maintenance_cleanup", async () => {
-    if (await db.queryFirst(`SELECT 1 FROM store_settings WHERE key='cleanup_recovery_last_error'`)) {
-      throw new Error("maintenance_cleanup_failed");
-    }
-    return "ok";
-  }, true);
-  // Protect both buyer lanes from Telegram. PIN gets up to 18s; WA runs next
-  // and only claims when the send and its existing anti-ban delay fit.
-  const pinDeadline = Math.min(deadline, Date.now() + 18_000);
-  await guard("checkout_pin_emails", async () => {
-    if (!db.canSpend(10)) return { skipped: "query_budget" };
-    const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
-    return processCredentialAccessEmails(db, 15, undefined, { hasTime: ms => Date.now() + ms <= pinDeadline });
-  });
-  // Promo only enqueues in D1; keep it ahead of the outbox drain for the same tick.
-  await guard("whatsapp_promo", async () => {
-    const { enqueueWhatsAppPromo } = await import("@/lib/whatsapp/promo-digest");
-    return enqueueWhatsAppPromo(db);
-  });
-  await guard("whatsapp_promo_bot", async () => {
-    const { enqueueWhatsAppPromoBot } = await import("@/lib/whatsapp/promo-bot");
-    return enqueueWhatsAppPromoBot(db);
-  });
-  await guard("whatsapp_outbox", async () => {
-    const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
-    return processDueWhatsAppOutbox(4, db, hasTime);
-  }, true);
-  await guard("qris_expiry_notices", async () => {
-    const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
-    return sendQrisExpiryNotifications(15, db, { hasTime: () => hasTime(11_000) });
-  });
-  await guard("pending_reminders", async () => {
-    const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
-    return sendPendingOrderReminders(50, db, hasTime);
-  });
-  await guard("restock_alerts", async () => {
-    const { processDueRestockAlerts } = await import("@/lib/telegram/restock-alerts");
-    return processDueRestockAlerts(db, 50, hasTime);
-  });
-  return out;
-}
-
-async function runNotify(db: Db, deadline: number, failedCore: string[]) {
-  const out = await runNotifyB(db, deadline, failedCore);
-  return Object.assign(out, await runNotifyA(db, deadline, failedCore));
-}
+// notify a/b/combined bodies moved to src/lib/cron/lite/jobs/notify.ts
+// (3A-3). The route dispatches via dynamic import; `notify` runs B then A
+// via Object.assign exactly as before.
 
 // cleanup + market-refresh bodies moved to src/lib/cron/lite/jobs/cleanup.ts
 // (3A-2 diff 2). The route dispatches via dynamic import; notify bodies stay

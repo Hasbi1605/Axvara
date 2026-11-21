@@ -945,7 +945,12 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     const lib = read("src/lib/telegram/order-notifications.ts");
     expect(lib).toContain("TELEGRAM_REMINDER_MAX = 2");
     // FX-1: lite passes the phase deadline budget (hasTime) into the worker.
-    expect(read("src/app/api/cron/lite/route.ts")).toContain("sendPendingOrderReminders(50, db, hasTime)");
+    // 3A-3: notify bodies moved verbatim to jobs/notify.ts; route dispatches
+    // via dynamic import. Guard both the moved call and the dispatch.
+    const notifyJob = read("src/lib/cron/lite/jobs/notify.ts");
+    expect(notifyJob).toContain("sendPendingOrderReminders(50, db, hasTime)");
+    const route = read("src/app/api/cron/lite/route.ts");
+    expect(route).toContain("@/lib/cron/lite/jobs/notify");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(cron).toContain("sendPendingOrderReminders");
     expect(cron).toContain("telegram_pending_reminders_sent");

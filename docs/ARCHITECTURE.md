@@ -2106,7 +2106,7 @@ axvara/
 │   ├── cron/lite/
 │   │   ├── jobs.ts             # daftar job dan tipe LiteJob, tanpa impor
 │   │   ├── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis
-│   │   └── jobs/               # badan job yang dipindah dari route (3A): promo.ts, cleanup.ts; dipanggil via await import()
+│   │   └── jobs/               # badan job yang dipindah dari route (3A): promo.ts, cleanup.ts, notify.ts (notify_a/notify_b/gabungan); dipanggil via await import()
 │   ├── fulfillment/
 │   │   ├── deliver.ts           # BARREL
 │   │   └── delivery/            # claim, send, process, ensure, reconcile, handover,
