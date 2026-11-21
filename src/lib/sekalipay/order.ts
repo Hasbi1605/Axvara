@@ -116,8 +116,10 @@ export async function bindSkInvoiceByRef(
   if (!link || skRefId(String(link.order_code), String(link.sk_variant_id), Number(link.quantity)) !== refId) return false;
   const bound = await db.execRun(
     `UPDATE sk_order_links SET sk_invoice=?, updated_at=datetime('now')
-     WHERE id=? AND (COALESCE(sk_invoice,'')='' OR sk_invoice=?)`,
-    invoice, Number(link.id), invoice,
+     WHERE id=? AND (COALESCE(sk_invoice,'')='' OR sk_invoice=?)
+       AND NOT EXISTS (SELECT 1 FROM sk_order_links AS peer
+         WHERE peer.sk_invoice=? AND peer.id<>sk_order_links.id)`,
+    invoice, Number(link.id), invoice, invoice,
   );
   return Number(bound.changes ?? 0) > 0;
 }
@@ -446,14 +448,15 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
       refId,
       carts: [{ item_id: skVariantId, quantity: qty }],
     });
+    const invoice = String(created.invoice);
     const assigned = await execRun(
       `UPDATE sk_order_links SET status='processing', sk_invoice=?,
          last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
          updated_at=datetime('now') WHERE id=? AND status='claimed'
-         AND (COALESCE(sk_invoice,'')='' OR sk_invoice=?)`,
-      String(created.invoice),
-      id,
-      String(created.invoice),
+         AND (COALESCE(sk_invoice,'')='' OR sk_invoice=?)
+         AND NOT EXISTS (SELECT 1 FROM sk_order_links AS peer
+           WHERE peer.sk_invoice=? AND peer.id<>sk_order_links.id)`,
+      invoice, id, invoice, invoice,
     );
     if (!Number(assigned.changes ?? 0)) return "retried";
     return "succeeded";
@@ -493,19 +496,18 @@ async function reconcileAmbiguousSkLink(id: number, db: DatabaseAccess, onLookup
   if (status.includes("fail") || status.includes("cancel") || status.includes("refund")) {
     return handleSkOrderFailed(invoice, status, db);
   }
-  // paid/pending: catat invoice, tetap processing untuk reconcile berikutnya.
+  // paid/pending: hanya majukan link yang masih memiliki invoice terikat tadi.
   if (String(detail.invoice || "")) {
-    await db
+    const advanced = await db
       .execRun(
-        `UPDATE sk_order_links SET sk_invoice=?, status='processing',
+        `UPDATE sk_order_links SET status='processing',
            last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
-           updated_at=datetime('now') WHERE id=?
+           updated_at=datetime('now') WHERE id=? AND sk_invoice=?
            AND status IN ('claimed','submitted','ordering','processing')`,
-        String(detail.invoice),
-        id,
+        id, invoice,
       )
       .catch(() => undefined);
-    return true;
+    return Number(advanced?.changes ?? 0) > 0;
   }
   return false;
 }

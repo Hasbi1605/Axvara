@@ -1,5 +1,10 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## B5/R2 22 Nov (lokal)
+
+- Di `src/lib/sekalipay/order.ts`, UPDATE receipt pembelian dan `bindSkInvoiceByRef` sama-sama menolak invoice yang sudah dimiliki link SK lain dalam statement yang sama. Replay pada link yang sama tetap sah selama tak ada pemilik lain.
+- Recovery ambigu tetap GET dengan ref stabil. Pass nonterminal hanya memajukan link ke `processing` bila invoice yang baru diikat masih cocok, tanpa menulis ulang invoice. Konflik/CAS kalah bukan sukses dan tidak membuka POST ulang; `request_sent_at` tetap. Tidak ada statement tambahan, migrasi, atau koreksi riwayat.
+
 ## B4b 22 Nov (lokal)
 
 - WR mengosongkan `lease_owner` dan `lease_expires_at` hanya di UPDATE advance otoritatif yang menang, termasuk completion baru Premium dan Jaspay. Replay, refresh akun pada status `completed`, CAS kalah, dan lease recovery Jaspay tidak berubah. Fence `request_sent_at` dan `attempt_count` tetap; tidak ada statement, bind, atau POST tambahan. SK tidak berubah.

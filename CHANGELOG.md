@@ -1,6 +1,9 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap B5/R2 (kelas B): receipt dan binder SK menolak invoice milik link lain dalam UPDATE yang sama; recovery GET-ref hanya memajukan link bila invoice masih cocok, tanpa menulis ulang invoice atau membuka POST ulang — `src/lib/sekalipay/order.ts`, `tests/characterization/wr-sk-matrix.test.ts` — (verifikasi: 3 repro merah; 195 tes fokus lulus termasuk D1/workerd, 22 expected-fail tersisa; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3A-5 (kelas E): pindahkan badan job `payments` cron lite ke `src/lib/cron/lite/jobs/payments.ts`; urutan Klik → NOWPayments (+late) → gateway → gateway basi → health Klik, cadangan 11/21 dtk, `canSpend` 6/6/4/1, mutasi `result`/`failedCore`, dan keputusan 503 langsung di route tidak berubah — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/platform-ops.md` — (verifikasi: 9 file fokus 286 lulus + 1 TODO; TypeScript, ESLint terarah, `git diff --check` lulus)
+
 - 2026-11-22 — Roadmap B4b (kelas B): kosongkan lease pembelian WR saat CAS advance vendor atau completion baru Premium/Jaspay menang; replay, CAS kalah, fence, attempts dan SK tidak berubah — `src/lib/suppliers/purchase-state.ts`, `src/lib/warung-rebahan/deliver.ts` — (verifikasi: 4 repro merah; 217 tes fokus lulus termasuk D1/workerd, 25 expected-fail tersisa; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Koreksi rujukan job cron lite Pedia, TUNVN dan AIVault pasca-ekstraksi 3A-4; tanpa perubahan runtime — `docs/ARCHITECTURE.md` — (verifikasi: path dan simbol cocok dengan source, `git diff --check` lulus)

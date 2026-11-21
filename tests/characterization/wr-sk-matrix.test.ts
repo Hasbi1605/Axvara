@@ -416,7 +416,7 @@ describe("T3 B5 invoice ownership invariant", () => {
       VALUES(2,'AXV-PEER-FIXTURE','1095',5000,'processing','sk:AXV-PEER-FIXTURE:1095:1',?)`).run(bound ? invoice : null);
   }
 
-  it.fails("a purchase receipt cannot claim an invoice that ref recovery just bound to another link", async () => {
+  it("a purchase receipt cannot claim an invoice that ref recovery just bound to another link", async () => {
     const f = setup("sk");
     otherLink(f, false);
     let peerBound: boolean | undefined;
@@ -434,7 +434,7 @@ describe("T3 B5 invoice ownership invariant", () => {
     expect({ succeeded: result.succeeded, retried: result.retried, invoice: f.row().sk_invoice }).toEqual({ succeeded: 0, retried: 1, invoice: null });
   });
 
-  it.fails("ref recovery cannot claim an invoice previously owned by another link", async () => {
+  it("ref recovery cannot claim an invoice previously owned by another link", async () => {
     const f = setup("sk");
     otherLink(f, true);
     f.set(`status='submitted', ${sent}`);
@@ -445,7 +445,7 @@ describe("T3 B5 invoice ownership invariant", () => {
     expect({ bound, row: f.row() }).toEqual({ bound: false, row: before });
   });
 
-  it.fails("processing recovery cannot overwrite a changed invoice after the ref binding step", async () => {
+  it("processing recovery cannot overwrite a changed invoice after the ref binding step", async () => {
     const f = setup("sk");
     f.set(`status='submitted', ${sent}, next_attempt_at=datetime('now','-1 minute')`);
     const run = f.db.execRun;
@@ -460,10 +460,11 @@ describe("T3 B5 invoice ownership invariant", () => {
     };
     const before = f.row();
     const http = wire({ [f.lookup]: () => f.receipt("paid") });
-    await f.recover(f.db);
+    const recovered = await f.recover(f.db);
     expect(changed).toBe(true);
     expect(http.calls).toEqual([f.lookup]);
     expect(f.row()).toMatchObject({ sk_invoice: "PEER-INVOICE", status: before.status, request_sent_at: before.request_sent_at, lease_owner: "peer" });
+    expect(recovered).toBe(0);
   });
 
   it("same-link exact invoice replay remains safe", async () => {
