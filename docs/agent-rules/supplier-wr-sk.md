@@ -1,5 +1,12 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Kabar saldo WR tertahan — FX-15 (21 November 2026, lokal)
+
+- `blocked_balance`: pembeli web hanya menerima email jika ada; tanpa email,
+  gunakan halaman pesanan, bukan fallback WhatsApp. DM privat Telegram tetap
+  untuk order Telegram. Untuk tindak lanjut, gunakan Admin → Warung Rebahan →
+  Antrean → **Saldo habis**; antrean ini tidak bergantung pada hasil notifikasi.
+
 ## Kontrak katalog VPS–Pages — 21 November 2026 (lokal)
 
 - Hanya potongan `/wr/products-slice` dan `/sk/catalog-slice` mendapat batas

@@ -2122,6 +2122,8 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 
 **21 November 2026 — keputusan owner (implementasi lokal):** kanal jual hanya web dan bot Telegram. Grup WhatsApp bukan tempat pesan atau bayar: hanya promo/siaran, sambutan existing dan balasan dukungan. `/wa` untuk bantuan yang dimulai pembeli. Pesanan WA historis tetap terbaca dan pesanan lunas yang belum diserahkan ditangani admin secara manual.
 
+Untuk pesanan Warung Rebahan yang tertahan karena saldo supplier, pembeli web mendapat kabar lewat email jika tersedia. Tanpa email, tidak ada notifikasi langsung; pembeli bisa membuka halaman pesanan atau menghubungi admin dengan kode pesanan. Admin tetap bisa melihat pesanan di Antrean Warung Rebahan, filter **Saldo habis**.
+
 ### 1.2 Tujuan Produk
 - Menjadi toko digital premium yang terlihat **mahal & terpercaya** sehingga konversi lebih tinggi untuk produk digital 50rb–1jt
 - Checkout **paling simpel** untuk pembeli awam: pilih produk → pilih Transfer/QRIS → scan QR dinamis atau upload bukti transfer manual → selesai

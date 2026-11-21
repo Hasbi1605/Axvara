@@ -293,14 +293,11 @@ describe("Authoritative UI and admin state", () => {
     expect(statusPage).toContain("order.credentialsReady");
     expect(statusPage).toContain("credentialsReady={order.credentialsReady}");
     expect(read("src/components/storefront/WrCredentialsPanel.tsx")).toContain("if (!credentialsReady) return null;");
-    // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
+    // Fallback: email + halaman pesanan, atau halaman pesanan saja tanpa email.
     expect(copySource).toContain("Pengiriman Produk");
-    // Kabar web lewat email (bot WA mati); WA hanya untuk order tanpa email.
-    // Copy 2026-10-07 (permintaan owner): order ber-email = kalimat email +
-    // halaman ini; order lama tanpa email = fallback "Detail produk dikirim".
-    expect(statusPage).toContain("const destination = order.email");
+    expect(statusPage).toMatch(/const toBuyer = order\.email\s*\? <>{ui\.delivery\.toBuyerEmail}<\/>\s*: <>{ui\.delivery\.toBuyerPanel}<\/>/);
     expect(copySource).toContain("Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.");
-    expect(copyFile).toContain("Detail produk dikirim ke {destination}");
+    expect(copyFile).toContain("Cek detail produk di halaman ini, atau hubungi admin dengan kode pesanan jika butuh bantuan.");
     // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (C1: <1 jam + plafon 12 jam,
     // tanpa jam layanan spesifik — revisi copy 2026-10-02).
     expect(statusPage).toContain("order.queuedDelivery");

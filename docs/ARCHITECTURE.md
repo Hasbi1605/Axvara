@@ -5466,6 +5466,12 @@ internal Telegram untuk pesanan WA historis tetap. Pesanan lunas yang belum
 diserahkan masuk handover manual. Flag rollout penjualan/fulfillment WA yang
 lama tidak dibaca lagi; tidak ada perubahan konfigurasi hosting atau migrasi.
 
+Kabar `wr-blocked:<kode>` tetap idempoten lewat `buyer_notice_log` untuk
+email web dan DM Telegram privat. Web tanpa email tidak membuat entri outbox
+WA dan `notifyBuyerWrBlocked` mengembalikan `false`. Link tetap `blocked_balance`
+dan muncul di Antrean Warung Rebahan → **Saldo habis** (`GET /api/admin/warung/orders?status=blocked_balance`),
+terlepas dari hasil notifikasi buyer atau alert Telegram admin yang best-effort.
+
 **17 November 2026 — Bot Promo kedua (implementasi lokal; publikasi via CI).**
 `src/lib/whatsapp/promo-bot.ts` memisahkan konfigurasi store_settings
 `whatsapp_promo_bot` JSON `{enabled,enabledAt?,botNumber,botRevision,groups:[{id,subject}]}`
