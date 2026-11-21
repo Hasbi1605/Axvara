@@ -50,8 +50,11 @@ describe("UX admin — jalan buntu fulfillment", () => {
 describe("UX admin — gerbang retry WR selaras dengan API", () => {
   it("daftar status retry di UI sama dengan RETRYABLE di route", () => {
     const route = read("src/app/api/admin/warung/orders/[id]/retry/route.ts");
+    // B1: daftar RETRYABLE dipindah ke helper bersama; route WR tetap memakainya.
+    expect(route).toContain("isSupplierRetryableStatus(status)");
+    const shared = read("src/lib/suppliers/purchase-state.ts");
     const ui = read("src/components/admin/WarungRebahanManager.tsx");
-    const apiList = (route.match(/const RETRYABLE = \[([\s\S]*?)\]/)?.[1] ?? "")
+    const apiList = (shared.match(/const RETRYABLE = \[([\s\S]*?)\]/)?.[1] ?? "")
       .match(/"([a-z_]+)"/g)?.map((s) => s.replace(/"/g, "")) ?? [];
     const uiList = (ui.match(/const RETRYABLE_WR_STATUS = \[([\s\S]*?)\]/)?.[1] ?? "")
       .match(/"([a-z_]+)"/g)?.map((s) => s.replace(/"/g, "")) ?? [];

@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { Miniflare } from "miniflare";
 import { readFileSync } from "node:fs";
+import { PURCHASE_PAID_SQL_ALIASED } from "@/lib/suppliers/purchase-state";
 import { PEDIA_CATALOG_BOUNDS_SQL } from "@/lib/pedia/catalog-queries";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
@@ -50,7 +51,10 @@ it("0067 repairs the live Pedia index even when the old index belongs to an arch
 
 it("D1 recovery still finds an unlinked paid order without scanning thousands of old paid orders", async () => {
   const source = readFileSync("src/lib/warung-rebahan/order.ts", "utf8");
-  const sql = source.match(/`(SELECT o\.code, o\.items FROM orders o[\s\S]*?)`,/)?.[1];
+  // B1: predikat lunas memakai konstanta bersama; render template seperti runtime.
+  const sql = source.match(/`(SELECT o\.code, o\.items FROM orders o[\s\S]*?)`,/)?.[1]
+    ?.replaceAll("${PURCHASE_PAID_SQL_ALIASED}", PURCHASE_PAID_SQL_ALIASED);
+  expect(sql).not.toContain("${");
   const index = readFileSync("drizzle/migrations/0067_d1_read_budget_indexes.sql", "utf8")
     .match(/CREATE INDEX IF NOT EXISTS idx_orders_paid_recovery[\s\S]*?;/)?.[0];
   expect(sql).toBeTruthy(); expect(index).toBeTruthy();
