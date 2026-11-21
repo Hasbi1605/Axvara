@@ -355,3 +355,11 @@ Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
 - Switch build publik `NEXT_PUBLIC_PAYMENTS_MAINTENANCE="true"` pada langkah build Pages di `ci.yml` menghentikan pembayaran baru web/Telegram/WA dan reissue, dengan pemberitahuan order manual via hub WA. Ini nilai build nonrahasia, bukan env/secret runtime Pages.
 - Pemulihan: ubah nilai CI ke `"false"`, verifikasi, commit/push; perubahan env Cloudflare saja tidak mengubah bundle lama. Dev memakai prefix env; test menguji kedua mode.
 - Jangan menonaktifkan webhook/status/fulfillment/cleanup atau menghapus invoice lama. Mode terpisah dari kuota D1, tanpa auto-resume/estimasi jam selesai atau siaran massal otomatis.
+
+### Kesehatan QRIS di admin — 21 November 2026 (lokal, FX-14)
+
+- Rekap 7 hari mencakup DANA (termasuk `provider IS NULL`), GoPay, dan
+  KlikQRIS di ledger event bersama; bukan IPN crypto atau webhook supplier.
+  Ringkasan juga memakai jumlah kegagalan pass polling KlikQRIS terakhir
+  yang benar-benar mengecek invoice (maks. umur 15 menit). Tidak ada probe
+  tambahan saat membuka admin, dan sepi event bukan bukti poller GoPay mati.

@@ -47,6 +47,7 @@ Panduan Market `/cara-order` (ID/EN, perbaikan lokal) menjelaskan WhatsApp aktif
 - Target kecepatan: ~388 penerima promo Telegram (1 bubble: banner sebagai pratinjau tautan besar di atas pesan HTML; chunk tambahan hanya bila >4096 karakter) selesai dalam ≤ ~5 menit sejak enqueue (~3,5 menit untuk 1 pesan teks) dengan pacing aman di bawah batas Telegram (~300 ms antarpesan chat sama, ~250 ms antarpenerima; email tetap 650 ms).
 - Keamanan pengiriman tetap ketat: tidak pernah kirim ganda (lease global + CAS atomik per penerima meski pesan antrean duplikat atau cron backstop berjalan bersamaan), tidak pernah retry buta atas status `'unknown'`/`'sending'`, 429 menghentikan batch & menunggu `retry_after` tanpa mengirim ulang foto, 403 menandai `is_blocked`, dan slot kedaluwarsa dilewati otomatis.
 - Cron `lite?job=promo` tetap hidup sebagai jaring pengaman (backstop uncapped dengan budget terpisah 400 statement dan ~40 detik/tick, grace 2 menit saat queue aktif; WhatsApp tidak berubah). Saklar `store_settings.broadcast_queue_mode = 'off'` menonaktifkan antrean (mode cron-only); `telegram_promo_broadcast_enabled` tetap utuh.
+- FX-14 (lokal): API Ringkasan admin menampilkan jumlah kumulatif chunk yang masuk DLQ, terpisah dari hasil backstop dan tanpa mengirim ulang pesan.
 
 ## Stok katalog Market live di browser pembeli — 19 November 2026 (lokal)
 

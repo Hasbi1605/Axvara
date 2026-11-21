@@ -28,7 +28,12 @@ import {
   evaluateQueue,
   evaluateTelegram,
   evaluateWhatsApp,
+  KLIKQRIS_POLL_HEALTH_KEY,
+  QRIS_HEALTH_EVENTS_SQL,
+  readTelegramWebhookHealth,
   summarizeQueue,
+  TG_WEBHOOK_HEALTH_KEY,
+  WA_GATEWAY_HEALTH_KEY,
   type ServiceStatus,
 } from "@/lib/service-health";
 
@@ -60,6 +65,7 @@ const zero = {
   profit_estimated_orders: 0,
   pending_proofs: 0,
   payment_attention: 0,
+  broadcast_dlq_chunks: 0,
   fulfillment_attention: 0,
   aged_manual_required: 0,
   games_needs_check: 0,
@@ -221,7 +227,7 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
   const inWeek = `${paidWeekWib}='${weekWib}'`;
   const inMonth = `${paidMonthWib}='${monthWib}'`;
   const financialPromise = readOverviewFinancialReport(now);
-  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, manualAttention, itemAttention, stock, topProduct, channelRows, financial, selected, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents] = await Promise.all([
+  const [orders, proofs, qris, fulfillmentJobsRaw, fulfillmentOrdersNeedingAction, manualAttention, itemAttention, stock, topProduct, channelRows, financial, selected, tgQueue, waQueue, oldestJobDue, oldestItemDue, oldestWaDue, tgSends, waSends, qrisEvents, health] = await Promise.all([
     safeFirst(`SELECT
       COUNT(*) AS total_orders,
       SUM(CASE WHEN o.status='pending' THEN 1 ELSE 0 END) AS pending_orders,
@@ -279,10 +285,12 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
       MAX(updated_at) AS last_touch FROM orders WHERE sales_channel='telegram'`),
     safeFirst(`SELECT MAX(updated_at) AS last_touch, MAX(CASE WHEN status='sent' THEN updated_at ELSE NULL END) AS last_ok,
       MAX(CASE WHEN status IN ('failed','dead') THEN updated_at ELSE NULL END) AS last_fail FROM whatsapp_outbox`),
-    safeFirst(`SELECT SUM(CASE WHEN status IN ('received','ignored') THEN 1 ELSE 0 END) AS unmatched,
-      SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
-      MAX(CASE WHEN status='matched' THEN processed_at ELSE NULL END) AS last_match FROM dana_webhook_events
-      WHERE datetime(created_at)>=datetime('now','-7 days')`),
+    safeFirst(QRIS_HEALTH_EVENTS_SQL),
+    safeFirst(`SELECT
+      (SELECT value FROM store_settings WHERE key='${TG_WEBHOOK_HEALTH_KEY}' AND updated_at >= datetime('now','-5 minutes')) AS telegram,
+      (SELECT value FROM store_settings WHERE key='${WA_GATEWAY_HEALTH_KEY}' AND updated_at >= datetime('now','-20 minutes')) AS whatsapp,
+      (SELECT value FROM store_settings WHERE key='${KLIKQRIS_POLL_HEALTH_KEY}' AND updated_at >= datetime('now','-15 minutes')) AS klikqris,
+      (SELECT COUNT(*) FROM store_settings WHERE key GLOB 'broadcast_dlq:*') AS broadcast_dlq_chunks`),
   ]);
   const channels = { web: 0, telegram: 0, whatsapp: 0 };
   for (const row of (Array.isArray(channelRows) ? channelRows : [])) {
@@ -300,6 +308,7 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
     tgSends: tgSends ?? {},
     waSends: waSends ?? {},
     qrisEvents: qrisEvents ?? {},
+    health: health ?? {},
     oldestJobDue: oldestJobDue?.oldest_due ? String(oldestJobDue.oldest_due) : null,
     oldestItemDue: oldestItemDue?.oldest_due ? String(oldestItemDue.oldest_due) : null,
     oldestWaDue: oldestWaDue?.oldest_due ? String(oldestWaDue.oldest_due) : null,
@@ -338,6 +347,7 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
     period_reports: { today, week, month },
     pending_proofs: Number(proofs?.count || 0),
     payment_attention: Number(qris?.count || 0),
+    broadcast_dlq_chunks: Number(health?.broadcast_dlq_chunks || 0),
     // fulfillment_attention = order-butuh-tindakan (tanpa hitung ganda;
     // delivered tidak pernah dihitung — query di atas hanya memilih status
     // aksi). Rincian per status tersedia di fulfillment_attention_by_status.
@@ -367,6 +377,7 @@ type SystemsInput = {
   tgSends: Record<string, unknown>;
   waSends: Record<string, unknown>;
   qrisEvents: Record<string, unknown>;
+  health: Record<string, unknown>;
   oldestJobDue: string | null;
   oldestItemDue: string | null;
   oldestWaDue: string | null;
@@ -397,13 +408,14 @@ function buildSystems(input: SystemsInput): Record<string, boolean> {
   const tgOldest = input.oldestItemDue ?? input.oldestJobDue ?? null;
   const telegramQueueFirst = summarizeQueue(tgQueueRows, tgOldest);
   const telegramQueueVerdict = evaluateQueue(telegramQueueFirst, { maxPending: 25, maxAgeMinutes: 30 }, "Fulfillment Telegram");
+  const webhook = readTelegramWebhookHealth(input.health.telegram);
   const telegram = telegramQueueVerdict.level === "degraded"
     ? telegramQueueVerdict
     : evaluateTelegram({
         configured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
         enabled: process.env.TELEGRAM_BOT_ENABLED === "true",
-        webhookError: null,
-        webhookPending: null,
+        webhookError: webhook.error,
+        webhookPending: webhook.pending,
         lastSendOkAt: input.tgSends.last_ok ? String(input.tgSends.last_ok) : null,
         lastSendFailAt: null,
         queue: telegramQueueFirst,
@@ -411,17 +423,19 @@ function buildSystems(input: SystemsInput): Record<string, boolean> {
   const whatsapp = evaluateWhatsApp({
     configured: Boolean(process.env.WHATSAPP_GATEWAY_URL),
     enabled: process.env.WHATSAPP_ENABLED === "true",
-    gatewayReachable: null, // sesi Baileys milik gateway eksternal; diukur via /health gateway
+    gatewayReachable: input.health.whatsapp === "true" ? true : input.health.whatsapp === "false" ? false : null,
+    gatewayBlocked: input.health.whatsapp === "blocked",
     lastSendOkAt: input.waSends.last_ok ? String(input.waSends.last_ok) : null,
     lastSendFailAt: input.waSends.last_fail ? String(input.waSends.last_fail) : null,
     queue: summarizeQueue(waQueueRows, input.oldestWaDue),
   });
+  const qrisConfigured = legacySystems().qris;
   const qris = evaluateQris({
-    configured: (Boolean(process.env.DANA_STATIC_QRIS) && Boolean(process.env.DANA_WEBHOOK_SECRET))
-      || (Boolean(process.env.GOPAY_STATIC_QRIS) && Boolean(process.env.GOPAY_POLLER_SECRET)) || isKlikQrisConfigured(),
-    enabled: process.env.DANA_QRIS_ENABLED === "true" || process.env.GOPAY_QRIS_ENABLED === "true" || isKlikQrisConfigured(),
+    configured: qrisConfigured,
+    enabled: qrisConfigured,
     unmatched7d: Number(input.qrisEvents.unmatched || 0),
     failed7d: Number(input.qrisEvents.failed || 0),
+    klikQrisPollFailures: isKlikQrisConfigured() ? Number(input.health.klikqris || 0) : 0,
     lastMatchAt: input.qrisEvents.last_match ? String(input.qrisEvents.last_match) : null,
   });
   const itemQueueRows = (Array.isArray(input.itemQueue) ? input.itemQueue : []).map((row) => ({ status: String(row.status || ""), count: Number(row.count || 0) }));

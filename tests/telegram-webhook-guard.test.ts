@@ -470,6 +470,33 @@ describe("Telegram webhook guard (tg_webhook)", () => {
     }
   });
 
+  it.each(["info_failed", "malformed_backlog", "unset", "wrong_url", "stuck", "kick_failed"])("%s fails the lite step without stamping success", async (scenario) => {
+    const fx = createD1Fixture();
+    try {
+      mockTelegramFetch((method) => {
+        if (method === "getWebhookInfo") {
+          if (scenario === "info_failed") return { ok: false, description: "probe failed" };
+          return { ok: true, result: {
+            url: scenario === "unset" ? "" : scenario === "wrong_url" || scenario === "kick_failed" ? "https://old.test" : CANONICAL_URL,
+            pending_update_count: scenario === "malformed_backlog" ? undefined : scenario === "stuck" ? 4 : 0,
+            last_error_date: Math.floor(Date.now() / 1000),
+          } };
+        }
+        return { ok: scenario !== "kick_failed" || method !== "setWebhook" };
+      });
+      const { POST } = await import("@/app/api/cron/lite/route");
+      const tick = () => POST(new NextRequest("http://localhost/api/cron/lite?job=tg_webhook", {
+        method: "POST", headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }));
+      for (let i = 0; i < 2; i++) {
+        const response = await tick();
+        expect(response.status).toBe(503);
+        expect(await response.json()).toMatchObject({ ok: false, error: expect.any(String) });
+      }
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='cron_lite_tg_webhook_ok_at'").get()).toBeUndefined();
+    } finally { fx.close(); }
+  });
+
   it("admin setup route and guard share canonical setWebhook params; admin bot/health reports pending_update_count, last_error_date/message and last_auto_kick_at", async () => {
     const fx = createD1Fixture();
     try {

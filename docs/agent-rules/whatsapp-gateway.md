@@ -46,6 +46,12 @@ untuk order historis. `/api/admin/bot/health` melaporkan
 `whatsapp_discovery/payment/proof_intake=false` + `whatsapp_buyer_flows:"retired"`.
 Data order WhatsApp historis tidak diubah/dibersihkan.
 
+FX-14 (lokal): cron lite `cleanup` membaca `/health` (timeout 3 detik,
+cache 5 menit) bila sisa deadline cukup. Sesi welcome dan sesi promo yang
+terkonfigurasi ikut dinilai; hanya hasil koneksi/jeda disimpan di
+`store_settings.wa_gateway_health`. Ringkasan mengabaikan sampel >20 menit
+dan tidak memanggil gateway. Ini bukan indikator penjualan WA.
+
 Notifikasi LUNAS order WA historis tetap berbagi klaim Telegram dengan order
 Telegram (FX-3b, lokal): cron hanya mengambil alih status `sending` setelah
 `access_retry_at` kedaluwarsa, bukan berdasarkan umur `updated_at`. Cooldown

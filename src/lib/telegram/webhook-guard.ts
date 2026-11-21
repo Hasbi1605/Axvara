@@ -166,8 +166,10 @@ export async function guardTelegramWebhook(
     const info = infoRes.result;
     const canonicalUrl = canonicalWebhookUrl();
     const actualUrl = String(info.url ?? "").trim();
-    const pendingRaw = Number(info.pending_update_count ?? 0);
-    const pending = Number.isFinite(pendingRaw) && pendingRaw > 0 ? Math.floor(pendingRaw) : 0;
+    const pending = info.pending_update_count;
+    if (!Number.isSafeInteger(pending) || pending < 0) {
+      return { status: "info_failed", error: "invalid_pending_update_count" };
+    }
     const lastErrorSec =
       typeof info.last_error_date === "number" &&
       Number.isFinite(info.last_error_date) &&

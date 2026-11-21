@@ -37,6 +37,7 @@
   - **Auto-recover:** paling banyak 1× per 5 menit (CAS di `store_settings.tg_webhook_guard_state` `last_kick_at`). Memanggil `deleteWebhook({ drop_pending_updates: false })` lalu `setWebhook(...)` dengan parameter kanonis dan `drop_pending_updates: false`. **Dilarang keras** mengirim `drop_pending_updates: true`. Jika `setWebhook` gagal, coba ulang 1× seketika agar webhook tidak tertinggal kosong; bila kedua percobaan gagal, kirim alert kritis ke `TELEGRAM_ADMIN_CHAT_ID`.
   - **Notifikasi admin:** mengirim `"⚠️ Bot Telegram tertahan: {pending} update antre · error terakhir {hh:mm WIB}: {message} · webhook dipasang ulang otomatis"` (rate-limit 1×/30 menit selama tertahan) dan `"✅ Bot Telegram pulih (antrean kosong)"` sekali saat `pending_update_count` kembali ke 0 setelah alert tertahan. Revisi 20 Nov malam: `sendMessage` yang timeout dianggap terkirim untuk kedua alert ini (Telegram bisa menahan lalu tetap mengirim saat Bot API hang), agar run tiap menit tidak menumpuk salinan.
   - **`GET /api/admin/bot/health`:** ikut melaporkan `pending_update_count`, `last_error_date`, `last_error_message`, dan `last_auto_kick_at` pada objek `webhook`.
+  - FX-14 (lokal): probe gagal/URL salah/tertahan → lite `503`, termasuk saat kick baru diterima tetapi belum dikonfirmasi probe berikutnya. Alarm soft existing; `healthy`/`recovered` tidak gagal. Ringkasan baca sampel tersanitasi (umur ≤5 menit) dari `store_settings`, tanpa probe Telegram baru.
 
 ### Kuota menit GitHub Actions — 20 November 2026
 
@@ -76,7 +77,7 @@
 - **Workers Paid:** batas hemat era Free (`Math.min(8, limit)`, cadangan 11 detik Telegram, batas 20 detik, budget bersama 40 statement untuk dispatch) **dihapus** dari jalur pengiriman siaran/promo.
 - **Resource Cloudflare Queues WAJIB dibuat PM sebelum deploy** (CI `wrangler pages deploy` + `wrangler deploy --config mcp-worker/wrangler.toml` gagal bila resource belum ada):
   - `axvara-broadcast` (producer binding `BROADCAST_QUEUE` di `wrangler.json`; consumer di `mcp-worker/wrangler.toml`: `max_batch_size = 10`, `max_batch_timeout = 1`, `max_concurrency = 1`, `max_retries = 3`, `dead_letter_queue = "axvara-broadcast-dlq"`).
-  - `axvara-broadcast-dlq` (consumer DLQ log + `ack()` saja tanpa alert Telegram/retry; cron backstop menyelesaikan sisa baris `pending`).
+  - `axvara-broadcast-dlq` (FX-14, lokal): catat ID kampanye dan ID delivery internal di `store_settings.broadcast_dlq:<hash ID pesan>` via `POST /api/cron/broadcast-dlq` (Bearer cron existing, timeout 3 detik), lalu `ack()` tanpa alert Telegram/retry. Kegagalan catat tetap `ack()` dengan log tersanitasi; cron backstop tetap menyelesaikan baris `pending`. Ringkasan API menampilkan `broadcast_dlq_chunks` (kumulatif, termasuk chunk yang kemudian pulih lewat backstop).
 - **Kontrak consumer/origin:** `mcp-worker/src/queue.ts` merutekan `batch.queue` (`axvara-order-fulfillment` & DLQ-nya utuh; `axvara-broadcast` diproses berurutan/konkurensi 1 ke `POST ${AXVARA_API_ORIGIN}/api/internal/queue/broadcast` dengan `Bearer ${AXVARA_CRON_SECRET}`, skema ketat `v:1`, `kind:'broadcast_deliveries'`, `campaignId` UUID, `deliveryIds` 1..50 integer positif, `enqueuedAt`; pesan cacat → `ack()`).
 - **Origin & pacing:** `/api/internal/queue/broadcast` memakai DB unbudgeted Paid (2 statement/penerima hot path: CAS claim + update final), lease global `broadcast_dispatch_control` + CAS per delivery, pacing Telegram ~250 ms antarpenerima + ~300 ms antarpesan chat sama (foto→teks), Email 650 ms, 429 menghentikan batch & mengembalikan `settled:false` + `retrySec` tanpa kirim ulang foto (`provider_id`), tidak pernah mengirim ulang `'sending'` atau `'unknown'`.
 - **Producer & saklar:** `enqueueDueTelegramPromo` dan `launchBroadcast` (hanya `telegram`/`email`; WA tidak berubah) mendorong chunk `≤ 50` ID/pesan (default 20, dikelompokkan per kanal) via `sendBatch` (`≤ 100` pesan/call); binding absen atau gagal kirim hanya dicatat di log (cron backstop mengambil alih). Saklar `store_settings.broadcast_queue_mode = 'off'` mematikan producer dan membuat origin `ack` (`queue_disabled`, cron-only); default aktif. `telegram_promo_broadcast_enabled` tetap utuh.
@@ -235,7 +236,7 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
   kemudian pulih; riwayat recovery tidak dipotong8step. Tidak ada pesan tambahan
   setiap tick untuk perubahan identitas failure.
 - Binding hilang, state korup, get/put gagal → log tersanitasi + fallback stateless
-  hard **dan** soft pada :00/:30. Key belum ada bukan error. Ketika storage pulih,
+  hard **dan** soft hanya pada jadwal 00:00 UTC (FX-14, lokal; tidak dedup replay tick yang sama lintas isolate). Key belum ada bukan error. Ketika storage pulih,
   counter stateful kembali berjalan; tidak menganggap fallback sebagai ack KV.
 - Write counter diverifikasi sebelum pengiriman; ack start/reminder/recovery
   hanya ditulis setelah Telegram berhasil. Ack gagal dapat menyebabkan pesan

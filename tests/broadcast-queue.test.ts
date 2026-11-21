@@ -20,6 +20,7 @@ import {
 import { POST as broadcastOriginPost } from "@/app/api/internal/queue/broadcast/route";
 import { POST as cronLitePost } from "@/app/api/cron/lite/route";
 import {
+  BROADCAST_DLQ_QUEUE_NAME,
   BROADCAST_QUEUE_NAME,
   handleQueueBatch,
   type QueueEnv,
@@ -89,6 +90,37 @@ function postOrigin(body: unknown, secret = "cron-secret") {
     }),
   );
 }
+
+it("records a DLQ chunk once across redelivery without dispatching it and counts it in overview", async () => {
+  const payload = { v: 1, kind: "broadcast_deliveries", campaignId: "00000000-0000-4000-8000-202611190001", deliveryIds: [10, 11], enqueuedAt: Date.now() };
+  const ack = vi.fn();
+  const retry = vi.fn();
+  const msg = { id: "dlq-fixture", timestamp: new Date(), attempts: 1, body: payload, ack, retry };
+  const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
+    expect(url).toBe("https://origin.test/api/cron/broadcast-dlq");
+    expect(ack.mock.calls.length).toBe(fetchFn.mock.calls.length - 1);
+    const { POST } = await import("@/app/api/cron/broadcast-dlq/route");
+    return POST(new Request(url, init));
+  });
+  const batch = { queue: BROADCAST_DLQ_QUEUE_NAME, messages: [msg], ackAll: vi.fn(), retryAll: vi.fn() };
+  for (let i = 0; i < 2; i++) await handleQueueBatch(batch, { AXVARA_API_ORIGIN: "https://origin.test", AXVARA_CRON_SECRET: "cron-secret" }, { fetchFn, logFn: () => {} });
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+  expect(ack).toHaveBeenCalledTimes(2);
+  expect(retry).not.toHaveBeenCalled();
+  expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key GLOB 'broadcast_dlq:*'").all()).toEqual([
+    { value: JSON.stringify({ campaignId: payload.campaignId, deliveryIds: [10, 11] }) },
+  ]);
+  vi.stubEnv("ADMIN_EMAIL", "admin@axvara.tech");
+  vi.stubEnv("ADMIN_JWT_SECRET", "dlq-fixture-admin-secret");
+  vi.stubEnv("ADMIN_PASSWORD_SHA256", "a".repeat(64));
+  const { createAdminToken, createIdleToken } = await import("@/lib/auth");
+  const { token, sid } = await createAdminToken("admin@axvara.tech");
+  const { GET } = await import("@/app/api/admin/overview/route");
+  const res = await GET(new NextRequest("https://axvara.tech/api/admin/overview", {
+    headers: { cookie: `axvara_admin_token=${token}; axvara_idle=${await createIdleToken(sid)}` },
+  }));
+  expect(await res.json()).toMatchObject({ broadcast_dlq_chunks: 1 });
+});
 
 async function flushTimersUntilSettled<T>(promise: Promise<T>): Promise<T> {
   let done = false;
