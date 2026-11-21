@@ -73,70 +73,9 @@ export async function POST(request: NextRequest) {
   const failedCore: string[] = [];
   try {
     if (job === "payments") {
-      // A status GET has a 10s timeout. Reserve an extra 10s if reconciliation
-      // can send an inline admin review notice, plus time to settle the row.
-      const pollReserve = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_ADMIN_CHAT_ID ? 21_000 : 11_000;
-      result.payments_deferred = 0;
-      const admit = (remaining: number) => {
-        if (Date.now() + pollReserve <= deadline) return true;
-        result.payments_deferred = Number(result.payments_deferred) + remaining;
-        return false;
-      };
-      // Bounded (Paid 300-budget): KlikQRIS (limit 20) + NOWPayments (limit 20,
-      // shared budget/CAS, incl. known-id initializing for manual review)
-      // + late known-id (limit 20, 6h recheck, no revive/fulfill) + Sekalipay gateway (12/4/5).
-      // NOWPayments passes read key only => run saved-invoice flag-off (key
-      // present => readable; key absent => passes quietly return zeros).
-      const { reconcileDueKlikQrisPayments } = await import("@/lib/payments/klikqris-reconcile");
-      const klik = await reconcileDueKlikQrisPayments(db, admit);
-      Object.assign(result, klik);
-      try {
-        const { reconcileDueNowpaymentsPayments, reconcileLateKnownNowpaymentsPayments } = await import("@/lib/payments/payment-view");
-        const now = await reconcileDueNowpaymentsPayments(db, admit);
-        (result as Record<string, unknown>).nowpayments_checked = now.payments_checked;
-        (result as Record<string, unknown>).nowpayments_confirmed = now.payments_confirmed;
-        (result as Record<string, unknown>).nowpayments_manual_review = now.manual_review;
-        (result as Record<string, unknown>).payments_checked =
-          Number(result.payments_checked ?? 0) + now.payments_checked;
-        (result as Record<string, unknown>).payments_confirmed =
-          Number(result.payments_confirmed ?? 0) + now.payments_confirmed;
-        (result as Record<string, unknown>).payments_failed =
-          Number(result.payments_failed ?? 0) + now.payments_failed;
-        if (db.canSpend(6)) {
-          const late = await reconcileLateKnownNowpaymentsPayments(db, admit);
-          (result as Record<string, unknown>).nowpayments_late_checked = late.late_checked;
-          (result as Record<string, unknown>).nowpayments_late_manual_review = late.late_manual_review;
-        }
-      } catch (error) {
-        if (error instanceof QueryBudgetExceeded) throw error;
-        (result as Record<string, unknown>).nowpayments_error = "pass_failed";
-        failedCore.push("nowpayments");
-      }
-      if (db.canSpend(6)) {
-        try {
-          const { reconcileDueSekalipayGatewayPayments } = await import("@/lib/payments/payment-view");
-          Object.assign(result, await reconcileDueSekalipayGatewayPayments(db, admit));
-        } catch (error) {
-          if (error instanceof QueryBudgetExceeded) throw error;
-          result.gateway_error = "pass_failed";
-          failedCore.push("sekalipay_gateway");
-        }
-      }
-      if (db.canSpend(4)) {
-        try {
-          const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
-          Object.assign(result, await reconcileStaleSekalipayGatewayPayments(db, { admit }));
-        } catch (error) {
-          if (error instanceof QueryBudgetExceeded) throw error;
-          result.gateway_stale_error = "pass_failed";
-          failedCore.push("sekalipay_gateway_stale");
-        }
-      }
-      if (klik.payments_checked > 0 && db.canSpend(1) && Date.now() + 1_000 <= deadline) {
-        const { KLIKQRIS_POLL_HEALTH_KEY } = await import("@/lib/service-health");
-        await saveServiceHealth(db, KLIKQRIS_POLL_HEALTH_KEY, String(klik.payments_failed));
-      }
-      if (Number(result.payments_failed) > 0 || failedCore.length > 0) {
+      const { run } = await import("@/lib/cron/lite/jobs/payments");
+      const { paymentsFailed } = await run({ job, db, deadline, result, failedCore });
+      if (paymentsFailed) {
         return NextResponse.json(
           { ...result, ok: false, ...(failedCore.length ? { failed_subjobs: failedCore } : {}) },
           { status: 503 },

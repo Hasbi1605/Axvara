@@ -1,6 +1,7 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
 - `cron/lite` memuat job order TUNVN, AIVault, StoreBat dan Mirai dari `src/lib/cron/lite/jobs/small-suppliers.ts` secara dinamis. Dispatch tetap memakai `deadline - 5_000`; cek saldo sesudahnya memakai `db.canSpend(5)`. Error biasa menjadi `<supplier>_balance_error`, sedangkan `QueryBudgetExceeded` dibiarkan naik agar route mencatat yield.
+- Job `payments` dimuat dinamis dari `src/lib/cron/lite/jobs/payments.ts`. Urutan Klik → NOWPayments (+late `canSpend(6)`) → gateway `canSpend(6)` → gateway basi `canSpend(4)` → health Klik `canSpend(1)`, cadangan 11/21 dtk, dan ambang `canSpend` tidak berubah; keputusan HTTP 503 langsung tetap di route sesudah job, sebelum penanda generik.
 
 ### Cron pembayaran, notifikasi dan fulfillment — 21 November 2026 (lokal)
 

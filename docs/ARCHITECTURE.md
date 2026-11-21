@@ -2106,7 +2106,7 @@ axvara/
 │   ├── cron/lite/
 │   │   ├── jobs.ts             # daftar job dan tipe LiteJob, tanpa impor
 │   │   ├── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis
-│   │   └── jobs/               # badan job lazy via await import(): promo.ts, cleanup.ts, notify.ts, small-suppliers.ts (order TUNVN/AIVault/StoreBat/Mirai), pedia.ts (order/saldo/statistik)
+│   │   └── jobs/               # badan job lazy via await import(): payments.ts (reconcile Klik/NOW/gateway+stale+health; 503 tetap di route), promo.ts, cleanup.ts, notify.ts, small-suppliers.ts (order TUNVN/AIVault/StoreBat/Mirai), pedia.ts (order/saldo/statistik)
 │   ├── fulfillment/
 │   │   ├── deliver.ts           # BARREL
 │   │   └── delivery/            # claim, send, process, ensure, reconcile, handover,
@@ -6799,12 +6799,12 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   - `refreshFx` menjalankan dua `GET /estimate` secara berurutan dan selesai penuh sebelum `GET /merchant/coins` + `fetchMinimums` dimulai (mencegah burst paralel ~9+ request ke NOWPayments).
   - Pada HTTP `429` di `estimate`, dilakukan maksimal satu retry dengan jeda `Retry-After` bila `≤ 5` dtk atau `2_000` ms fallback selama masih muat dalam `totalDeadlineMs`.
   - `fetchMinimums` memakai `CONCURRENCY = 2` (dibatasi `≤ 2` termasuk saat `opts.concurrency` disetel lebih tinggi) dan berhenti dini pada `429` (`coins_http_429`), mempertahankan `coins_json`/`coins_refreshed_at` lama sambil tetap memajukan `fx_effective_at` bila FX sukses.
-- **Rekonsiliasi & expiry Sekalipay gateway basi (`src/lib/payments/sekalipay-gateway.ts`, `payment-view.ts`, `src/app/api/cron/lite/route.ts`):**
-  - `reconcileStaleSekalipayGatewayPayments(db, { limit = 5 })` dipanggil di `cron/lite?job=payments` setelah `reconcileDueSekalipayGatewayPayments` (yang `late = true`-nya mengecualikan order `dibatalkan`/`failed` dan baris lewat `expires_at + 30 mnt` agar tidak membakar cooldown 6 jam lebih dulu):
+- **Rekonsiliasi & expiry Sekalipay gateway basi (`src/lib/payments/sekalipay-gateway.ts`, `payment-view.ts`):**
+  - `reconcileStaleSekalipayGatewayPayments(db, { limit = 5 })` dipanggil dari `src/lib/cron/lite/jobs/payments.ts` (`cron/lite?job=payments`) setelah `reconcileDueSekalipayGatewayPayments` (yang `late = true`-nya mengecualikan order `dibatalkan`/`failed` dan baris lewat `expires_at + 30 mnt` agar tidak membakar cooldown 6 jam lebih dulu):
     - Menyeleksi `sekalipay_gateway` `initializing`/`pending` (tanpa marker `manual_review`/`needs_review`) yang order-nya final (`kadaluarsa`/`dibatalkan`/`batal`/`expired`/`failed`) ATAU lewat `min(pt.expires_at, o.expires_at) + 30 mnt`, dibatasi cooldown `last_checked_at` 30 menit dan `db.canSpend`.
     - `initializing` tanpa `provider_payment_id` atau `provider_order_id` ditutup ke `expired` tanpa memanggil provider.
     - Baris ber-ref memanggil `GET payment/<ref>` lewat `gatewayFetch`: `404` atau `pending`/`unpaid`/`expired`/`canceled`/`cancelled`/`failed` menutup `payment_transactions` menjadi `failed` (order `dibatalkan`/`failed`) atau `expired` + `last_checked_at`; `paid` (atau `completed` sandbox) tidak mengubah order, mencatat `last_error='sekalipay_gateway_late_manual_review'`, dan mengirim alert admin Telegram sekali (CAS `last_admin_alert_at IS NULL`); error jaringan/5xx/429 mempertahankan status untuk dicoba lagi ≥30 mnt kemudian.
-  - Akar penyebab di `cron/lite` `runExpiry`: `gatewayExpired` menutup `initializing` tanpa `provider_payment_id` secara atomik lewat `transitionPendingPaymentOrder`, `orphanSwept` ikut menyapu `initializing` `sekalipay_gateway` tanpa `provider_payment_id` pada order non-pending, sedangkan baris ber-ref tetap diserahkan ke rekonsiliasi GET provider agar pembayaran yang sudah masuk tidak pernah dibatalkan buta.
+  - `runExpiry` tetap di `src/app/api/cron/lite/route.ts`: `gatewayExpired` menutup `initializing` tanpa `provider_payment_id` secara atomik lewat `transitionPendingPaymentOrder`, `orphanSwept` ikut menyapu `initializing` `sekalipay_gateway` tanpa `provider_payment_id` pada order non-pending, sedangkan baris ber-ref tetap diserahkan ke rekonsiliasi GET provider agar pembayaran yang sudah masuk tidak pernah dibatalkan buta.
 
 ### 16.57 Ringkasan harian Telegram 07.00 WIB & backup harian D1 → R2 — 18 November 2026 (lokal; belum deploy)
 
