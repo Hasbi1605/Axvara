@@ -1,4 +1,4 @@
--- 0152_product_group_member_update_guard.sql — audit AU-G2-3 (21 Nov 2026).
+-- 0153_product_group_member_update_guard.sql — audit AU-G2-3 (21 Nov 2026).
 --
 -- pg_member_valid_insert only guards INSERT. An UPDATE of
 -- product_group_members.product_id could still move a member onto an archived

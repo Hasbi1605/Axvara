@@ -10,6 +10,7 @@ import type {
   EditMessageMediaParams,
   EditMessageCaptionParams,
   TelegramMessage,
+  TelegramUser,
   WebhookInfo,
 } from "./types";
 import { applyButtonStyles } from "./button-style";
@@ -87,6 +88,12 @@ async function callApi<T>(
 export async function sendMessage(params: SendMessageParams): Promise<TelegramApiResponse<TelegramMessage>> {
   return callApi<TelegramMessage>("sendMessage", params as unknown as Record<string, unknown>);
 }
+
+export async function getMe(): Promise<TelegramApiResponse<TelegramUser>> {
+  return callApi<TelegramUser>("getMe", undefined, 5_000);
+}
+
+export { classifyTelegramSend, type TelegramSendOutcome } from "./send-outcome";
 
 // Telegram harus mengambil URL foto lalu mengunggahnya; saat API lambat
 // (insiden 2026-11-03) 10 detik terlalu pendek dan foto tetap terkirim

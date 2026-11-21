@@ -787,7 +787,7 @@ export async function POST(request: NextRequest) {
         if (hasTime(TIME_TELEGRAM_BATCH)) {
           const telegramNotifications = await retryPendingTelegramNotifications(FULFILLMENT_PER_RUN, {
             created: pendingCreated > 0, paid: pendingPaid > 0, paidAdmin: pendingPaidAdmin > 0, paidAdminWeb: pendingPaidAdminWeb > 0,
-          }, database);
+          }, database, hasTime);
 
           results.telegram_order_notifications_retried = telegramNotifications.created;
           results.telegram_paid_notifications_retried = telegramNotifications.paid;

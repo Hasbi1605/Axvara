@@ -149,7 +149,7 @@ describe("Telegram webhook guard (tg_webhook)", () => {
             },
           };
         }
-        return { ok: true, result: true };
+        return { ok: true, result: method === "sendMessage" ? { message_id: 1 } : true };
       });
 
       const res = await guardTelegramWebhook(db, { nowMs });
@@ -208,7 +208,7 @@ describe("Telegram webhook guard (tg_webhook)", () => {
             },
           };
         }
-        return { ok: true, result: true };
+        return { ok: true, result: method === "sendMessage" ? { message_id: 1 } : true };
       });
 
       // t0: first kick + alert
@@ -267,14 +267,20 @@ describe("Telegram webhook guard (tg_webhook)", () => {
     }
   });
 
-  it("sendMessage timeout counts as delivered: stuck/recovery alerts are not resent every minute (incident 2026-11-20)", async () => {
+  it.each([
+    ["timeout", () => { throw new DOMException("aborted", "AbortError"); }],
+    ["network loss", () => { throw new Error("Network connection lost"); }],
+    ["unreadable JSON", () => new Response("upstream failure", { status: 502 })],
+    ["Bot API 500", () => ({ ok: false, error_code: 500 })],
+    ["missing message id", () => ({ ok: true, result: {} })],
+  ])("%s counts as delivered: stuck/recovery alerts are not resent every minute", async (_kind, sendOutcome) => {
     const fx = createD1Fixture();
     try {
       const db = createDatabaseAccess(fx.db);
       const t0 = Date.UTC(2026, 10, 20, 14, 10, 0);
       let pending = 5;
       const { calls } = mockTelegramFetch((method) => {
-        if (method === "sendMessage") throw new DOMException("aborted", "AbortError");
+        if (method === "sendMessage") return sendOutcome();
         if (method === "getWebhookInfo") {
           return { ok: true, result: { url: CANONICAL_URL, has_custom_certificate: false, pending_update_count: pending,
             ...(pending > 0 ? { last_error_date: Math.floor(t0 / 1000) - 10, last_error_message: "Timeout" } : {}) } };
@@ -283,6 +289,7 @@ describe("Telegram webhook guard (tg_webhook)", () => {
       });
       const r1 = await guardTelegramWebhook(db, { nowMs: t0 });
       expect(r1.alerted).toBe(true);
+      expect(calls.filter((c) => c.method === "sendMessage")).toHaveLength(1);
       calls.length = 0;
       const r2 = await guardTelegramWebhook(db, { nowMs: t0 + 60_000 });
       expect(r2.alerted).toBe(false);
@@ -292,10 +299,37 @@ describe("Telegram webhook guard (tg_webhook)", () => {
       calls.length = 0;
       const rRec = await guardTelegramWebhook(db, { nowMs: t0 + 2 * 60_000 });
       expect(rRec).toMatchObject({ status: "recovered", recovery_alerted: true });
+      expect(calls.filter((c) => c.method === "sendMessage")).toHaveLength(1);
       calls.length = 0;
       const rNext = await guardTelegramWebhook(db, { nowMs: t0 + 3 * 60_000 });
       expect(rNext.status).toBe("healthy");
       expect(calls.filter((c) => c.method === "sendMessage")).toHaveLength(0);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("definitely rejected stuck and recovery alerts both stay due", async () => {
+    const fx = createD1Fixture();
+    try {
+      const db = createDatabaseAccess(fx.db);
+      const t0 = Date.UTC(2026, 10, 20, 14, 10, 0);
+      let pending = 5;
+      let rejected = true;
+      const { calls } = mockTelegramFetch((method) => {
+        if (method === "sendMessage") return rejected ? { ok: false, error_code: 403 } : { ok: true, result: { message_id: 1 } };
+        if (method === "getWebhookInfo") return { ok: true, result: { url: CANONICAL_URL, pending_update_count: pending, last_error_date: t0 / 1000 } };
+        return { ok: true, result: true };
+      });
+      expect((await guardTelegramWebhook(db, { nowMs: t0 })).alerted).toBe(false);
+      rejected = false;
+      expect((await guardTelegramWebhook(db, { nowMs: t0 + 60_000 })).alerted).toBe(true);
+      pending = 0;
+      rejected = true;
+      expect((await guardTelegramWebhook(db, { nowMs: t0 + 120_000 })).recovery_alerted).toBe(false);
+      rejected = false;
+      expect((await guardTelegramWebhook(db, { nowMs: t0 + 180_000 })).recovery_alerted).toBe(true);
+      expect(calls.filter((c) => c.method === "sendMessage")).toHaveLength(4);
     } finally {
       fx.close();
     }

@@ -16,6 +16,18 @@
   Maintenance cleanup melanjutkan subjob independen, mencatat kegagalan dan
   meneruskan sinyalnya via alarm soft `notify_b` hingga cleanup berhasil.
 
+### Anti-spam notifikasi admin Lunas — 21 November 2026 (revisi pemulihan lokal, belum deploy)
+
+- Semua asal order (Web/Telegram/WhatsApp) memakai klaim D1 `admin-paid:<kode>` sebelum POST ke Telegram. D1 gagal → jangan kirim. Callback, fulfillment, dan route admin tidak boleh memulihkan `unknown`, `sending`, atau marker timeout lama. Panel Pesanan tetap sumber status.
+- Cron lite/heavy dan probe notify memakai jendela lunas 6 jam. `unknown`, `sending`, atau `admin-paid-timeout:<kode>` yang berumur ≥30 menit boleh satu pemulihan berlabel, hanya setelah `getMe` berhasil (maks. sekali/run, timeout 5 detik). Lease `sending` yang masih aktif tetap memblokir pemulihan; lease habis saja bukan izin retry. Sisakan ruang untuk probe + kirim dan cek lagi sebelum klaim. CAS menghabiskan kesempatan (`access_attempts=1`) sebelum POST; jangan reset penghitung atau memulihkan hasil ambigu kedua. Pemulihan ini bisa menghasilkan satu salinan tambahan bila kirim awal ternyata sampai.
+- Penolakan terstruktur 400/401/403/404 dan 429 tetap memakai retry biasa tanpa cek `getMe`; 429 menunggu `retry_after` (minimum 60 detik). Web tetap boleh satu fallback tanpa tombol untuk 400 dalam klaim yang sama. Selain marker timeout di atas, `failed` warisan tanpa `access_retry_at` tetap dikarantina. Migrasi `0152_admin_paid_notice_unknown.sql` wajib sebelum rilis; pemulihan tidak menambah migrasi, tidak mengubah pengiriman pembeli atau guard webhook.
+
+### Alert saldo SK/WR fail-closed & ringkasan alarm cron kompak — 21 November 2026 (berlaku setelah rilis CI)
+
+- **Insiden 21 Nov 02:00 & 02:01 WIB:** "💰 Saldo Sekalipay menipis — Sisa Rp133.880 (ambang Rp250.000)" terkirim dua kali saat D1 `internal error` ±30 mnt; setelah itu "⚠️ Cron AXVARA gagal" memuat ~17 baris dengan token `reference = e_…` berbeda-beda, lalu "✅ Cron AXVARA pulih" mengulang seluruh daftar yang sama (tampak dobel, walau hanya satu pesan).
+- **Saldo SK/WR (`src/lib/sekalipay/saldo.ts`, `src/lib/warung-rebahan/saldo.ts`):** gate alert kini cermin `supplier-balance-alert.ts` — state `sk_sync_state`/`wr_sync_state key='low_saldo_notified'` WAJIB **terbaca** lalu **diklaim atomik** (CAS `INSERT … ON CONFLICT … WHERE COALESCE(value,'')=?`) **sebelum** Telegram; hanya pemanggil dengan `changes=1` mengirim. Error baca D1, error tulis CAS, atau kalah CAS = **tidak kirim**; reservasi tidak di-rollback saat Telegram timeout/400/error (tidak ada resend tick berikut). Kebijakan tetap: alert di bawah ambang, ulang hanya setelah 6 jam atau turun ≥Rp5.000, diam saat pulih. Tabel/kolom state tidak berubah (tanpa migrasi); `sk_saldo_log`/`wr_saldo_log` history tetap, kegagalannya tidak membuka jalur kirim; refresh/fetch saldo, tampilan admin, dan gating order tidak berubah.
+- **Pesan alarm cron (`mcp-worker/src/cron.ts`, format saja):** `formatAlert` menormalkan error (buang token `reference = e_…`) dan mengelompokkan alasan yang sama menjadi satu baris `• <error> · <N> job: <3 nama pertama>, +<k> lainnya` (N≥2); kegagalan tunggal tetap satu baris `• <step>: <error>`; footer hint dipertahankan. `formatRecovery` mempertahankan judul dan `Gangguan sejak … ±… mnt.`, lalu satu baris `<N> job sempat gagal: <nama>, …` tanpa body error. **Tidak berubah:** ambang 2 hard / 6 soft / 3 OK, cadence reminder 6 jam, bentuk state KV `cron_alarm_v1`, fallback stateless, dan daftar step yang dilacak. Jangan menurunkan ambang atau mengubah state untuk "menghilangkan" pesan ini.
+
 ### Workers Logs `axvara-mcp` + runbook log Pages — 20 November 2026 (keputusan owner; berlaku setelah rilis CI)
 
 - **Keputusan owner:** aktifkan Workers Logs persisten (retensi 7 hari, dashboard Observability) di Worker `axvara-mcp` dengan invocation logs otomatis **ON**. Konfigurasi di `mcp-worker/wrangler.toml`: `[observability] enabled = true`, `head_sampling_rate = 1`, dan `[observability.logs] invocation_logs = true`. Sampling 1 agar kegagalan langka (queue/cron) tidak terlewat; turunkan hanya bila pemakaian bersama menuntut.
@@ -28,14 +40,14 @@
 - **temp-mail:** `temp-mail/wrangler.jsonc` sudah punya `observability.enabled = true` (tidak diubah paket ini); review privasi email terpisah bila hendak menyesuaikan `invocation_logs`.
 - **Follow-up opsional (belum dikerjakan, murni higiene):** token masih di query string beberapa route Pages (WA webhook `?token=`, `/api/orders/[code]/credentials ?token=`, unsubscribe, `lacak-pesanan ?wa=/?email=`). Karena log Pages tidak dipersistenkan, ini bukan bukti kebocoran log saat ini; pindahkan bila kelak Pages dimigrasikan ke Worker persisten.
 
-### Penjaga webhook Bot Telegram (`tg_webhook`) — 20 November 2026 (lokal, belum deploy)
+### Penjaga webhook Bot Telegram (`tg_webhook`) — 20 November 2026 (berlaku setelah rilis CI)
 
 - **Insiden 20 Nov 2026 12:40–12:58 WIB:** edge Cloudflare mengembalikan HTTP 500 ke pengiriman webhook Telegram (request tidak pernah mencapai Pages Functions; situs dari SIN normal). Karena Telegram mengirim update berurutan per bot, satu update gagal menahan seluruh antrean pembeli ~18 menit (`pending_update_count` naik ke 10). Pemulihan manual yang berhasil: `deleteWebhook(drop_pending_updates:false)` lalu `setWebhook(url, secret_token, max_connections:40, allowed_updates:["message","callback_query"], drop_pending_updates:false)` → antrean mengalir habis dalam ~15 detik.
 - **Guard otomatis (`src/lib/telegram/webhook-guard.ts`, job `cron/lite?job=tg_webhook`):**
   - Dijadwalkan setiap 1 menit di `mcp-worker/src/cron.ts` (`group: "notify"`, `alarm: "soft"`). Wajib ringan (1 panggilan `getWebhookInfo` saat sehat; ≤3 saat auto-kick), **tidak pernah** melempar exception (catch → `{ status, error }` tersanitasi), dan **tidak pernah** mencatat token/secret.
   - **Kondisi tertahan (`isStuck`):** `pending_update_count >= 3` DAN `last_error_date` dalam 180 detik terakhir. **Salah URL (`isWrongUrl`):** `url !== canonicalWebhookUrl()` (`${siteOrigin()}/api/telegram/webhook`, berbagi single source dengan `/api/admin/telegram/setup`).
   - **Auto-recover:** paling banyak 1× per 5 menit (CAS di `store_settings.tg_webhook_guard_state` `last_kick_at`). Memanggil `deleteWebhook({ drop_pending_updates: false })` lalu `setWebhook(...)` dengan parameter kanonis dan `drop_pending_updates: false`. **Dilarang keras** mengirim `drop_pending_updates: true`. Jika `setWebhook` gagal, coba ulang 1× seketika agar webhook tidak tertinggal kosong; bila kedua percobaan gagal, kirim alert kritis ke `TELEGRAM_ADMIN_CHAT_ID`.
-  - **Notifikasi admin:** mengirim `"⚠️ Bot Telegram tertahan: {pending} update antre · error terakhir {hh:mm WIB}: {message} · webhook dipasang ulang otomatis"` (rate-limit 1×/30 menit selama tertahan) dan `"✅ Bot Telegram pulih (antrean kosong)"` sekali saat `pending_update_count` kembali ke 0 setelah alert tertahan. Revisi 20 Nov malam: `sendMessage` yang timeout dianggap terkirim untuk kedua alert ini (Telegram bisa menahan lalu tetap mengirim saat Bot API hang), agar run tiap menit tidak menumpuk salinan.
+  - **Notifikasi admin:** mengirim `"⚠️ Bot Telegram tertahan: {pending} update antre · error terakhir {hh:mm WIB}: {message} · webhook dipasang ulang otomatis"` (rate-limit 1×/30 menit selama tertahan) dan `"✅ Bot Telegram pulih (antrean kosong)"` sekali saat `pending_update_count` kembali ke 0 setelah alert tertahan. Revisi 21 Nov (lokal): kedua alert memperbarui cooldown/latch pada hasil `sent` atau ambigu, bukan hanya pada sukses/timeout; penolakan pasti dan 429 tetap due seperti sebelumnya.
   - **`GET /api/admin/bot/health`:** ikut melaporkan `pending_update_count`, `last_error_date`, `last_error_message`, dan `last_auto_kick_at` pada objek `webhook`.
   - FX-14 (lokal): probe gagal/URL salah/tertahan → lite `503`, termasuk saat kick baru diterima tetapi belum dikonfirmasi probe berikutnya. Alarm soft existing; `healthy`/`recovered` tidak gagal. Ringkasan baca sampel tersanitasi (umur ≤5 menit) dari `store_settings`, tanpa probe Telegram baru.
 
@@ -46,14 +58,14 @@
 - **Hemat:** commit yang hanya mengubah `docs/**` / `*.md` tidak memicu `ci.yml` (`paths-ignore`). Gabungkan perubahan kecil dalam satu push; setiap push ke `main` membatalkan run sebelumnya (`cancel-in-progress`) tetapi menit run yang dibatalkan tetap terpakai.
 - **Bila kuota habis (urutan):** (1) owner menaikkan budget Actions di GitHub Billing (mis. US$5–10/bulan ≈ 600–1.250 menit) atau upgrade Pro; (2) alihkan runner tanpa edit workflow: set repo variable `CI_RUNS_ON` ke JSON label runner sendiri, mis. `["self-hosted","axvara"]` (runner self-hosted gratis; hapus variable untuk kembali ke `ubuntu-latest`); runner perlu Node 22, akses jaringan ke Cloudflare/Heroku/GitHub, dan tidak boleh menyimpan secret di disk di luar mekanisme Actions; (3) deploy manual hanya sebagai recovery atas permintaan eksplisit owner (aturan AGENTS.md tetap).
 
-### Telegram post-purchase & batas hemat Free dilonggarkan — 19 November 2026 (lokal, belum deploy)
+### Telegram post-purchase & batas hemat Free dilonggarkan — 19 November 2026 (berlaku setelah rilis CI)
 
 - **Batas Telegram (Workers Paid):** `retryPendingTelegramNotifications`/`sendPendingOrderReminders` per panggilan `20 → 50`, `retryInvoicePendingTelegramInvoices` `12 → 25` (`attempts<5` + backoff claim provider 60 dtk tetap). `cron/lite` `notify_a` memakai 50/25; `notify_b` pengingat 50. Cadence lama 60 mnt diganti TG-POLISH-B (lihat `payments.md`). Pemanggil lama tetap memakai default fungsi; jangan menaikkan lagi tanpa mengukur 429.
 - **`cron/operations`:** `TIME_TELEGRAM_BATCH` `12_000 → 4_000` dan gerbang pre-batch `budget.fits(1 + 4×units)`/`1+4×12` dihapus saat ukuran antrean tak diketahui; batas nyata adalah `hasTime` per item + `canSpend` per order di dalam `retryPending…`/`sendPendingOrderReminders`/`retryInvoice…`. `COST_PER_NOTIFICATION` dihapus. Jangan menghapus `RUN_DEADLINE_MS` 45 dtk atau guard `canSpend` runaway.
 - **Broadcast pacing:** `TELEGRAM_RECIPIENT_PACE_MS` `250 → 100` ms (≈10 penerima/dtk, di bawah ~30 msg/dtk Telegram). `TELEGRAM_SAME_CHAT_PACE_MS = 300` ms dan backoff `retry_after` 429 TIDAK berubah.
 - **Tab Pesanan/garansi/restok/.txt:** lihat ARCHITECTURE §16.63. Migrasi `0144_telegram_restock_alerts.sql` forward-only; cron `notify_b` menjalankan `processDueRestockAlerts` (maks 50/tick, klaim atomik, 403 → cancelled, 429 → rollback+stop). Klaim garansi memakai `pending_action="wclaim:<code>"` + forward ke `TELEGRAM_ADMIN_CHAT_ID` (rate-limit 3/order/24 jam di `buyer_notice_log`), tanpa tabel baru; audit 21 Nov 2026: hanya pengiriman yang TERKONFIRMASI (`{ok:true}`) yang menghapus state dan menulis baris `sent` — penolakan/timeout Bot API menyisakan `wclaim:` tanpa baris ledger (tanpa memakan kuota), dan teks diterima + screenshot ditolak dicatat `failed/warranty_claim_partial` dengan copy untuk mengirim ulang screenshot via WhatsApp admin. Pengiriman fulfillment awal sengaja tidak diubah.
 
-### Wave 2 (B1/B2) supplier multi-link & cron fase paralel — 19 November 2026 (lokal, belum deploy)
+### Wave 2 (B1/B2) supplier multi-link & cron fase paralel — 19 November 2026 (berlaku setelah rilis CI)
 
 - Supplier TUNVN/AIVault/StoreBat/Mirai memproses hingga 8 link + 8 order yatim per panggilan dengan stop pada deadline, budget D1 dan HTTP `429`; fence kirim tidak berubah. Detail di ARCHITECTURE bagian Wave 2.
 - Cron Worker: fase `core` (`payments → expiry → fulfillment`) dan `heavy` **wajib tetap berurutan**; jangan paralelkan `payments` dengan `expiry` (order yang dibayar mepet deadline bisa ke-expire). Fase `orders`/`catalog`/`notify` paralel maks 4. Probe sintetis berjalan setelah fase lite, sebelum heavy.
@@ -72,7 +84,7 @@
 - **Interval saldo & pasar (A7/A8):** `CRYPTO_REFRESH_AFTER_MS = 10 * 60_000` (sebelumnya 30 mnt, pacing G2 tetap), `CRYPTO_MARKET_MEMO_MS = 15_000` (sebelumnya 60 dtk); `SUPPLIER_BALANCE_CHECK_INTERVAL_MS = 5 * 60 * 1000` dan IndoSMM `5 * 60 * 1000` (sebelumnya 30 mnt); WR/SK saldo `10 * 60 * 1000` (sebelumnya 60 mnt, kini juga dicek di `cron/lite` `wr_orders`/`sk_orders`; throttle alert Telegram 6 jam/drop-step tetap).
 - **Hapus probe kuota harian D1 dari middleware (A11):** `src/middleware.ts` tidak lagi memanggil `isD1InMaintenance` pada halaman SSR (Free-tier daily row limit tidak berlaku di Workers Paid). Modul `src/lib/d1-maintenance.ts` dan rute `/maintenance` tetap dipertahankan.
 
-### Queue pengiriman siaran/promo (`axvara-broadcast`) & penghapusan batas hemat Free — 19 November 2026 (lokal, belum deploy)
+### Queue pengiriman siaran/promo (`axvara-broadcast`) & penghapusan batas hemat Free — 19 November 2026 (berlaku setelah rilis CI)
 
 - **Workers Paid:** batas hemat era Free (`Math.min(8, limit)`, cadangan 11 detik Telegram, batas 20 detik, budget bersama 40 statement untuk dispatch) **dihapus** dari jalur pengiriman siaran/promo.
 - **Resource Cloudflare Queues WAJIB dibuat PM sebelum deploy** (CI `wrangler pages deploy` + `wrangler deploy --config mcp-worker/wrangler.toml` gagal bila resource belum ada):
@@ -117,13 +129,13 @@
 
 - Keputusan owner+PM: `/api/games/catalog` dan `/api/games/catalog/[slug]` tetap `private, no-store` tanpa `cachePublicCatalog`. Data 7 hari: ±2 + 5 request (vs 576 `/api/catalog`), 1 order Games sepanjang masa — manfaat cache ≈0, risiko harga basi tetap ada. Pertimbangkan lagi bila trafik Games ratusan–ribuan request/hari; scope revisi `games` + bump di sync Games sudah tersedia. Wajib `npm run build:pages` sebelum push perubahan route (insiden `15d275e8`).
 
-### C-H consumer Queue pengiriman instan & DLQ (`axvara-mcp`) — 18 November 2026 (lokal, belum deploy)
+### C-H consumer Queue pengiriman instan & DLQ (`axvara-mcp`) — 18 November 2026 (berlaku setelah rilis CI)
 
 - `mcp-worker/wrangler.toml` mendefinisikan consumer `axvara-order-fulfillment` (`max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`), consumer DLQ `axvara-order-fulfillment-dlq` (`max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`), dan `[vars] QUEUE_CONSUMER_MODE = "active"`. Resource Queue wajib dibuat PM sebelum push; jangan menghapus/mengubah binding tersebut tanpa memperbarui kontrak producer di paket C-S.
 - `mcp-worker/src/queue.ts` + `index.ts` (`queue(batch, env, ctx)`): validasi pesan skema v1 (`AXV|AXP|AXG`, `order_paid|supplier_settled`, `apps|pedia|games`, `shadow|active`) sebelum fetch; `QUEUE_CONSUMER_MODE = "off"` me-`ack()` tanpa memanggil origin; paralel terbatas `≤ 5` dengan timeout `45` detik; `settled: true` (`done|async_polling|manual_required|not_paid|dry_run_ok|queue_disabled`) → `ack()`, `settled: false` → `retry({ delaySeconds: max(retrySec, backoff(attempts)) })` hingga `attempts < 5`; pada `attempts ≥ 5` log error `unsettled_to_dlq` + retry backoff agar `max_retries=4` existing mengirim ke DLQ (cron backstop tetap), `400` → `ack()`, `401/403/5xx`/timeout/network → `retry` backoff `5, 15, 45, 120` detik.
 - Consumer DLQ mengirim Telegram admin (`TELEGRAM_ADMIN_CHAT_ID`) dengan sanitasi error/secret/PII (`sanitizeError` dari `cron.ts` + redaksi token langsung/email); `ack()` hanya setelah kirim Telegram sukses, selain itu `retry()`. Log per pesan terstruktur tanpa PII/secret.
 
-### C-S Queue producer/origin — 18 November 2026 (lokal, belum deploy)
+### C-S Queue producer/origin — 18 November 2026 (berlaku setelah rilis CI)
 
 Binding Pages `ORDER_FULFILLMENT_QUEUE`→`axvara-order-fulfillment` bukan env
 secret. PM menyiapkan resource/consumer C-H; C-S tidak mengubah mcp-worker.
@@ -167,7 +179,7 @@ PDP meneruskan UA, bukan secret cron ke katalog/PDP publik. Kontrak A-S tanpa
 cron header pada halaman publik tetap. Jangan menyimpan kontak/target/order code
 di dimensi baru. Query SQL API harian per metode ada di ARCHITECTURE B-S;
 daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
-### B-H cache edge berbasis revisi & invalidasi — 18 November 2026 (lokal, belum deploy)
+### B-H cache edge berbasis revisi & invalidasi — 18 November 2026 (berlaku setelah rilis CI)
 
 - `src/lib/catalog-cache.ts` (`d1-v2/{scope}/{rev}/{key}`): tiga kunci revisi di `store_settings` (`catalog_revision_market`, `catalog_revision_pedia`, `catalog_revision_games`) dengan memoization per-isolate 5 detik (`WeakMap` lewat `unwrapD1`) dan coalescing pembacaan in-flight. (Histori: restorasi `Cache-Control` asli via `X-Axvara-Origin-Cache-Control` digantikan kebijakan browser `no-cache` 19 Nov.)
 - **Aturan `bumpCatalogRevision(scope)`:** maksimal 1 statement tulis `UPSERT` (`store_settings`) per eksekusi bermutasi (`changed > 0`); dilarang memanggil pada tick/sync no-op (`changed === 0`), replay idempoten, atau kegagalan. Pada `games/sk-catalog-sync.ts`, pembaruan `catalog_revision_games` saat berubah digabung dalam batch atomik penanda sukses yang sama (0 statement ekstra).
@@ -243,6 +255,11 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
 - Non-2xx membawa field JSON `error` (fallback teks), diringkas maksimal120karakter
   sesudah redaksi bearer/token/key/secret dan secret Worker yang diketahui.
   Error jaringan/KV juga diredaksi. Body sukses tetap hanya menentukan `more`.
+  **Revisi 21 Nov 2026 (format saja):** `formatAlert` mengelompokkan kegagalan
+  beralasan sama (token `reference = e_…` dibuang) jadi satu baris
+  `• <error> · <N> job: <3 nama>, +<k> lainnya`; `formatRecovery` mengganti daftar
+  penuh dengan `<N> job sempat gagal: <3 nama>, +<k> lainnya`. Ambang, cadence,
+  state `cron_alarm_v1`, fallback stateless, dan step yang dilacak tidak berubah.
   Reminder6jam mencakup step baru yang gagal sejak pesan terakhir, termasuk yang
   kemudian pulih; riwayat recovery tidak dipotong8step. Tidak ada pesan tambahan
   setiap tick untuk perubahan identitas failure.

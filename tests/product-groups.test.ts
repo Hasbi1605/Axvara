@@ -218,7 +218,7 @@ describe("product groups — DB & invalidation", () => {
   });
 
   it("grup tanpa winner tidak menyembunyikan anggota", async () => {
-    // Produk 10 harus ada lebih dulu: guard 0152 menolak anggota menunjuk produk
+    // Produk 10 harus ada lebih dulu: guard 0153 menolak anggota menunjuk produk
     // yang tidak ada/arsip, sedangkan produk nonaktif (archived_at NULL) sah.
     f.sql.exec("INSERT INTO products(id,name,slug,price,stock,is_active) VALUES(10,'Off','off',1,0,0)");
     f.sql.exec("UPDATE product_group_members SET product_id=10 WHERE product_id=1");

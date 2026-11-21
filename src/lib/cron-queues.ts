@@ -1,14 +1,28 @@
 import { STALE_INITIALIZING_SQL } from "@/lib/payments/stale-initializing";
 
-/** Notif admin "Lunas" Telegram/WhatsApp yang timeout baru diulang setelah 20 menit
- * (lihat recordAdminPaidTimeout di order-notifications). Hanya baris `failed`
- * (timeout tercatat) yang menahan antrean; klaim `sending` dipagari CAS klaim
- * pre-send, dan baris `sent` berarti sudah dikirim (AU-E2-7). */
-export const ADMIN_PAID_TIMEOUT_PREFIX = "admin-paid-timeout:";
-export const ADMIN_PAID_TIMEOUT_COOLDOWN_SQL = `NOT EXISTS(SELECT 1 FROM buyer_notice_log bt
-  WHERE bt.idempotency_key='${ADMIN_PAID_TIMEOUT_PREFIX}' || orders.code
-    AND bt.status='failed'
-    AND julianday(bt.updated_at) > julianday('now','-20 minutes'))`;
+export const ADMIN_PAID_PREFIX = "admin-paid:";
+export const LEGACY_ADMIN_PAID_TIMEOUT_PREFIX = "admin-paid-timeout:";
+// On failed rows, a retry timestamp proves Bot API rejection. Old 'failed'
+// rows without one may have been accepted and are quarantined.
+export const ADMIN_PAID_RETRY_DUE = `b.status='failed' AND julianday(b.access_retry_at) <= julianday('now')`;
+export const ADMIN_PAID_ORDER_WINDOW = `o.status='lunas' AND o.payment_status='paid'
+  AND julianday(COALESCE(o.paid_at, o.updated_at)) >= julianday('now','-6 hours')`;
+export const ADMIN_PAID_RECOVERY_DUE = `b.access_attempts=0 AND julianday(b.updated_at) <= julianday('now','-30 minutes')
+  AND (b.status<>'sending' OR b.access_retry_at IS NULL OR julianday(b.access_retry_at) <= julianday('now'))
+  AND (b.status IN ('unknown','sending') OR (b.status='failed' AND b.idempotency_key='${LEGACY_ADMIN_PAID_TIMEOUT_PREFIX}' || b.order_code))`;
+const adminKey = `'${ADMIN_PAID_PREFIX}' || o.code`;
+const legacyKey = `'${LEGACY_ADMIN_PAID_TIMEOUT_PREFIX}' || o.code`;
+// A canonical row, if present, wins over the legacy marker even when not due.
+export const ADMIN_PAID_RECOVERY_KEY = `(SELECT CASE WHEN ${ADMIN_PAID_RECOVERY_DUE} THEN b.idempotency_key END
+  FROM buyer_notice_log b WHERE b.idempotency_key IN (${adminKey}, ${legacyKey}) AND b.order_code=o.code
+  ORDER BY b.idempotency_key='${ADMIN_PAID_PREFIX}' || b.order_code DESC LIMIT 1)`;
+const PAID_ADMIN_PENDING = `${ADMIN_PAID_ORDER_WINDOW} AND (
+  (NOT EXISTS(SELECT 1 FROM buyer_notice_log bt WHERE bt.idempotency_key=${legacyKey})
+  AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.idempotency_key=${adminKey}
+    AND (${ADMIN_PAID_RETRY_DUE}) IS NOT TRUE)) OR ${ADMIN_PAID_RECOVERY_KEY} IS NOT NULL)`;
+export const WEB_PAID_ADMIN_PENDING_WHERE = `o.sales_channel='web' AND ${PAID_ADMIN_PENDING}`;
+export const CHAT_PAID_ADMIN_PENDING_WHERE = `o.sales_channel IN ('telegram','whatsapp')
+  AND o.telegram_paid_admin_notified_at IS NULL AND ${PAID_ADMIN_PENDING}`;
 
 /** A forced phase needs only its own probes. The legacy rotation still reads
  * every signal, preserving its admission and anti-starvation decisions. */
@@ -25,7 +39,7 @@ export function operationQueueProbeSql(phase: string | null, qrisWhere: string, 
     ["fulfillment", "(SELECT COUNT(*) FROM fulfillment_jobs fj JOIN orders o ON o.code=fj.order_code WHERE fj.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid') AS jobs"],
     ["notify", "(SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND telegram_order_notified_at IS NULL) AS created"],
     ["notify", "(SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid' AND telegram_paid_notified_at IS NULL) AS paid"],
-    ["notify", `(SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL AND ${ADMIN_PAID_TIMEOUT_COOLDOWN_SQL}) AS paid_admin`],
+    ["notify", `(SELECT COUNT(*) FROM orders o WHERE ${CHAT_PAID_ADMIN_PENDING_WHERE}) AS paid_admin`],
     ["notify", `(SELECT COUNT(*) FROM orders o WHERE ${webPaidWhere}) AS paid_admin_web`],
     ["notify", `(SELECT EXISTS(SELECT 1 FROM buyer_notice_log
       WHERE idempotency_key >= 'email:credential_access:' AND idempotency_key < 'email:credential_access;'

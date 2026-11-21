@@ -201,17 +201,52 @@ function wib(ms: number): string {
   return new Date(ms + 7 * 60 * 60 * 1000).toISOString().slice(11, 16);
 }
 
+/** Alasan gagal tanpa identitas step: status + error ternormalisasi. */
+function describeError(failure: PhaseOutcome): string {
+  const error = failure.error ? normalizeErrorText(failure.error) : undefined;
+  if (failure.status && error) return `HTTP ${failure.status} — ${error}`;
+  if (failure.status) return `HTTP ${failure.status}`;
+  return error ?? "gagal";
+}
+
 function describe(failure: PhaseOutcome): string {
-  return `${failure.step}: ${failure.status ? `HTTP ${failure.status}${failure.error ? ` — ${failure.error}` : ""}` : failure.error ?? "gagal"}`;
+  return `${failure.step}: ${describeError(failure)}`;
+}
+
+/** Strip token acak D1 (`; reference = e_...`) agar 12 kegagalan bertakar
+ * sama-beda-referensi dikelompokkan menjadi satu baris. */
+export function normalizeErrorText(value: string): string {
+  return value
+    .replace(/[;,]?\s*reference\s*=\s*[^\s,;]+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Nama job pertama (maks 3) + sisa. */
+function summarizeNames(names: string[]): string {
+  const shown = names.slice(0, 3).join(", ");
+  return names.length > 3 ? `${shown}, +${names.length - 3} lainnya` : shown;
 }
 
 export function formatAlert(failures: PhaseOutcome[], scheduledTime: number, kind: "start" | "reminder" | "stateless" = "stateless", since?: number | null): string {
   const title = kind === "reminder"
     ? `⏳ Cron AXVARA masih gagal sejak ${wib(since ?? scheduledTime)} WIB`
     : `⚠️ Cron AXVARA gagal (tick ${wib(scheduledTime)} WIB)`;
+  const groups = new Map<string, { label: string; steps: string[]; first: PhaseOutcome }>();
+  for (const failure of failures) {
+    const label = describeError(failure);
+    const group = groups.get(label) ?? { label, steps: [], first: failure };
+    group.steps.push(failure.step);
+    groups.set(label, group);
+  }
+  const lines = [...groups.values()].map((group) =>
+    group.steps.length === 1
+      ? `• ${describe(group.first)}`
+      : `• ${group.label} · ${group.steps.length} job: ${summarizeNames(group.steps)}`,
+  );
   return [
     title,
-    ...failures.map((f) => `• ${describe(f)}`),
+    ...lines,
     "",
     "Periksa error origin, koneksi provider, dan batas CPU pada Functions metrics; HTTP 503 saja belum menentukan penyebabnya.",
     kind === "stateless" ? "" : "Pesan berikutnya: pengingat tiap 6 jam, atau ✅ saat pulih.",
@@ -222,10 +257,13 @@ export function formatAlert(failures: PhaseOutcome[], scheduledTime: number, kin
 export function formatRecovery(since: number, now: number, lastFailures: string[]): string {
   const minutes = Math.max(1, Math.round((now - since) / 60000));
   const duration = minutes >= 60 ? `${Math.floor(minutes / 60)} jam ${minutes % 60} mnt` : `${minutes} mnt`;
+  // `describe()` menyimpan `<step>: <detail>`; step bisa memuat ':' (mis. lite:payments),
+  // jadi potong pada pemisah ': ' pertama.
+  const names = lastFailures.map((line) => line.split(": ")[0] || line);
   return [
     `✅ Cron AXVARA pulih (${wib(now)} WIB)`,
     `Gangguan sejak ${wib(since)} WIB, ±${duration}.`,
-    ...(lastFailures.length ? ["Terakhir gagal:", ...lastFailures.map((f) => `• ${f}`)] : []),
+    ...(names.length ? [`${names.length} job sempat gagal: ${summarizeNames(names)}`] : []),
   ].join("\n");
 }
 

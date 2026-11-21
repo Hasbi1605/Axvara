@@ -1,7 +1,7 @@
 // src/lib/warung-rebahan/saldo.ts — Monitor saldo WR + estimasi kapasitas order.
 // Dipanggil cron (tiap 1 jam) dan admin (refresh manual).
 
-import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import { fetchBalance, isWrEnabled } from "./client";
 
 export type SaldoCheckResult = {
@@ -26,6 +26,64 @@ export function getSaldoThreshold(): number {
   return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : SALDO_THRESHOLD_DEFAULT;
 }
 
+const LOW_SALDO_REPEAT_MS = 6 * 60 * 60 * 1000;
+const LOW_SALDO_STEP_IDR = 5000;
+
+/** Policy tetap: kirim ulang hanya bila belum pernah kirim dalam 6 jam, atau
+ * saldo TURUN melewati kelipatan Rp5.000. State rusak/kosong = due. */
+function lowSaldoDue(raw: string, balance: number, now: number): boolean {
+  if (!raw) return true;
+  const [lastBalanceStr, lastTsStr] = raw.split("|");
+  const lastBalance = Number(lastBalanceStr);
+  const lastTs = Number(lastTsStr);
+  if (!Number.isFinite(lastBalance) || !Number.isFinite(lastTs)) return true;
+  if (lastTs < now - LOW_SALDO_REPEAT_MS) return true;
+  return balance <= Math.floor(lastBalance / LOW_SALDO_STEP_IDR) * LOW_SALDO_STEP_IDR - LOW_SALDO_STEP_IDR;
+}
+
+/**
+ * Alert saldo rendah admin — fail closed. State `wr_sync_state.low_saldo_notified`
+ * WAJIB terbaca dan diklaim atomik (CAS) SEBELUM Telegram; error baca/tulis,
+ * kalah CAS, atau state dalam masa tenang = tidak kirim. Reservasi tetap
+ * dipertahankan walau Telegram gagal/ambigu agar tick berikutnya tidak
+ * mengirim ulang salinan.
+ */
+async function alertLowSaldo(db: DatabaseAccess, balance: number, threshold: number): Promise<void> {
+  const adminChatId = (process.env.TELEGRAM_ADMIN_CHAT_ID ?? "").trim();
+  if (!adminChatId || process.env.TELEGRAM_BOT_ENABLED !== "true") return;
+  try {
+    const row = await db.queryFirst(`SELECT value FROM wr_sync_state WHERE key='low_saldo_notified'`);
+    const raw = row ? String(row.value ?? "") : "";
+    const now = Date.now();
+    if (!lowSaldoDue(raw, balance, now)) return;
+    const reserved = await db.execRun(
+      `INSERT INTO wr_sync_state (key, value) VALUES ('low_saldo_notified',?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')
+       WHERE COALESCE(wr_sync_state.value,'')=?`,
+      `${balance}|${now}`,
+      raw,
+    );
+    if (reserved.changes !== 1) return;
+  } catch (error) {
+    if (error instanceof QueryBudgetExceeded) throw error;
+    return;
+  }
+  try {
+    const { sendMessage } = await import("@/lib/telegram/api");
+    const rupiah = (n: number) => `Rp${n.toLocaleString("id-ID")}`;
+    await sendMessage({
+      chat_id: adminChatId,
+      text:
+        `💰 <b>Saldo Warung Rebahan rendah</b>\n` +
+        `Saldo: <b>${rupiah(balance)}</b> (batas: ${rupiah(threshold)})\n` +
+        `Segera top up agar auto-order tidak macet.`,
+      parse_mode: "HTML",
+    });
+  } catch {
+    /* best-effort: reservasi tetap dipertahankan */
+  }
+}
+
 export async function checkAndLogSaldo(
   database?: DatabaseAccess,
 ): Promise<SaldoCheckResult> {
@@ -39,56 +97,13 @@ export async function checkAndLogSaldo(
   );
   const threshold = getSaldoThreshold();
   const isLow = amount < threshold;
-  if (isLow) {
-    // Throttle: spam 8 pesan identik terjadi saat cek manual berulang +
-    // cron per jam. State disimpan di wr_sync_state (bukan wr_saldo_log
-    // yang CHECK-constraint source-nya menolak nilai baru) agar survive
-    // restart/isolate. Kirim ulang hanya bila (a) belum pernah kirim dalam
-    // 6 jam terakhir, atau (b) saldo TURUN melewati kelipatan Rp5.000.
-    const shouldNotify = await db.queryFirst(
-      `SELECT value FROM wr_sync_state WHERE key='low_saldo_notified'`,
-    ).then((row) => {
-      if (!row?.value) return true;
-      const [lastBalanceStr, lastTsStr] = String(row.value).split("|");
-      const lastBalance = Number(lastBalanceStr);
-      const lastTs = Number(lastTsStr);
-      if (!Number.isFinite(lastBalance) || !Number.isFinite(lastTs)) return true;
-      if (lastTs < Date.now() - 6 * 60 * 60 * 1000) return true;
-      return amount <= Math.floor(lastBalance / 5000) * 5000 - 5000;
-    }).catch(() => true);
-    if (shouldNotify) {
-      await notifyLowSaldo(amount, threshold).catch(() => undefined);
-      await db.execRun(
-        `INSERT INTO wr_sync_state (key, value) VALUES ('low_saldo_notified',?)
-         ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-        `${amount}|${Date.now()}`,
-      ).catch(() => undefined);
-    }
-  }
+  if (isLow) await alertLowSaldo(db, amount, threshold);
   await db.execRun(
     `INSERT INTO wr_sync_log (sync_type, status, saldo_amount, duration_ms)
      VALUES ('saldo','success',?,0)`,
     amount,
   ).catch(() => undefined);
   return { balance: amount, currency: currency || "IDR", isLow, threshold };
-}
-
-async function notifyLowSaldo(
-  balance: number,
-  threshold: number,
-): Promise<void> {
-  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-  if (!adminChatId || process.env.TELEGRAM_BOT_ENABLED !== "true") return;
-  const { sendMessage } = await import("@/lib/telegram/api");
-  const rupiah = (n: number) => `Rp${n.toLocaleString("id-ID")}`;
-  await sendMessage({
-    chat_id: adminChatId,
-    text:
-      `💰 <b>Saldo Warung Rebahan rendah</b>\n` +
-      `Saldo: <b>${rupiah(balance)}</b> (batas: ${rupiah(threshold)})\n` +
-      `Segera top up agar auto-order tidak macet.`,
-    parse_mode: "HTML",
-  });
 }
 
 export async function getSaldoHistory(

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 
-vi.mock("@/lib/telegram/api", () => ({
+vi.mock("@/lib/telegram/api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/telegram/api")>(),
+  getMe: vi.fn(async () => ({ ok: true, result: { id: 17 } })),
   sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
   sendPhoto: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
   answerCallbackQuery: vi.fn(async () => ({ ok: true })),
@@ -118,7 +120,7 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
   });
 
-  it("timeout kirim notif Lunas → dicatat, tidak diulang sebelum 20 menit (insiden spam 2026-11-20)", async () => {
+  it("timeout kirim notif Lunas → unknown, tidak diulang dalam 30 menit", async () => {
     seedWhatsAppOrder("WA-TO", "lunas");
     fixture.sql.prepare("UPDATE orders SET telegram_order_notified_at=datetime('now') WHERE code='WA-TO'").run();
     const { sendMessage } = await import("@/lib/telegram/api");
@@ -129,21 +131,21 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     vi.mocked(sendMessage).mockClear();
     vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
     expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
-    expect(fixture.sql.prepare("SELECT status,error FROM buyer_notice_log WHERE idempotency_key='admin-paid-timeout:WA-TO'").get())
-      .toMatchObject({ status: "failed", error: "Request timeout" });
+    expect(fixture.sql.prepare("SELECT status,error FROM buyer_notice_log WHERE idempotency_key='admin-paid:WA-TO'").get())
+      .toMatchObject({ status: "unknown", error: "ambiguous" });
     expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
 
-    // Masih dalam 20 menit: antrean dan retry sama-sama diam.
+    // Antrean dan retry sama-sama diam, termasuk lewat cooldown lama.
     const probe = operationQueueProbeSql("notify", "0", "0")!;
     expect(fixture.sql.prepare(probe).get()?.paid_admin).toBe(0);
     expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
     expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
 
-    fixture.sql.prepare("UPDATE buyer_notice_log SET updated_at=datetime('now','-21 minutes') WHERE idempotency_key='admin-paid-timeout:WA-TO'").run();
-    expect(fixture.sql.prepare(probe).get()?.paid_admin).toBe(1);
-    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(1);
-    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(2);
-    expect(fixture.sql.prepare("SELECT telegram_paid_admin_notified_at FROM orders WHERE code='WA-TO'").get()?.telegram_paid_admin_notified_at).not.toBeNull();
+    fixture.sql.prepare("UPDATE buyer_notice_log SET updated_at=datetime('now','-21 minutes') WHERE idempotency_key='admin-paid:WA-TO'").run();
+    expect(fixture.sql.prepare(probe).get()?.paid_admin).toBe(0);
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
+    expect(fixture.sql.prepare("SELECT telegram_paid_admin_notified_at FROM orders WHERE code='WA-TO'").get()?.telegram_paid_admin_notified_at).toBeNull();
   });
 
   it("gagal non-timeout (ditolak) tidak dicatat sebagai timeout dan tetap diulang run berikutnya", async () => {
@@ -154,10 +156,13 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
     const db = createDatabaseAccess(fixture.db);
     vi.mocked(sendMessage).mockClear();
-    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Bad Request: chat not found" } as never);
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: chat not found" });
     expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
     expect(fixture.sql.prepare("SELECT 1 FROM buyer_notice_log WHERE idempotency_key='admin-paid-timeout:WA-REJ'").get()).toBeUndefined();
+    expect(fixture.sql.prepare("SELECT status,error FROM buyer_notice_log WHERE idempotency_key='admin-paid:WA-REJ'").get())
+      .toMatchObject({ status: "failed", error: "rejected:400" });
     expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(1);
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(2);
   });
 
   it("hanya Lunas yang masuk grup — pending Telegram/WA tidak membunyikan admin (owner 2026-10-10)", async () => {
@@ -218,10 +223,9 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
 
     const direct = notifyWhatsAppPaidAdmin("WA-RACE", db);
     await enteredP;
-    // Simulate >2 minutes of audit-row age while transport is in flight and
-    // the lease deadline is still in the future. SQLite uses its own clock.
-    fixture.sql.exec(`UPDATE buyer_notice_log SET updated_at=datetime('now','-3 minutes')
-      WHERE idempotency_key='admin-paid-timeout:WA-RACE'`);
+    // Even when the recovery age is met, a live stored lease blocks takeover.
+    fixture.sql.exec(`UPDATE buyer_notice_log SET updated_at=datetime('now','-31 minutes')
+      WHERE idempotency_key='admin-paid:WA-RACE'`);
     const cron = await retryPendingTelegramNotifications(50, { paidAdmin: true }, db);
     release();
     expect(await direct).toBe(true);
@@ -232,21 +236,33 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
       ?.telegram_paid_admin_notified_at).not.toBeNull();
   });
 
-  it("cron recovers a crashed paid-admin send after its lease expires", async () => {
+  it("an expired lease alone does not recover a crashed paid-admin send; cron can recover it once after 30 minutes", async () => {
     seedWhatsAppOrder("WA-CRASH", "lunas");
-    const { sendMessage } = await import("@/lib/telegram/api");
+    const { getMe, sendMessage } = await import("@/lib/telegram/api");
+    const { createDatabaseAccess } = await import("@/lib/db-access");
     const { retryPendingTelegramNotifications, notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
-    vi.mocked(sendMessage).mockClear().mockRejectedValueOnce(new Error("worker interrupted"));
-    await expect(notifyWhatsAppPaidAdmin("WA-CRASH")).rejects.toThrow("worker interrupted");
+    const db = createDatabaseAccess(fixture.db);
+    vi.mocked(sendMessage).mockClear();
+    vi.mocked(getMe).mockClear();
+    await expect(notifyWhatsAppPaidAdmin("WA-CRASH", { ...db, execRun: async () => { throw new Error("worker interrupted"); } })).resolves.toBe(false);
 
-    // Expire only the lease; a fresh audit timestamp must not keep it locked.
+    const readClaim = () => fixture.sql.prepare(`SELECT status, access_attempts FROM buyer_notice_log
+      WHERE idempotency_key='admin-paid:WA-CRASH'`).get();
+    expect(readClaim()).toMatchObject({ status: "sending", access_attempts: 0 });
     fixture.sql.exec(`UPDATE buyer_notice_log SET access_retry_at=datetime('now','-1 second')
-      WHERE idempotency_key='admin-paid-timeout:WA-CRASH'`);
-    const cron = await retryPendingTelegramNotifications(50, { paidAdmin: true });
-    expect(cron.paidAdmin).toBe(1);
+      WHERE idempotency_key='admin-paid:WA-CRASH'`);
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
+    expect(getMe).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    fixture.sql.exec(`UPDATE buyer_notice_log SET updated_at=datetime('now','-31 minutes')
+      WHERE idempotency_key='admin-paid:WA-CRASH'`);
+    expect(await notifyWhatsAppPaidAdmin("WA-CRASH", db)).toBe(false);
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(1);
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
+    expect(getMe).toHaveBeenCalledTimes(1);
     expect(sendMessage).toHaveBeenCalledTimes(2);
-    expect(fixture.sql.prepare(`SELECT status, access_attempts FROM buyer_notice_log
-      WHERE idempotency_key='admin-paid-timeout:WA-CRASH'`).get()).toMatchObject({ status: "sent", access_attempts: 2 });
+    expect(vi.mocked(sendMessage).mock.calls[1][0].text).toMatch(/^🔁 Kirim ulang otomatis/);
+    expect(readClaim()).toMatchObject({ status: "sent", access_attempts: 1 });
   });
 
   it("migration 0023 backfills pre-existing WhatsApp orders so deploy does not replay history", async () => {

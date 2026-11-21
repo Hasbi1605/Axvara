@@ -13,7 +13,9 @@ import { ensureFulfillmentForPaidOrder, ensureFulfillmentItems, processJobItems,
 import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL } from "@/lib/admin-overview-queries";
 import * as overviewQueries from "@/lib/admin-overview-queries";
 
-vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn() }));
+vi.mock("@/lib/telegram/api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/telegram/api")>(), sendMessage: vi.fn(),
+}));
 let fx: ReturnType<typeof createD1Fixture>;
 const CODE = "AXG-20261116-4206447D";
 const LABEL = "Mobile Legends — Mobilelegend - 50 Diamond";
@@ -25,7 +27,7 @@ beforeEach(() => {
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture");
   vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "-1001234");
   vi.stubEnv("ADMIN_PASSWORD_SHA256", "7".repeat(64));
-  vi.mocked(sendMessage).mockReset().mockResolvedValue({ ok: true } as never);
+  vi.mocked(sendMessage).mockReset().mockResolvedValue({ ok: true, result: { message_id: 1 } } as never);
   fx.sql.exec(`INSERT INTO games_products(id,buyer_sku_code,product_name,game_brand,sk_product_name,game_slug,supplier)
     VALUES(1,'sk:50','Mobilelegend - 50 Diamond','MOBILE LEGENDS','Mobile Legends','mobile-legends','sekalipay');
     INSERT INTO orders(code,customer_name,customer_email,customer_wa,items,subtotal,payment_method,status,payment_status,order_kind,sales_channel,paid_at,fulfillment_status)

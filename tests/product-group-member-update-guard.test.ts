@@ -1,12 +1,12 @@
 // Audit AU-G2-3: pg_member_valid_insert guarded only INSERT, so an UPDATE of
 // product_group_members could move a member onto an archived (hidden) product.
-// 0152 adds the mirrored BEFORE UPDATE guard; schema.sql carries the same block.
+// 0153 adds the mirrored BEFORE UPDATE guard; schema.sql carries the same block.
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
 let f: ReturnType<typeof createD1Fixture>;
-const migration = fs.readFileSync("drizzle/migrations/0152_product_group_member_update_guard.sql", "utf8");
+const migration = fs.readFileSync("drizzle/migrations/0153_product_group_member_update_guard.sql", "utf8");
 
 beforeEach(() => {
   f = createD1Fixture();
@@ -27,7 +27,7 @@ const memberProductIds = () => f.sql
   .all()
   .map((row) => Number(row.product_id));
 
-describe("guard update anggota grup (0152)", () => {
+describe("guard update anggota grup (0153)", () => {
   it("masih menolak INSERT anggota produk arsip", () => {
     expect(() => f.sql.exec("INSERT INTO product_group_members(group_id,product_id,position) VALUES(900,9002,1)"))
       .toThrow(/invalid_group_product/);
@@ -61,7 +61,7 @@ describe("guard update anggota grup (0152)", () => {
     expect(memberProductIds()).toEqual([9001]);
   });
 
-  it("migrasi 0152 aditif, idempoten, dan memasang guard saat trigger belum ada", () => {
+  it("migrasi 0153 aditif, idempoten, dan memasang guard saat trigger belum ada", () => {
     f.sql.exec("DROP TRIGGER IF EXISTS pg_member_valid_update");
     expect(() => f.sql.exec("UPDATE product_group_members SET product_id=9002 WHERE group_id=900 AND product_id=9001"))
       .not.toThrow(); // reproduksi celah sebelum migrasi

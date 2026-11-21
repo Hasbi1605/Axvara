@@ -709,7 +709,7 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
   non-arsip di luar grup, atau `10` jika kosong), mengabaikan `sortOrder` payload, dan
   menyebarkan `category_id` + `sort_order` ke seluruh anggota grup. Sync WR/SK/TUNVN/AIVault
   tidak pernah menulis ulang `category_id`/`sort_order` produk existing (hanya saat INSERT baru).
-- Migrasi0152 (21 Nov 2026, audit AU-G2-3): `drizzle/migrations/0152_product_group_member_update_guard.sql`
+- Migrasi0153 (21 Nov 2026, audit AU-G2-3): `drizzle/migrations/0153_product_group_member_update_guard.sql`
   (selaras `drizzle/schema.sql`) menambah trigger `pg_member_valid_update`
   (`BEFORE UPDATE OF product_id`, `WHEN NEW.product_id IS NOT OLD.product_id`)
   yang mencerminkan guard INSERT: produk arsip/tidak ada → `invalid_group_product`.
@@ -2922,7 +2922,8 @@ Trigger MCP Worker existing `* * * * *` menjalankan `runOperationsTick`; `/api/c
 - **Potongan katalog dari proxy VPS (tanpa state):** mode `?phase=` memanggil `syncProducts`/`syncSkProducts` dengan `useProxySlices`. Proxy `POST /wr/products-slice` dan `GET /sk/catalog-slice` mengambil katalog penuh, mengurutkan dengan aturan yang SAMA dengan sync Pages, lalu mengembalikan potongan (WR ~13 KB vs 71 KB; SK ~26 KB vs 93 KB). SK mode potongan selalu scope penuh kategori (tanpa delta `updated_since`). Potongan terakhir membawa `meta.all_variant_ids` (seluruh id varian upstream/scope saat itu) → zero-missing kini berjalan aman di akhir sweep berpotongan (sejak 3 Okt malam sweep berpotongan tidak pernah zero-missing). Proxy lama/mode langsung (404/405) → fallback fetch penuh. Revisi lokal 21 Nov: deadline slice Pages maks 35 dtk (proxy upstream 30 dtk), dibatasi sisa budget sweep; timeout bukan fallback/zero-missing. Kontrak proxy: `axvara-wr-proxy/AGENTS.md`.
 - **Penanda langkah:** mode `?phase=` menulis `console.log("[cron] <fase>[:part][:cont] step=<langkah> t=<ms>")` (auth_ok, phase_state, watchdog_done, queues_counted, wr_import_*, wr_recover_done, wr_orders_done, wr_sync_done, wr_tail_done, sk_*, phases_done) tanpa D1. Request yang dibunuh: `wrangler pages deployment tail <deployment-id> --project-name axvara --format json` memperlihatkan langkah terakhir yang sempat jalan.
 - **Alarm ber-state (Workers KV `axvara-cron-state`, binding `CRON_STATE`, key `cron_alarm_v1`; revisi18November2026 lokal/F1):** counter disimpan per label step (`steps`), hard mulai setelah2 dan soft setelah6 eksekusi gagal beruntun step itu. Tick non-due/step absen tidak mengubah counter; sukses step lain dan campuran hard/soft tidak mereset step yang gagal. Satu pesan mulai per episode; reminder6jam mencakup kegagalan baru sejak pesan terakhir walau sudah pulih sebelum reminder (`pendingFailures`). Recovery setelah setiap step terdampak sukses3kali beruntun; riwayat tidak dipotong8step. Non-2xx menyertakan ringkasan field JSON `error` atau teks (maks120karakter sesudah redaksi bearer/token/key/secret dan secret Worker yang diketahui), contoh `lite:tunvn_catalog: HTTP 500 — D1_ERROR: UNIQUE constraint failed…`; error jaringan/KV juga diredaksi, body sukses hanya membaca `more`.
-- **Ketahanan state alarm (lokal/F1, revisi P2):** KV ditulis ketika counter/episode/detail atau watermark per-step berubah (tick sehat ~1440 write/hari; KV bukan D1). Watermark waktu jadwal bertahan setelah sukses/recovery; baca ulang KV sebelum commit/ack Telegram menjaga state tick baru dari hasil tick lama. KV eventual tanpa CAS masih memiliki race get/put pendek yang diterima PM. Write counter diperiksa sebelum kirim; ack pesan ditulis sesudah Telegram berhasil, sehingga start/reminder/recovery yang gagal kirim dicoba lagi. Binding hilang, payload korup, get/put gagal dicatat tersanitasi lalu memakai fallback stateless **hard dan soft** hanya pada tick 00:00 UTC (FX-14, lokal). Key baru/kosong (`get` null) bukan storage error; saat KV pulih stateful dilanjutkan. Payload agregat lama tanpa `steps` memulai counter baru sekali karena atribusi lama tidak diketahui (tanpa recovery palsu); ambang2/6 tetap berlaku. Ack KV yang gagal setelah Telegram sukses dapat membuat pesan ulang pada tick berikut, bukan jaminan exactly-once lintas layanan. Cadence step/trigger dan env tetap; watchdog "Sync basi" tetap cadangan. Belum dipublikasikan/deployment belum diverifikasi.
+- **Ringkasan pesan (revisi 20 November 2026, lokal):** `formatAlert` mengelompokkan kegagalan dengan alasan ternormalisasi (`normalizeErrorText` membuang token `reference = e_…`) menjadi satu baris per alasan: `• <error> · <N> job: <3 nama pertama>, +<k> lainnya` untuk N≥2, sedangkan kegagalan tunggal tetap satu baris `• <step>: <error>`; footer hint tetap. `formatRecovery` mempertahankan judul dan `Gangguan sejak … ±… mnt.` lalu mengganti daftar penuh dengan satu baris `<N> job sempat gagal: <3 nama pertama>, +<k> lainnya` (tanpa body error). Ambang2/6/3, cadence reminder, bentuk state KV, fallback stateless, dan step yang dilacak TIDAK berubah. Insiden 21 Nov 02:00 WIB: satu gangguan D1 memicu ~17 baris dengan token acak berbeda di alert mulai DAN recovery, sehingga daftar identik tampak terkirim dua kali.
+- **Ketahanan state alarm (lokal/F1, revisi P2):** KV ditulis ketika counter/episode/detail atau watermark per-step berubah (tick sehat ~1440 write/hari; KV bukan D1). Watermark waktu jadwal bertahan setelah sukses/recovery; baca ulang KV sebelum commit/ack Telegram menjaga state tick baru dari hasil tick lama. KV eventual tanpa CAS masih memiliki race get/put pendek yang diterima PM. Write counter diperiksa sebelum kirim; ack pesan ditulis sesudah Telegram berhasil, sehingga start/reminder/recovery yang gagal kirim dicoba lagi. Binding hilang, payload korup, get/put gagal dicatat tersanitasi lalu memakai fallback stateless **hard dan soft** hanya pada tick 00:00 UTC (FX-14, lokal). Key baru/kosong (`get` null) bukan storage error; saat KV pulih stateful dilanjutkan. Payload agregat lama tanpa `steps` memulai counter baru sekali karena atribusi lama tidak diketahui (tanpa recovery palsu); ambang2/6 tetap berlaku. Ack KV yang gagal setelah Telegram sukses dapat membuat pesan ulang pada tick berikut, bukan jaminan exactly-once lintas layanan. Kontrak HTTP Pages, cadence step/trigger dan env tetap; watchdog "Sync basi" tetap cadangan. Belum dipublikasikan/deployment belum diverifikasi.
 
 **Sync katalog DIFF dari VPS (live 2026-10-04 siang).** Penanda langkah 4 Okt 10.15 WIB membuktikan potongan 10 produk tetap dibunuh `exceededCpu` saat platform ketat: `warung_rebahan:sync` mati SETELAH `phases_done` (route cron raksasa ±1 dtk hanya untuk menyala + kerja per produk), `sekalipay:sync` mati di tengah sweep. Kontrak baru:
 
@@ -3130,35 +3131,39 @@ atau retry. Notif Telegram/WA memakai `||` sehingga tetap jalan.
   jumlah item terkirim otomatis ke email, perlu **Kirim ke pembeli**, sudah diserahkan admin,
   sedang dikirim, atau diproses Warung Rebahan. Judulnya "Lunas — Web", atau "Lunas — Web ·
   perlu dikirim admin" bila ada item `manual_required`/`failed`.
-- Sekali per order lewat `buyer_notice_log` kunci `admin-paid:<kode>` (kanal telegram). Kolom
-  `error` menyimpan alasan penolakan Telegram, jadi kegagalan berikutnya bisa dibaca di D1.
-- URL tombol lewat `siteOrigin()` (`src/lib/site-url.ts`), selalu absolut. Tombol WA
-  (`webPaidAdminKeyboard`) hanya dipasang untuk nomor `62…` yang valid. Bila Telegram tetap
-  menolak tombol (400 Bad Request), pesan dikirim ulang **tanpa tombol**. Timeout tidak diulang
-  seketika (pesan bisa saja sudah sampai); cron yang mengulang, tetapi ledger `failed` dengan
-  error `Request timeout` baru diulang setelah 20 menit (`WEB_PAID_ADMIN_TIMEOUT_BACKOFF`,
-  20 November 2026): saat Bot API hang, Telegram menahan pesan yang timeout lalu tetap
-  mengirimnya, sehingga retry tiap run cron tiba bersamaan sebagai spam. Gagal pasti
-  (ditolak/error lain) tetap diulang tiap run.
-- Cron `operations` (fase notify) menghitung `paid_admin_web` dengan
-  `WEB_PAID_ADMIN_PENDING_WHERE`: order web lunas dalam 6 jam terakhir tanpa ledger `sent`
-  (dan bukan timeout <20 menit). Notif "Lunas" order Telegram/WhatsApp (marker
-  `telegram_paid_admin_notified_at`, tanpa ledger) memakai cooldown yang sama: timeout
-  dicatat di `buyer_notice_log` kunci `admin-paid-timeout:<kode>` (status `failed`, tidak
-  pernah `sent`) dan `ADMIN_PAID_TIMEOUT_COOLDOWN_SQL` (`src/lib/cron-queues.ts`) menahan
-  probe `paid_admin` + retry 20 menit. Sejak audit 21 November 2026 (AU-E2-7) kedua
-  pengirim admin memakai KLAIM pre-send pada kunci ledger yang sama (status `sending`,
-  lease 2 menit) SEBELUM transport: cron yang membaca marker NULL tidak dapat
-  mengambil alih sebelum deadline `access_retry_at`, terlepas dari umur `updated_at`.
-  Setelah lease kedaluwarsa cron dapat memulihkan kiriman worker yang crash.
-  Gagal pasti (ditolak) menghapus baris
-  klaim (retry tiap run seperti sebelumnya); timeout menyisakan `failed` untuk cooldown;
-  sukses menandai `sent`. Cooldown SQL hanya melihat baris `failed`, jadi klaim `sending`
-  yang aktif dipagari CAS klaim, bukan oleh penundaan 20 menit.
+- Revisi 21 November 2026 (lokal): notifikasi admin order Web, Telegram, dan WhatsApp
+  memakai satu kunci `buyer_notice_log` (`admin-paid:<kode>`). Sebelum POST, klaim atomik
+  dengan `access_lease` memblokir pengirim paralel dan gagal tertutup bila D1 bermasalah.
+  Settlement harus cocok dengan lease; `ok:true` + `message_id` dicatat sebagai `sent`.
+  Marker `telegram_paid_admin_notified_at` Telegram/WhatsApp tetap dihormati dan ditulis
+  setelah `sent`. Ini mempertahankan klaim pre-send audit AU-E2-7/FX-3b dan pagar
+  `access_retry_at` untuk `sending` (lease 2 menit), tetapi habisnya lease saja
+  bukan izin kirim ulang. Kebijakan di bawah menggantikan cooldown timeout 20 menit
+  dan takeover lama; tidak mengubah kebijakan pengiriman notifikasi pembeli.
+- URL tombol web tetap absolut via `siteOrigin()`; tombol WA hanya untuk nomor `62…` valid.
+  Respons Bot API 400 pada pesan web bertombol memungkinkan tepat satu fallback dengan teks
+  sama **tanpa tombol** dalam klaim yang sama. Penolakan Bot API 400/401/403/404 atau
+  429 masuk jalur retry biasa (`failed` dengan `access_retry_at`; 429 menunggu `retry_after`, min. 60 dtk).
+  Timeout, putus jaringan, JSON tak terbaca, 5xx, atau respons sukses tanpa `message_id`
+  menjadi `unknown` (diizinkan khusus ledger admin melalui migrasi 0152).
+- Pemulihan (implementasi lokal, belum deploy): hanya cron lite/`operations` (fase notify)
+  boleh mengulang `unknown`, `sending` yang tertinggal, atau `admin-paid-timeout:<kode>`
+  warisan, masing-masing setelah ≥30 menit dan selama order lunas ≤6 jam. Probe
+  `paid_admin_web`/`paid_admin` ikut menghitung kandidat. Sebelum klaim pemulihan pertama,
+  cron mengecek `getMe` sekali per run (timeout 5 dtk, tanpa D1); bila gagal, semua
+  pemulihan ditunda tanpa menghabiskan kesempatan. Admission sebelum probe menyisakan waktu
+  untuk kirim (termasuk fallback web), lalu cron cek lagi sebelum klaim. Lite tetap
+  mendahulukan PIN email dan outbox WA. Kirim pertama dan retry penolakan tidak bergantung pada `getMe`.
+  CAS memeriksa ulang jendela dan lease baru mengunci `access_attempts=1`; marker timeout
+  warisan dipindah ke kunci kanonik dalam CAS yang sama. Pesan disusun ulang dengan baris awal
+  `🔁 Kirim ulang otomatis — abaikan bila notif lunas order ini sudah ada`. Label dipertahankan
+  bila penolakan pasti memerlukan retry biasa. Jika hasil kembali ambigu, tidak ada pemulihan
+  berikutnya. `failed` warisan tanpa waktu retry tetap dikarantina, kecuali marker
+  timeout yang memenuhi syarat di atas. Tidak ada migrasi tambahan untuk pemulihan.
   `retryPendingTelegramNotifications` menerima `paidAdminWeb`; pemanggil lama yang memberi
-  `only` tanpa kunci ini tidak membaca antrean web (anggaran query RR3-01). Order lama
-  (>6 jam) tidak pernah dikirim ulang, jadi deploy tidak membanjiri grup.
-- Dikunci oleh `tests/web-paid-admin-notif.integration.test.ts` (termasuk cron sungguhan).
+  `only` tanpa kunci ini tidak membaca antrean web (anggaran query RR3-01).
+- Dikunci oleh `tests/web-paid-admin-notif.integration.test.ts` (termasuk rute cron) dan
+  `tests/paid-admin-ledger.{integration,workerd}.test.ts`.
 
 ## 14. Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA (Terimplementasi)
 
@@ -4123,6 +4128,17 @@ Insiden `AXV-20261019-98C8CC33`: probe 12 order lunas terbaru berjalan dua kali 
    `sk_sync_state key='low_saldo_notified'` (`amount|timestamp_ms`): kirim ulang
    hanya bila 6 jam berlalu ATAU saldo turun melewati kelipatan Rp5.000
    (maks 4x/hari, stagnan = 1x). Threshold + gate cek 1x/jam cron tidak berubah.
+   **Revisi 20 November 2026 (lokal):** gate fail-closed — state WAJIB terbaca
+   lalu diklaim atomik (CAS `INSERT … ON CONFLICT … WHERE COALESCE(value,'')=?`)
+   SEBELUM Telegram; error baca D1, error tulis CAS, atau kalah CAS = tidak
+   kirim; hanya pemanggil `changes=1` yang mengirim. Reservasi tetap walau
+   Telegram timeout/400/error (tidak ada resend tick berikut). Berlaku sama untuk
+   `warung-rebahan/saldo.ts` (`wr_sync_state`). Insiden 21 Nov 02:00 & 02:01 WIB
+   (D1 `internal error` ±30 mnt): dua salinan "Saldo Sekalipay menipis — Sisa
+   Rp133.880" terjadi karena error baca state lama dianggap "belum pernah
+   kirim" dan marker ditulis sesudah kirim tanpa CAS. `sk_saldo_log
+   source='low_alert'` tetap ditulis sesudah reservasi (best-effort, tidak
+   membuka jalur kirim), refresh saldo/admin/order gating tidak berubah.
 
 ## 16. Insiden operasional 2026-09-14 + arsitektur proxy terpisah (WAJIB DIBACA agent)
 

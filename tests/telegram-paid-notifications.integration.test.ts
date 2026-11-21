@@ -170,19 +170,19 @@ describe("Telegram paid notice eligibility and budgets", () => {
     expect(sendMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ chat_id: "999" }));
   });
 
-  it("caps notices under the shared 40-statement budget with counted statements", async () => {
+  it("caps notices at three with counted statements under the shared 40-statement fixture budget (production notify_a uses 300)", async () => {
     vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "-100200");
+    // Real Bot API success carries message_id; the admin-paid ledger only marks such sends 'sent'.
+    vi.mocked(sendMessage).mockResolvedValue({ ok: true, result: { message_id: 1 } } as never);
     for (let i = 0; i < 8; i++) order(`BUDGET-${i}`, `${100 + i}`);
     const budget = createBudgetedDatabase(40, 2, fx.db);
     const before = fx.control.queries;
     const result = await retryPendingTelegramNotifications(8, undefined, budget.access);
-    // AU-E2-7: each paid admin receipt now takes one durable pre-send claim
-    // (+1 statement), so three buyer notices fit the legacy 40-statement bound
-    // (production lite notify uses 300). Still bounded, counted, no overrun.
     expect(result.paid).toBe(3);
     expect(fx.control.queries - before).toBe(budget.used);
     expect(budget.used).toBe(38);
     expect(vi.mocked(sendMessage).mock.calls.filter(([m]) => Number(m.chat_id) > 0)).toHaveLength(3);
+    expect(vi.mocked(sendMessage).mock.calls.filter(([m]) => m.chat_id === "-100200")).toHaveLength(3);
     budget.beginTail();
     await budget.access.execRun("SELECT 1");
     await budget.access.execRun("SELECT 1");
@@ -213,8 +213,6 @@ describe("Telegram paid notice privacy and conversation ownership", () => {
     fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id='12345'").run(pending);
     const budget = createBudgetedDatabase(40, 2, fx.db);
     expect(await notifyTelegramBuyerPaid("IDLE", budget.access)).toBe(true);
-    // FX-16 owner decision: Telegram delivery happens in this chat, so the paid
-    // notice never begs for a WhatsApp number and sets no pending action.
     expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='12345'").get()?.pending_action).toBe(pending);
     expect(vi.mocked(sendMessage).mock.calls.at(-1)?.[0].text).not.toMatch(/cadangan|nomor WhatsApp aktif/);
   });

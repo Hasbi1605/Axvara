@@ -1067,7 +1067,10 @@ CREATE TABLE IF NOT EXISTS buyer_notice_log (
   idempotency_key TEXT PRIMARY KEY,
   order_code TEXT NOT NULL,
   channel TEXT NOT NULL CHECK (channel IN ('email', 'telegram')),
-  status TEXT NOT NULL DEFAULT 'sending' CHECK (status IN ('sending', 'sent', 'failed')),
+  status TEXT NOT NULL DEFAULT 'sending' CHECK (
+    status IN ('sending', 'sent', 'failed')
+    OR (status = 'unknown' AND channel = 'telegram' AND idempotency_key GLOB 'admin-paid:*')
+  ),
   provider_id TEXT,
   error TEXT,
   access_attempts INTEGER NOT NULL DEFAULT 0 CHECK (access_attempts >= 0),
@@ -2176,7 +2179,7 @@ CREATE TRIGGER IF NOT EXISTS pg_member_valid_insert BEFORE INSERT ON product_gro
   SELECT CASE WHEN (SELECT COUNT(*) FROM product_group_members WHERE group_id=NEW.group_id)>=10
     THEN RAISE(ABORT,'group_full') END;
 END;
--- 0152: the INSERT guard above left the UPDATE path unguarded (audit AU-G2-3).
+-- 0153: the INSERT guard above left the UPDATE path unguarded (audit AU-G2-3).
 CREATE TRIGGER IF NOT EXISTS pg_member_valid_update BEFORE UPDATE OF product_id ON product_group_members
 WHEN NEW.product_id IS NOT OLD.product_id BEGIN
   SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM products WHERE id=NEW.product_id AND archived_at IS NULL)

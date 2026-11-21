@@ -66,10 +66,12 @@ terkonfigurasi ikut dinilai; hanya hasil koneksi/jeda disimpan di
 `store_settings.wa_gateway_health`. Ringkasan mengabaikan sampel >20 menit
 dan tidak memanggil gateway. Ini bukan indikator penjualan WA.
 
-Notifikasi LUNAS order WA historis tetap berbagi klaim Telegram dengan order
-Telegram (FX-3b, lokal): cron hanya mengambil alih status `sending` setelah
-`access_retry_at` kedaluwarsa, bukan berdasarkan umur `updated_at`. Cooldown
-20 menit untuk timeout tercatat tidak berubah; tidak ada perubahan transport WA.
+Notifikasi LUNAS order WA historis **ke Telegram** memakai klaim pre-send yang
+sama dengan order Web/Telegram (`admin-paid:<kode>`). Revisi pemulihan mengganti
+cooldown 20 menit: lease `access_retry_at` yang aktif tetap memblokir takeover,
+tetapi lease kedaluwarsa saja tidak cukup. Hanya cron boleh satu pemulihan
+berlabel setelah ≥30 menit, dalam jendela lunas 6 jam, setelah `getMe` berhasil
+(lihat `platform-ops.md`). Tidak ada perubahan transport WA.
 
 Revisi11November2026 (implementasi lokal, deployment belum diverifikasi): hentikan
 notifikasi pembelian berhasil ke grup, termasuk pending/failed lama. Jangan
