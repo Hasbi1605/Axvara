@@ -551,7 +551,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | B2 | E | lokal (commit B2) | Wonder APPROVE. Tindak lanjut E kecil: fence menerima `db`, bukan `execRun` terlepas |
 | B2b (invoice kosong) | B | lokal (commit B2b) | Premium + Jaspay; Sol repro + Wonder APPROVE |
 | B3 | E | lokal (commit B3) | Wonder APPROVE |
-| B3b (R1) | B | belum | |
+| B3b (R1) | B | lokal (commit B3b) | Sol repro + Wonder APPROVE; expected-fail 33→29 |
 | B4 | E | belum | |
 | B4b (lease WR) | B | belum | |
 | B5 (R2) | B | belum | |

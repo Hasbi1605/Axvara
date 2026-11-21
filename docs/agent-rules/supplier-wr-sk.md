@@ -1,5 +1,13 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## B3b/R1 22 Nov (lokal)
+
+- UPDATE bulk klaim kedaluwarsa WR/SK hanya mengembalikan link tanpa bukti
+  kirim dan tanpa invoice (NULL atau `''`) ke `pending` bila order terkait
+  masih `lunas`/`paid` dengan `supplier_purchase_disabled=0`. Guard dicek
+  di UPDATE yang sama; pengembalian satu attempt dengan batas bawah nol
+  tetap berlaku. Rekonsiliasi sent/ref tidak memakai guard baru ini.
+
 ## B2b 22 Nov (lokal)
 
 - CAS penerimaan invoice dari POST awal WR Premium dan Jaspay menerima `NULL`

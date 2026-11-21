@@ -82,7 +82,7 @@ export function fencePurchaseSend(db: DatabaseAccess, supplier: PurchaseSupplier
 
 export function requeueUnsentStalePurchases(db: DatabaseAccess, supplier: PurchaseSupplier) {
   const { table, invoice } = PURCHASE_LINKS[supplier];
-  // Preserve each supplier's original SQL bytes, including the invoice rider's placement.
+  // Keep the invoice rider in its original position for each supplier.
   const beforeInvoice = supplier === "wr" ? "\n         " : " ";
   return db.execRun(
     `UPDATE ${table} SET status='pending', lease_owner=NULL,
@@ -91,6 +91,7 @@ export function requeueUnsentStalePurchases(db: DatabaseAccess, supplier: Purcha
          updated_at=datetime('now')
        WHERE status='claimed' AND request_sent_at IS NULL${beforeInvoice}AND COALESCE(${invoice},'')=''
          AND lease_expires_at IS NOT NULL
-         AND datetime(lease_expires_at) <= datetime('now')`,
+         AND datetime(lease_expires_at) <= datetime('now')
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=${table}.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
   );
 }

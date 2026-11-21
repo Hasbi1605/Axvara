@@ -184,7 +184,7 @@ describe.each(["premium", "sk"] as const)("T3 %s", family => {
     expect(http.calls).toEqual(value === "'KNOWN'" || (!sk && value === "''") ? [] : sk ? [...skPreflight, f.buy] : [f.buy]);
   });
 
-  it.fails.each(["unpaid", "disabled"] as const)("B3b R1 does not requeue expired unsent %s work", async branch => {
+  it.each(["unpaid", "disabled"] as const)("B3b R1 does not requeue expired unsent %s work", async branch => {
     const f = setup(family);
     f.set(`status='claimed', attempt_count=2, ${expired}`);
     f.fx.sql.exec(branch === "unpaid" ? "UPDATE orders SET payment_status='pending'" : "UPDATE orders SET supplier_purchase_disabled=1");
