@@ -43,7 +43,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { constantTimeEqual } from "@/lib/security";
-import { createBudgetedDatabase, QueryBudgetExceeded, unwrapD1 } from "@/lib/db-access";
+import { createBudgetedDatabase, QueryBudgetExceeded } from "@/lib/db-access";
 import { drainDirtyGroupsIfBudget, monitorRecovery, parseItems, saveServiceHealth, type LiteContext } from "@/lib/cron/lite/context";
 import { LITE_JOBS, type LiteJob } from "@/lib/cron/lite/jobs";
 
@@ -278,7 +278,10 @@ export async function POST(request: NextRequest) {
       }
       if (failed) return NextResponse.json({ ...result, ok: false, error: guard.error || guard.status }, { status: 503 });
     }
-    else Object.assign(result, await runPromo(db));
+    else {
+      const { run } = await import("@/lib/cron/lite/jobs/promo");
+      Object.assign(result, await run({ job, db, deadline, result, failedCore }));
+    }
   } catch (error) {
     // Budget habis = sisa kerja dilanjutkan tick berikut, bukan kegagalan.
     if (!(error instanceof QueryBudgetExceeded)) {
@@ -741,48 +744,7 @@ async function runPediaOrders(db: Db, failedCore: string[]) {
   return out;
 }
 
-async function runPromo(db: Db) {
-  const started = Date.now();
-  const { enqueueDueTelegramPromo } = await import("@/lib/telegram/promo-broadcast");
-  const promo = await enqueueDueTelegramPromo(db);
-  let daily_summary: Record<string, unknown> = {};
-  if (db.canSpend(1)) {
-    try {
-      const { sendDueDailyAdminSummary } = await import("@/lib/telegram/daily-admin-summary");
-      const summary = await sendDueDailyAdminSummary(db);
-      daily_summary = {
-        due: summary.due,
-        sent: summary.sent,
-        ...(summary.skipped ? { skipped: summary.skipped } : {}),
-        ...(summary.date ? { date: summary.date } : {}),
-      };
-    } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      daily_summary = { due: false, sent: false, error: "summary_failed" };
-    }
-  }
-  // Paid: broadcast backstop gets its own generous 400-statement budget and ~40s
-  // wall-time envelope separate from the 300-statement promo/summary DB.
-  const broadcastDb = createBudgetedDatabase(400, 4, unwrapD1(db.getD1())).access;
-  const { BROADCAST_BACKSTOP_GRACE_MS, isBroadcastQueueActive } = await import("@/lib/broadcasts/queue");
-  const queueActive = await isBroadcastQueueActive(broadcastDb);
-  const remainingMs = Math.max(0, 40_000 - (Date.now() - started));
-  const { processBroadcasts } = await import("@/lib/broadcasts/worker");
-  const broadcasts =
-    remainingMs > 0
-      ? await processBroadcasts(broadcastDb, 150, remainingMs, {
-          queueGraceMs: queueActive ? BROADCAST_BACKSTOP_GRACE_MS : 0,
-        })
-      : null;
-  return {
-    broadcasts,
-    promo_due: promo.due,
-    promo_enqueued: promo.enqueued,
-    promo_skipped: promo.skipped ?? null,
-    ...(promo.queuedMessages ? { promo_queued_messages: promo.queuedMessages } : {}),
-    daily_summary,
-  };
-}
+// promo body moved to src/lib/cron/lite/jobs/promo.ts (3A-2 diff 1).
 
 // notify (2026-10-05 malam, dipecah 2026-10-09): retry kabar order Telegram,
 // invoice tertunda, kabar QRIS kedaluwarsa, pengingat order pending, outbox
