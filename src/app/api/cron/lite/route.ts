@@ -43,12 +43,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { constantTimeEqual } from "@/lib/security";
-import { createBudgetedDatabase, QueryBudgetExceeded, unwrapD1, type DatabaseAccess } from "@/lib/db-access";
+import { createBudgetedDatabase, QueryBudgetExceeded, unwrapD1 } from "@/lib/db-access";
+import { drainDirtyGroupsIfBudget, monitorRecovery, parseItems, saveServiceHealth, type LiteContext } from "@/lib/cron/lite/context";
+import { LITE_JOBS, type LiteJob } from "@/lib/cron/lite/jobs";
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "aivault_orders", "aivault_catalog", "storebat_orders", "storebat_catalog", "mirai_orders", "mirai_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "tg_webhook", "cleanup", "games_catalog", "games_orders"] as const;
-type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 30;
 const ORPHAN_LEDGER_PER_RUN = 30;
 const FULFILLMENT_PER_RUN = 20;
@@ -57,16 +57,6 @@ const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 const INDOSMM_BALANCE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 /** Plafon produk Jaspay per tick; budget 400 menjadi batas pengaman. */
 const JASPAY_PRODUCTS_PER_TICK = 10;
-
-type Items = { product_id: number; variant_id?: number; qty: number }[];
-const parseItems = (raw: unknown): Items => {
-  try {
-    const v = JSON.parse(String(raw ?? "[]"));
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-};
 
 export async function POST(request: NextRequest) {
   const deadline = Date.now() + 45_000;
@@ -309,17 +299,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(result);
 }
 
-type Db = DatabaseAccess;
-
-async function saveServiceHealth(db: Db, key: string, value: string) {
-  try {
-    await db.execRun(`INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now'))
-      ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, key, value);
-  } catch {
-    // A failed sample write must not change payment/notification handling.
-    console.warn("[cron-health] sample_write_failed", key);
-  }
-}
+type Db = LiteContext["db"];
 
 async function sampleWhatsAppGateway(db: Db, deadline: number) {
   const url = process.env.WHATSAPP_GATEWAY_URL?.trim().replace(/\/+$/, "");
@@ -345,18 +325,6 @@ async function sampleWhatsAppGateway(db: Db, deadline: number) {
     }).catch(() => "false");
     await saveServiceHealth(db, WA_GATEWAY_HEALTH_KEY, sample);
   } catch { console.warn("[cron-health] whatsapp_sample_failed"); }
-}
-
-async function drainDirtyGroupsIfBudget(db: Db, result: Record<string, unknown>) {
-  if (!db.canSpend(4)) return;
-  try {
-    const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
-    const pairs = await decideDirtyWinners(db);
-    result.pairs_decided = pairs.decided;
-    result.pairs_changed = pairs.changed;
-  } catch (error) {
-    if (error instanceof QueryBudgetExceeded) throw error;
-  }
 }
 
 async function runExpiry(db: Db) {
@@ -492,19 +460,6 @@ async function runFulfillment(db: Db, deadline: number) {
     }
   }
   return { stale_locks_released: released, due_jobs_processed: processed };
-}
-
-function monitorRecovery(db: Db, job: string, out: Record<string, unknown>, failedCore: string[]) {
-  return async <T,>(name: string, run: () => Promise<T>, fallback: T): Promise<T> => {
-    try { return await run(); } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-      failedCore.push(name);
-      out.recovery_failed = Number(out.recovery_failed ?? 0) + 1;
-      const { recordSyncError, sanitizeSyncError } = await import("@/lib/sync-status");
-      await recordSyncError(db, `${job}_recovery`, `${name}: ${sanitizeSyncError(error)}`);
-      return fallback;
-    }
-  };
 }
 
 async function runWrOrders(db: Db, failedCore: string[]) {
