@@ -1,5 +1,7 @@
 # Tindak lanjut audit menyeluruh 2026-11-21
 
+> Urutan kerja refactor + fondasi fitur kini diatur oleh `issue/2026-11-21-refactor-roadmap.md` (sumber kebenaran); daftar di bawah tetap sebagai catatan asal.
+
 Keputusan owner 21 November 2026: hal-hal di bawah sengaja DITUNDA (bukan dilupakan).
 Tidak ada nilai rahasia di file ini (repo publik); detail operasional ada di `.ops-private.md` lokal.
 
