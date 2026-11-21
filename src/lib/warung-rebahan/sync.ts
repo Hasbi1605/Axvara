@@ -22,143 +22,27 @@ import {
 } from "./client";
 import { deliveryClassFromApiMode, WR_DEFAULT_DELIVERY_CLASS } from "./delivery-class";
 import { JASPAY_LEGACY_PRODUCTS } from "./new-sales";
+import {
+  COST_PER_WR_PRODUCT_SYNC,
+  COST_PER_WR_VARIANT_SYNC,
+  PREFETCH_PARAM_CHUNK,
+  WR_SYNC_CATALOG_BUDGET_EXTRA,
+  WR_SYNC_CHECKPOINT_EVERY,
+  WR_SYNC_PRODUCTS_PER_RUN,
+} from "./sync/constants";
+import type { JaspaySyncResult, Row, SqlWrite, SyncOptions, SyncResult, VariantOutcome } from "./sync/types";
+import { chunked, placeholders, runWrites } from "./sync/writes";
 
-export type SyncResult = {
-  total: number;
-  synced: number;
-  excluded: number;
-  newProducts: number;
-  newVariants: number;
-  variantsSynced: number;
-  stockChanges: number;
-  priceChanges: number;
-  errors: string[];
-  durationMs: number;
-  /** True bila berhenti karena budget (cursor tersimpan, lanjutkan run berikut). */
-  budgetYielded: boolean;
-  /** True bila sweep penuh selesai tervalidasi (zero-missing diizinkan). */
-  snapshotComplete: boolean;
-};
-
-// Biaya query konservatif per entitas (lihat plan §6).
-export const COST_PER_WR_PRODUCT_SYNC = 3;
-export const COST_PER_WR_VARIANT_SYNC = 2;
-export const COST_WR_EXCLUSION_FETCH = 1;
-// Ukuran batch produk per run sync (bounded agar order tidak starvation).
-// Opsi A 2026-09-14: 48 = seluruh katalog WR saat ini dalam SATU sweep.
-// Cursor antar-run tetap disimpan sebagai fallback bila run terpotong.
-export const WR_SYNC_PRODUCTS_PER_RUN = 48;
-// Plafon tambahan khusus sync katalog (lihat raiseCeilingForCatalogSync):
-// Produk baru ~15 query/produk (upsert produk + kategori + 2 varian +
-// agregat + log) — jauh di atas estimasi admission konservatif. 48 × 16 +
-// margin = 800. Hanya untuk sync produk.
-export const WR_SYNC_CATALOG_BUDGET_EXTRA = 800;
-// Generasi: bila upstream mengembalikan data yang bentuknya berubah total
-// (mis. array kosong padahal sebelumnya 48 produk), sweep ditandai parsial.
-export const WR_SYNC_MIN_PRODUCTS_GUARD = 1;
-// Checkpoint kemajuan sweep (anti-gap-tanpa-jejak, 2026-09-20). Sweep cron
-// memakan 50–116 detik sementara plafon platform ~125 detik dan deploy bisa
-// me-recycle Functions kapan saja. Dulu cursor + logSync HANYA ditulis di
-// ujung — run kepotong = NOL jejak + ulang dari awal + kepotong lagi (tiga
-// gap misterius 19–20 Sep, fetch 200 tiap 5 mnt di log proxy sebagai bukti
-// kerja terbuang). Kini cursor + penanda kemajuan disimpan tiap N produk
-// (6 tulis/run — murah) sehingga run berikut MELANJUTKAN, bukan mengulang.
-export const WR_SYNC_CHECKPOINT_EVERY = 8;
-
-type Row = Record<string, unknown>;
-
-/**
- * Satu statement tulis yang SUDAH terikat parameternya tapi BELUM dikirim.
- *
- * KENAPA ADA (akar "sweep 32 detik untuk 13 produk"): kerja D1-nya sendiri
- * hampir gratis — `sql_duration_ms` terukur di produksi hanya 0,12–0,19 ms.
- * Yang mahal adalah JUMLAH round-trip: sweep lama mengirim 4 query per
- * produk + 4 per varian + 1 agregat secara BERURUTAN (13 produk/25 varian =
- * 165 round-trip), dan tiap round-trip menyeberang ke D1 primary di SIN.
- * Terukur ~197 ms per query, jadi 99,9% durasi sweep adalah menunggu
- * jaringan, bukan database.
- *
- * Dengan merencanakan tulis lebih dulu, seluruh tulis satu produk dikirim
- * sebagai SATU `batch()`. SQL-nya tetap tinggal di satu tempat (planner di
- * bawah) sehingga jalur berurutan lama dan jalur batch tidak bisa berbeda.
- */
-type SqlWrite = {
-  sql: string;
-  params: unknown[];
-  /** Tulis yang boleh gagal diam-diam (dulu `.catch()` di jalur berurutan). */
-  optional?: boolean;
-  /** True bila tulis mengubah kolom yang tampil di katalog publik. */
-  catalogDisplay?: boolean;
-  /**
-   * Versi pra-migrasi bila kolom `wr_delivery_mode` (0060) BELUM ada di D1
-   * prod: statement yang sama TANPA kolom baru. Dipakai fallback per
-   * statement — tanpa ini sync gagal total sampai migrasi 0060 diterapkan.
-   */
-  preMigrationFallback?: { sql: string; params: unknown[] };
-};
-
-/**
- * Kirim sekumpulan tulis. Dengan D1 nyata seluruh tulis satu produk pergi
- * sebagai SATU `batch()` — itulah sumber penghematan round-trip.
- *
- * Cakupan batch SENGAJA per produk, bukan per sweep: `batch()` adalah
- * transaksi, jadi satu produk bermasalah tidak boleh membatalkan produk lain
- * (jalur berurutan lama mencatat error per produk lalu lanjut — sifat itu
- * wajib dipertahankan).
- *
- * Bila batch gagal, tulis diulang satu per satu supaya `optional`
- * kembali bersifat toleran persis seperti sebelum batching: di batch, satu
- * statement gagal me-rollback semuanya, termasuk tulis wajib yang tadinya
- * sukses.
- */
-async function runWrites(writes: SqlWrite[], db: DatabaseAccess): Promise<boolean> {
-  if (!writes.length) return false;
-  const d1 = db.d1;
-  if (d1 && writes.length > 1) {
-    try {
-      const results = await d1.batch(writes.map((write) => d1.prepare(write.sql).bind(...write.params)));
-      return writes.some((write, idx) => write.catalogDisplay && Number(results?.[idx]?.meta?.changes ?? 0) > 0);
-    } catch {
-      /* turun ke jalur berurutan di bawah */
-    }
-  }
-  let catalogChanged = false;
-  for (const write of writes) {
-    // Pra-migrasi 0060 (kolom wr_delivery_mode BELUM ada di D1 prod) TIDAK
-    // BOLEH meruntuhkan seluruh produk: statement yang menyentuh kolom baru
-    // memakai fallback tanpa kolom itu. Statement lain tanpa fallback tetap
-    // naik bila gagal agar sync tercatat failed, bukan hilang diam-diam.
-    let res: { changes?: number } = { changes: 0 };
-    if (write.optional) {
-      res = await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
-    } else if (write.preMigrationFallback) {
-      try {
-        res = await db.execRun(write.sql, ...write.params);
-      } catch {
-        const fb = write.preMigrationFallback;
-        res = await db.execRun(fb.sql, ...fb.params);
-      }
-    } else {
-      res = await db.execRun(write.sql, ...write.params);
-    }
-    if (write.catalogDisplay && Number(res?.changes ?? 0) > 0) catalogChanged = true;
-  }
-  return catalogChanged;
-}
-
-/** `?,?,?` sebanyak n. */
-function placeholders(count: number): string {
-  return new Array(count).fill("?").join(",");
-}
-
-/** D1 menolak query dengan >100 bound parameter, jadi prefetch dipotong. */
-const PREFETCH_PARAM_CHUNK = 50;
-
-function chunked<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
+export {
+  COST_PER_WR_PRODUCT_SYNC,
+  COST_PER_WR_VARIANT_SYNC,
+  COST_WR_EXCLUSION_FETCH,
+  WR_SYNC_PRODUCTS_PER_RUN,
+  WR_SYNC_CATALOG_BUDGET_EXTRA,
+  WR_SYNC_MIN_PRODUCTS_GUARD,
+  WR_SYNC_CHECKPOINT_EVERY,
+} from "./sync/constants";
+export type { JaspaySyncResult, SyncOptions, SyncResult, VariantOutcome } from "./sync/types";
 
 function defaultMarkupPercent(): number {
   const raw = Number(process.env.WARUNG_REBAHAN_DEFAULT_MARKUP_PERCENT ?? 50);
@@ -524,8 +408,6 @@ async function createAxvaraCatalogForWr(
   if (!axvaraProductId) throw new Error("wr_product_insert_failed");
   return axvaraProductId;
 }
-
-export type VariantOutcome = { stockChanged: boolean; priceChanged: boolean; isNew: boolean };
 
 /**
  * Rencanakan tulis untuk satu varian yang SUDAH ada barisnya, tanpa menyentuh
@@ -1063,54 +945,6 @@ export function validateCatalogResponse(
   return { ok: true, reason: null };
 }
 
-export type SyncOptions = {
-  /** Batas produk per run (default WR_SYNC_PRODUCTS_PER_RUN). */
-  maxProducts?: number;
-  /** Izinkan zeroMissingVariants bila sweep penuh (default true). */
-  allowZeroMissing?: boolean;
-  /** Sumber sync: 'manual' (Force Sync admin) atau 'cron' (terjadwal).
-   * Dicatat ke wr_sync_log.trigger agar kartu admin bisa membedakan
-   * keduanya (default 'manual' agar pemanggil lama tetap bermakna). */
-  trigger?: "manual" | "cron";
-  /**
-   * Sisa waktu invocation (ms) yang boleh dipakai sweep ini.
-   *
-   * KENAPA WAJIB ADA (akar \"sync tersendat berminggu-minggu\"): loop di bawah
-   * hanya punya gerbang BUDGET QUERY (`canSpend`), tidak pernah gerbang
-   * WAKTU. Sweep penuh 48 produk / 87 varian = ~366 query D1 BERURUTAN;
-   * biayanya sepenuhnya ditentukan latensi D1 yang tidak kita kendalikan.
-   * Terukur di produksi dengan beban identik: 12 dtk saat D1 sehat (~33 ms/
-   * query) tetapi 115-122 dtk saat D1 lambat (~314 ms/query) — 68 dari 391
-   * sweep (17%) melewati deadline cron 45 dtk.
-   *
-   * Akibatnya berantai: run dibunuh platform SEBELUM ekor handler menulis
-   * `wr_sync_log` dan penanda fase, sehingga sweep tidak pernah tercatat,
-   * fase terkunci, dan run 5-menit berikutnya mengulang pekerjaan berat yang
-   * sama sampai kebetulan bertemu D1 cepat. Persis gejala \"rusak di tengah
-   * jalan tanpa sebab\" — tanpa error, tanpa jejak.
-   *
-   * Dengan budget waktu, sweep berhenti di batas produk terakhir yang utuh,
-   * menyimpan cursor, dan melaporkan `budgetYielded` — sama persis dengan
-   * perilaku saat budget query habis, yang sudah terbukti aman dan dilanjut
-   * run berikutnya.
-   */
-  timeBudgetMs?: number;
-  /**
-   * Ambil HANYA potongan yang dikerjakan run ini dari proxy VPS
-   * (`/wr/products-slice`, 2026-10-04) — bukan seluruh katalog. Dipakai cron
-   * berpotongan (Workers Free ~10 ms CPU). Proxy lama / mode langsung →
-   * otomatis kembali ke `fetchFn()` penuh. Diabaikan bila `fetchFn` kustom.
-   */
-  useProxySlices?: boolean;
-  /**
-   * Mode DIFF dari VPS (2026-10-04, `/api/supplier-sync`): terapkan HANYA
-   * produk yang berubah + nol-kan varian yang dihapus upstream. Tanpa fetch,
-   * tanpa cursor/generasi/zero-missing katalog penuh. Sweep berpotongan
-   * tetap menjadi pengaman berkala (lihat cron).
-   */
-  applyOnly?: { products: WrProduct[]; removedVariantIds: string[] };
-};
-
 export async function syncProducts(
   database?: DatabaseAccess,
   fetchFn: () => Promise<WrProduct[]> = fetchProducts,
@@ -1517,17 +1351,6 @@ async function logSync(
 // - Stok mirror: -1 bila product && package available, else 0 (kuota lewat
 //   wr_max_quantity yang ditegakkan quote/orders/dispatch).
 // - seen-set Jaspay sendiri; zero-missing Jaspay TIDAK menyentuh premium.
-
-export type JaspaySyncResult = {
-  total: number;
-  synced: number;
-  rejected: number;
-  variantsSynced: number;
-  stockChanges: number;
-  priceChanges: number;
-  errors: string[];
-  durationMs: number;
-};
 
 async function jaspaySku(variantId: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(variantId));
