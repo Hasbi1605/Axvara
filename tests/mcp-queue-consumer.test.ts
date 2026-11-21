@@ -733,8 +733,8 @@ describe("mcp-worker broadcast queue routing", () => {
     expect(m503.retry).toHaveBeenCalledWith({ delaySeconds: 15 });
   });
 
-  it("broadcast DLQ only logs sanitized metadata and acks without calling Telegram or retrying", async () => {
-    const fetchFn = vi.fn();
+  it("broadcast DLQ attempts bounded recording then acks even when recording fails; invalid messages are not recorded", async () => {
+    const fetchFn = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ error: "fixture" }, { status: 503 }));
     const logs: Array<{ level: string; entry: QueueLogEntry }> = [];
     const mValid = makeMessage(makeBroadcastPayload({ deliveryIds: [10, 11, 12] }), 4, "bdlq-1");
     const mBad = makeMessage({ campaignId: "invalid", buyerEmail: "pii@example.com" }, 4, "bdlq-2");
@@ -749,13 +749,16 @@ describe("mcp-worker broadcast queue routing", () => {
       },
     );
 
-    expect(fetchFn).not.toHaveBeenCalled();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(fetchFn).toHaveBeenCalledWith("https://origin.test/api/cron/broadcast-dlq", expect.objectContaining({
+      body: JSON.stringify({ campaignId: "00000000-0000-4000-8000-202611190001", messageId: "bdlq-1", deliveryIds: [10, 11, 12] }),
+    }));
     expect(mValid.ack).toHaveBeenCalledTimes(1);
     expect(mValid.retry).not.toHaveBeenCalled();
     expect(mBad.ack).toHaveBeenCalledTimes(1);
     expect(mBad.retry).not.toHaveBeenCalled();
     expect(logs).toHaveLength(2);
-    expect(logs[0]).toMatchObject({
+    expect(logs.find(({ entry }) => entry.campaignId === "00000000-0000-4000-8000-202611190001")).toMatchObject({
       level: "error",
       entry: {
         event: "queue_dlq",
@@ -765,9 +768,10 @@ describe("mcp-worker broadcast queue routing", () => {
         deliveryCount: 3,
         attempt: 4,
         outcome: "broadcast_dlq_acked",
+        error: "record_http_503",
       },
     });
-    expect(logs[1].entry.campaignId).toBe("[invalid-campaign]");
+    expect(logs.some(({ entry }) => entry.campaignId === "[invalid-campaign]")).toBe(true);
     expect(JSON.stringify(logs)).not.toContain("pii@example.com");
   });
 
@@ -776,6 +780,7 @@ describe("mcp-worker broadcast queue routing", () => {
       if (url.includes("/api/internal/queue/broadcast")) {
         return Response.json({ ok: true, settled: true, state: "done" });
       }
+      if (url.endsWith("/api/cron/broadcast-dlq")) return new Response(null, { status: 204 });
       throw new Error(`Unexpected fetch: ${url}`);
     });
     vi.stubGlobal("fetch", fetchStub);
@@ -790,7 +795,7 @@ describe("mcp-worker broadcast queue routing", () => {
     const dlqMsg = makeMessage(makeBroadcastPayload(), 4);
     await worker.queue(makeBatch(BROADCAST_DLQ_QUEUE_NAME, [dlqMsg.message]), baseEnv, { waitUntil: vi.fn() });
     expect(dlqMsg.ack).toHaveBeenCalledTimes(1);
-    expect(fetchStub).toHaveBeenCalledTimes(1); // DLQ never calls fetch
+    expect(fetchStub).toHaveBeenCalledTimes(2); // one dispatch, one DLQ record
     expect(logSpy).toHaveBeenCalledTimes(1);
     expect(errSpy).toHaveBeenCalledTimes(1);
   });

@@ -356,3 +356,11 @@ Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
 - Pemulihan: ubah nilai CI ke `"false"`, verifikasi, commit/push; perubahan env Cloudflare saja tidak mengubah bundle lama. Dev memakai prefix env; test menguji kedua mode.
 - Jangan menonaktifkan webhook/status/fulfillment/cleanup atau menghapus invoice lama. Mode terpisah dari kuota D1, tanpa auto-resume/estimasi jam selesai atau siaran massal otomatis.
 - **Audit FX-13 (21 November 2026, lokal):** pemberitahuan maintenance Telegram dibuat dwibahasa ID+EN dan tombolnya "💬 Hubungi admin / Contact admin" menuju hub admin `/wa` (`PAYMENT_MANUAL_ORDER_URL`) — bukan lagi "Order manual via WhatsApp" yang menyiratkan alur beli WA yang sudah pensiun. Gate ini berjalan sebelum locale/DB dibaca (nol query), jadi kedua bahasa ditulis sekaligus. Web/Pedia `PaymentMaintenanceNotice`/`ManualOrderPanel` tetap memakai hub `/wa` yang sama sesuai PRD. Tanpa perubahan kontrak 503, env, atau rail.
+
+### Kesehatan QRIS di admin — 21 November 2026 (lokal, FX-14)
+
+- Rekap 7 hari mencakup DANA (termasuk `provider IS NULL`), GoPay, dan
+  KlikQRIS di ledger event bersama; bukan IPN crypto atau webhook supplier.
+  Ringkasan juga memakai jumlah kegagalan pass polling KlikQRIS terakhir
+  yang benar-benar mengecek invoice (maks. umur 15 menit). Tidak ada probe
+  tambahan saat membuka admin, dan sepi event bukan bukti poller GoPay mati.

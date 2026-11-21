@@ -99,7 +99,8 @@ export async function POST(request: NextRequest) {
       // NOWPayments passes read key only => run saved-invoice flag-off (key
       // present => readable; key absent => passes quietly return zeros).
       const { reconcileDueKlikQrisPayments } = await import("@/lib/payments/klikqris-reconcile");
-      Object.assign(result, await reconcileDueKlikQrisPayments(db, admit));
+      const klik = await reconcileDueKlikQrisPayments(db, admit);
+      Object.assign(result, klik);
       try {
         const { reconcileDueNowpaymentsPayments, reconcileLateKnownNowpaymentsPayments } = await import("@/lib/payments/payment-view");
         const now = await reconcileDueNowpaymentsPayments(db, admit);
@@ -141,6 +142,10 @@ export async function POST(request: NextRequest) {
           result.gateway_stale_error = "pass_failed";
           failedCore.push("sekalipay_gateway_stale");
         }
+      }
+      if (klik.payments_checked > 0 && db.canSpend(1) && Date.now() + 1_000 <= deadline) {
+        const { KLIKQRIS_POLL_HEALTH_KEY } = await import("@/lib/service-health");
+        await saveServiceHealth(db, KLIKQRIS_POLL_HEALTH_KEY, String(klik.payments_failed));
       }
       if (Number(result.payments_failed) > 0 || failedCore.length > 0) {
         return NextResponse.json(
@@ -247,7 +252,10 @@ export async function POST(request: NextRequest) {
     else if (job === "notify_a") Object.assign(result, await runNotifyA(db, deadline, failedCore));
     else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline, failedCore));
     else if (job === "notify") Object.assign(result, await runNotify(db, deadline, failedCore));
-    else if (job === "cleanup") Object.assign(result, await runCleanup(db, failedCore));
+    else if (job === "cleanup") {
+      Object.assign(result, await runCleanup(db, failedCore));
+      await sampleWhatsAppGateway(db, deadline);
+    }
     else if (job === "games_catalog") {
       // docs/GAMES.md §12.5: katalog baru = Sekalipay Game; Digiflazz tidak lagi
       // dipanggil untuk price-list. Throttle/no-op ada di dalam sync.
@@ -266,7 +274,19 @@ export async function POST(request: NextRequest) {
     }
     else if (job === "tg_webhook") {
       const { guardTelegramWebhook } = await import("@/lib/telegram/webhook-guard");
-      Object.assign(result, await guardTelegramWebhook(db));
+      const { TG_WEBHOOK_HEALTH_KEY } = await import("@/lib/service-health");
+      const guard = await guardTelegramWebhook(db);
+      Object.assign(result, guard);
+      // A successful reinstall is not proof of recovery. Let the next
+      // getWebhookInfo confirm the URL/backlog before resetting the soft alarm.
+      const failed = guard.status !== "skipped" && guard.status !== "healthy" && guard.status !== "recovered";
+      if (guard.status !== "skipped" && db.canSpend(1)) {
+        await saveServiceHealth(db, TG_WEBHOOK_HEALTH_KEY, JSON.stringify({
+          error: failed ? guard.status : null,
+          pending: guard.pending_update_count ?? null,
+        }));
+      }
+      if (failed) return NextResponse.json({ ...result, ok: false, error: guard.error || guard.status }, { status: 503 });
     }
     else Object.assign(result, await runPromo(db));
   } catch (error) {
@@ -290,6 +310,42 @@ export async function POST(request: NextRequest) {
 }
 
 type Db = DatabaseAccess;
+
+async function saveServiceHealth(db: Db, key: string, value: string) {
+  try {
+    await db.execRun(`INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, key, value);
+  } catch {
+    // A failed sample write must not change payment/notification handling.
+    console.warn("[cron-health] sample_write_failed", key);
+  }
+}
+
+async function sampleWhatsAppGateway(db: Db, deadline: number) {
+  const url = process.env.WHATSAPP_GATEWAY_URL?.trim().replace(/\/+$/, "");
+  if (process.env.WHATSAPP_ENABLED !== "true" || !url || !db.canSpend(2) || Date.now() + 4_000 > deadline) return;
+  const { WA_GATEWAY_HEALTH_KEY } = await import("@/lib/service-health");
+  try {
+    if (await db.queryFirst(`SELECT 1 FROM store_settings WHERE key=? AND updated_at > datetime('now','-5 minutes')`, WA_GATEWAY_HEALTH_KEY)) return;
+    if (Date.now() + 4_000 > deadline) return;
+    // /health reads session state without taking the notification-group lock.
+    // The main session handles welcomes; a configured second session handles promo.
+    const sample = await fetch(`${url}/health`, {
+      signal: AbortSignal.timeout(3_000), redirect: "error", cache: "no-store",
+    }).then(async (res) => {
+      if (!res.ok) return "false";
+      const health = await res.json().catch(() => null) as {
+        connected?: boolean; blocked?: boolean;
+        promoBot?: { configured?: boolean; connected?: boolean; blocked?: boolean };
+      } | null;
+      const promo = health?.promoBot?.configured === true ? health.promoBot : null;
+      if (health?.blocked === true || promo?.blocked === true) return "blocked";
+      if (health?.connected === false || promo?.connected === false) return "false";
+      return health?.connected === true && (!promo || promo.connected === true) ? "true" : "unknown";
+    }).catch(() => "false");
+    await saveServiceHealth(db, WA_GATEWAY_HEALTH_KEY, sample);
+  } catch { console.warn("[cron-health] whatsapp_sample_failed"); }
+}
 
 async function drainDirtyGroupsIfBudget(db: Db, result: Record<string, unknown>) {
   if (!db.canSpend(4)) return;
