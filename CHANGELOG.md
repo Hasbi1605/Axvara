@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Koreksi rujukan job cron lite Pedia, TUNVN dan AIVault pasca-ekstraksi 3A-4; tanpa perubahan runtime — `docs/ARCHITECTURE.md` — (verifikasi: path dan simbol cocok dengan source, `git diff --check` lulus)
+
 - 2026-11-22 — Roadmap 3A-4b (kelas E): pindahkan `pedia_orders` ke `src/lib/cron/lite/jobs/pedia.ts`; dispatch/poll, checkpoint saldo IndoSMM, log/notifikasi, statistik, error subjob inti, serta marker tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/pedia.md` — (verifikasi terintegrasi: 623 file, 8.559 test lulus, 29 expected-fail, 3 TODO; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3A-4a (kelas E): pindahkan job order TUNVN/AIVault/StoreBat/Mirai dan pemeriksaan saldo ke `src/lib/cron/lite/jobs/small-suppliers.ts`; deadline, key hasil, error saldo, yield budget dan marker tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/platform-ops.md` — (verifikasi: 244 test fokus pada overlay terisolasi; badan fungsi cocok dengan baseline)

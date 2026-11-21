@@ -5270,8 +5270,8 @@ publish Pages: 65 variabel melebihi batas Free 64. Metadata project membuktikan
 
 `PEDIA_DISPATCH_ENABLED` dihapus dari env produksi karena tidak ada konsumen di
 kode runtime. Catatan flag dibuka 14 Oktober pada §16.10 adalah histori, bukan
-gate dispatch aktual; `runPediaOrders` cron lite tetap memanggil
-`processPediaPaidOrders` untuk antrean existing. Tidak mengubah penerimaan order
+gate dispatch aktual; job `pedia_orders` (`src/lib/cron/lite/jobs/pedia.ts`)
+tetap memanggil `processPediaPaidOrders` untuk antrean existing. Tidak mengubah penerimaan order
 `PEDIA_ORDERS_ENABLED`, secret provider lama/baru, ataupun env preview. Sesudah
 penghapusan: 60 konfigurasi + 4 sistem = 64; tidak ada ruang untuk env tambahan.
 
@@ -6717,7 +6717,7 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 ### 16.51 Pengingat saldo rendah Telegram admin TUNVN + AIVault — 17 November 2026 (lokal)
 
 - **Modul bersama** `src/lib/supplier-balance-alert.ts`: `checkSupplierLowBalance(db, opts)` memakai maksimal 4 statement D1 per run (`store_settings.<supplier>_balance_checked_at` ditulis sebelum panggilan API, maks 1×/30 menit via `parseExpiry`; `store_settings.<supplier>_balance_alert_at` format `amount|ms` dengan CAS seperti `notifyPediaLowBalance`, alert ulang hanya setelah 6 jam atau saldo turun `>= 1` unit). Mengirim HTML Telegram via `@/lib/telegram/api` hanya bila `TELEGRAM_ADMIN_CHAT_ID` terisi dan `TELEGRAM_BOT_ENABLED === "true"`.
-- **Integrasi cron lite** (`src/app/api/cron/lite/route.ts`): `runTunvnOrders` (`job=tunvn_orders`) dan `runAivaultOrders` (`job=aivault_orders`) menjalankan cek saldo di `try/catch` terpisah dengan gate `db.canSpend(5)` (tetap rethrow `QueryBudgetExceeded`) setelah dispatch order; budget per job tetap 40 statement tanpa env/jadwal Worker baru. Mengekspos `tunvn_balance`, `tunvn_balance_alerted`, `tunvn_balance_error` dan pasangan `aivault_*`.
+- **Integrasi cron lite** (`src/lib/cron/lite/jobs/small-suppliers.ts`, dimuat dinamis dari route): `runTunvnOrders` (`job=tunvn_orders`) dan `runAivaultOrders` (`job=aivault_orders`) menjalankan cek saldo di `try/catch` terpisah dengan gate `db.canSpend(5)` (tetap rethrow `QueryBudgetExceeded`) setelah dispatch order. Budget induk ditentukan route; tidak ada env/jadwal Worker baru. Mengekspos `tunvn_balance`, `tunvn_balance_alerted`, `tunvn_balance_error` dan pasangan `aivault_*`.
 - **Env opsional** (tidak dipasang di Cloudflare Pages; memakai default `5`): `TUNVN_BALANCE_ALERT_USDT` (default `5` USDT, finite `>= 0`) dan `AIVAULT_BALANCE_ALERT_USD` (default `5` USD, finite `>= 0`).
 
 ### 16.52 S&K varian stale tetap tampil + sanitizer teks supplier — 17 November 2026 (lokal)
