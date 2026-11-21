@@ -3,7 +3,7 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 import { addToCart, clearCart, getCartSummary, setCartLineQty } from "@/lib/telegram/cart";
 import { handleCartCheckout, handleShowCart } from "@/lib/telegram/handlers/cart";
 import { createAndSendCartInvoice } from "@/lib/telegram/handlers/cart-invoice";
-import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice } from "@/lib/payments/qris";
 import { sendMessage, sendPhoto, safeEditOrSend } from "@/lib/telegram/api";
 import * as invoiceDelivery from "@/lib/telegram/invoice-retry";
 
@@ -15,8 +15,8 @@ vi.mock("@/lib/telegram/api", () => ({
   safeEditOrSend: vi.fn(async () => ({ ok: true })),
 }));
 vi.mock("@/lib/telegram/payment-maintenance", () => ({ notifyPaymentMaintenance: async () => false }));
-vi.mock("@/lib/payments/dana-qris", async importOriginal => ({
-  ...await importOriginal<typeof import("@/lib/payments/dana-qris")>(),
+vi.mock("@/lib/payments/qris", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/payments/qris")>(),
   isActiveQrisConfigured: () => true,
   createActiveQrisInvoice: vi.fn(),
 }));

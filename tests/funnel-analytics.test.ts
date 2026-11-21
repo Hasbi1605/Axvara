@@ -4,7 +4,7 @@ import { trackFunnelEvent, trackPaidOrder, type FunnelEventInput } from "@/lib/a
 import { transitionPendingOrder, transitionPendingPaymentToPaid } from "@/lib/db/orders-transition";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { calculateCrc16 } from "@/lib/payments/dana-qris";
+import { calculateCrc16 } from "@/lib/payments/qris";
 
 const write = vi.fn();
 beforeEach(() => {
@@ -113,7 +113,7 @@ describe("canonical paid winner", () => {
       const code = "AXV-20261118-RACING01";
       insertTestOrder(f.sql, code);
       f.sql.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,merchant_id,provider_order_id,requested_amount,status)
-        VALUES (?,'dana','static_qris','fixture',?,10000,'pending')`).run(code, code);
+        VALUES (?,'gopay','static_qris','fixture',?,10000,'pending')`).run(code, code);
       if (failure === "metadata") f.control.fail = sql => sql.includes("SELECT o.order_kind,o.sales_channel");
       else write.mockImplementation(() => { throw new Error("analytics down"); });
       const result = await Promise.allSettled([
@@ -175,15 +175,15 @@ describe("real commerce routes with a broken/working analytics binding", () => {
     try {
       stubFulfillmentKey(); await insertTestProduct(f.sql);
       vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
-      vi.stubEnv("DANA_QRIS_ENABLED", "true");
-      vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture-webhook");
-      vi.stubEnv("QRIS_ACTIVE_PROVIDER", "dana");
+      vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+      vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-webhook");
+      vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
       vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
       vi.stubEnv("PRODUCT_VARIANTS_WRITE", "true");
       vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "fixture-buyer-secret");
       vi.stubEnv("ADMIN_JWT_SECRET", "fixture-admin-secret");
-      const payload = "00020101021153033605802ID6304";
-      vi.stubEnv("DANA_STATIC_QRIS", payload + calculateCrc16(payload));
+      const payload = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+      vi.stubEnv("GOPAY_STATIC_QRIS", payload + calculateCrc16(payload));
       vi.stubGlobal("fetch", vi.fn(() => { throw new Error("No external network"); }));
       const { GET: catalog } = await import("@/app/api/catalog/route");
       expect((await catalog(new Request("http://localhost/api/catalog?slug=fixture", { headers: { "user-agent": "axvara-synth/1.0" } }))).status).toBe(200);
@@ -208,7 +208,7 @@ describe("real commerce routes with a broken/working analytics binding", () => {
       const body = { items, payment_method: "qris", quote_token: quoted.quoteToken, customer_email: "private@example.com", customer_wa: "081234567890", customer_name: "Private Name" };
       const created = await create(request("/api/orders", body));
       expect(created.status, await created.clone().text()).toBe(201);
-      expect(write.mock.calls[1][0].blobs.slice(0, 6)).toEqual(["order", "apps", "web", "qris", "qris:dana", "1"]);
+      expect(write.mock.calls[1][0].blobs.slice(0, 6)).toEqual(["order", "apps", "web", "qris", "qris:gopay", "1"]);
       const retry = await create(request("/api/orders", body));
       expect(retry.status).toBe(200); expect(write).toHaveBeenCalledTimes(2);
       expect(JSON.stringify(write.mock.calls)).not.toMatch(/private@example|081234|Private Name|AXV-/);

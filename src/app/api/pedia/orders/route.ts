@@ -11,7 +11,7 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 import { pediaServiceTypeFor, CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 import { NextRequest, NextResponse } from "next/server";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
-import { activeQrisProvider } from "@/lib/payments/dana-qris";
+import { activeQrisProvider } from "@/lib/payments/qris";
 import { assertOrderAccessConfigured, createBuyerAccessSession } from "@/lib/order-access";
 import { z } from "zod";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
@@ -60,7 +60,7 @@ async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknow
   if (payable > 0 && order.status === "pending") {
     if (method === "qris") {
       try {
-        const { createActiveQrisInvoice } = await import("@/lib/payments/dana-qris");
+        const { createActiveQrisInvoice } = await import("@/lib/payments/qris");
         const inv = await createActiveQrisInvoice(String(order.code), payable);
         qris = { payable_amount: inv.payableAmount, unique_code: inv.uniqueCode, image_url: inv.qrisUrl, expires_at: inv.expiresAt };
       } catch {

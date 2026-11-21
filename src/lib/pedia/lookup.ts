@@ -3,7 +3,7 @@
 // anti-oracle. Mengembalikan status + ringkasan item Pedia.
 import { NextResponse } from "next/server";
 import { queryFirst } from "@/lib/db";
-import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
+import { MAX_QRIS_REISSUES } from "@/lib/payments/qris";
 import { pediaStatusLabel } from "@/components/pedia/StatusWidgets";
 import { buyerOrderAccessMatches, createBuyerAccessSession, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { deriveNameFromEmail } from "@/lib/utils";
@@ -14,7 +14,7 @@ export async function lookupPediaOrder(code: string, contactRaw: string, adminVi
   const notFound = orderAccessDenied;
   const row = (await queryFirst(
     `SELECT o.*, pt.payable_amount, pt.unique_code, pt.qris_url AS dynamic_qris_url,
-            pt.expires_at AS payment_expires_at, pt.status AS transaction_status
+            pt.expires_at AS payment_expires_at, pt.status AS transaction_status, pt.provider AS payment_provider
       FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
       WHERE o.code=?`,
     code,
@@ -80,7 +80,7 @@ export async function lookupPediaOrder(code: string, contactRaw: string, adminVi
       eta_finish: item?.eta_finish != null ? String(item.eta_finish) : null,
       created_at: row.created_at,
       expires_at: row.expires_at,
-      qris_reissue_allowed: row.status === "pending" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
+      qris_reissue_allowed: row.payment_provider !== "dana" && row.payment_provider != null && row.status === "pending" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url ? {
         payable_amount: row.payable_amount, unique_code: row.unique_code,
         image_url: row.dynamic_qris_url, expires_at: row.payment_expires_at,

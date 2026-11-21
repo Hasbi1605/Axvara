@@ -5,7 +5,7 @@
 // its canonical IDR subtotal. No self-HTTP, no fake JWT, no body/country.
 // Failure isolation preserved: gateway/crypto failure hides that rail only.
 import { queryAll } from "@/lib/db";
-import { isActiveQrisConfigured } from "@/lib/payments/dana-qris";
+import { isActiveQrisConfigured } from "@/lib/payments/qris";
 import { buildCryptoCatalog, type CryptoOffer, type CryptoOfferUnavailable } from "@/lib/payments/crypto-preflight";
 import { getCryptoMarketSnapshot } from "@/lib/payments/market-snapshot";
 import type { GatewayGroup } from "@/lib/payments/sekalipay-gateway";

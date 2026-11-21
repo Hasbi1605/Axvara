@@ -116,8 +116,8 @@ describe("overview memakai pengukuran + system_details", () => {
 });
 
 describe("notifikasi penting retry idempoten via whatsapp_outbox", () => {
-  it("DANA keeps internal paid admin notice; cron still drains shared WA transport", () => {
-    const webhook = read("src/app/api/webhook/dana/route.ts");
+  it("GoPay keeps internal paid admin notice; cron still drains shared WA transport", () => {
+    const webhook = read("src/app/api/webhook/gopay/route.ts");
     expect(webhook).not.toContain("enqueueWhatsAppMessage");
     expect(webhook).toContain("notifyWhatsAppPaidAdmin");
     expect(webhook).not.toContain("Buyer notification is best-effort");

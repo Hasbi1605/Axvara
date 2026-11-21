@@ -3,7 +3,7 @@ import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
 import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
-import { activeQrisProvider } from "@/lib/payments/dana-qris";
+import { activeQrisProvider } from "@/lib/payments/qris";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema, withoutPrivateBuyerData } from "@/lib/buyer-fields";
@@ -11,7 +11,7 @@ import { createOrderWithStock, queryAll, queryFirst, StockReservationError, tran
 import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
-import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice, MAX_QRIS_REISSUES, type QrisInvoice } from "@/lib/payments/qris";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
 import { createDatabaseAccess } from "@/lib/db-access";
@@ -542,21 +542,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
   }
 
-  let qrisInvoice: Awaited<ReturnType<typeof createDanaQrisInvoice>> | null = null;
+  let qrisInvoice: QrisInvoice | null = null;
   let cryptoView: import("@/lib/payments/payment-view").NonQrisPaymentView | null = null;
   let gatewayView: Awaited<ReturnType<typeof import("@/lib/payments/payment-view").buildSekalipayGatewayPaymentView>> = null;
   if (pm === "qris") {
     try {
-      // Rail mengikuti QRIS_ACTIVE_PROVIDER (default dana = perilaku lama).
       qrisInvoice = await createActiveQrisInvoice(code, quote.subtotal);
     } catch (error) {
-      console.error("DANA QRIS invoice setup failed:", error instanceof Error ? error.message : "unknown");
+      console.error("QRIS invoice setup failed:", error instanceof Error ? error.message : "unknown");
       if (error instanceof Error && error.message.startsWith("klikqris_")) {
         const pending = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='klikqris' AND status IN ('initializing','pending')", code);
         if (pending) return NextResponse.json({ error: "Tagihan sedang disiapkan. Tunggu sebentar lalu coba lagi dengan checkout yang sama.", code }, { status: 503 });
       }
       try {
-        await transitionPendingOrder(code, "dibatalkan", "dana_qris_setup_failed", quote.items);
+        await transitionPendingOrder(code, "dibatalkan", "qris_setup_failed", quote.items);
       } catch { /* A concurrent terminal transition is safe. */ }
       return NextResponse.json({ error: "QRIS dinamis sedang tidak tersedia. Coba lagi sebentar." }, { status: 503 });
     }
@@ -890,7 +889,7 @@ export async function GET(req: NextRequest) {
         fulfillment_status: row.fulfillment_status ?? null,
         automatic_progress: hasAutomaticProgress ? await readAutomaticProgress(code, { queryAll }).catch(() => []) : [],
         unique_units_progress: uniqueUnitsProgress,
-        qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
+        qris_reissue_allowed: row.payment_provider === "gopay" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
         qris: row.dynamic_qris_url ? {
           payable_amount: row.payable_amount,
           unique_code: row.unique_code,

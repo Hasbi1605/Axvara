@@ -10,7 +10,7 @@ import {
   parseDbTimeUtc,
   parseQrisWebhook,
   sha256Hex,
-} from "@/lib/payments/dana-qris";
+} from "@/lib/payments/qris";
 import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
 import { verifyGopaySignature } from "@/lib/payments/gopay-signature";
 import { isFutureIso } from "@/lib/expiry";

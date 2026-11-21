@@ -16,7 +16,7 @@ import {
 } from "@/lib/telegram/messages";
 import { tgCtxFor, tgUsdAlternate } from "@/lib/telegram/render-prefs";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
-import { isActiveQrisConfigured } from "@/lib/payments/dana-qris";
+import { isActiveQrisConfigured } from "@/lib/payments/qris";
 import { addToCart, setCartLineQty, removeFromCart, getCartSummary } from "@/lib/telegram/cart";
 import { clearPendingAction, replaceWithText, type ScreenSourceMeta } from "./shared";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";

@@ -387,12 +387,11 @@ let systemsDetails: Record<string, ServiceStatus> = {};
 
 /** Kompatibilitas boolean lama untuk UI yang belum membaca system_details. */
 function legacySystems() {
-  const danaOk = process.env.DANA_QRIS_ENABLED === "true" && Boolean(process.env.DANA_STATIC_QRIS) && Boolean(process.env.DANA_WEBHOOK_SECRET);
   const gopayOk = process.env.GOPAY_QRIS_ENABLED === "true" && Boolean(process.env.GOPAY_STATIC_QRIS) && Boolean(process.env.GOPAY_POLLER_SECRET);
   return {
     telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN) && process.env.TELEGRAM_BOT_ENABLED === "true",
     whatsapp: Boolean(process.env.WHATSAPP_GATEWAY_URL) && process.env.WHATSAPP_ENABLED === "true",
-    qris: danaOk || gopayOk || isKlikQrisConfigured(),
+    qris: gopayOk || isKlikQrisConfigured(),
     fulfillment: process.env.AUTO_FULFILLMENT_ENABLED === "true" && Boolean(process.env.FULFILLMENT_ENCRYPTION_KEY),
   };
 }

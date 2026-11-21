@@ -29,7 +29,7 @@ function seed(code: string, provider: string, lifetime: number, issuedAt: string
     .run(code, provider, code, at(lifetime), issuedAt, issuedAt ? at(-60) : at(0));
 }
 
-it.each(["klikqris", "gopay", "dana"])("%s: next-tick regression, 5-minute window, atomic one-reminder limit", async provider => {
+it.each(["klikqris", "gopay"])("%s: next-tick regression, 5-minute window, atomic one-reminder limit", async provider => {
   const code = "AXV-20261120-969F88D9";
   seed(code, provider, 15);
   tick(1);
@@ -45,6 +45,13 @@ it.each(["klikqris", "gopay", "dana"])("%s: next-tick regression, 5-minute windo
   ].join("\n") }));
   tick(13);
   expect(await sendPendingOrderReminders()).toBe(0);
+});
+
+it("does not remind buyers to pay retired DANA invoices", async () => {
+  seed("AXV-20261120-969F88D9", "dana", 15);
+  tick(10);
+  expect(await sendPendingOrderReminders()).toBe(0);
+  expect(sendMessage).not.toHaveBeenCalled();
 });
 
 it("uses the crypto invoice lifetime for first eligibility and ≥1/3 spacing", async () => {

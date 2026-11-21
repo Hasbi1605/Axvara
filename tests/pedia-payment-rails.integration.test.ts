@@ -9,7 +9,7 @@ import { applyPediaDiff } from "@/lib/pedia/sync";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { resetCryptoMarketMemo } from "@/lib/payments/market-snapshot";
-import * as qris from "@/lib/payments/dana-qris";
+import * as qris from "@/lib/payments/qris";
 
 const gatewayMock = vi.hoisted(() => ({
   catalog: [] as unknown[],

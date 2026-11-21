@@ -43,7 +43,7 @@ export async function loadGamesOrder(code: string): Promise<{
 }
 
 export function gamesQrisBlock(tx: GamesPaymentRow | null) {
-  if (!tx || !QRIS_PROVIDERS.has(String(tx.provider))) return null;
+  if (!tx || !QRIS_PROVIDERS.has(String(tx.provider ?? "dana"))) return null;
   return {
     payable_amount: tx.payable_amount,
     unique_code: tx.unique_code,

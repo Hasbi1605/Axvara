@@ -5,19 +5,19 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 //
 // Kenapa endpoint ini ada: sebelumnya masa hidup order disamakan dengan masa
 // hidup QR (15 menit), dan tidak ada jalur reissue sama sekali —
-// `createDanaQrisInvoice` mengembalikan invoice lama yang sudah kedaluwarsa,
+// `createGopayQrisInvoice` mengembalikan invoice lama yang sudah kedaluwarsa,
 // sedangkan `telegram/invoice-retry.ts` hanya mengirim ulang FOTO invoice yang
 // sama. Pembeli yang telat bayar wajib mengulang alur dari nol.
 //
 // Model akses sengaja sama dengan `/api/orders/[code]`: pemegang kode order
 // boleh bertindak atas order itu, tanpa login. Yang membuat ini tidak bisa
 // disalahgunakan untuk mengganggu pembeli lain adalah invariannya di
-// `reissueDanaQrisInvoice`: reissue HANYA boleh saat invoice lama sudah
+// `reissueGopayQrisInvoice`: reissue HANYA boleh saat invoice lama sudah
 // kedaluwarsa, sehingga QR yang sedang aktif tidak pernah bisa dibatalkan
 // pihak luar. Ditambah rate limit 5/menit/IP dan batas 1 reissue per order.
 
 import { NextRequest, NextResponse } from "next/server";
-import { reissueDanaQrisInvoice, isDanaQrisEnabled, isDanaQrisConfigured } from "@/lib/payments/dana-qris";
+import { reissueGopayQrisInvoice } from "@/lib/payments/qris";
 import { isValidOrderCode } from "@/lib/security";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { queryFirst } from "@/lib/db";
@@ -54,12 +54,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (accessFailure) return accessFailure;
   }
 
-  if (!isDanaQrisEnabled() || !isDanaQrisConfigured()) {
-    return NextResponse.json({ error: "QRIS sedang tidak tersedia" }, { status: 503 });
-  }
-
   try {
-    const result = await reissueDanaQrisInvoice(orderCode);
+    const result = await reissueGopayQrisInvoice(orderCode);
     if (!result.ok) {
       // 409: state order/invoice tidak memenuhi syarat — bukan kesalahan input.
       return NextResponse.json(
@@ -78,6 +74,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       remaining_reissues: result.remaining,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    if (error instanceof Error && error.message === "qris_not_configured") {
+      return NextResponse.json({ error: "QRIS sedang tidak tersedia" }, { status: 503 });
+    }
     // Tidak membocorkan detail provider/secret ke pembeli; log untuk diagnosa.
     console.error("QRIS reissue failed:", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ error: "Gagal menerbitkan QRIS baru. Coba lagi." }, { status: 500 });

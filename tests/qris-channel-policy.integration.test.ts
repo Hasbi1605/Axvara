@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { calculateCrc16, createDanaQrisInvoice, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createGopayQrisInvoice, reissueGopayQrisInvoice } from "@/lib/payments/qris";
+import { seedLegacyDanaInvoice } from "./helpers/qris-fixture";
 import { sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
 import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
@@ -22,10 +23,10 @@ let fixture: ReturnType<typeof createD1Fixture>;
 const code = "AXV-20260910-POLICY01";
 beforeEach(async () => {
   fixture = createD1Fixture(); stubFulfillmentKey(); vi.clearAllMocks();
-  const qr = "00020101021153033605802ID6304";
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
   vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
-  vi.stubEnv("DANA_QRIS_ENABLED", "true"); vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture"); vi.stubEnv("CRON_SECRET", "fixture");
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true"); vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
+  vi.stubEnv("GOPAY_POLLER_SECRET", "fixture"); vi.stubEnv("CRON_SECRET", "fixture");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "false"); vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "false");
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External network disabled"); }));
   await insertTestProduct(fixture.sql, "manual", 1);
@@ -36,10 +37,13 @@ async function checkout(channel: "telegram" | "whatsapp" = "telegram") {
     lines: [{ productId: 1, variantId: 1, qty: 1, fulfillmentMode: "manual", stock: 100 }],
     items: [{ product_id: 1, variant_id: 1, qty: 1, price: 10000, name: "Fixture" }],
     variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1, customerName: "Fixture", salesChannel: "telegram",
-    paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required" });
+    paymentMethod: "qris", paymentAccount: "GoPay Merchant", fulfillmentStatus: "not_required" });
   fixture.sql.prepare("UPDATE orders SET telegram_chat_id='77', channel_conversation_id='fixture@g.us', telegram_order_notified_at=datetime('now') WHERE code=?").run(code);
-  if (channel === "whatsapp") fixture.sql.prepare("UPDATE orders SET sales_channel='whatsapp' WHERE code=?").run(code);
-  return createDanaQrisInvoice(code, 10000);
+  if (channel === "whatsapp") {
+    fixture.sql.prepare("UPDATE orders SET sales_channel='whatsapp' WHERE code=?").run(code);
+    return seedLegacyDanaInvoice(fixture.sql, code, 10000);
+  }
+  return createGopayQrisInvoice(code, 10000);
 }
 const row = () => fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;
 function expire(final = false) {
@@ -55,7 +59,7 @@ it("WA has exactly the invoice deadline and cannot renew even through the shared
   const invoice = await checkout("whatsapp");
   expect(row().expires_at).toBe(invoice.expiresAt);
   expire();
-  expect(await reissueDanaQrisInvoice(code)).toEqual({ ok: false, reason: "order_not_reissuable" });
+  expect(await reissueGopayQrisInvoice(code)).toEqual({ ok: false, reason: "order_not_reissuable" });
   const { GET } = await import("@/app/api/orders/[code]/route");
   const response = await GET(new NextRequest(`http://localhost/api/orders/${code}`, { headers: { "x-buyer-access-session": (await createBuyerAccessSession(row()))! } }), { params: Promise.resolve({ code }) });
   expect((await response.json()).order.qris_reissue_allowed).toBe(false);
@@ -75,18 +79,18 @@ it("offers renewal only in the first expired QR message, retries failed delivery
 });
 it("the replacement is the final QR; its deadline closes the order and restores stock once", async () => {
   await checkout(); expire();
-  const renewed = await reissueDanaQrisInvoice(code);
+  const renewed = await reissueGopayQrisInvoice(code);
   expect(renewed.ok).toBe(true);
   if (!renewed.ok) throw new Error(renewed.reason);
   expect(renewed.remaining).toBe(0);
   expect(row().expires_at).toBe(renewed.invoice.expiresAt);
   expect(row().telegram_invoice_sent_at).toBeNull();
   expire();
-  expect(await reissueDanaQrisInvoice(code)).toEqual({ ok: false, reason: "reissue_limit_reached" });
+  expect(await reissueGopayQrisInvoice(code)).toEqual({ ok: false, reason: "reissue_limit_reached" });
   expire(true); await cron(); await cron(); await sendQrisExpiryNotifications();
   expect(row().status).toBe("kadaluarsa");
   expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(100);
-  const terminal = vi.mocked(sendMessage).mock.calls.filter(([args]) => args.text.includes("Pembayaran kedaluwarsa"));
+  const terminal = vi.mocked(sendMessage).mock.calls.filter(([args]) => args.text.includes("Pembayaran kedaluwarsa") && args.reply_markup);
   expect(terminal).toHaveLength(1);
   expect(terminal[0][0].text).toContain("Produk : Fixture ×1");
   expect(terminal[0][0].reply_markup).toEqual({ inline_keyboard: [[
@@ -145,7 +149,7 @@ it("the page lookup API exposes the deadline and permission before and after the
   const { GET } = await import("@/app/api/orders/route");
   const lookup = async () => (await (await GET(new NextRequest(`http://localhost/api/orders?code=${code}`, { headers: { "x-buyer-access-session": (await createBuyerAccessSession(row()))! } }))).json()).order;
   expect(await lookup()).toMatchObject({ expires_at: row().expires_at, qris_reissue_allowed: true });
-  expire(); await reissueDanaQrisInvoice(code);
+  expire(); await reissueGopayQrisInvoice(code);
   expect(await lookup()).toMatchObject({ expires_at: row().expires_at, qris_reissue_allowed: false });
 });
 

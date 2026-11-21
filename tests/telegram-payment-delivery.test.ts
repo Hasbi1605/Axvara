@@ -18,8 +18,8 @@ vi.mock("@/lib/telegram/api", () => ({
   answerCallbackQuery: vi.fn(async () => {}),
   withLoadingIndicator: async (_chat: unknown, _label: unknown, fn: (done: () => Promise<void>) => Promise<unknown>) => fn(async () => {}),
 }));
-vi.mock("@/lib/payments/dana-qris", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/payments/dana-qris")>()),
+vi.mock("@/lib/payments/qris", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/qris")>()),
   isActiveQrisConfigured: () => true,
 }));
 
@@ -301,7 +301,7 @@ describe("TG R3 provider invoice delivery fence + text retry", () => {
 
   it("QRIS orders keep their photo retry (sendPhoto) and are not routed through the text branch", async () => {
     fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_user_id,telegram_chat_id,locale,expires_at) VALUES('AXV-20260101-QRISQRIS','b','','[{\"name\":\"X\",\"qty\":1}]',9000,'qris','pending','pending','telegram',?,?,'id',datetime('now','+10 minutes'))").run(String(buyer.id), String(buyer.id));
-    fx.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,qris_url,expires_at) VALUES('AXV-20260101-QRISQRIS','dana','static','po1','m',9000,9017,'pending','https://example.test/q.png',?)").run(new Date(Date.now() + 600_000).toISOString());
+    fx.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,qris_url,expires_at) VALUES('AXV-20260101-QRISQRIS','gopay','static','po1','m',9000,9017,'pending','https://example.test/q.png',?)").run(new Date(Date.now() + 600_000).toISOString());
     const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
     expect(await retryTelegramInvoiceDelivery("AXV-20260101-QRISQRIS")).toBe(true);
     expect(vi.mocked(sendPhoto)).toHaveBeenCalledTimes(1);
@@ -357,7 +357,7 @@ describe("TG R3 gateway consent-gated delivery, reminders, notices", () => {
     const { code } = await createWithSendFailure(null);
     fx.sql.prepare("UPDATE telegram_users SET locale='id' WHERE user_id=?").run(String(buyer.id));
     fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_user_id,telegram_chat_id,locale,expires_at) VALUES('AXV-20260101-QRISQRIS','b','','[{\"name\":\"X\",\"qty\":1}]',9000,'qris','pending','pending','telegram',?,?,'id',datetime('now','+10 minutes'))").run(String(buyer.id), String(buyer.id));
-    fx.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,qris_url,expires_at) VALUES('AXV-20260101-QRISQRIS','dana','static','po1','m',9000,9017,'pending','https://example.test/q.png',?)").run(new Date(Date.now() + 600_000).toISOString());
+    fx.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,qris_url,expires_at) VALUES('AXV-20260101-QRISQRIS','gopay','static','po1','m',9000,9017,'pending','https://example.test/q.png',?)").run(new Date(Date.now() + 600_000).toISOString());
     fx.sql.prepare("UPDATE payment_transactions SET invoice_issued_at=datetime('now','-11 minutes'), expires_at=datetime('now','+4 minutes')").run();
     vi.stubEnv("TELEGRAM_BOT_ENABLED", "true"); vi.stubEnv("TELEGRAM_BOT_TOKEN", "t");
     clearTg(); send.mockResolvedValue({ ok: true } as never);

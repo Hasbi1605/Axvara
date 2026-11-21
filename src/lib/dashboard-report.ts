@@ -56,11 +56,11 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
       CAST(ROUND(COALESCE(pt.payable_amount,MAX(0,o.subtotal-CASE WHEN o.order_kind='pedia' THEN COALESCE(pi.credit_used,0) ELSE 0 END))) AS INTEGER) merchant_amount,
       CASE WHEN o.order_kind='pedia' THEN COALESCE(pi.credit_used,0) ELSE 0 END order_credit,
       ${revenuePaidAtWibSql("o")} paid_wib,
-      COALESCE(pt.gateway_fee,0) + CASE pt.provider
+      COALESCE(pt.gateway_fee,0) + CASE COALESCE(pt.provider,CASE WHEN pt.order_code IS NOT NULL THEN 'dana' END)
         WHEN 'gopay' THEN ROUND(COALESCE(pt.payable_amount,o.subtotal)*${fees.mdr_bps.gopay}/10000.0)
         WHEN 'klikqris' THEN ROUND(COALESCE(pt.payable_amount,o.subtotal)*${fees.mdr_bps.klikqris}/10000.0)
         WHEN 'dana' THEN ROUND(COALESCE(pt.payable_amount,o.subtotal)*${fees.mdr_bps.dana}/10000.0) ELSE 0 END payment_fee,
-      CASE WHEN pt.provider IN ('gopay','klikqris','dana') THEN MAX(0,pt.payable_amount-o.subtotal) ELSE 0 END unique_bonus,
+      CASE WHEN pt.order_code IS NOT NULL AND COALESCE(pt.provider,'dana') IN ('gopay','klikqris','dana') THEN MAX(0,pt.payable_amount-o.subtotal) ELSE 0 END unique_bonus,
       CASE WHEN o.order_kind='games' THEN json_array(json_object('name',${GAMES_ORDER_LABEL_SQL},
           'product_id',gi.product_id,'qty',1,'price',COALESCE(gi.unit_price,o.subtotal)))
         WHEN COALESCE(o.order_kind,'market')='pedia' OR NOT json_valid(o.items)

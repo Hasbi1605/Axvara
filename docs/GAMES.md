@@ -555,7 +555,7 @@ hanya untuk order terminal/unpaid, bounded 5 transisi + 20 item, tidak mengubah
 paid); histori item expired tidak menyumbat sweep. Shared
 `transitionPendingOrder` mengecualikan Pedia DAN Games dari restock, walau ID item
 bertabrakan dengan `products`/`product_variants`. KlikQRIS callback/reconcile,
-DANA dan GoPay paid memanggil `schedulePaidFulfillment(code,'games')`, tanpa
+GoPay dan KlikQRIS paid memanggil `schedulePaidFulfillment(code,'games')`, tanpa
 Market outbox/WR/SK; cron `games_orders` tetap pemulihan. B2 memperluas guard pembayaran
 AXV|AXP|AXG (bukan `isValidOrderCode`/route Market). Gateway paid reconcile/callback
 dan crypto IPN menjadwalkan Games sekali setelah transisi atomik menang; late/underpaid/

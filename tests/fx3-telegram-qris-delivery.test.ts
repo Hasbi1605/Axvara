@@ -19,8 +19,8 @@ vi.mock("@/lib/telegram/api", () => ({
 vi.mock("@/lib/telegram/payment-maintenance", () => ({ notifyPaymentMaintenance: async () => false }));
 
 const qris = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("@/lib/payments/dana-qris", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/payments/dana-qris")>()),
+vi.mock("@/lib/payments/qris", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/qris")>()),
   isActiveQrisConfigured: () => true,
   createActiveQrisInvoice: qris.create,
 }));
@@ -48,16 +48,16 @@ function seedPendingQrisOrder(code: string) {
     .run(code, JSON.stringify([{ product_id: 1, variant_id: 11, name: "Produk X", price: 10000, qty: 1 }]));
   fx.sql.prepare(`INSERT INTO payment_transactions
     (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,qris_url,expires_at)
-    VALUES(?,'dana','inhouse',?,'fixture',10000,10000,'pending','https://example.com/qr.png',?)`)
+    VALUES(?,'gopay','inhouse',?,'fixture',10000,10000,'pending','https://example.com/qr.png',?)`)
     .run(code, code, new Date(Date.now() + 600_000).toISOString());
 }
 
 async function seedRenewableQrisOrder(code: string) {
-  const { calculateCrc16 } = await import("@/lib/payments/dana-qris");
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture");
+  const { calculateCrc16 } = await import("@/lib/payments/qris");
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
+  vi.stubEnv("GOPAY_POLLER_SECRET", "fixture");
   seedPendingQrisOrder(code);
   fx.sql.prepare(`UPDATE orders SET expires_at=datetime('now','+10 minutes'),
     telegram_invoice_sent_at=datetime('now','-5 minutes'), telegram_invoice_attempts=1 WHERE code=?`).run(code);

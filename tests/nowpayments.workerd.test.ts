@@ -47,7 +47,7 @@ it("the NOWPayments create path sends requests in workerd with manual-redirect p
             }
             if (args.path === "@/lib/db") return { path: "db", namespace: "fixture" };
             if (args.path === "@/lib/cloudflare-access") return { path: "access", namespace: "fixture" };
-            if (["./dana-qris", "@/lib/fulfillment/deliver", "@/lib/warung-rebahan/order", "@/lib/sekalipay/order", "@/lib/pedia/dispatch", "@/lib/telegram/api"].includes(args.path)) {
+            if (["./qris", "@/lib/fulfillment/deliver", "@/lib/warung-rebahan/order", "@/lib/sekalipay/order", "@/lib/pedia/dispatch", "@/lib/telegram/api"].includes(args.path)) {
               return { path: "unused", namespace: "fixture" };
             }
             if (args.path === "@/lib/site") {

@@ -406,9 +406,9 @@ describe("Reusable WhatsApp pending order", () => {
 });
 
 describe("Variant stock expiry lifecycle", () => {
-  it("DANA webhook and expiry cron use atomic payment/order transition helpers", () => {
+  it("GoPay webhook and expiry cron use atomic payment/order transition helpers", () => {
     const db = read("src/lib/db/orders-transition.ts");
-    const callback = read("src/app/api/webhook/dana/route.ts");
+    const callback = read("src/app/api/webhook/gopay/route.ts");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(db).toContain("export async function transitionPendingPaymentOrder");
     expect(db).toContain("export async function transitionPendingPaymentToPaid");
@@ -418,9 +418,9 @@ describe("Variant stock expiry lifecycle", () => {
     expect(cron).not.toContain("checkStatus");
   });
 
-  it("authenticates QRIS Hook and matches only an active exact amount", () => {
-    const callback = read("src/app/api/webhook/dana/route.ts");
-    expect(callback).toContain("x-webhook-secret");
+  it("authenticates GoPay poller and matches only an active exact amount", () => {
+    const callback = read("src/app/api/webhook/gopay/route.ts");
+    expect(callback).toContain("x-poller-secret");
     expect(callback).toContain("constantTimeEqual");
     expect(callback).toContain("pt.payable_amount=?");
     // Canonical JS expiry shared with both crons (raw SQL string comparison
@@ -431,7 +431,7 @@ describe("Variant stock expiry lifecycle", () => {
 
   it("deduplicates hook events and allows the atomic paid repair guard", () => {
     const db = read("src/lib/db/orders-transition.ts");
-    const callback = read("src/app/api/webhook/dana/route.ts");
+    const callback = read("src/app/api/webhook/gopay/route.ts");
     // Paid wins only from a pending ledger while the order is still
     // pending+unpaid, so a concurrent expiry batch settles deterministically.
     expect(db).toContain("AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status IN ('initializing','pending'))");
@@ -452,7 +452,7 @@ describe("Variant stock expiry lifecycle", () => {
   });
 
   it("reuses an existing DANA ledger before allocating another unique amount", () => {
-    const qris = read("src/lib/payments/dana-qris.ts");
+    const qris = read("src/lib/payments/qris.ts");
     // Multi-rail 2026-10-02: lookup generik per provider (bind param),
     // alokasi 40x tetap setelah lookup.
     const lookup = qris.indexOf("FROM payment_transactions WHERE order_code=? AND provider=?");

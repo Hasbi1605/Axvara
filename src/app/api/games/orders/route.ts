@@ -5,7 +5,7 @@
 import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
-import { activeQrisProvider } from "@/lib/payments/dana-qris";
+import { activeQrisProvider } from "@/lib/payments/qris";
 import { isGamesNicknameProduct, sanitizeGamesNickname } from "@/lib/games/sellable";
 import { z } from "zod";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
@@ -67,7 +67,7 @@ async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknow
       if (!payment || payment.state === "initializing") return paymentUnavailable(order.code, locale);
     } else {
       try {
-        const { createActiveQrisInvoice } = await import("@/lib/payments/dana-qris");
+        const { createActiveQrisInvoice } = await import("@/lib/payments/qris");
         const invoice = await createActiveQrisInvoice(String(order.code), total);
         qris = {
           payable_amount: invoice.payableAmount,

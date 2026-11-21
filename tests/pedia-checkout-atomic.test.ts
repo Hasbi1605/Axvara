@@ -3,7 +3,7 @@ import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { POST } from "@/app/api/pedia/orders/route";
-import * as qris from "@/lib/payments/dana-qris";
+import * as qris from "@/lib/payments/qris";
 import * as klikqris from "@/lib/payments/klikqris";
 
 const fixtures: ReturnType<typeof createD1Fixture>[] = [];

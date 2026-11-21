@@ -1,7 +1,7 @@
 // src/lib/warung-rebahan/client.ts — Low-level HTTP client ke Warung Rebahan H2H API.
 // Edge-compatible: hanya fetch() + Web Crypto, tanpa Node-only API.
 //
-// Pola mengikuti src/lib/payments/dana-qris.ts (AbortController + timeout,
+// Pola mengikuti src/lib/payments/qris.ts (AbortController + timeout,
 // error classification) dan src/lib/telegram/api.ts (wrapper fetch kecil).
 
 import { jaspayAmount } from "./jaspay";

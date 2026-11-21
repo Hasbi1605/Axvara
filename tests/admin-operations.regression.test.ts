@@ -17,10 +17,10 @@ describe("admin operational workspace", () => {
     expect(manager).toContain("WhatsApp");
   });
 
-  it("uses QRIS Hook as the only approval authority for QRIS orders", () => {
+  it("requires settlement verification rather than screenshot approval for QRIS orders", () => {
     const manager = read("src/components/admin/OrdersManager.tsx");
     const events = read("src/app/api/admin/payments/events/route.ts");
-    expect(manager).toContain("Status lunas tetap menunggu QRIS Hook");
+    expect(manager).toContain("Status lunas tetap menunggu verifikasi mutasi");
     expect(manager).toContain("hanya dipakai sebagai referensi");
     expect(events).toContain("retry_match");
     expect(events).toContain("transitionPendingPaymentToPaid");

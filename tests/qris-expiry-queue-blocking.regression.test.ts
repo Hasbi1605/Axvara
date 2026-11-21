@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createGopayQrisInvoice } from "@/lib/payments/qris";
 import { QRIS_EXPIRY_NOTICE_WHERE, sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
 import { sendMessage } from "@/lib/telegram/api";
 
@@ -34,10 +34,10 @@ beforeEach(async () => {
   vi.mocked(sendMessage).mockImplementation(async (params) => (BLOCKED_CHATS.has(String(params.chat_id))
     ? { ok: false, error_code: 403, description: "Forbidden: bot was blocked by the user" }
     : { ok: true }));
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture");
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
+  vi.stubEnv("GOPAY_POLLER_SECRET", "fixture");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External network disabled"); }));
   await insertTestProduct(fixture.sql, "manual", 1);
@@ -52,11 +52,11 @@ async function order(code: string, channel: "web" | "telegram", to: { email?: st
     items: [{ product_id: 1, variant_id: 1, qty: 1, price: 10000, name: "Fixture" }],
     variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1,
     customerName: "Fixture", salesChannel: channel,
-    paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required",
+    paymentMethod: "qris", paymentAccount: "GoPay Merchant", fulfillmentStatus: "not_required",
   });
   fixture.sql.prepare("UPDATE orders SET customer_email=?, telegram_chat_id=? WHERE code=?")
     .run(to.email ?? null, to.chatId ?? null, code);
-  await createDanaQrisInvoice(code, 10000);
+  await createGopayQrisInvoice(code, 10000);
 }
 
 /** Format ISO-Z persis seperti yang ditulis produksi (`toISOString()`). */

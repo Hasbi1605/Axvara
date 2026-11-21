@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { Miniflare } from "miniflare";
 import { expect, it } from "vitest";
-import { calculateCrc16 } from "@/lib/payments/dana-qris";
+import { calculateCrc16 } from "@/lib/payments/qris";
 
 it("quotes, atomically claims/reuses QRIS, authorizes status and expires Games in workerd D1", async () => {
   const compiled = await build({
@@ -27,14 +27,14 @@ it("quotes, atomically claims/reuses QRIS, authorizes status and expires Games i
       b.onLoad({ filter: /.*/, namespace: "framework" }, args => ({ contents: args.path === "server-only" ? "" : "export const NextResponse=Response; export const NextRequest=Request;" }));
     } }],
   });
-  const qr = "00020101021153033605802ID6304";
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
   const runtime = new Miniflare({
     modules: true, compatibilityDate: "2026-08-06", compatibilityFlags: ["nodejs_compat"],
     script: compiled.outputFiles[0].text, d1Databases: ["DB"],
     bindings: { NODE_ENV: "test", ADMIN_JWT_SECRET: "workerd-games-fixture", DIGIFLAZZ_USERNAME: "fixture", DIGIFLAZZ_API_KEY: "fixture",
       DIGIFLAZZ_TESTING: "false", GAMES_SK_ENABLED: "true", SEKALIPAY_ENABLED: "true", SEKALIPAY_API_KEY: "fixture-sk",
-      SEKALIPAY_SANDBOX: "", QRIS_ACTIVE_PROVIDER: "dana", DANA_QRIS_ENABLED: "true", DANA_STATIC_QRIS: qr + calculateCrc16(qr),
-      DANA_WEBHOOK_SECRET: "fixture", NEXT_PUBLIC_PAYMENTS_MAINTENANCE: "false" },
+      SEKALIPAY_SANDBOX: "", QRIS_ACTIVE_PROVIDER: "gopay", GOPAY_QRIS_ENABLED: "true", GOPAY_STATIC_QRIS: qr + calculateCrc16(qr),
+      GOPAY_POLLER_SECRET: "fixture", NEXT_PUBLIC_PAYMENTS_MAINTENANCE: "false" },
     outboundService: () => { throw new Error("External requests forbidden"); },
   });
   try {

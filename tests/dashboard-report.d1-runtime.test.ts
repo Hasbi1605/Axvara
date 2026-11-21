@@ -84,6 +84,16 @@ it("D1 executes all six report kinds in one query for empty and mixed carts", as
       .toMatchObject({ orders: 1, revenue: 15000, cost: Math.round(0.583 * 18258.44) });
     expect(manualRows.find(row => row.kind === "summary" && row.period === "today"))
       .toMatchObject({ orders: 3, estimated: 1 });
+
+    await db.batch([
+      ...["DANA", "DANA-LEGACY", "NO-LEDGER"].map(code =>
+        db.prepare("INSERT INTO orders VALUES(?,10000,'market','[]',NULL,'web','2026-10-14T07:00:00Z','2026-10-14T07:00:00Z','lunas')").bind(code)),
+      db.prepare("INSERT INTO payment_transactions(order_code,payable_amount,provider) VALUES ('DANA',10030,'dana'),('DANA-LEGACY',10042,NULL)"),
+    ]);
+    const danaSql = financialReportSql(new Date("2026-10-15T10:00:00Z"),
+      { date_from: "2026-10-14", date_to: "2026-10-14" }, { mdr_bps: { dana: 100, gopay: 0, klikqris: 0 } });
+    const danaRows: Record<string, unknown>[] = (await db.prepare(danaSql).all()).results;
+    expect(danaRows.find(row => row.kind === "summary")).toMatchObject({ orders: 3, payment_fees: 200, unique_code_bonus: 72 });
   } finally {
     await runtime.dispose();
   }

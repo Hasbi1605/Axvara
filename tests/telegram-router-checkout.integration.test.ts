@@ -7,15 +7,15 @@ import { checkoutEmailFingerprint, readCheckoutEmail } from "@/lib/telegram/chec
 import { getCartSummary } from "@/lib/telegram/cart";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { transitionPendingOrder } from "@/lib/db";
-import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice } from "@/lib/payments/qris";
 import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, withLoadingIndicator } from "@/lib/telegram/api";
 import type { SendMessageParams } from "@/lib/telegram/types";
 
 vi.mock("@/lib/telegram/api", () => ({
   sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(), showLoadingBar: vi.fn(async () => {}), withLoadingIndicator: vi.fn(async (_chat, _label, work) => work(async () => {})),
 }));
-vi.mock("@/lib/payments/dana-qris", async importOriginal => ({
-  ...await importOriginal<typeof import("@/lib/payments/dana-qris")>(),
+vi.mock("@/lib/payments/qris", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/payments/qris")>(),
   isActiveQrisConfigured: () => true,
   createActiveQrisInvoice: vi.fn(),
 }));

@@ -256,13 +256,13 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
   }
   const ledger = await queryFirst(
     `SELECT provider, payable_amount, expires_at, qris_url FROM payment_transactions
-      WHERE order_code=? AND provider IN ('dana','gopay','klikqris') AND status='pending'`,
+      WHERE order_code=? AND provider IN ('gopay','klikqris') AND status='pending'`,
     orderCode,
   );
   // R2 provider guard: new-rail invoices are handled by the text branch above;
   // this QRIS photo resender MUST NOT touch them.
   if (!ledger || !isFutureIso(ledger.expires_at)) return false;
-  if (ledger.provider && !["dana", "gopay", "klikqris"].includes(String(ledger.provider))) return false;
+  if (ledger.provider && !["gopay", "klikqris"].includes(String(ledger.provider))) return false;
   const payableAmount = Number(ledger.payable_amount ?? order.subtotal ?? 0);
   if (!Number.isSafeInteger(payableAmount) || payableAmount <= 0) return false;
   if (!database.canSpend(2)) return false;
@@ -313,10 +313,10 @@ export async function retryInvoicePendingTelegramInvoices(limit = 25, database: 
 
   const pending = await queryAll(
     `SELECT o.code,pt.provider FROM orders o
-     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider IN ('dana','gopay','klikqris','nowpayments','sekalipay_gateway') AND pt.status='pending'
+     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider IN ('gopay','klikqris','nowpayments','sekalipay_gateway') AND pt.status='pending'
      WHERE o.sales_channel='telegram' AND o.status='pending'
        AND o.telegram_invoice_sent_at IS NULL AND o.telegram_invoice_attempts < 5
-       AND (pt.provider IN ('dana','gopay','klikqris') OR COALESCE(o.updated_at,o.created_at) IS NULL
+       AND (pt.provider IN ('gopay','klikqris') OR COALESCE(o.updated_at,o.created_at) IS NULL
          OR julianday(COALESCE(o.updated_at,o.created_at))<=julianday('now','-60 seconds'))
        AND julianday(pt.expires_at)>julianday('now')
      ORDER BY o.created_at ASC LIMIT ?`,

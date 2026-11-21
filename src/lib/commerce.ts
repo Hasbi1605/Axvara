@@ -3,7 +3,7 @@ import { wrSaleQuantitySql } from "@/lib/warung-rebahan/new-sales";
 // Shared between web and Telegram for order creation,
 // stock reservation, and payment management.
 
-import { qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
+import { qrisPaymentAccountLabel } from "@/lib/payments/qris";
 import {
   queryFirst,
   queryAll,
@@ -17,7 +17,7 @@ import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLab
 import { bulkOwnerFromJoinedRow, bulkOwnerFromProductRow, isManualProductForBulk, resolveBulkPriceForProduct, type BulkProductOwner } from "@/lib/bulk-pricing";
 import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
-import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
+import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/qris";
 import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, miraiEligibility, storebatEligibility, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 
@@ -49,7 +49,7 @@ export type PendingOrder = {
  * 2026-10-11). Definisi kanonisnya ada di modul pembayaran bersama batas
  * reissue.
  */
-export { QRIS_ORDER_WINDOW_MINUTES, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
+export { QRIS_ORDER_WINDOW_MINUTES, MAX_QRIS_REISSUES } from "@/lib/payments/qris";
 
 /** Satu baris pesanan (satu varian dengan qty-nya). */
 export type ChannelOrderLine = {

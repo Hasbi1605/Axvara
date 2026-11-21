@@ -3,10 +3,10 @@ import { inflateSync } from "node:zlib";
 import {
   calculateCrc16,
   constantTimeEqual,
-  DANA_QRIS_MAX_UNIQUE_CODE,
+  QRIS_MAX_UNIQUE_CODE,
   makeDynamicQris,
-  parseDanaWebhook,
-} from "@/lib/payments/dana-qris";
+  parseQrisWebhook,
+} from "@/lib/payments/qris";
 import { renderQrisPng } from "@/lib/payments/qris-png";
 
 function staticFixture(): string {
@@ -14,7 +14,7 @@ function staticFixture(): string {
   return `${payload}${calculateCrc16(payload)}`;
 }
 
-describe("DANA Business dynamic QRIS", () => {
+describe("static merchant dynamic QRIS", () => {
   it("injects an exact amount, changes initiation mode, and recalculates CRC", () => {
     const dynamic = makeDynamicQris(staticFixture(), 50_260);
     expect(dynamic).toContain("010212");
@@ -36,16 +36,8 @@ describe("DANA Business dynamic QRIS", () => {
     expect(() => makeDynamicQris(staticFixture().slice(0, -1) + "0", 1_000)).toThrow("invalid_qris_crc");
   });
 
-  it("accepts the configured production merchant payload when supplied", () => {
-    const source = process.env.DANA_STATIC_QRIS?.trim();
-    if (!source) return;
-    const dynamic = makeDynamicQris(source, 12_345);
-    expect(dynamic).toContain("5405123455802ID");
-    expect(dynamic.slice(-4)).toBe(calculateCrc16(dynamic.slice(0, -4)));
-  });
-
   it("renders the generated payload as an Edge-compatible PNG", () => {
-    const source = process.env.DANA_STATIC_QRIS?.trim() || staticFixture();
+    const source = staticFixture();
     const png = renderQrisPng(makeDynamicQris(source, 10_123));
     expect([...png.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
     expect(png.byteLength).toBeGreaterThan(1_000);
@@ -56,29 +48,29 @@ describe("DANA Business dynamic QRIS", () => {
     expect(inflated.byteLength).toBe(width * (width + 1));
   });
   it("keeps the unique code within 1-299 so buyers never pay above +300", async () => {
-    expect(DANA_QRIS_MAX_UNIQUE_CODE).toBe(299);
+    expect(QRIS_MAX_UNIQUE_CODE).toBe(299);
     const fs = await import("node:fs");
-    const qris = fs.readFileSync("src/lib/payments/dana-qris.ts", "utf8");
-    expect(qris).toContain("DANA_QRIS_MAX_UNIQUE_CODE");
-    expect(qris).toContain("bytes[0] % DANA_QRIS_MAX_UNIQUE_CODE");
-    expect(qris).toContain("MAX_AMOUNT - DANA_QRIS_MAX_UNIQUE_CODE");
+    const qris = fs.readFileSync("src/lib/payments/qris.ts", "utf8");
+    expect(qris).toContain("QRIS_MAX_UNIQUE_CODE");
+    expect(qris).toContain("bytes[0] % QRIS_MAX_UNIQUE_CODE");
+    expect(qris).toContain("MAX_AMOUNT - QRIS_MAX_UNIQUE_CODE");
     expect(qris).not.toContain("% 499");
     expect(qris).not.toContain("MAX_AMOUNT - 499");
   });
 });
 
-describe("QRIS Hook parser and authentication", () => {
-  it("parses structured QRIS Hook payload", () => {
-    expect(parseDanaWebhook({
+describe("QRIS webhook parser and authentication", () => {
+  it("parses structured QRIS webhook payload", () => {
+    expect(parseQrisWebhook({
       event_id: "evt-1",
       payment: { amount: 50_260, sender_name: "BUDI" },
       notification: { text: "Pembayaran diterima" },
-    })).toEqual({ amount: 50_260, senderName: "BUDI", rawText: "Pembayaran diterima", sourceEventId: "evt-1" });
+    })).toEqual({ amount: 50_260, senderName: "BUDI", rawText: "Pembayaran diterima", sourceEventId: "evt-1", orderCode: null });
   });
 
   it("parses Indonesian Rupiah from raw notification without taking unrelated digits", () => {
-    expect(parseDanaWebhook({ text: "05/09 pembayaran sebesar Rp 50.260 dari pelanggan berhasil" })?.amount).toBe(50_260);
-    expect(parseDanaWebhook({ text: "05/09 notifikasi tanpa nominal rupiah" })).toBeNull();
+    expect(parseQrisWebhook({ text: "05/09 pembayaran sebesar Rp 50.260 dari pelanggan berhasil" })?.amount).toBe(50_260);
+    expect(parseQrisWebhook({ text: "05/09 notifikasi tanpa nominal rupiah" })).toBeNull();
   });
 
   it("compares webhook secrets without early length return", () => {
@@ -95,34 +87,31 @@ describe("QRIS provider routing", () => {
     const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
     for (const file of [
       "src/app/api/orders/route.ts",
-      // Refactor 2026-09-10: penerbitan DANA QRIS Telegram dipindah dari
+      // Refactor 2026-09-10: penerbitan QRIS Telegram dipindah dari
       // route.ts ke handler invoice (varian tunggal) dan cart-invoice (checkout gabungan).
       // Jalur WhatsApp dihapus 13 November 2026 (alur pembeli dipensiunkan).
       "src/lib/telegram/handlers/invoice.ts",
       "src/lib/telegram/handlers/cart-invoice.ts",
     ]) {
-      // Multi-rail 2026-10-02: penerbitan mengikuti QRIS_ACTIVE_PROVIDER
-      // (default dana = perilaku lama); wrapper DANA tetap ada untuk fallback.
-      expect(read(file)).toMatch(/create(Dana|Active)QrisInvoice/);
+      expect(read(file)).toMatch(/createActiveQrisInvoice/);
       expect(read(file)).not.toMatch(/getPaymentProvider|KLIKQRIS/);
     }
     expect(fs.existsSync(path.join(process.cwd(), "src/lib/payments/klikqris.ts"))).toBe(true);
     expect(fs.existsSync(path.join(process.cwd(), "src/app/api/payments/klikqris/callback/route.ts"))).toBe(true);
   });
 
-  it("keeps Android setup relevant only to DANA and exposes GoPay server guidance", async () => {
+  it("removes Android setup and keeps GoPay server guidance", async () => {
     const fs = await import("node:fs");
     const panel = fs.readFileSync("src/components/admin/PaymentReconciliation.tsx", "utf8");
     const health = fs.readFileSync("src/app/api/admin/payments/events/route.ts", "utf8");
-    expect(panel).toContain("Setup aplikasi QRIS Hook");
-    expect(panel).toContain("itu hanya nama variabel, bukan nilainya");
+    expect(panel).not.toContain("Setup aplikasi QRIS Hook");
     expect(panel).toContain('provider === "dana"');
     expect(panel).toContain("Poller GoBiz server (GoPay)");
     expect(panel).toContain("Rekonsiliasi QRIS</h3>");
     const orders = fs.readFileSync("src/components/admin/OrdersManager.tsx", "utf8");
     expect(orders).not.toContain("mutasi DANA");
     expect(orders).toContain("mutasi merchant sesuai invoice");
-    expect(health).toContain("/api/webhook/dana");
-    expect(health).toContain("X-Webhook-Secret");
+    expect(health).not.toContain("/api/webhook/dana");
+    expect(health).toContain("X-Poller-Secret");
   });
 });

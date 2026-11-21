@@ -9,7 +9,7 @@ import {
 import type { Locale } from "@/lib/i18n/locale";
 import type { InlineKeyboardMarkup, InlineKeyboardButton } from "@/lib/telegram/types";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
-import { reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { reissueGopayQrisInvoice } from "@/lib/payments/qris";
 import { markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
 import { SITE } from "@/lib/site";
 import { marketWarrantyClaim, marketWarrantyClaimEn, warrantyClaimRules } from "@/lib/warranty-policy";
@@ -272,7 +272,8 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
 
   let invoiceFailed = false;
   const locale = orderLocaleOf(order);
-  if (order.payment_status === "pending" && order.transaction_status === "pending"
+  if ((order.payment_provider === "gopay" || order.payment_provider === "klikqris")
+    && order.payment_status === "pending" && order.transaction_status === "pending"
     && order.qris_url && !order.telegram_invoice_sent_at
     && Date.parse(String(order.invoice_expires_at)) > Date.now()) {
     try {
@@ -332,7 +333,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
  * Kepemilikan sudah diverifikasi di handleCallback (action "qrenew" masuk
  * ownerBound), jadi di sini cukup urusan penerbitan + pengiriman foto.
  * Reissue bersifat idempoten dari sisi pembeli: bila QR lama masih berlaku,
- * `reissueDanaQrisInvoice` menolak dengan `invoice_still_active` dan pembeli
+ * `reissueGopayQrisInvoice` menolak dengan `invoice_still_active` dan pembeli
  * diberi tahu untuk memakai QR yang sedang tampil.
  */
 export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
@@ -364,9 +365,9 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
   }
   const locale = orderLocaleOf(order);
 
-  let result: Awaited<ReturnType<typeof reissueDanaQrisInvoice>>;
+  let result: Awaited<ReturnType<typeof reissueGopayQrisInvoice>>;
   try {
-    result = await reissueDanaQrisInvoice(orderCode);
+    result = await reissueGopayQrisInvoice(orderCode);
   } catch (error) {
     console.error("Telegram QRIS renew failed:", error instanceof Error ? error.message : "unknown");
     await sendMessage({ chat_id: chatId, text: errorMessage({ locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale }) });

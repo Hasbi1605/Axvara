@@ -53,7 +53,7 @@ describe("M7 QA triple-check", () => {
     const { pid, tierId } = await seedActive();
     setPediaEnv();
     // Mock invoice QRIS (DANA tidak dikonfigurasi di test).
-    const qris = await import("@/lib/payments/dana-qris");
+    const qris = await import("@/lib/payments/qris");
     const spy = vi.spyOn(qris, "createActiveQrisInvoice").mockResolvedValue({
       orderCode: "AXP-X", requestedAmount: 12000, payableAmount: 12000,
       uniqueCode: 1, qrisPayload: "x", qrisUrl: "http://x/q.png",

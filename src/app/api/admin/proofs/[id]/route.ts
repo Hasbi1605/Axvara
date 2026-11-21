@@ -60,7 +60,7 @@ export async function POST(
   if (action === "approve") {
     const dynamicQrisTransaction = String(proof.claimed_method) === "QRIS"
       ? await queryFirst(
-          `SELECT id, status FROM payment_transactions WHERE order_code=? AND provider='dana'`,
+          `SELECT id, status FROM payment_transactions WHERE order_code=? AND COALESCE(provider,'dana')='dana'`,
           orderCode,
         )
       : null;
@@ -69,8 +69,7 @@ export async function POST(
       Boolean(dynamicQrisTransaction),
     );
 
-    // A QRIS screenshot is supporting evidence only. The authenticated DANA
-    // QRIS Hook remains authoritative; bank/e-wallet proofs remain manual.
+    // A QRIS screenshot is supporting evidence only, including for old DANA invoices.
     if (!authoritativeMethod) {
       const result = await execRun(
         `UPDATE payment_proofs
@@ -85,7 +84,7 @@ export async function POST(
       try {
         await ensureFulfillmentForPaidOrder(orderCode);
       } catch { /* Paid-state reconciliation will retry if applicable. */ }
-      // Bukti QRIS = pendukung; QRIS Hook tetap otoritatif sehingga order
+      // Bukti QRIS = pendukung; perlu verifikasi mutasi, sehingga order
       // SENGAJA tetap pending. Tanpa kabar ini pembeli mengira sudah beres
       // dan admin pun sempat melihat toast "lunas" yang keliru (diperbaiki
       // f48c41f) — sisi pembelinya baru ditutup di sini.

@@ -8,7 +8,7 @@ afterEach(()=>{fx?.close();vi.restoreAllMocks();vi.unstubAllEnvs();vi.unstubAllG
 it('two concurrent Telegram cart confirmations create one pending order and one invoice call',async()=>{
  fx=createD1Fixture();await insertTestProduct(fx.sql,'manual');fx.sql.exec("INSERT INTO telegram_users(user_id,chat_id,first_name) VALUES('12345','12345','Fixture'); INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('12345',1,1,1)");
  vi.stubGlobal('fetch',vi.fn(async()=>{throw new Error('NETWORK FORBIDDEN BY AUDIT')}));
- const qris=await import('@/lib/payments/dana-qris');const invoice=vi.spyOn(qris,'createActiveQrisInvoice').mockImplementation(async(code,amount)=>({orderCode:code,requestedAmount:amount,payableAmount:amount+1,uniqueCode:1,qrisPayload:'fixture',qrisUrl:'/fixture.png',expiresAt:'2099-01-01',isExisting:false}));
+ const qris=await import('@/lib/payments/qris');const invoice=vi.spyOn(qris,'createActiveQrisInvoice').mockImplementation(async(code,amount)=>({orderCode:code,requestedAmount:amount,payableAmount:amount+1,uniqueCode:1,qrisPayload:'fixture',qrisUrl:'/fixture.png',expiresAt:'2099-01-01',isExisting:false}));
  const api=await import('@/lib/telegram/api');vi.spyOn(api,'sendMessage').mockResolvedValue({ok:true,result:{message_id:1}} as never);vi.spyOn(api,'sendPhoto').mockResolvedValue({ok:true} as never);
   const callback=`cconfirm:${await checkoutApprovalTag([{productId:1,variantId:1,qty:1,price:10000}])}`;
   const {handleCallback}=await import('@/lib/telegram/handlers/callback');await Promise.all([handleCallback(callback,12345,1,{id:12345,first_name:'Fixture'}),handleCallback(callback,12345,1,{id:12345,first_name:'Fixture'})]);
@@ -30,7 +30,7 @@ it('Telegram fails closed before callbacks on durable update claim failure',asyn
 it('an expired unswept Telegram order does not block a new live order',async()=>{
  fx=createD1Fixture();await insertTestProduct(fx.sql,'manual');fx.sql.exec("INSERT INTO telegram_users(user_id,chat_id,first_name) VALUES('12345','12345','Fixture'); INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('12345',1,1,1); INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_chat_id,expires_at) VALUES('OLD','','','[]',1000,'qris','pending','pending','telegram','12345','2000-01-01')");
  vi.stubGlobal('fetch',vi.fn(async()=>{throw Error('No real network in regression')}));
- const qris=await import('@/lib/payments/dana-qris');const invoice=vi.spyOn(qris,'createActiveQrisInvoice').mockImplementation(async(code,amount)=>({orderCode:code,requestedAmount:amount,payableAmount:amount+1,uniqueCode:1,qrisPayload:'fixture',qrisUrl:'/fixture.png',expiresAt:'2099-01-01',isExisting:false}));
+ const qris=await import('@/lib/payments/qris');const invoice=vi.spyOn(qris,'createActiveQrisInvoice').mockImplementation(async(code,amount)=>({orderCode:code,requestedAmount:amount,payableAmount:amount+1,uniqueCode:1,qrisPayload:'fixture',qrisUrl:'/fixture.png',expiresAt:'2099-01-01',isExisting:false}));
  const api=await import('@/lib/telegram/api');vi.spyOn(api,'sendMessage').mockResolvedValue({ok:true,result:{message_id:1}} as never);vi.spyOn(api,'sendPhoto').mockResolvedValue({ok:true} as never);
   const callback=`cconfirm:${await checkoutApprovalTag([{productId:1,variantId:1,qty:1,price:10000}])}`;
   const {handleCallback}=await import('@/lib/telegram/handlers/callback');await handleCallback(callback,12345,1,{id:12345,first_name:'Fixture'});

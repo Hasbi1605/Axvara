@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { calculateCrc16, createActiveQrisInvoice, createGopayQrisInvoice, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createActiveQrisInvoice, createGopayQrisInvoice, reissueGopayQrisInvoice } from "@/lib/payments/qris";
 import { POST } from "@/app/api/webhook/gopay/route";
 
 const mocks = vi.hoisted(() => ({ fulfill: vi.fn(async () => undefined) }));
@@ -43,7 +43,7 @@ describe("GoPay invoice reuse", () => {
   });
   it("rejects missing configuration and a non-GoPay QR before creating any invoice", async () => {
     insertTestOrder(fixture.sql, A); vi.stubEnv("GOPAY_POLLER_SECRET", "");
-    await expect(createActiveQrisInvoice(A, 10_000)).rejects.toThrow("dana_qris_not_configured");
+    await expect(createActiveQrisInvoice(A, 10_000)).rejects.toThrow("qris_not_configured");
     vi.stubEnv("GOPAY_POLLER_SECRET", secret);
     const dana = "00020101021153033605802ID6304"; vi.stubEnv("GOPAY_STATIC_QRIS", dana + calculateCrc16(dana));
     await expect(createActiveQrisInvoice(A, 10_000)).rejects.toThrow("gopay_invalid_merchant_qris");
@@ -56,12 +56,11 @@ describe("GoPay invoice reuse", () => {
   });
   it("cannot replace a live QR and permits only one replacement after expiry", async () => {
     await invoice();
-    expect(await reissueDanaQrisInvoice(A)).toEqual({ ok: false, reason: "invoice_still_active" });
-    vi.stubEnv("DANA_QRIS_ENABLED", "true"); vi.stubEnv("DANA_STATIC_QRIS", source + calculateCrc16(source)); vi.stubEnv("DANA_WEBHOOK_SECRET", secret);
+    expect(await reissueGopayQrisInvoice(A)).toEqual({ ok: false, reason: "invoice_still_active" });
     fixture.sql.prepare("UPDATE payment_transactions SET expires_at=datetime('now','-1 minute') WHERE order_code=?").run(A);
-    expect((await reissueDanaQrisInvoice(A)).ok).toBe(true);
+    expect((await reissueGopayQrisInvoice(A)).ok).toBe(true);
     fixture.sql.prepare("UPDATE payment_transactions SET expires_at=datetime('now','-1 minute') WHERE order_code=?").run(A);
-    expect(await reissueDanaQrisInvoice(A)).toEqual({ ok: false, reason: "reissue_limit_reached" });
+    expect(await reissueGopayQrisInvoice(A)).toEqual({ ok: false, reason: "reissue_limit_reached" });
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_invoice_history WHERE order_code=?").get(A)!.n).toBe(2);
   });
 });

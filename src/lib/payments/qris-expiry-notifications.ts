@@ -44,7 +44,7 @@ const NEW_RAIL_TERMINAL_NOTICE_WHERE = `(o.sales_channel='telegram' AND COALESCE
 /** Shared by the notifier and the cron-operations queue probe (`orders o LEFT JOIN
  * payment_transactions pt`): QRIS branches need a TX row, the new-rail branch
  * also covers terminal orders that never got one. */
-export const QRIS_EXPIRY_NOTICE_WHERE = `((pt.provider IN ('dana','gopay')
+export const QRIS_EXPIRY_NOTICE_WHERE = `((pt.provider='gopay'
   AND o.sales_channel IN ('telegram','web')
   AND CASE o.sales_channel
         WHEN 'web' THEN TRIM(COALESCE(o.customer_email,''))!=''

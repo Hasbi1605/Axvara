@@ -7,7 +7,7 @@ import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { POST as createOrder } from "@/app/api/pedia/orders/route";
 import { POST as cancelRoute } from "@/app/api/pedia/orders/[code]/cancel/route";
 import { GET as statusRoute } from "@/app/api/pedia/orders/[code]/route";
-import * as qris from "@/lib/payments/dana-qris";
+import * as qris from "@/lib/payments/qris";
 
 const fixtures: ReturnType<typeof createD1Fixture>[] = [];
 afterEach(() => { for (const f of fixtures.splice(0)) f.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); });

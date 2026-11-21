@@ -164,7 +164,7 @@ it("checkout creates its order without creating an early PIN email queue or call
 });
 
 it("parallel signed-quote retries grant sessions only for the durable winning order; failed creation grants none", async () => {
-  const qris = await import("@/lib/payments/dana-qris");
+  const qris = await import("@/lib/payments/qris");
   const invoice = vi.spyOn(qris, "createActiveQrisInvoice").mockImplementation(async (code, amount) => ({ orderCode: code, requestedAmount: amount, payableAmount: amount + 1, uniqueCode: 1, qrisPayload: "fixture", qrisUrl: "/fixture.png", expiresAt: "2099-01-01", isExisting: false }));
   const { createCheckoutQuoteToken } = await import("@/lib/auth");
   const { POST } = await import("@/app/api/orders/route");

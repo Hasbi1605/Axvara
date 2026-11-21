@@ -732,10 +732,10 @@ const reminderLifetime = msBetween(reminderEnd, reminderStart);
 const reminderLeft = msBetween(reminderEnd, "clock.now_jd");
 const reminderAge = msBetween("clock.now_jd", reminderStart);
 // The SQL issue timestamp has second precision; the ISO deadline has milliseconds.
-const shortQris = `(pt.provider IN ('dana','gopay','klikqris') AND ${reminderLifetime} < 901000)`;
+const shortQris = `(pt.provider IN ('gopay','klikqris') AND ${reminderLifetime} < 901000)`;
 const reminderDue = `o.sales_channel='telegram' AND o.status='pending'
   AND o.payment_status IN ('unpaid','pending') AND COALESCE(o.telegram_chat_id,'')!=''
-  AND pt.status='pending' AND ${reminderLeft} > 60000
+  AND pt.status='pending' AND pt.provider IS NOT NULL AND pt.provider!='dana' AND ${reminderLeft} > 60000
   AND ${reminderAge} >= MAX(480000, ${reminderLifetime} * 0.6)
   AND CASE WHEN ${shortQris} THEN o.telegram_reminder_count=0 AND ${reminderLeft} <= 300000
     ELSE o.telegram_reminder_count < ${TELEGRAM_REMINDER_MAX} END

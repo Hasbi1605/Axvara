@@ -12,7 +12,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createGopayQrisInvoice } from "@/lib/payments/qris";
 import { sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
 
 type MailArgs = { to: string; subject: string; html: string; text: string };
@@ -32,10 +32,10 @@ beforeEach(async () => {
   stubFulfillmentKey();
   vi.clearAllMocks();
   sendForwardEmail.mockImplementation(async (_params: MailArgs) => ({ ok: true, providerId: "res_1" }));
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture");
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
+  vi.stubEnv("GOPAY_POLLER_SECRET", "fixture");
   vi.stubEnv("RESEND_API_KEY", "re_fixture");
   vi.stubEnv("FORWARD_FROM_EMAIL", "noreply@axvara.tech");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
@@ -52,10 +52,10 @@ async function webCheckout(email: string | null) {
     items: [{ product_id: 1, variant_id: 1, qty: 1, price: 10000, name: "Fixture" }],
     variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1,
     customerName: "Fixture", salesChannel: "web",
-    paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required",
+    paymentMethod: "qris", paymentAccount: "GoPay Merchant", fulfillmentStatus: "not_required",
   });
   fixture.sql.prepare("UPDATE orders SET customer_email=? WHERE code=?").run(email, code);
-  return createDanaQrisInvoice(code, 10000);
+  return createGopayQrisInvoice(code, 10000);
 }
 
 /** QR hangus tapi pesanan masih hidup = masih bisa diperpanjang. */

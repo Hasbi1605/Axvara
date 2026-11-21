@@ -36,11 +36,12 @@ it("shows GoBiz server guidance and event-owned providers, not Android setup for
   expect(vi.mocked(fetch).mock.calls[1][1]).toMatchObject({ method: "POST", body: JSON.stringify({ action: "retry_match", event_id: 1 }) });
 });
 
-it("retains legacy DANA setup when old health responses omit provider", async () => {
+it("does not show retired DANA setup when no active provider is selected", async () => {
   stubEvents();
   render(<PaymentReconciliation />);
-  expect(await screen.findByText("Setup aplikasi QRIS Hook")).toBeTruthy();
-  expect(screen.getByText(/itu hanya nama variabel, bukan nilainya/)).toBeTruthy();
+  expect(await screen.findByText("DANA")).toBeTruthy();
+  expect(screen.queryByText("Setup aplikasi QRIS Hook")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Salin URL" })).toBeNull();
   expect(screen.queryByText("Poller GoBiz server (GoPay)")).toBeNull();
 });
 

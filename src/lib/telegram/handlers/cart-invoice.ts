@@ -16,14 +16,14 @@ import { qrisInvoiceKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboar
 import { outOfStockMessage, errorMessage, invoiceMessage } from "@/lib/telegram/messages";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
-import { createActiveQrisInvoice, qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice, qrisPaymentAccountLabel } from "@/lib/payments/qris";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
 // 2026-09-25): hanya "Lunas — Telegram" yang masuk grup.
 import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
-import { activeQrisProvider } from "@/lib/payments/dana-qris";
+import { activeQrisProvider } from "@/lib/payments/qris";
 import { clearCart, type CartLine } from "@/lib/telegram/cart";
 import { invoiceItemName } from "@/lib/telegram/messages/format";
 import { readCheckoutEmail } from "@/lib/telegram/checkout-email";

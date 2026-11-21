@@ -188,7 +188,7 @@ axvara.tech  ──klik kartu "Axvara Pedia"──▶  pedia.axvara.tech
    Nominal berubah → [Setujui & lanjut ke pembayaran] → order
    │
    ▼
-[/pesanan/AXP-…]  QRIS 15 menit  ──lunas (QRIS Hook)──▶  "Diproses" ──▶ progres live ──▶ "Selesai"
+[/pesanan/AXP-…]  QRIS 15 menit  ──lunas (webhook provider)──▶  "Diproses" ──▶ progres live ──▶ "Selesai"
                                                               └─ partial/cancel ─▶ tindak lanjut manual
 ```
 
@@ -521,7 +521,7 @@ Penanda di `store_settings`: `pedia_diff_last_at`, `pedia_diff_last_change_at`, 
 Pembeli ─▶ pedia.axvara.tech ─┐                      ┌─▶ providersmm.id/api/v2
            axvara.tech ───────┤  Cloudflare Pages     │       ▲
                               │  (Next 15, D1, R2)    │       │ key=PROVIDERSMM_API_KEY
-QRIS Hook ─▶ /api/webhook/dana┘     ▲      │          │  VPS AWS proxy (wr-proxy.axvara.tech)
+Poller GoPay ─▶ /api/webhook/gopay┘     ▲      │          │  VPS AWS proxy (wr-proxy.axvara.tech)
                                     │      └─ /psmm/* ┘   ├─ diff layanan tiap 10 mnt ─▶ POST /api/supplier-sync (source=providersmm)
 Worker cron 5 mnt ─▶ /api/cron/lite?job=pedia_orders ─────┘   └─ (reservasi order durable, bukan stateless)
 ```

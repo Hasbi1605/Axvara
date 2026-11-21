@@ -2,6 +2,11 @@
 
 - **Foto QRIS Telegram (FX-3b, lokal):** `qrenew:` mengambil klaim foto yang sama dengan checkout, Refresh dan cron setelah ledger QR pengganti sukses diperbarui. Jika klaim aktif atau foto sudah ditandai terkirim, jangan kirim foto lagi. Penolakan pasti melepas stempel klaim; hasil ambigu tetap memakai `settleAmbiguousInvoiceSend`.
 
+## FX-18 — Pensiun DANA QRIS AXVARA (21 November 2026, lokal)
+
+- `QRIS_ACTIVE_PROVIDER` hanya menerima `gopay` atau `klikqris`; kosong, `dana` lama, atau salah menutup QRIS baru tanpa fallback. Hanya invoice GoPay dapat di-reissue. Webhook Android dan env `DANA_STATIC_QRIS`, `DANA_WEBHOOK_SECRET`, `DANA_QRIS_ENABLED` tidak dipakai lagi. E-wallet Sekalipay `DANA_REALTIME` tetap berlabel DANA, dengan logo/urutan yang sama.
+- Jaga histori dan MDR, `dana_webhook_events`, rentang legacy dan jendela reuse GoPay 24 jam. Review/ACC admin tetap dijaga oleh status dan tenggat existing; event belum ditinjau tetap dilindungi. Rekap QRIS operasional tidak lagi menghitung DANA, tetapi rekonsiliasi historis tetap menampilkannya.
+
 ## Bot Telegram TG-POLISH-B — 20 November 2026 (lokal)
 
 - **Cadence pengingat:** `notify_b` dan cron operations memakai `sendPendingOrderReminders`. Invoice pending harus berumur ≥ `max(8 menit, 60% umur total)`, dihitung dari `payment_transactions.invoice_issued_at` (fallback `created_at` transaksi) hingga deadline invoice tersimpan. QRIS 15 menit: maks. 1 pengingat per order, dengan ≤5 menit tersisa; lainnya: maks. `TELEGRAM_REMINDER_MAX`, jarak ≥ `max(10 menit, ⅓ umur total)`. Tidak ada pengingat pada menit terakhir. Predikat waktu diperiksa lagi saat klaim CAS; penanda kirim tetap dicatat sebelum pengiriman agar race tidak mengirim ganda. Interval 60 menit lama hanya membatasi kiriman berikutnya, bukan kiriman pertama (`sent_at IS NULL`).
@@ -89,7 +94,7 @@ menghitung ulang periode historis juga; bukan snapshot MDR per transaksi.
 
 ## Perbaikan 14 November 2026: jendela reuse nominal QRIS 24 jam
 - Gejala: notifikasi "Pembayaran GoPay masuk tanpa pasangan invoice — nominal sudah pernah dipakai" berulang, terutama Google AI Pro. Sebab: pool kode unik 299 per harga + `payment_invoice_history` permanen; setelah 299 invoice (termasuk yang tidak dibayar/reissue) setiap nominal baru dianggap reuse sehingga poller yang sudah mencocokkan order tetap ditolak `amount_reused_requires_review`.
-- `DANA_AMOUNT_REUSED_SQL` (webhook dana/gopay, retry admin, guard atomik) kini hanya menghitung riwayat order lain yang `COALESCE(expires_at,issued_at)` > terbit invoice ini − `DANA_AMOUNT_REUSE_WINDOW_HOURS` (24). Rentang `dana_qris_legacy_ranges` tetap selalu bentrok. Allocator create/reissue memilih nominal least-recently-used. Jangan menghapus jendela atau mengubah 24 jam tanpa keputusan owner.
+- `DANA_AMOUNT_REUSED_SQL` (webhook GoPay, retry admin, guard atomik) kini hanya menghitung riwayat order lain yang `COALESCE(expires_at,issued_at)` > terbit invoice ini − `DANA_AMOUNT_REUSE_WINDOW_HOURS` (24). Rentang `dana_qris_legacy_ranges` tetap selalu bentrok. Allocator create/reissue memilih nominal least-recently-used. Jangan menghapus jendela atau mengubah 24 jam tanpa keputusan owner.
 - Event yang sudah `ignored` sebelum perbaikan tidak dicocokkan ulang otomatis; rekonsiliasi lewat panel admin (retry hanya berhasil bila invoice order masih hidup).
 
 ## Instruksi owner 13 November 2026: audit rekonsiliasi + "sudah dicek"
@@ -348,7 +353,7 @@ Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
 - Sumber kredensial `.klikqris-credentials` (git-ignored, chmod600). Pages secret_text: KLIKQRIS_API_KEY, KLIKQRIS_MERCHANT_ID, KLIKQRIS_ENABLED=true, QRIS_ACTIVE_PROVIDER=klikqris. Jangan log/commit/masukkan key atau signature ke browser. Callback per invoice `/api/payments/klikqris/callback`.
 - Keputusan owner: batas otomatis AXVARA tetap 15 menit; owner mengonfirmasi setting expiry KlikQRIS juga15menit pada24Oktober (uji awal18Oktober60menit). Deadline tetap mengambil batas paling awal order/lokal/provider. Pembayaran terlambat masuk Rekonsiliasi + alert admin, tanpa revive/refund/fulfillment otomatis. Callback signature + status API wajib cocok; konfirmasi gagal tidak boleh dianggap paid.
 - Notifikasi buyer24Oktober: POST create menyertakan `whatsapp_buyer` hanya dari `orders.customer_wa` valid, dinormalisasi62 tanpa plus, maksimal15digit. Kosong/invalid/email/JID/ID Telegram diabaikan, tanpa fallback nomor admin/bot. Invoice existing/initializing tidak di-POST ulang untuk menambah nomor. Pengiriman success/expired dikelola KlikQRIS (langganan aktif + sesi pengirim owner); status WA bukan bukti paid. Gateway grup AXVARA dan pacing-nya terpisah, tanpa DM baru melalui gateway AXVARA atau env/cron baru.
-- Ledger klaim sebelum POST; retry ambigu hanya GET order ID sama. Pertahankan stok in-flight. Migrasi 0069 hanya menambah provider_qris_url; DANA/GoPay lama tetap dilayani dan tidak dipindah provider. Tidak ada cron baru.
+- Ledger klaim sebelum POST; retry ambigu hanya GET order ID sama. Pertahankan stok in-flight. Migrasi 0069 hanya menambah provider_qris_url; GoPay lama tetap dilayani; histori DANA terbaca tanpa pindah provider. Tidak ada cron baru.
 - Build maintenance saat rilis KlikQRIS false. Rollback memakai rilis CI; pertahankan key/merchant/flag KlikQRIS untuk invoice lama dan penanganan late payment. Lihat ARCHITECTURE §16.11/README.
 
 ### Maintenance pembayaran — 2026-10-18
@@ -359,8 +364,7 @@ Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
 
 ### Kesehatan QRIS di admin — 21 November 2026 (lokal, FX-14)
 
-- Rekap 7 hari mencakup DANA (termasuk `provider IS NULL`), GoPay, dan
-  KlikQRIS di ledger event bersama; bukan IPN crypto atau webhook supplier.
+- Rekap 7 hari mencakup GoPay dan KlikQRIS di ledger event bersama; bukan DANA historis, IPN crypto, atau webhook supplier.
   Ringkasan juga memakai jumlah kegagalan pass polling KlikQRIS terakhir
   yang benar-benar mengecek invoice (maks. umur 15 menit). Tidak ada probe
   tambahan saat membuka admin, dan sepi event bukan bukti poller GoPay mati.

@@ -1,5 +1,8 @@
 # Rencana Eksekusi — Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA
 
+> **Arsip:** keterangan DANA QRIS / Android di bawah hanya histori. FX-18 memensiunkan rail tersebut; lihat ARCHITECTURE §16 dan aturan pembayaran terbaru.
+
+
 **Status:** dokumen historis. **21 November 2026 — keputusan owner:** hanya web
 dan bot Telegram kanal jual. Bagian katalog transaksi, pemesanan/pembayaran,
 bukti, notifikasi dan fulfillment WA di bawah bukan kontrak aktif atau izin

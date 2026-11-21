@@ -30,7 +30,6 @@ describe("atomic paid+job commit (no crash window)", () => {
 
   it("webhook and retry resolve routing before the atomic batch", () => {
     for (const file of [
-      "src/app/api/webhook/dana/route.ts",
       "src/app/api/admin/payments/events/route.ts",
     ]) {
       const src = read(file);

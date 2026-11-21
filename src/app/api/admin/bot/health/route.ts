@@ -1,4 +1,4 @@
-import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/dana-qris";
+import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/qris";
 // GET /api/admin/bot/health — Bot health check (no secrets)
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
@@ -16,10 +16,6 @@ export async function GET(request: NextRequest) {
   const health: Record<string, unknown> = {
     bot_configured: !!process.env.TELEGRAM_BOT_TOKEN,
     bot_enabled: process.env.TELEGRAM_BOT_ENABLED === "true",
-    dana_qris_mode: "dynamic-qris",
-    dana_qris_configured: process.env.DANA_QRIS_ENABLED === "true"
-      && Boolean(process.env.DANA_STATIC_QRIS)
-      && Boolean(process.env.DANA_WEBHOOK_SECRET),
     payment_enabled: isActiveQrisConfigured(),
     payment_provider: activeQrisProvider(),
     fulfillment_enabled: process.env.AUTO_FULFILLMENT_ENABLED === "true",

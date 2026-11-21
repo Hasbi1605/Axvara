@@ -1,3 +1,4 @@
+import { gopaySettlement } from "./helpers/qris-fixture";
 // tests/pedia-status-backend.test.ts — Backend slice of the Pedia actual-status fix.
 //
 // Fixture-only (no network, no prod). Covers the task acceptance:
@@ -127,26 +128,23 @@ async function authedGet(url: string): Promise<NextRequest> {
 }
 
 describe("provider paid routing + generic fulfillment no-op for Pedia", () => {
-  it("DANA settles Pedia and schedules only once, with no extra dispatch", async () => {
+  it("GoPay settles Pedia and schedules only once, with no extra dispatch", async () => {
     const db = createDatabaseAccess(fx.db);
     seedCatalog(db);
     seedPediaOrder("pending");
     fx.sql.prepare(`UPDATE orders SET expires_at=datetime('now','+15 minutes') WHERE code=?`).run(PEDIA_CODE);
-    const { calculateCrc16, createDanaQrisInvoice } = await import("@/lib/payments/dana-qris");
-    const qr = "00020101021153033605802ID6304";
-    vi.stubEnv("DANA_QRIS_ENABLED", "true");
-    vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
-    vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture-secret");
-    const invoice = await createDanaQrisInvoice(PEDIA_CODE, 10000);
+    const { calculateCrc16, createGopayQrisInvoice } = await import("@/lib/payments/qris");
+    const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+    vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+    vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
+    vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-secret");
+    const invoice = await createGopayQrisInvoice(PEDIA_CODE, 10000);
     const scheduler = await import("@/lib/payments/paid-fulfillment");
     const dispatch = await import("@/lib/pedia/dispatch");
     const schedule = vi.spyOn(scheduler, "schedulePaidFulfillment").mockResolvedValue(undefined);
     const extra = vi.spyOn(dispatch, "processPediaPaidOrders");
-    const { POST } = await import("@/app/api/webhook/dana/route");
-    const res = await POST(new NextRequest("http://localhost/api/webhook/dana", {
-      method: "POST", headers: { "content-type": "application/json", "x-webhook-secret": "fixture-secret" },
-      body: JSON.stringify({ payment: { amount: invoice.payableAmount, currency: "IDR", reference: "pedia-fixture" }, merchant: "DANA" }),
-    }));
+    const { POST } = await import("@/app/api/webhook/gopay/route");
+    const res = await POST(gopaySettlement(PEDIA_CODE, invoice.payableAmount, "pedia-fixture"));
     expect(res.status).toBe(200);
     expect((await res.json()).status).toBe("paid");
     expect(fx.sql.prepare(`SELECT status, payment_status FROM orders WHERE code=?`).get(PEDIA_CODE)).toMatchObject({ status: "lunas", payment_status: "paid" });

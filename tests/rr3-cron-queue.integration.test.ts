@@ -17,11 +17,11 @@ let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(async () => {
   fixture = createD1Fixture();
   stubFulfillmentKey();
-  const { calculateCrc16 } = await import("@/lib/payments/dana-qris");
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "x");
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
+  const { calculateCrc16 } = await import("@/lib/payments/qris");
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_POLLER_SECRET", "x");
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+  vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
   vi.stubEnv("CRON_SECRET", "c");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "dummy-no-network");
@@ -216,7 +216,7 @@ describe("RR3-03 cron stays under the Paid query budget with measured accounting
   });
 
   it("mixed expiry + WA + notify + orphan work drains without lost work", async () => {
-    const { createDanaQrisInvoice } = await import("@/lib/payments/dana-qris");
+    const { createGopayQrisInvoice } = await import("@/lib/payments/qris");
     const { enqueueWhatsAppMessage } = await import("@/lib/whatsapp/outbox");
     await insertTestProduct(fixture.sql, "shared", 2);
     for (let i = 0; i < 2; i++) {
@@ -225,7 +225,7 @@ describe("RR3-03 cron stays under the Paid query budget with measured accounting
         (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,expires_at)
         VALUES (?,?,?, ?,10000,'qris','pending','pending','web',datetime('now','+15 minutes'))`)
         .run(code, "X", "6280", JSON.stringify([{ product_id: 1, qty: 1 }]));
-      await createDanaQrisInvoice(code, 10000);
+      await createGopayQrisInvoice(code, 10000);
       fixture.sql.prepare("UPDATE payment_transactions SET expires_at=datetime('now','-1 minute') WHERE order_code=?").run(code);
       // Invoice creation establishes the order window; expire the ORDER too.
       fixture.sql.prepare("UPDATE orders SET expires_at=datetime('now','-1 minute') WHERE code=?").run(code);

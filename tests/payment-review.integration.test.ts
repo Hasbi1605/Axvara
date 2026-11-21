@@ -1,9 +1,10 @@
+import { gopaySettlement, seedLegacyDanaInvoice } from "./helpers/qris-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createGopayQrisInvoice } from "@/lib/payments/qris";
 import { createAdminToken, createIdleToken } from "@/lib/auth";
-import { POST as webhook } from "@/app/api/webhook/dana/route";
+import { POST as webhook } from "@/app/api/webhook/gopay/route";
 import { GET as events, POST as retry } from "@/app/api/admin/payments/events/route";
 
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn(async () => ({ ok: true })) }));
@@ -13,27 +14,28 @@ beforeEach(async () => {
   fixture = createD1Fixture();
   stubFulfillmentKey();
   await insertTestProduct(fixture.sql);
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture-secret");
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-secret");
   vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "false");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
   vi.stubEnv("ADMIN_PASSWORD_SHA256", "7".repeat(64));
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+  vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Network disabled in fixture"); }));
 });
 afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
-async function invoice(code: string) {
+async function invoice(code: string, payableAmount?: number) {
   insertTestOrder(fixture.sql, code);
-  return createDanaQrisInvoice(code, 10000);
+  return seedLegacyDanaInvoice(fixture.sql, code, 10000, payableAmount);
 }
-function notify(amount: number, event = "notification") {
-  return webhook(new NextRequest("http://localhost/api/webhook/dana", {
-    method: "POST", headers: { "content-type": "application/json", "x-webhook-secret": "fixture-secret" },
-    body: JSON.stringify({ event_id: event, amount }),
-  }));
+async function goInvoice(code: string) {
+  insertTestOrder(fixture.sql, code);
+  return createGopayQrisInvoice(code, 10000);
+}
+function notify(code: string, amount: number) {
+  return webhook(gopaySettlement(code, amount, "notification"));
 }
 async function retryEvent(id: number, extra: Record<string, unknown> = {}) {
   const session = await createAdminToken("admin@axvara.tech");
@@ -71,7 +73,9 @@ describe("provider-aware reconciliation health", () => {
     expect(body.events).toHaveLength(1);
     expect(body.events[0]).toMatchObject({ provider: "gopay", amount: 10100 });
     expect(body.health).toMatchObject({ provider: "gopay", enabled: true, payload_configured: true, webhook_configured: true, secret_header: "X-Poller-Secret", webhook_url: "https://axvara.tech/api/webhook/gopay" });
-    expect(body.health.providers.dana.last_event_at).toBe("2026-10-14 10:00:00");
+    expect(body.health.providers).not.toHaveProperty("dana");
+    const history = await (await listEvents()).json();
+    expect(history.events).toEqual(expect.arrayContaining([expect.objectContaining({ provider: "dana" })]));
     expect(body.health.providers.gopay.last_event_at).toBe("2026-10-15 10:00:00");
     expect(body.last_event_at).toBe("2026-10-15 10:00:00");
     expect(body.counts).toMatchObject({ matched: 1, ignored: 1 });
@@ -107,58 +111,58 @@ describe("R1 payment handlers preserve invoice/event identity", () => {
     expect(state("NEW")).toBe("pending");
   });
   it("does not settle a reused amount from a delayed old notification", async () => {
-    const old = await invoice("OLD");
+    const old = await goInvoice("AXV-20260910-OLDER001");
     fixture.sql.exec("UPDATE payment_transactions SET status='expired'; UPDATE orders SET status='kadaluarsa',payment_status='expired'");
-    await invoice("NEW");
-    fixture.sql.prepare("UPDATE payment_transactions SET payable_amount=? WHERE order_code='NEW'").run(old.payableAmount);
-    await notify(old.payableAmount);
-    expect(state("NEW")).toBe("pending");
+    await goInvoice("AXV-20260910-NEWER001");
+    fixture.sql.prepare("UPDATE payment_transactions SET payable_amount=? WHERE order_code='AXV-20260910-NEWER001'").run(old.payableAmount);
+    await notify("AXV-20260910-NEWER001", old.payableAmount);
+    expect(state("AXV-20260910-NEWER001")).toBe("pending");
     expect(fixture.sql.prepare("SELECT last_error FROM dana_webhook_events").get()?.last_error).toBe("amount_reused_requires_review");
     expect((await retryEvent(1)).status).toBe(409);
   });
   it("settles a normal payment once under concurrent delivery and replay", async () => {
-    const inv = await invoice("NORMAL");
-    await Promise.all([notify(inv.payableAmount), notify(inv.payableAmount)]);
-    await notify(inv.payableAmount);
-    expect(state("NORMAL")).toBe("lunas");
+    const inv = await goInvoice("AXV-20260910-NORMAL11");
+    await Promise.all([notify(inv.orderCode, inv.payableAmount), notify(inv.orderCode, inv.payableAmount)]);
+    await notify(inv.orderCode, inv.payableAmount);
+    expect(state("AXV-20260910-NORMAL11")).toBe("lunas");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(1);
-    expect(fixture.sql.prepare("SELECT status,order_code FROM dana_webhook_events").get()).toMatchObject({ status: "matched", order_code: "NORMAL" });
+    expect(fixture.sql.prepare("SELECT status,order_code FROM dana_webhook_events").get()).toMatchObject({ status: "matched", order_code: "AXV-20260910-NORMAL11" });
   });
   it("rolls payment and job back when the event claim cannot be persisted", async () => {
-    const inv = await invoice("INTERRUPTED");
+    const inv = await goInvoice("AXV-20260910-INTERRUP");
     fixture.control.fail = q => /UPDATE dana_webhook_events/.test(q) && q.includes("status='matched'");
-    await notify(inv.payableAmount).catch(() => undefined);
-    expect(state("INTERRUPTED")).toBe("pending");
+    await notify(inv.orderCode, inv.payableAmount).catch(() => undefined);
+    expect(state("AXV-20260910-INTERRUP")).toBe("pending");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
   });
   it("requires explicit verified reconciliation and records the administrator", async () => {
-    const old = await invoice("OLD");
+    const old = await goInvoice("AXV-20260910-OLDER001");
     fixture.sql.exec("UPDATE payment_transactions SET status='expired'; UPDATE orders SET status='kadaluarsa',payment_status='expired'");
-    await invoice("REVIEWED");
-    fixture.sql.prepare("UPDATE payment_transactions SET payable_amount=? WHERE order_code='REVIEWED'").run(old.payableAmount);
-    await notify(old.payableAmount);
-    const approval = { action: "confirm_match", order_code: "REVIEWED", review_note: "Mutasi dan referensi transaksi telah diperiksa." };
+    await goInvoice("AXV-20260910-REVIEWED");
+    fixture.sql.prepare("UPDATE payment_transactions SET payable_amount=? WHERE order_code='AXV-20260910-REVIEWED'").run(old.payableAmount);
+    await notify("AXV-20260910-REVIEWED", old.payableAmount);
+    const approval = { action: "confirm_match", order_code: "AXV-20260910-REVIEWED", review_note: "Mutasi dan referensi transaksi telah diperiksa." };
     expect((await retryEvent(1, approval)).status).toBe(400);
-    expect(state("REVIEWED")).toBe("pending");
+    expect(state("AXV-20260910-REVIEWED")).toBe("pending");
     expect((await retryEvent(1, { ...approval, verified: true })).status).toBe(200);
-    expect(state("REVIEWED")).toBe("lunas");
+    expect(state("AXV-20260910-REVIEWED")).toBe("lunas");
     expect(fixture.sql.prepare("SELECT reviewed_by,review_note FROM dana_webhook_events").get())
       .toMatchObject({ reviewed_by: "admin@axvara.tech", review_note: approval.review_note });
   });
   it("cannot reuse an already matched event to approve another order", async () => {
-    const first = await invoice("FIRST");
-    await notify(first.payableAmount);
-    await invoice("SECOND");
-    fixture.sql.prepare("UPDATE payment_transactions SET payable_amount=? WHERE order_code='SECOND'").run(first.payableAmount);
-    await retryEvent(1, { action: "confirm_match", order_code: "SECOND", review_note: "Another attempted reconciliation", verified: true });
-    expect(state("SECOND")).toBe("pending");
-    expect(fixture.sql.prepare("SELECT order_code FROM dana_webhook_events").get()?.order_code).toBe("FIRST");
+    const first = await goInvoice("AXV-20260910-FIRST111");
+    await notify(first.orderCode, first.payableAmount);
+    await goInvoice("AXV-20260910-SECOND11");
+    fixture.sql.prepare("UPDATE payment_transactions SET payable_amount=? WHERE order_code='AXV-20260910-SECOND11'").run(first.payableAmount);
+    await retryEvent(1, { action: "confirm_match", order_code: "AXV-20260910-SECOND11", review_note: "Another attempted reconciliation", verified: true });
+    expect(state("AXV-20260910-SECOND11")).toBe("pending");
+    expect(fixture.sql.prepare("SELECT order_code FROM dana_webhook_events").get()?.order_code).toBe("AXV-20260910-FIRST111");
   });
   it("webhook and administrator retry race to one event/payment/job commit", async () => {
-    const inv = await invoice("RACE");
-    fixture.sql.prepare("INSERT INTO dana_webhook_events(event_key,payload_hash,amount) VALUES('hook:notification','dummy',?)").run(inv.payableAmount);
-    await Promise.all([notify(inv.payableAmount), retryEvent(1)]);
-    expect(state("RACE")).toBe("lunas");
+    const inv = await goInvoice("AXV-20260910-RACE1111");
+    fixture.sql.prepare("INSERT INTO dana_webhook_events(event_key,payload_hash,amount,provider) VALUES('gopay:notification','dummy',?,'gopay')").run(inv.payableAmount);
+    await Promise.all([notify(inv.orderCode, inv.payableAmount), retryEvent(1)]);
+    expect(state("AXV-20260910-RACE1111")).toBe("lunas");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(1);
     expect(fixture.sql.prepare("SELECT status FROM dana_webhook_events").get()?.status).toBe("matched");
   });
@@ -229,7 +233,7 @@ describe("terminal reconciliation review races", () => {
     const id = await pendingEvent();
     if (reason === "no_active_exact_amount") fixture.sql.exec("UPDATE payment_transactions SET payable_amount=payable_amount+1");
     if (reason === "amount_reused_requires_review") {
-      const inv = await invoice("HISTORY");
+      const inv = await invoice("HISTORY", 10043);
       fixture.sql.prepare("UPDATE payment_transactions SET status='expired',payable_amount=(SELECT payable_amount FROM payment_transactions WHERE order_code='TERMINAL') WHERE order_code='HISTORY'").run();
       expect(inv.payableAmount).toBeGreaterThan(0);
     }

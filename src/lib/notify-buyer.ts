@@ -7,7 +7,7 @@
 //      dikirim admin melalui DM Telegram pribadi ini".
 //   2. Bukti pembayaran ditolak hanya menulis `status='rejected'` — pembeli
 //      melihat "Pending" selamanya tanpa alasan dan tanpa jalan keluar.
-//   3. Bukti QRIS disetujui membalas `payment_updated:false` (QRIS Hook tetap
+//   3. Bukti QRIS disetujui membalas `payment_updated:false` (mutasi tetap
 //      otoritatif) sehingga order SENGAJA tetap pending — benar secara sistem,
 //      tetapi pembeli tidak pernah diberi tahu harus menunggu apa.
 //
@@ -395,7 +395,7 @@ export async function notifyBuyerProofRejected(
 
 /**
  * Pesan saat screenshot QRIS disetujui admin TETAPI status lunas masih
- * menunggu QRIS Hook. Order sengaja tetap pending — tanpa pesan ini pembeli
+ * menunggu verifikasi mutasi. Order sengaja tetap pending — tanpa pesan ini pembeli
  * mengira sudah beres.
  */
 export async function notifyBuyerProofPendingHook(
@@ -405,14 +405,13 @@ export async function notifyBuyerProofPendingHook(
   return await sendToBuyer(orderCode, {
     subject: `Bukti pembayaran pesanan ${orderCode} diterima`,
     body: `ℹ️ <b>Bukti diterima</b>\nOrder: <code>${orderCode}</code>\n\n`
-      + "Pembayaran QRIS dikonfirmasi otomatis oleh sistem, jadi statusnya masih "
-      + "menunggu verifikasi. Kamu akan dikabari lagi begitu pembayaran tercatat lunas.",
+      + "Pembayaran masih menunggu verifikasi mutasi. Kamu akan dikabari lagi begitu pembayaran tercatat lunas.",
     email: {
       title: "Bukti Pembayaran Diterima",
-      subtitle: "Menunggu verifikasi otomatis.",
+      subtitle: "Menunggu verifikasi mutasi.",
       paragraphs: [
         `Bukti pembayaran untuk pesanan ${orderCode} sudah kami terima.`,
-        "Pembayaran QRIS dikonfirmasi otomatis oleh sistem, jadi statusnya masih menunggu verifikasi. Kamu akan dikabari lagi begitu pembayaran tercatat lunas.",
+        "Pembayaran masih menunggu verifikasi mutasi. Kamu akan dikabari lagi begitu pembayaran tercatat lunas.",
       ],
     },
     refKey: `proof-pending-hook:${orderCode}`,

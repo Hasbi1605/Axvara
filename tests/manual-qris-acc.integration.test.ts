@@ -1,18 +1,14 @@
+import { seedLegacyDanaInvoice } from "./helpers/qris-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris";
 
 vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => ({ email: "fixture@example.test" })) }));
 let fixture: ReturnType<typeof createD1Fixture>;
 const A = "AXV-20260910-AAAAAAA1";
 beforeEach(async () => {
   fixture = createD1Fixture(); stubFulfillmentKey();
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture-secret");
   vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "false");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
@@ -28,7 +24,7 @@ async function checkout() {
     variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1, customerName: "Fixture", salesChannel: "web",
     paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required",
   });
-  return createDanaQrisInvoice(A, 10000);
+  return seedLegacyDanaInvoice(fixture.sql, A, 10000);
 }
 const order = () => fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(A)!;
 const tx = () => fixture.sql.prepare("SELECT * FROM payment_transactions WHERE order_code=?").get(A)!;

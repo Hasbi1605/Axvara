@@ -17,8 +17,8 @@ const invoice = vi.hoisted(() => vi.fn(async (code: string, amount: number) => (
   expiresAt: new Date(Date.now() + 900_000).toISOString(),
   isExisting: false,
 })));
-vi.mock("@/lib/payments/dana-qris", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/payments/dana-qris")>();
+vi.mock("@/lib/payments/qris", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/payments/qris")>();
   return { ...actual, createActiveQrisInvoice: invoice };
 });
 

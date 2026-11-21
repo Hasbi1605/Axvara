@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createGopayQrisInvoice } from "@/lib/payments/qris";
 
 let fixture: ReturnType<typeof createD1Fixture>;
 const CODE = "AXV-20261011-CANCEL01";
@@ -17,10 +17,10 @@ const EMAIL = "buyer@example.test";
 beforeEach(async () => {
   fixture = createD1Fixture();
   stubFulfillmentKey();
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture-secret");
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
+  vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-secret");
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Network disabled"); }));
   await insertTestProduct(fixture.sql, "manual", 1);
 });
@@ -33,9 +33,9 @@ async function checkout() {
     items: [{ product_id: 1, variant_id: 1, qty: 1, price: 10000, name: "Fixture" }],
     variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1,
     customerName: "Fixture", customerWa: WA, customerEmail: EMAIL, salesChannel: "web",
-    paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required",
+    paymentMethod: "qris", paymentAccount: "GoPay Merchant", fulfillmentStatus: "not_required",
   });
-  await createDanaQrisInvoice(CODE, 10000);
+  await createGopayQrisInvoice(CODE, 10000);
   // These regressions exercise the owner-approved contact policy for legacy orders.
   fixture.sql.prepare("UPDATE orders SET buyer_access_version=0 WHERE code=?").run(CODE);
 }

@@ -129,7 +129,7 @@ describe("/api/catalog?slug= membawa inventory_available", () => {
 
 describe("quote menolak unique yang unitnya habis", () => {
   it("stock=2 + available=0 → out_of_stock (bukan lolos lalu gagal di guard)", async () => {
-    vi.stubEnv("DANA_QRIS_ENABLED", "false");
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "");
     fixture.sql.exec(`INSERT OR IGNORE INTO payment_methods(id,label,account_number,account_name,is_active,sort_order) VALUES('qris','QRIS','-','AXVARA',1,1)`);
     const { POST } = await import("@/app/api/checkout/quote/route");
     const res = await POST(new NextRequest("http://localhost/api/checkout/quote", {
@@ -144,7 +144,7 @@ describe("quote menolak unique yang unitnya habis", () => {
 
   it("stock=2 + available=1 → lolos dengan stock efektif 1", async () => {
     await seedInventory(60, 101, ["available"]);
-    vi.stubEnv("DANA_QRIS_ENABLED", "false");
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "");
     fixture.sql.exec(`INSERT OR IGNORE INTO payment_methods(id,label,account_number,account_name,is_active,sort_order) VALUES('qris','QRIS','-','AXVARA',1,1)`);
     const { POST } = await import("@/app/api/checkout/quote/route");
     const res = await POST(new NextRequest("http://localhost/api/checkout/quote", {
@@ -205,7 +205,7 @@ describe("kartu katalog memakai stok efektif (revisi sore 2026-10-02)", () => {
     const head = pdp.product.variants.find((v: { id: number }) => v.id === 101);
     expect(effectiveVariantStock(head)).toBe(available);
     expect(isPurchasableStock(head.stock, head.min_qty, head.inventory_available, head.fulfillment_mode)).toBe(available > 0);
-    vi.stubEnv("DANA_QRIS_ENABLED", "false");
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "");
     fixture.sql.exec("INSERT OR IGNORE INTO payment_methods(id,label,account_number,account_name,is_active,sort_order) VALUES('qris','QRIS','-','AXVARA',1,1)");
     const { POST } = await import("@/app/api/checkout/quote/route");
     const quote = await POST(new NextRequest("http://localhost/api/checkout/quote", {

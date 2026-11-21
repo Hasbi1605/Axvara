@@ -7,7 +7,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { applyPediaDiff } from "@/lib/pedia/sync";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { resetCryptoMarketMemo } from "@/lib/payments/market-snapshot";
-import * as qris from "@/lib/payments/dana-qris";
+import * as qris from "@/lib/payments/qris";
 
 const fixtures: ReturnType<typeof createD1Fixture>[] = [];
 afterEach(() => { for (const f of fixtures.splice(0)) f.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); resetCryptoMarketMemo(); });

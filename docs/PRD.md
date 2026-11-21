@@ -2067,7 +2067,7 @@ Nominal bayar persis `total_amount` gateway, termasuk kode unik dari provider; t
 
 Callback per invoice memvalidasi signature tersimpan, order/merchant/nominal dan konfirmasi status API server. Gagal konfirmasi tidak dianggap lunas. Transisi paid, event dan outbox Market atomik; Pedia memakai antreannya sendiri, tidak mengirim produk Market dengan ID sama. Callback duplikat tidak mengulang fulfillment. POST create hanya oleh pemenang klaim ledger durable; timeout/panggilan ambigu dipulihkan melalui GET status dengan order ID sama, tanpa membuat tagihan atau memindahkan provider otomatis. Stok order in-flight tetap direservasi, cleanup lama menjadi penjamin.
 
-Invoice DANA/GoPay lama tetap di rail asalnya; webhook/secret/poller lama dipertahankan. QR gateway ditampilkan lewat proxy PNG same-origin yang dibatasi host/ukuran/redirect, tanpa Snap JS atau signature di browser. Callback adalah authority utama; tombol Cek pembayaran/Periksa pembayaran dapat mengonfirmasi lewat API provider. Polling halaman menumpang reconcile ter-throttle ±10 detik/order (2026-10-18); tidak ada cron/polling gateway baru.
+Invoice DANA/GoPay lama tetap di rail asalnya. GoPay tetap memakai webhook/poller; DANA hanya histori dan rekonsiliasi admin. QR gateway ditampilkan lewat proxy PNG same-origin yang dibatasi host/ukuran/redirect, tanpa Snap JS atau signature di browser. Callback adalah authority utama; tombol Cek pembayaran/Periksa pembayaran dapat mengonfirmasi lewat API provider. Polling halaman menumpang reconcile ter-throttle ±10 detik/order (2026-10-18); tidak ada cron/polling gateway baru.
 
 ## Maintenance pembayaran — 2026-10-18
 
@@ -2140,8 +2140,7 @@ Untuk pesanan Warung Rebahan yang tertahan karena saldo supplier, pembeli web me
 
 ### 1.4 Glossary
 
-- **QRIS Dinamis:** QRIS DANA Business yang dibuat per order dengan nominal unik dan masa berlaku 15 menit. **Sejak 2026-10-02 (Fase 0, default mati):** ledger + matcher + reissue multi-rail (`dana` | `gopay`); rail order baru mengikuti `QRIS_ACTIVE_PROVIDER` (default `dana` = perilaku lama). Rail GoPay (payload GoPay Merchant + poller mutasi GoBiz di VPS + `POST /api/webhook/gopay`) aktif bila `GOPAY_QRIS_ENABLED=true` + secret terisi — Fase 1
-- **QRIS Hook (legacy DANA):** Aplikasi Android yang meneruskan notifikasi DANA. GoPay Merchant memakai poller mutasi GoBiz di server; provider efektif mengikuti konfigurasi server.
+- **QRIS Dinamis:** GoPay Merchant (nominal unik, 15 menit) atau KlikQRIS sesuai `QRIS_ACTIVE_PROVIDER` dan konfigurasi. DANA QRIS milik AXVARA dipensiunkan pada FX-18 (implementasi lokal): tidak ada invoice baru, reissue, atau webhook Android. Histori, MDR, event perlu dicek, dan rekonsiliasi manual untuk invoice legacy yang masih sah tetap tersedia. E-wallet Sekalipay `DANA_REALTIME` (label DANA) tetap ditawarkan.
 - **Transfer Manual:** Pembeli transfer ke e-wallet 082135277434 (DANA/Gopay/Shopeepay) atau SeaBank 901812349386 a.n. pemilik
 - **Bukti Transfer:** Foto/screenshot yang di-upload pembeli setelah bayar
 - **Pesanan Pending:** Pesanan menunggu verifikasi admin
@@ -2304,7 +2303,7 @@ Revisi operasional 2026-10-17 ✅ implementasi, publikasi CI: rilis kode tanpa p
 8. Total dasar Rp 89.000 → Klik "Buat Pesanan"
 9. → Halaman pesanan menampilkan QRIS + total unik (mis. Rp89.137) + countdown 15 menit
 10. Pembeli scan dan membayar tepat sesuai total
-11. Poller GoBiz (GoPay) atau QRIS Hook (legacy DANA) mengirim event sesuai provider invoice; AXVARA mencocokkan nominal aktif dan menandai order lunas atomik
+11. Poller GoBiz (GoPay) atau callback KlikQRIS mengirim event sesuai provider invoice; AXVARA mencocokkan nominal aktif dan menandai order lunas atomik
 12. Halaman/email atau Telegram menerima status terbaru; fulfillment dijalankan idempotent
 ```
 
@@ -2361,7 +2360,7 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - **E-Wallet:** DANA / Gopay / Shopeepay → **082135277434** (1 nomor untuk semua)
 - **Bank:** SeaBank → **901812349386**
 - **Bank lain menyusul:** field dinamis di admin, bisa tambah BCA/Mandiri/BRI tanpa deploy
-- **QRIS:** payload merchant DANA Business tersimpan sebagai Pages Secret dan diubah menjadi QRIS dinamis per order. **Rail GoPay (2026-10-02 Fase 0, default mati):** payload `GOPAY_STATIC_QRIS` + poller server + webhook `/api/webhook/gopay` ber-secret `GOPAY_POLLER_SECRET`; alih rail via `QRIS_ACTIVE_PROVIDER=gopay`. **✅ 2026-10-16:** merchant GoPay aktif diganti menjadi **axvara.tech** (`G284624569`, NMID `ID1026616934059`); invoice lama tetap diverifikasi ke merchant asal yang tersimpan di payload invoice, invoice baru memakai merchant axvara.tech — poller memeriksa kedua akun GoBiz secara terpisah.
+- **QRIS:** GoPay memakai `GOPAY_STATIC_QRIS`, poller GoBiz dan webhook bertanda tangan; KlikQRIS memakai adapter gateway. `QRIS_ACTIVE_PROVIDER` wajib `gopay` atau `klikqris` untuk invoice baru. Tidak ada fallback ke DANA.
 
 ### 5.2 Aturan
 - QRIS diverifikasi dari event merchant ber-secret sesuai provider invoice; SeaBank/e-wallet tetap maintenance
@@ -2459,7 +2458,7 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - Inspirasi fungsional: https://marketku.id/
 - Inspirasi desain: Apple Store (apple.com/store), Linear.app, Vercel.com
 - Hosting: Cloudflare Pages + D1 + R2 — gratis selamanya, unlimited bandwidth
-- Kontak pembayaran: E-Wallet 082135277434, SeaBank 901812349386, QRIS dinamis DANA Business
+- Kontak pembayaran: E-Wallet 082135277434, SeaBank 901812349386, QRIS dinamis (GoPay/KlikQRIS)
 
 ### Pembaruan panel admin 2026-10-15 (implementasi, publikasi via CI)
 

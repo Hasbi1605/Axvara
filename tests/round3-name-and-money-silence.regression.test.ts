@@ -45,8 +45,8 @@ describe("R1-R3: nama pembeli web tidak lagi prefix email mentah", () => {
 });
 
 describe("F2: uang masuk tanpa pasangan invoice tidak lagi sunyi", () => {
-  it("cabang unmatched webhook DANA membunyikan Telegram admin", () => {
-    const route = read("src/app/api/webhook/dana/route.ts");
+  it("cabang unmatched webhook GoPay membunyikan Telegram admin", () => {
+    const route = read("src/app/api/webhook/gopay/route.ts");
     const unmatched = route.slice(
       route.indexOf("SET status='ignored'"),
       route.indexOf('status: "unmatched"'),
@@ -55,7 +55,7 @@ describe("F2: uang masuk tanpa pasangan invoice tidak lagi sunyi", () => {
     expect(unmatched).toContain("sendMessage");
     // Nominal dari payload yang di-parse (kolom `amount` tidak ikut di-SELECT).
     expect(unmatched).toContain("payment.amount");
-    // Ack webhook tetap 2xx: ping admin tidak boleh membuat DANA retry.
+    // Ack webhook tetap 2xx: ping admin tidak boleh membuat GoPay retry.
     expect(route).toMatch(/catch \{ \/\* ping admin best-effort \*\/ \}/);
   });
 });

@@ -8,9 +8,9 @@ beforeEach(() => {
   process.env.ADMIN_EMAIL = "admin@axvara.tech";
   process.env.ADMIN_JWT_SECRET = "r11-secret-0123456789";
   process.env.ADMIN_PASSWORD_SHA256 = "a".repeat(64);
-  process.env.DANA_QRIS_ENABLED = "true";
-  process.env.DANA_WEBHOOK_SECRET = "x";
-  process.env.DANA_STATIC_QRIS = "x";
+  process.env.GOPAY_QRIS_ENABLED = "true";
+  process.env.GOPAY_POLLER_SECRET = "x";
+  process.env.GOPAY_STATIC_QRIS = "x";
   process.env.TELEGRAM_BOT_TOKEN = "x";
   process.env.TELEGRAM_BOT_ENABLED = "true";
   process.env.WHATSAPP_GATEWAY_URL = "https://wa.example";
@@ -111,17 +111,17 @@ describe("R11 overview reflects the real database state", () => {
   });
 
   it("recent matched event marks qris healthy, not silent null", async () => {
-    fixture.sql.prepare(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,processed_at)
-      VALUES('m1','h',10000,'matched',datetime('now'))`).run();
+    fixture.sql.prepare(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,provider,processed_at)
+      VALUES('m1','h',10000,'matched','gopay',datetime('now'))`).run();
     const body = await overview();
     expect(body.system_details.qris.level).toBe("healthy");
   });
 
   it("failed event degrades qris even with a recent match", async () => {
-    fixture.sql.prepare(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,processed_at)
-      VALUES('m1','h',10000,'matched',datetime('now'))`).run();
-    fixture.sql.prepare(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status)
-      VALUES('f1','h',20000,'failed')`).run();
+    fixture.sql.prepare(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,provider,processed_at)
+      VALUES('m1','h',10000,'matched','gopay',datetime('now'))`).run();
+    fixture.sql.prepare(`INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,provider)
+      VALUES('f1','h',20000,'failed','gopay')`).run();
     const body = await overview();
     expect(body.system_details.qris.level).toBe("degraded");
   });

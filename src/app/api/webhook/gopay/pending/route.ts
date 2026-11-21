@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryAll } from "@/lib/db";
-import { constantTimeEqual, getGopayInvoiceMerchantId, isGopayQrisConfigured } from "@/lib/payments/dana-qris";
+import { constantTimeEqual, getGopayInvoiceMerchantId, isGopayQrisConfigured } from "@/lib/payments/qris";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";

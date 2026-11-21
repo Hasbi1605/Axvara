@@ -6,7 +6,7 @@ import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { queryFirst } from "@/lib/db";
-import { MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
+import { MAX_QRIS_REISSUES } from "@/lib/payments/qris";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBuyerContact } from "@/lib/order-contact";
 import { requireAdmin } from "@/lib/auth";
@@ -185,7 +185,7 @@ async function lookup(req: NextRequest) {
       supplier_owned: supplierOwned,
       supplier_running: supplierRunning,
       automatic_progress: hasAutomaticProgress ? await readAutomaticProgress(code, { queryAll }).catch(() => []) : [],
-      qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
+      qris_reissue_allowed: row.payment_provider === "gopay" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url
         ? {
             payable_amount: row.payable_amount,

@@ -71,7 +71,7 @@ describe("OWASP A06/A10 atomic checkout integrity", () => {
   });
 
   it.each(["price-read-error", "price-change-after-admission"])("%s cannot create an underpriced invoice", async (scenario) => {
-    const qris = await import("@/lib/payments/dana-qris");
+    const qris = await import("@/lib/payments/qris");
     const invoice = vi.spyOn(qris, "createActiveQrisInvoice").mockImplementation(async (code, amount) => ({
       orderCode: code, requestedAmount: amount, payableAmount: amount + 1, uniqueCode: 1,
       qrisPayload: "fixture", qrisUrl: "/fixture.webp", expiresAt: "2099-01-01", isExisting: false,

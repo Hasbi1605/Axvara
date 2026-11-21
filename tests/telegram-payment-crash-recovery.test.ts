@@ -21,8 +21,8 @@ vi.mock("@/lib/telegram/api", () => ({
   answerCallbackQuery: vi.fn(async () => {}),
   withLoadingIndicator: async (_chat: unknown, _label: unknown, fn: (done: () => Promise<void>) => Promise<unknown>) => fn(async () => {}),
 }));
-vi.mock("@/lib/payments/dana-qris", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/payments/dana-qris")>()),
+vi.mock("@/lib/payments/qris", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/qris")>()),
   isActiveQrisConfigured: () => true,
 }));
 

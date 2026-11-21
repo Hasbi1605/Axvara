@@ -7,7 +7,7 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 import { isPaymentMaintenanceEnabled, PAYMENT_MANUAL_ORDER_URL } from "@/lib/payment-maintenance";
 import { PaymentMaintenanceNotice, ManualOrderPanel } from "@/components/shared/PaymentMaintenanceNotice";
 import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
-import { createActiveQrisInvoice, createDanaQrisInvoice, createGopayQrisInvoice, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice, createGopayQrisInvoice, reissueGopayQrisInvoice } from "@/lib/payments/qris";
 
 const mocks = vi.hoisted(() => ({
   send: vi.fn(async (_payload?: unknown) => ({ ok: true })),
@@ -54,12 +54,12 @@ describe("payment maintenance before financial side effects", () => {
     expectNoDatabaseAccess();
   });
 
-  it.each([createActiveQrisInvoice, createDanaQrisInvoice, createGopayQrisInvoice])("guards invoice entry point %s without touching the ledger", async (create) => {
+  it.each([createActiveQrisInvoice, createGopayQrisInvoice])("guards invoice entry point %s without touching the ledger", async (create) => {
     await expect(create("AXV-20261018-AAAAAAA1", 10000)).rejects.toThrow("payment_maintenance");
     expectNoDatabaseAccess();
   });
   it("guards direct renewal without changing the previous invoice", async () => {
-    await expect(reissueDanaQrisInvoice("AXV-20261018-AAAAAAA1")).rejects.toThrow("payment_maintenance");
+    await expect(reissueGopayQrisInvoice("AXV-20261018-AAAAAAA1")).rejects.toThrow("payment_maintenance");
     expectNoDatabaseAccess();
   });
   it("redirects single-product Telegram payment before clearing state or reserving stock", async () => {

@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { createHmac } from "node:crypto";
+import { gopaySettlement } from "./helpers/qris-fixture";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { calculateCrc16, createDanaQrisInvoice, createGopayQrisInvoice, reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createGopayQrisInvoice, reissueGopayQrisInvoice } from "@/lib/payments/qris";
 
 vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => ({ email: "fixture@example.test" })) }));
 let fixture: ReturnType<typeof createD1Fixture>;
 const A = "AXV-20260910-AAAAAAA1", B = "AXV-20260910-BBBBBBB2";
 beforeEach(async () => {
   fixture = createD1Fixture(); stubFulfillmentKey();
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture-secret");
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
+  vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-secret");
   vi.stubEnv("CRON_SECRET", "fixture-secret");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
@@ -23,14 +23,14 @@ beforeEach(async () => {
 });
 afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
-async function checkout(code = A, provider: "dana" | "gopay" = "dana") {
+async function checkout(code = A) {
   await createChannelOrderAtomic({
     orderCode: code, lines: [{ productId: 1, variantId: 1, qty: 1, fulfillmentMode: "manual", stock: 100 }],
     items: [{ product_id: 1, variant_id: 1, qty: 1, price: 10000, name: "Fixture" }],
     variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1, customerName: "Fixture", salesChannel: "web",
-    paymentMethod: "qris", paymentAccount: "DANA Business", fulfillmentStatus: "not_required",
+    paymentMethod: "qris", paymentAccount: "GoPay Merchant", fulfillmentStatus: "not_required",
   });
-  return provider === "gopay" ? createGopayQrisInvoice(code, 10000) : createDanaQrisInvoice(code, 10000);
+  return createGopayQrisInvoice(code, 10000);
 }
 function expireInvoice(code = A) {
   fixture.sql.prepare("UPDATE payment_transactions SET expires_at=? WHERE order_code=?")
@@ -52,17 +52,9 @@ async function cron(route: "operations" | "publish-scheduled" = "operations") {
   expect(response.status).toBe(200);
   return response.json();
 }
-async function webhook(amount: number, reference = `fixture-${amount}`, provider: "dana" | "gopay" = "dana") {
-  const { POST } = provider === "gopay" ? await import("@/app/api/webhook/gopay/route") : await import("@/app/api/webhook/dana/route");
-  const body = JSON.stringify({ payment: { amount, currency: "IDR", reference }, merchant: "DANA",
-    ...(provider === "gopay" ? { order_code: A, event_id: reference, merchant_id: "G111111111", currency: "IDR",
-      transaction_status: "settlement", paid_at: new Date().toISOString() } : {}),
-  });
-  return POST(new NextRequest(`http://localhost/api/webhook/${provider}`, {
-    method: "POST", headers: { "content-type": "application/json", [provider === "gopay" ? "x-poller-secret" : "x-webhook-secret"]: "fixture-secret",
-      ...(provider === "gopay" ? { "x-poller-signature": createHmac("sha256", "fixture-secret").update(body).digest("hex") } : {}),
-    }, body,
-  }));
+async function webhook(amount: number, reference = `fixture-${amount}`, code = A) {
+  const { POST } = await import("@/app/api/webhook/gopay/route");
+  return POST(gopaySettlement(code, amount, reference));
 }
 async function retry(eventId: number) {
   const { POST } = await import("@/app/api/admin/payments/events/route");
@@ -78,7 +70,7 @@ describe("QRIS order lifetime across cron and renewal", () => {
     await cron("publish-scheduled"); await cron();
     expect(order().status).toBe("pending");
     expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(99);
-    const renewed = await reissueDanaQrisInvoice(A);
+    const renewed = await reissueGopayQrisInvoice(A);
     expect(renewed.ok).toBe(true);
     if (!renewed.ok) throw new Error(renewed.reason);
     expect(renewed.invoice.payableAmount).not.toBe(original.payableAmount);
@@ -98,7 +90,7 @@ describe("QRIS order lifetime across cron and renewal", () => {
     await checkout(); expireInvoice();
     const deadline = new Date(Date.now()+60000).toISOString();
     fixture.sql.prepare("UPDATE orders SET expires_at=? WHERE code=?").run(deadline, A);
-    const result = await reissueDanaQrisInvoice(A);
+    const result = await reissueGopayQrisInvoice(A);
     expect(result.ok).toBe(true);
     expect(result.ok && result.invoice.expiresAt).toBe(deadline);
   });
@@ -108,7 +100,7 @@ describe("QRIS amount history survives renewal", () => {
   it("does not allocate a superseded amount to a new order when unused amounts remain", async () => {
     const random = chooseCode(42); const old = await checkout(); expireInvoice();
     random.mockRestore(); chooseCode(100);
-    expect((await reissueDanaQrisInvoice(A)).ok).toBe(true);
+    expect((await reissueGopayQrisInvoice(A)).ok).toBe(true);
     vi.restoreAllMocks(); chooseCode(42);
     const next = await checkout(B);
     expect(next.payableAmount).not.toBe(old.payableAmount);
@@ -116,12 +108,12 @@ describe("QRIS amount history survives renewal", () => {
   it("never automatically matches a delayed old payment to a different order, including admin retry", async () => {
     const random = chooseCode(42); const old = await checkout(); expireInvoice();
     random.mockRestore(); chooseCode(100);
-    await reissueDanaQrisInvoice(A);
+    await reissueGopayQrisInvoice(A);
     await checkout(B);
     // Force the finite-pool reuse case: even when allocation must reuse an
     // amount, history must require actual bank verification, in both paths.
     fixture.sql.prepare("UPDATE payment_transactions SET payable_amount=? WHERE order_code=?").run(old.payableAmount, B);
-    const response = await webhook(old.payableAmount, "delayed-for-A");
+    const response = await webhook(old.payableAmount, "delayed-for-A", B);
     expect(response.status).toBe(200);
     expect(order(B).status).toBe("pending");
     const event = fixture.sql.prepare("SELECT id,last_error FROM dana_webhook_events ORDER BY id DESC LIMIT 1").get()!;
@@ -131,7 +123,7 @@ describe("QRIS amount history survives renewal", () => {
   });
   it("does not repeat a previous amount of the same order even with a repeating RNG", async () => {
     chooseCode(42); const old = await checkout(); expireInvoice();
-    vi.restoreAllMocks(); chooseCode(42); const result = await reissueDanaQrisInvoice(A);
+    vi.restoreAllMocks(); chooseCode(42); const result = await reissueGopayQrisInvoice(A);
     expect(result.ok).toBe(true);
     expect(result.ok && result.invoice.payableAmount).not.toBe(old.payableAmount);
   });
@@ -144,9 +136,9 @@ describe("QRIS amount history survives renewal", () => {
     fixture.sql.prepare("UPDATE payment_transactions SET created_at=datetime('now','-30 minutes') WHERE order_code=?").run(A);
     chooseCode(100);
     // An earlier unrelated notification now happens to equal the next QR.
-    fixture.sql.prepare("INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status,created_at) VALUES('earlier','fixture',10100,'ignored',datetime('now','-5 minutes'))").run();
+    fixture.sql.prepare("INSERT INTO dana_webhook_events(event_key,payload_hash,amount,provider,status,created_at) VALUES('earlier','fixture',10100,'gopay','ignored',datetime('now','-5 minutes'))").run();
     const event = fixture.sql.prepare("SELECT id FROM dana_webhook_events WHERE event_key='earlier'").get()!;
-    const result = await reissueDanaQrisInvoice(A);
+    const result = await reissueGopayQrisInvoice(A);
     expect(result.ok && result.invoice.payableAmount).toBe(10100);
     expect((await retry(Number(event.id))).status).toBe(409);
     expect(order().status).toBe("pending");
@@ -156,7 +148,7 @@ describe("QRIS amount history survives renewal", () => {
 describe("QRIS mutation fencing", () => {
   it("commits only one concurrent renewal and records exactly one new issuance", async () => {
     await checkout(); expireInvoice();
-    const results = await Promise.all([reissueDanaQrisInvoice(A), reissueDanaQrisInvoice(A)]);
+    const results = await Promise.all([reissueGopayQrisInvoice(A), reissueGopayQrisInvoice(A)]);
     expect(results.filter(r => r.ok)).toHaveLength(1);
     expect(order().qris_reissue_count).toBe(1);
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_invoice_history WHERE order_code=?").get(A)!.n).toBe(2);
@@ -164,7 +156,7 @@ describe("QRIS mutation fencing", () => {
   it("rolls history back together with invoice when the order update fails", async () => {
     const original = await checkout(); expireInvoice();
     fixture.control.fail = query => query.includes("qris_reissue_count=qris_reissue_count+1");
-    await expect(reissueDanaQrisInvoice(A)).rejects.toThrow("Injected database interruption");
+    await expect(reissueGopayQrisInvoice(A)).rejects.toThrow("Injected database interruption");
     fixture.control.fail = null;
     expect(order().qris_reissue_count).toBe(0);
     expect(fixture.sql.prepare("SELECT payable_amount FROM payment_transactions WHERE order_code=?").get(A)!.payable_amount).toBe(original.payableAmount);
@@ -178,13 +170,13 @@ describe("QRIS mutation fencing", () => {
         .run(new Date(Date.now()+600000).toISOString(), A);
       return batch(statements);
     });
-    expect(await reissueDanaQrisInvoice(A)).toEqual({ ok: false, reason: "order_not_reissuable" });
+    expect(await reissueGopayQrisInvoice(A)).toEqual({ ok: false, reason: "order_not_reissuable" });
     expect(order().qris_reissue_count).toBe(0);
   });
   it("checks retained amount history again inside the atomic payment guard", async () => {
     const invoice = await checkout();
-    fixture.sql.prepare("INSERT INTO payment_invoice_history(provider,order_code,payable_amount,issued_at) VALUES('dana','OLDER',?,datetime('now','-1 hour'))").run(invoice.payableAmount);
-    fixture.sql.prepare("INSERT INTO dana_webhook_events(event_key,payload_hash,amount) VALUES('guard','fixture',?)").run(invoice.payableAmount);
+    fixture.sql.prepare("INSERT INTO payment_invoice_history(provider,order_code,payable_amount,issued_at) VALUES('gopay','OLDER',?,datetime('now','-1 hour'))").run(invoice.payableAmount);
+    fixture.sql.prepare("INSERT INTO dana_webhook_events(event_key,payload_hash,amount,provider) VALUES('guard','fixture',?,'gopay')").run(invoice.payableAmount);
     const event = fixture.sql.prepare("SELECT id FROM dana_webhook_events WHERE event_key='guard'").get()!;
     const { transitionPendingPaymentToPaid } = await import("@/lib/db");
     expect(await transitionPendingPaymentToPaid(A, null, null, { id: Number(event.id) })).toBe(false);
@@ -195,16 +187,16 @@ describe("QRIS mutation fencing", () => {
 
 
 describe("existing invoices during payment maintenance", () => {
-  it.each(["dana", "gopay"] as const)("still accepts existing %s payments and releases expired stock exactly once", async (provider) => {
+  it("still accepts existing GoPay payments and releases expired stock exactly once", async () => {
     vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
     const source = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
     vi.stubEnv("GOPAY_STATIC_QRIS", source + calculateCrc16(source));
     vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-secret");
-    const invoice = await checkout(A, provider);
-    await checkout(B, provider);
+    const invoice = await checkout(A);
+    await checkout(B);
     vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "true");
-    await expect(reissueDanaQrisInvoice(A)).rejects.toThrow("payment_maintenance");
-    expect((await webhook(invoice.payableAmount, `maintenance-${provider}`, provider)).status).toBe(200);
+    await expect(reissueGopayQrisInvoice(A)).rejects.toThrow("payment_maintenance");
+    expect((await webhook(invoice.payableAmount, "maintenance-gopay")).status).toBe(200);
     expect(order(A).status).toBe("lunas");
     fixture.sql.prepare("UPDATE orders SET expires_at=? WHERE code=?").run(new Date(Date.now()-60000).toISOString(), B);
     await cron(); await cron();
@@ -225,18 +217,18 @@ describe("QRIS amount reuse window (finite 299 pool, 2026-11-14)", () => {
     fixture.sql.prepare(`INSERT INTO payment_invoice_history(provider,order_code,payable_amount,issued_at,expires_at)
       VALUES(?,?,?,datetime('now',?),datetime('now',?))`).run(provider, code, amount, `-${hoursAgo} hours`, `-${hoursAgo} hours`);
   }
-  it.each(["dana", "gopay"] as const)("auto-settles %s when the other order's use ended over 24h before the invoice", async (provider) => {
+  it("auto-settles GoPay when the other order's use ended over 24h before the invoice", async () => {
     stubGopay();
-    const invoice = await checkout(A, provider);
-    oldUse(provider, "OLD-2-DAYS", invoice.payableAmount, 48);
-    expect((await webhook(invoice.payableAmount, `stale-history-${provider}`, provider)).status).toBe(200);
+    const invoice = await checkout(A);
+    oldUse("gopay", "OLD-2-DAYS", invoice.payableAmount, 48);
+    expect((await webhook(invoice.payableAmount, "stale-history-gopay")).status).toBe(200);
     expect(order(A).status).toBe("lunas");
   });
-  it.each(["dana", "gopay"] as const)("still routes %s to review when the other use ended within 24h", async (provider) => {
+  it("still routes GoPay to review when the other use ended within 24h", async () => {
     stubGopay();
-    const invoice = await checkout(A, provider);
-    oldUse(provider, "OLD-23-HOURS", invoice.payableAmount, 23);
-    expect((await webhook(invoice.payableAmount, `recent-history-${provider}`, provider)).status).toBe(200);
+    const invoice = await checkout(A);
+    oldUse("gopay", "OLD-23-HOURS", invoice.payableAmount, 23);
+    expect((await webhook(invoice.payableAmount, "recent-history-gopay")).status).toBe(200);
     expect(order(A).status).toBe("pending");
     expect(fixture.sql.prepare("SELECT last_error FROM dana_webhook_events ORDER BY id DESC LIMIT 1").get()!.last_error)
       .toBe("amount_reused_requires_review");
@@ -247,9 +239,9 @@ describe("QRIS amount reuse window (finite 299 pool, 2026-11-14)", () => {
       oldUse("gopay", `USED-${code}`, 10000 + code, code === 7 ? 72 : code === 9 ? 30 : 1);
     }
     chooseCode(42);
-    const invoice = await checkout(A, "gopay");
+    const invoice = await checkout(A);
     expect(invoice.payableAmount).toBe(10007);
-    expect((await webhook(invoice.payableAmount, "lru-gopay", "gopay")).status).toBe(200);
+    expect((await webhook(invoice.payableAmount, "lru-gopay")).status).toBe(200);
     expect(order(A).status).toBe("lunas");
   });
 });

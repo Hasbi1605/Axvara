@@ -118,7 +118,7 @@ export function StoreSettingsManager() {
               <div className="flex justify-between gap-4"><dt className="text-admin-muted">WhatsApp</dt><dd className="text-right text-admin-fg">{form.whatsappNumber || "—"}</dd></div>
               <div className="flex justify-between gap-4"><dt className="text-admin-muted">Layanan</dt><dd className="text-right text-admin-fg">{form.supportHours || "—"}</dd></div>
             </dl>
-            <p className="mt-5 rounded-md border border-admin-warning/25 bg-admin-warning/10 px-3 py-2.5 text-xs leading-5 text-admin-warning">Konfigurasi Telegram, WhatsApp Baileys, dan QRIS Hook tetap dikelola di menu operasionalnya—bukan di sini.</p>
+            <p className="mt-5 rounded-md border border-admin-warning/25 bg-admin-warning/10 px-3 py-2.5 text-xs leading-5 text-admin-warning">Konfigurasi Telegram, WhatsApp Baileys, dan QRIS tetap dikelola di menu operasionalnya—bukan di sini.</p>
           </CardContent>
         </Card>
       </div>

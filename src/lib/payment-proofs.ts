@@ -7,7 +7,7 @@ type ProofOrderState = {
 };
 
 /**
- * A DANA QRIS Hook event can arrive before an optional WhatsApp proof. Keep
+ * A recorded QRIS payment can precede an optional historical WhatsApp proof. Keep
  * accepting proof for that paid order; only an unpaid pending order is bound
  * by the invoice TTL.
  */
@@ -25,7 +25,7 @@ export function canAcceptWhatsAppPaymentProof(
 }
 
 /**
- * A dynamic QRIS screenshot is supporting evidence only; QRIS Hook remains
+ * A dynamic QRIS screenshot is supporting evidence only; merchant settlement remains
  * authoritative. Manual rails become paid after admin confirms the mutation.
  */
 export function authoritativePaymentMethodForProof(
@@ -34,7 +34,7 @@ export function authoritativePaymentMethodForProof(
 ): "bank:seabank" | "ewallet" | null {
   if (claimedMethod === "SEABANK") return "bank:seabank";
   if (claimedMethod === "EWALLET") return "ewallet";
-  // Every QRIS order is dynamic; screenshots never replace QRIS Hook authority.
+  // Every QRIS order is dynamic; screenshots never replace settlement verification.
   void hasDynamicQrisTransaction;
   return null;
 }

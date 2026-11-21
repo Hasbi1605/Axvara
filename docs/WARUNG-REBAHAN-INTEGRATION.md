@@ -58,7 +58,7 @@ Customer ──bayar QRIS Axvara──▶ Axvara ──API order──▶ Warung
                             (Web / Telegram / WhatsApp)
 ```
 
-- **Payment:** Customer bayar via DANA QRIS Axvara (sistem yang sudah ada)
+- **Payment:** Customer bayar via QRIS Axvara sesuai provider aktif (GoPay atau KlikQRIS)
 - **Saldo:** Axvara deposit saldo ke Warung Rebahan secara manual/berkala
 - **Fulfillment:** Otomatis via API — bukan dari `fulfillment_inventory` lokal
 
@@ -632,7 +632,7 @@ Responsibility: Meneruskan order Axvara ke Warung Rebahan setelah payment confir
 ### Alur Auto-Order
 
 ```
-Payment Confirmed (DANA webhook / admin confirm)
+Payment Confirmed (webhook pembayaran / admin confirm)
         │
         ▼
   transitionPendingPaymentToPaid() — yang sudah ada
@@ -1087,7 +1087,7 @@ Timeline:
 
 [T+20s]  Customer scan QRIS, bayar Rp 8.127 (termasuk unique code)
 
-[T+22s]  DANA webhook → /api/webhook/dana
+[T+22s]  Webhook settlement → /api/webhook/gopay (contoh GoPay)
          → Match payable_amount = 8127
          → transitionPendingPaymentToPaid('AXV-20260911-ABCD1234')
          

@@ -13,7 +13,7 @@
 // Best-effort: gagal/timeout TIDAK pernah menggagalkan request pembeli —
 // jadwal idle 60 dtk tetap menjadi jaring pengaman.
 
-import { isGopayQrisConfigured } from "@/lib/payments/dana-qris";
+import { isGopayQrisConfigured } from "@/lib/payments/qris";
 
 export const DEFAULT_GOPAY_POLLER_WAKE_URL = "https://wr-proxy.axvara.tech/gopay/wake";
 const WAKE_TIMEOUT_MS = 1_500;

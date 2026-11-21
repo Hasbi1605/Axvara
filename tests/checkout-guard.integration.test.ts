@@ -179,7 +179,7 @@ describe("route web memakai guard durable", () => {
       if (scenario === "parallel-last-unit") fx.sql.exec("UPDATE product_variants SET stock=1");
       vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
       vi.stubEnv("ADMIN_JWT_SECRET", "checkout-route-review-secret");
-      const qris = await import("@/lib/payments/dana-qris");
+      const qris = await import("@/lib/payments/qris");
       const invoice = vi.spyOn(qris, "createActiveQrisInvoice").mockImplementation(async (code, amount) => ({
         orderCode: code, requestedAmount: amount, payableAmount: amount + 1, uniqueCode: 1,
         qrisPayload: "fixture", qrisUrl: "/fixture.png", expiresAt: "2099-01-01", isExisting: false,

@@ -1,4 +1,4 @@
-import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/dana-qris";
+import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/qris";
 // POST /api/admin/telegram/setup — Set/update Telegram webhook
 // Admin-authenticated. Does NOT expose bot token.
 
@@ -64,10 +64,6 @@ export async function GET(request: NextRequest) {
         ? new Date(info.result.last_error_date * 1000).toISOString()
         : null,
     } : null,
-    dana_qris_mode: "dynamic-qris",
-    dana_qris_configured: process.env.DANA_QRIS_ENABLED === "true"
-      && Boolean(process.env.DANA_STATIC_QRIS)
-      && Boolean(process.env.DANA_WEBHOOK_SECRET),
     bot_enabled: process.env.TELEGRAM_BOT_ENABLED === "true",
     payment_enabled: isActiveQrisConfigured(),
     payment_provider: activeQrisProvider(),

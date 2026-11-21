@@ -84,7 +84,7 @@ it("rejects independently signed invalid bulk metadata", async () => {
   for (const item of [{ product_id: 1, variant_id: 1, name: "x", qty: 10, price: 90000, base_price: 100000, applied_tier_min_qty: 11 }, { product_id: 1, name: "x", qty: 10, price: 90000, base_price: 100000, applied_tier_min_qty: 10 }]) expect(await verifyCheckoutQuoteToken(await sign(item))).toBeNull();
 });
 it("stores signed tier snapshot, rejects stale new quote and preserves saved retry", async () => {
-  const qris = await import("@/lib/payments/dana-qris");
+  const qris = await import("@/lib/payments/qris");
   const invoice = vi.spyOn(qris, "createActiveQrisInvoice").mockImplementation(async (code, amount) => ({ orderCode: code, requestedAmount: amount, payableAmount: amount, uniqueCode: 0, qrisPayload: "fixture", qrisUrl: "/fixture.png", expiresAt: "2099-01-01", isExisting: false }));
   const { POST } = await import("@/app/api/orders/route");
   const request = (token: string) => new NextRequest("http://localhost/api/orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ customer_wa: "081234567890", customer_email: "buyer@example.test", items: [{ product_id: 1, variant_id: 1, qty: 10 }], payment_method: "qris", quote_token: token }) });

@@ -5,7 +5,7 @@ import { constantTimeEqual } from "@/lib/security";
 import { assertPaymentsAvailable } from "@/lib/payment-maintenance";
 import { SITE } from "@/lib/site";
 import { parseBuyerContact } from "@/lib/order-contact";
-import type { DanaQrisInvoice } from "./dana-qris";
+import type { QrisInvoice } from "./qris";
 
 type Row = Record<string, unknown>;
 const BASE = "https://klikqris.com";
@@ -61,20 +61,21 @@ function validateDetails(data: Row, orderCode: string, amount: number, merchantI
     || (data.merchant_id != null && String(data.merchant_id) !== merchantId)) throw new Error("klikqris_invoice_mismatch");
   if (klikQrisMoney(data.total_amount) < amount) throw new Error("klikqris_invoice_mismatch");
 }
-function invoice(row: Row, existing: boolean): DanaQrisInvoice {
+function invoice(row: Row, existing: boolean): QrisInvoice {
   return { orderCode: String(row.order_code), requestedAmount: Number(row.requested_amount), payableAmount: Number(row.payable_amount),
     uniqueCode: Number(row.unique_code), qrisPayload: "", qrisUrl: String(row.qris_url), expiresAt: String(row.expires_at), isExisting: existing };
 }
 
-export async function createKlikQrisInvoice(orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
+export async function createKlikQrisInvoice(orderCode: string, requestedAmount: number): Promise<QrisInvoice> {
   assertPaymentsAvailable(); klikQrisMoney(requestedAmount);
   const d1 = getD1(); if (!d1) throw new Error("klikqris_requires_d1");
   let tx = await queryFirst("SELECT * FROM payment_transactions WHERE order_code=?", orderCode);
   // A retry after switching gateway must retain the original invoice rail.
   if (tx && tx.provider !== "klikqris") {
-    const legacy = await import("./dana-qris");
-    if (tx.provider === "dana") return legacy.createDanaQrisInvoice(orderCode, requestedAmount);
-    if (tx.provider === "gopay") return legacy.createGopayQrisInvoice(orderCode, requestedAmount);
+    if (tx.provider === "gopay") {
+      const { createGopayQrisInvoice } = await import("./qris");
+      return createGopayQrisInvoice(orderCode, requestedAmount);
+    }
     throw new Error("klikqris_provider_conflict");
   }
   if (!isKlikQrisConfigured()) throw new Error("klikqris_not_configured");

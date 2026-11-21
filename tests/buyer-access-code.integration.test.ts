@@ -50,7 +50,7 @@ it("new orders reject contact-only lookup and accept their access code", async (
 });
 
 it("same signed checkout quote retries return one order and the same access code without another reservation", async () => {
-  const qris = await import("@/lib/payments/dana-qris");
+  const qris = await import("@/lib/payments/qris");
   vi.spyOn(qris, "createActiveQrisInvoice").mockImplementation(async (code, amount) => ({ orderCode: code, requestedAmount: amount, payableAmount: amount + 1, uniqueCode: 1, qrisPayload: "fixture", qrisUrl: "/fixture.png", expiresAt: "2099-01-01", isExisting: false }));
   const items = [{ product_id: 1, variant_id: 1, price: 10000, qty: 1, name: "Fixture" }];
   const { createCheckoutQuoteToken } = await import("@/lib/auth");

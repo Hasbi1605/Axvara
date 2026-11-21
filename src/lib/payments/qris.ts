@@ -1,19 +1,17 @@
 import { assertPaymentsAvailable } from "@/lib/payment-maintenance";
 import { getD1, queryAll, queryFirst } from "@/lib/db";
 
-export const DANA_QRIS_PROVIDER = "dana";
-export const DANA_QRIS_MODE = "dynamic-qris";
 /** Rail GoPay Merchant (Fase 1): payload statis GoPay + mutasi GoBiz via poller. */
 export const GOPAY_QRIS_PROVIDER = "gopay";
 export const GOPAY_QRIS_MODE = "dynamic-qris";
 export const GOPAY_MERCHANT_ID = "gopay-merchant";
-/** Rail QRIS yang didukung ledger (matcher selalu filter provider). */
-export const QRIS_PROVIDERS = [DANA_QRIS_PROVIDER, GOPAY_QRIS_PROVIDER, "klikqris"] as const;
+/** Rail QRIS yang dapat menerbitkan invoice baru. Histori DANA dibaca dari ledger. */
+export const QRIS_PROVIDERS = [GOPAY_QRIS_PROVIDER, "klikqris"] as const;
 export type QrisProvider = (typeof QRIS_PROVIDERS)[number];
 export function isQrisProvider(value: unknown): value is QrisProvider {
-  return value === DANA_QRIS_PROVIDER || value === GOPAY_QRIS_PROVIDER || value === "klikqris";
+  return value === GOPAY_QRIS_PROVIDER || value === "klikqris";
 }
-export const DANA_QRIS_EXPIRY_MINUTES = 15;
+export const QRIS_EXPIRY_MINUTES = 15;
 /** Masa hidup order QRIS disamakan dengan QR (15 menit, keputusan owner 2026-10-11):
  * stok tidak lagi dikunci 60 menit oleh order yang tidak dibayar. Tidak ada
  * perpanjangan QR — QR mati = order kadaluarsa = stok kembali; pembeli yang
@@ -22,13 +20,13 @@ export const DANA_QRIS_EXPIRY_MINUTES = 15;
 export const QRIS_ORDER_WINDOW_MINUTES = 15;
 /** Satu invoice asli dan maksimal satu QR pengganti. */
 export const MAX_QRIS_REISSUES = 1;
-export const DANA_QRIS_MAX_UNIQUE_CODE = 299;
+export const QRIS_MAX_UNIQUE_CODE = 299;
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 999_999_999;
 
 type Tlv = { tag: string; value: string };
 
-export type DanaQrisInvoice = {
+export type QrisInvoice = {
   orderCode: string;
   requestedAmount: number;
   payableAmount: number;
@@ -39,7 +37,7 @@ export type DanaQrisInvoice = {
   isExisting: boolean;
 };
 
-export type DanaWebhookPayment = {
+type QrisWebhookFields = {
   amount: number;
   senderName: string | null;
   rawText: string | null;
@@ -49,9 +47,8 @@ export type DanaWebhookPayment = {
 /**
  * Batas kausalitas pencocokan pembayaran (masalah #2).
  *
- * QRIS Hook hanya meneruskan nominal + teks notifikasi tanpa stempel waktu
- * tepercaya dari DANA, sehingga "kapan uang benar-benar masuk" tidak dapat
- * diobservasi langsung. Yang dapat diobservasi adalah kapan *server*
+ * Event lama tidak selalu punya waktu mutasi tepercaya. Yang dapat
+ * diobservasi adalah kapan *server*
  * pertama kali melihat event (`dana_webhook_events.created_at`). Syarat
  * kausalitas minimal yang dapat ditegakkan secara deterministik:
  *
@@ -65,18 +62,12 @@ export type DanaWebhookPayment = {
  * order baru — tepat temuan audit #2.
  *
  * Batasan yang diakui (didokumentasikan, bukan disembunyikan):
- * - received_at bukan waktu pembayaran DANA. Nominal yang pernah digunakan
+ * - received_at bukan waktu pembayaran. Nominal yang pernah digunakan
  *   invoice lain wajib direkonsiliasi manual; riwayat ledger harus disimpan.
  * - Kedua timestamp berasal dari database yang sama, sehingga tidak ada
  *   toleransi yang membolehkan event mendahului invoice.
  */
-export const DANA_MATCH_CLOCK_SKEW_MS = 0;
-
-export type DanaMatchCandidate = {
-  orderCode: string;
-  invoiceCreatedAt: unknown;
-  invoiceExpiresAt: unknown;
-};
+export const QRIS_MATCH_CLOCK_SKEW_MS = 0;
 
 /**
  * Parse a DB timestamp as UTC millis. Writers persist ISO-8601 UTC
@@ -100,7 +91,7 @@ export function parseDbTimeUtc(value: unknown): number {
 export function isCausallyPlausiblePayment(
   eventReceivedAt: unknown,
   invoiceCreatedAt: unknown,
-  skewMs = DANA_MATCH_CLOCK_SKEW_MS,
+  skewMs = QRIS_MATCH_CLOCK_SKEW_MS,
 ): boolean {
   const received = parseDbTimeUtc(eventReceivedAt);
   const invoiced = parseDbTimeUtc(invoiceCreatedAt);
@@ -161,7 +152,7 @@ export function getGopayInvoiceMerchantId(payload: unknown): string | null {
   return null;
 }
 
-/** Convert the private DANA Business merchant payload into a one-time amount QRIS. */
+/** Convert a private static merchant payload into a one-time amount QRIS. */
 export function makeDynamicQris(staticPayload: string, amount: number): string {
   if (!Number.isSafeInteger(amount) || amount < MIN_AMOUNT || amount > MAX_AMOUNT) {
     throw new Error("invalid_qris_amount");
@@ -202,22 +193,12 @@ function lastUsedByAmount(rows: Record<string, unknown>[]): Map<number, number> 
 function randomUniqueCode(): number {
   const bytes = new Uint16Array(1);
   crypto.getRandomValues(bytes);
-  return 1 + (bytes[0] % DANA_QRIS_MAX_UNIQUE_CODE);
+  return 1 + (bytes[0] % QRIS_MAX_UNIQUE_CODE);
 }
 
 function publicQrisUrl(orderCode: string): string {
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
   return `${siteUrl}/api/payments/qris/${encodeURIComponent(orderCode)}/image`;
-}
-
-export function isDanaQrisEnabled(): boolean {
-  return process.env.DANA_QRIS_ENABLED === "true";
-}
-
-export function isDanaQrisConfigured(): boolean {
-  return isDanaQrisEnabled()
-    && Boolean(process.env.DANA_STATIC_QRIS?.trim())
-    && Boolean(process.env.DANA_WEBHOOK_SECRET?.trim());
 }
 
 /** Wake poller GoPay (dynamic import: hindari siklus modul). Tidak pernah throw. */
@@ -239,45 +220,36 @@ export function isGopayQrisConfigured(): boolean {
 }
 
 /**
- * Rail QRIS aktif untuk order BARU. Default 'dana' = perilaku hari ini.
- * Set `QRIS_ACTIVE_PROVIDER=gopay` ( + `GOPAY_QRIS_ENABLED=true` + secret)
- * untuk memindahkan order baru ke GoPay. Konfigurasi rail yang dipilih
- * wajib lengkap; kegagalan tidak mengalihkan uang ke merchant lain.
+ * Pilih GoPay atau KlikQRIS secara eksplisit. Nilai kosong, lama, atau salah
+ * tidak boleh mengalihkan uang ke merchant lain.
  */
-export function activeQrisProvider(): QrisProvider {
+export function activeQrisProvider(): QrisProvider | null {
   const wanted = (process.env.QRIS_ACTIVE_PROVIDER || "").trim().toLowerCase();
-  if (wanted === "klikqris") return "klikqris"; // Explicit selection fails closed if its config is missing.
-  if (wanted === GOPAY_QRIS_PROVIDER) return GOPAY_QRIS_PROVIDER;
-  return DANA_QRIS_PROVIDER;
+  return isQrisProvider(wanted) ? wanted : null;
 }
 
 /** Label akun tujuan QRIS yang disimpan di order (`payment_account`), mengikuti provider aktif. */
-export function qrisPaymentAccountLabel(provider: QrisProvider = activeQrisProvider()): string {
+export function qrisPaymentAccountLabel(provider: QrisProvider | null = activeQrisProvider()): string {
   if (provider === GOPAY_QRIS_PROVIDER) return "GoPay Merchant";
   if (provider === "klikqris") return "KlikQRIS";
-  return "DANA Business";
+  return "";
 }
 
-export function qrisStaticPayload(provider: QrisProvider): string {
-  if (provider === "klikqris") return "";
-  return provider === GOPAY_QRIS_PROVIDER
-    ? (process.env.GOPAY_STATIC_QRIS || "").trim()
-    : (process.env.DANA_STATIC_QRIS || "").trim();
+function gopayStaticPayload(): string {
+  return (process.env.GOPAY_STATIC_QRIS || "").trim();
 }
 
-export function qrisMerchantId(provider: QrisProvider): string {
-  if (provider === "klikqris") return process.env.KLIKQRIS_MERCHANT_ID || "";
-  return provider === GOPAY_QRIS_PROVIDER
-    ? getGopayInvoiceMerchantId(qrisStaticPayload(provider)) || GOPAY_MERCHANT_ID : "dana-business";
+function gopayMerchantId(): string {
+  return getGopayInvoiceMerchantId(gopayStaticPayload()) || GOPAY_MERCHANT_ID;
 }
 
 export function isActiveQrisConfigured(): boolean {
   if (activeQrisProvider() === "klikqris") return process.env.KLIKQRIS_ENABLED === "true"
     && Boolean(process.env.KLIKQRIS_API_KEY?.trim()) && /^[0-9]+$/.test(process.env.KLIKQRIS_MERCHANT_ID || "");
-  return activeQrisProvider() === "gopay" ? isGopayQrisConfigured() : isDanaQrisConfigured();
+  return activeQrisProvider() === "gopay" && isGopayQrisConfigured();
 }
 
-function invoiceFromRow(row: Record<string, unknown>, isExisting: boolean): DanaQrisInvoice {
+function invoiceFromRow(row: Record<string, unknown>, isExisting: boolean): QrisInvoice {
   return {
     orderCode: String(row.order_code),
     requestedAmount: Number(row.requested_amount),
@@ -290,38 +262,30 @@ function invoiceFromRow(row: Record<string, unknown>, isExisting: boolean): Dana
   };
 }
 
-/** Allocate a collision-safe payable amount and persist it with the order. */
-export async function createDanaQrisInvoice(orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
-  return createQrisInvoice(DANA_QRIS_PROVIDER, orderCode, requestedAmount);
-}
-
-/** Rail GoPay: alokasi + payload identik, hanya provider + secret yang beda. */
-export async function createGopayQrisInvoice(orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
-  return createQrisInvoice(GOPAY_QRIS_PROVIDER, orderCode, requestedAmount);
-}
-
-/** Invoice untuk order baru mengikuti rail aktif (default dana). */
-export async function createActiveQrisInvoice(orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
+/** Invoice baru mengikuti rail aktif; retry tetap mengikat provider tersimpan. */
+export async function createActiveQrisInvoice(orderCode: string, requestedAmount: number): Promise<QrisInvoice> {
   assertPaymentsAvailable();
   const saved = await queryFirst("SELECT provider FROM payment_transactions WHERE order_code=?", orderCode);
+  // Historical invoices are read from the order/status paths, never issued again.
   if (saved && !isQrisProvider(saved.provider)) throw new Error("qris_provider_conflict");
   const provider = saved ? saved.provider as QrisProvider : activeQrisProvider();
+  if (!provider) throw new Error("qris_not_configured");
   if (provider === "klikqris") {
     const { createKlikQrisInvoice } = await import("./klikqris");
     return createKlikQrisInvoice(orderCode, requestedAmount);
   }
-  return createQrisInvoice(provider, orderCode, requestedAmount);
+  return createGopayQrisInvoice(orderCode, requestedAmount);
 }
 
-async function createQrisInvoice(provider: QrisProvider, orderCode: string, requestedAmount: number): Promise<DanaQrisInvoice> {
+export async function createGopayQrisInvoice(orderCode: string, requestedAmount: number): Promise<QrisInvoice> {
   assertPaymentsAvailable();
-  const configured = provider === GOPAY_QRIS_PROVIDER ? isGopayQrisConfigured() : isDanaQrisConfigured();
-  if (!configured) throw new Error("dana_qris_not_configured");
-  if (!Number.isSafeInteger(requestedAmount) || requestedAmount < MIN_AMOUNT || requestedAmount > MAX_AMOUNT - DANA_QRIS_MAX_UNIQUE_CODE) {
+  const provider = GOPAY_QRIS_PROVIDER;
+  if (!isGopayQrisConfigured()) throw new Error("qris_not_configured");
+  if (!Number.isSafeInteger(requestedAmount) || requestedAmount < MIN_AMOUNT || requestedAmount > MAX_AMOUNT - QRIS_MAX_UNIQUE_CODE) {
     throw new Error("invalid_qris_amount");
   }
   const d1 = getD1();
-  if (!d1) throw new Error("dana_qris_requires_d1");
+  if (!d1) throw new Error("qris_requires_d1");
 
   const existing = await queryFirst(
     `SELECT order_code, requested_amount, payable_amount, unique_code, qris_payload, qris_url, expires_at, status
@@ -330,16 +294,16 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
   );
   if (existing) {
     if (Number(existing.requested_amount) !== requestedAmount) throw new Error("qris_invoice_amount_mismatch");
-    if (!["pending", "paid"].includes(String(existing.status))) throw new Error("dana_qris_invoice_terminal");
+    if (!["pending", "paid"].includes(String(existing.status))) throw new Error("qris_invoice_terminal");
     return invoiceFromRow(existing, true);
   }
 
-  const staticPayload = qrisStaticPayload(provider);
-  if (!staticPayload) throw new Error("dana_qris_not_configured");
-  if (provider === GOPAY_QRIS_PROVIDER && !getGopayInvoiceMerchantId(staticPayload)) throw new Error("gopay_invalid_merchant_qris");
+  const staticPayload = gopayStaticPayload();
+  if (!staticPayload) throw new Error("qris_not_configured");
+  if (!getGopayInvoiceMerchantId(staticPayload)) throw new Error("gopay_invalid_merchant_qris");
   const order = await queryFirst("SELECT expires_at FROM orders WHERE code=?", orderCode);
   const orderDeadline = parseDbTimeUtc(order?.expires_at);
-  const expiresAt = new Date(Math.min(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000, Number.isFinite(orderDeadline) ? orderDeadline : Infinity)).toISOString();
+  const expiresAt = new Date(Math.min(Date.now() + QRIS_EXPIRY_MINUTES * 60_000, Number.isFinite(orderDeadline) ? orderDeadline : Infinity)).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
   // Least-recently-used: nominal yang belum pernah dipakai dahulu, lalu yang
   // terakhir dipakai paling lama. Nominal di luar DANA_AMOUNT_REUSE_WINDOW_HOURS
@@ -349,11 +313,11 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
     `SELECT payable_amount, MAX(julianday(COALESCE(expires_at,issued_at))) AS last_used_jd
      FROM payment_invoice_history WHERE provider=? AND payable_amount BETWEEN ? AND ?
      GROUP BY payable_amount`,
-    provider, requestedAmount + 1, requestedAmount + DANA_QRIS_MAX_UNIQUE_CODE,
+    provider, requestedAmount + 1, requestedAmount + QRIS_MAX_UNIQUE_CODE,
   );
   const lastUsed = lastUsedByAmount(history);
   const start = randomUniqueCode();
-  const codes = Array.from({ length: DANA_QRIS_MAX_UNIQUE_CODE }, (_, i) => 1 + ((start - 1 + i) % DANA_QRIS_MAX_UNIQUE_CODE))
+  const codes = Array.from({ length: QRIS_MAX_UNIQUE_CODE }, (_, i) => 1 + ((start - 1 + i) % QRIS_MAX_UNIQUE_CODE))
     .sort((a, b) => (lastUsed.get(requestedAmount + a) ?? 0) - (lastUsed.get(requestedAmount + b) ?? 0));
 
   for (let attempt = 0; attempt < 40; attempt++) {
@@ -378,7 +342,7 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
               qris_url, direct_url, expires_at
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         ).bind(
-          orderCode, provider, DANA_QRIS_MODE, orderCode, qrisMerchantId(provider),
+          orderCode, provider, GOPAY_QRIS_MODE, orderCode, gopayMerchantId(),
           requestedAmount, payableAmount, uniqueCode, "pending", qrisPayload,
           qrisUrl, `/pesanan/${encodeURIComponent(orderCode)}`, expiresAt,
         ),
@@ -392,7 +356,7 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
       ]);
       // 2026-10-10: QR GoPay baru → bangunkan poller VPS (idle 60 dtk) agar
       // pembeli yang bayar cepat tetap terdeteksi ±15 dtk. Best-effort.
-      if (provider === GOPAY_QRIS_PROVIDER) await wakeGopayPollerSafe("invoice");
+      await wakeGopayPollerSafe("invoice");
       return { orderCode, requestedAmount, payableAmount, uniqueCode, qrisPayload, qrisUrl, expiresAt, isExisting: false };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -405,11 +369,11 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
         if (Number(winner.requested_amount) !== requestedAmount) throw new Error("qris_invoice_amount_mismatch");
         return invoiceFromRow(winner, true);
       }
-      if (/UNIQUE|payment_transactions_active_(dana|gopay)_amount/i.test(message)) continue;
+      if (/UNIQUE|payment_transactions_active_gopay_amount/i.test(message)) continue;
       throw error;
     }
   }
-  throw new Error("dana_qris_unique_amount_unavailable");
+  throw new Error("qris_unique_amount_unavailable");
 }
 
 /**
@@ -425,13 +389,13 @@ function isStillInFuture(value: unknown, now = Date.now()): boolean {
   return Number.isNaN(parsed) ? true : parsed > now;
 }
 
-export type QrisReissueResult =  | { ok: true; invoice: DanaQrisInvoice; remaining: number }
+export type QrisReissueResult =  | { ok: true; invoice: QrisInvoice; remaining: number }
   | { ok: false; reason: "order_not_reissuable" | "invoice_still_active" | "reissue_limit_reached" | "amount_unavailable" };
 
 /**
  * Terbitkan QRIS BARU untuk order yang masih hidup.
  *
-  * Kenapa perlu: `createDanaQrisInvoice` mengembalikan baris lama begitu
+  * Kenapa perlu: `createGopayQrisInvoice` mengembalikan baris lama begitu
   * `payment_transactions` ada (`isExisting: true`), dan `invoice-retry.ts` hanya
   * mengirim ulang FOTO invoice yang sama. Reissue memberi QR baru tanpa
   * mengulang checkout — order tetap mati 15 menit dari awal bila tidak dibayar.
@@ -451,28 +415,24 @@ export type QrisReissueResult =  | { ok: true; invoice: DanaQrisInvoice; remaini
  * boleh dipakai lagi oleh order ini; jika dipakai order lain setelah pool
  * habis, webhook dan retry admin mewajibkan rekonsiliasi manual.
  */
-export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisReissueResult> {
+export async function reissueGopayQrisInvoice(orderCode: string): Promise<QrisReissueResult> {
   assertPaymentsAvailable();
-  if (activeQrisProvider() === "klikqris") {
-    const existing = await queryFirst("SELECT provider FROM payment_transactions WHERE order_code=?", orderCode);
-    if (existing?.provider === "klikqris") return { ok: false, reason: "order_not_reissuable" };
-  }
   const d1 = getD1();
-  if (!d1) throw new Error("dana_qris_requires_d1");
+  if (!d1) throw new Error("qris_requires_d1");
 
   const row = await queryFirst(
     `SELECT o.code, o.status, o.payment_status, o.expires_at AS order_expires_at,
-            o.qris_reissue_count, o.sales_channel, pt.provider AS tx_provider,
+            o.qris_reissue_count, o.sales_channel,
             pt.requested_amount, pt.payable_amount, pt.status AS tx_status,
             pt.expires_at AS invoice_expires_at
      FROM orders o
-     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider IN ('dana','gopay')
+     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider='gopay'
      WHERE o.code=?`,
     orderCode,
   );
   if (!row || row.sales_channel === "whatsapp") return { ok: false, reason: "order_not_reissuable" };
-  const detectedProvider: QrisProvider = row.tx_provider === GOPAY_QRIS_PROVIDER ? GOPAY_QRIS_PROVIDER : DANA_QRIS_PROVIDER;
-  if (!(detectedProvider === GOPAY_QRIS_PROVIDER ? isGopayQrisConfigured() : isDanaQrisConfigured())) throw new Error("dana_qris_not_configured");
+  const detectedProvider = GOPAY_QRIS_PROVIDER;
+  if (!isGopayQrisConfigured()) throw new Error("qris_not_configured");
 
   const orderAlive = String(row.status) === "pending"
     && ["unpaid", "pending"].includes(String(row.payment_status))
@@ -491,12 +451,12 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
     return { ok: false, reason: "order_not_reissuable" };
   }
 
-  const staticPayload = qrisStaticPayload(detectedProvider);
-  if (!staticPayload) throw new Error("dana_qris_not_configured");
+  const staticPayload = gopayStaticPayload();
+  if (!staticPayload) throw new Error("qris_not_configured");
   const previousAmount = Number(row.payable_amount);
   const orderDeadline = parseDbTimeUtc(row.order_expires_at);
   const expiresAt = new Date(Math.min(
-    Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000,
+    Date.now() + QRIS_EXPIRY_MINUTES * 60_000,
     Number.isFinite(orderDeadline) ? orderDeadline : Infinity,
   )).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
@@ -507,14 +467,14 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
   const history = await queryAll(
     `SELECT payable_amount, order_code, julianday(COALESCE(expires_at,issued_at)) AS last_used_jd FROM payment_invoice_history
      WHERE provider=? AND payable_amount BETWEEN ? AND ?`,
-    detectedProvider, requestedAmount + 1, requestedAmount + DANA_QRIS_MAX_UNIQUE_CODE,
+    detectedProvider, requestedAmount + 1, requestedAmount + QRIS_MAX_UNIQUE_CODE,
   );
   const lastUsed = lastUsedByAmount(history);
   const usedByOrder = new Set(history.filter((h) => h.order_code === orderCode).map((h) => Number(h.payable_amount)));
   const start = randomUniqueCode();
   const codes = Array.from(
-    { length: DANA_QRIS_MAX_UNIQUE_CODE },
-    (_, index) => 1 + ((start - 1 + index) % DANA_QRIS_MAX_UNIQUE_CODE),
+    { length: QRIS_MAX_UNIQUE_CODE },
+    (_, index) => 1 + ((start - 1 + index) % QRIS_MAX_UNIQUE_CODE),
   )
     .filter((code) => requestedAmount + code !== previousAmount && !usedByOrder.has(requestedAmount + code))
     .sort((a, b) => (lastUsed.get(requestedAmount + a) ?? 0) - (lastUsed.get(requestedAmount + b) ?? 0));
@@ -558,7 +518,7 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
         ).bind(orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
-      if (detectedProvider === GOPAY_QRIS_PROVIDER) await wakeGopayPollerSafe("reissue");
+      await wakeGopayPollerSafe("reissue");
       return {
         ok: true,
         remaining: MAX_QRIS_REISSUES - (usedReissues + 1),
@@ -578,7 +538,7 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
       // Tabrakan pada index unique parsial payable_amount = nominal itu sedang
       // dipakai invoice aktif order lain (index per provider). Coba nominal
       // berikutnya.
-      if (/UNIQUE|payment_transactions_active_dana_amount|payment_transactions_active_gopay_amount/i.test(message)) continue;
+      if (/UNIQUE|payment_transactions_active_gopay_amount/i.test(message)) continue;
       // Guard gagal = order sudah berubah (dibayar/dibatalkan) atau reissue
       // lain menang. Tidak ada efek samping karena batch dibatalkan penuh.
       if (/operation_guards|CHECK constraint/i.test(message)) {
@@ -603,7 +563,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-export function parseDanaWebhook(body: unknown): DanaWebhookPayment | null {
+function parseQrisWebhookFields(body: unknown): QrisWebhookFields | null {
   const root = asObject(body);
   if (!root) return null;
   const payment = asObject(root.payment);
@@ -633,11 +593,11 @@ export function parseDanaWebhook(body: unknown): DanaWebhookPayment | null {
  * ke order tanpa tebak nominal; fallback nominal persis + causal guard tetap
  * berlaku bila order_code tidak disertakan.
  */
-export type QrisWebhookPayment = DanaWebhookPayment & {
+export type QrisWebhookPayment = QrisWebhookFields & {
   orderCode: string | null;
 };
 export function parseQrisWebhook(body: unknown): QrisWebhookPayment | null {
-  const base = parseDanaWebhook(body);
+  const base = parseQrisWebhookFields(body);
   if (!base) return null;
   const root = asObject(body);
   const payment = root ? asObject(root.payment) : null;
@@ -648,8 +608,7 @@ export function parseQrisWebhook(body: unknown): QrisWebhookPayment | null {
   return { ...base, orderCode };
 }
 
-// Re-export agar nama publik yang sudah dipakai webhook DANA + test tetap
-// stabil, tetapi implementasinya satu di src/lib/security.ts.
+// Keep the GoPay consumers on the canonical comparison implementation.
 export { constantTimeEqual } from "@/lib/security";
 
 export async function sha256Hex(value: string): Promise<string> {

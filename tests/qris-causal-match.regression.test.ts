@@ -1,4 +1,4 @@
-// tests/dana-causal-match.regression.test.ts — Issue #2: stale payment vs new order
+// tests/qris-causal-match.regression.test.ts — Issue #2: stale payment vs new order
 //
 // Audit 7 Sep 2026: event lama dapat melunasi invoice baru dengan nominal
 // sama melalui retry_match. QRIS Hook tidak membawa stempel waktu tepercaya
@@ -10,10 +10,10 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  DANA_MATCH_CLOCK_SKEW_MS,
+  QRIS_MATCH_CLOCK_SKEW_MS,
   isCausallyPlausiblePayment,
   parseDbTimeUtc,
-} from "@/lib/payments/dana-qris";
+} from "@/lib/payments/qris";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 
@@ -35,7 +35,7 @@ describe("causal payment matching (event must not predate invoice)", () => {
   });
 
   it("does not tolerate events predating an invoice from the same database clock", () => {
-    expect(DANA_MATCH_CLOCK_SKEW_MS).toBe(0);
+    expect(QRIS_MATCH_CLOCK_SKEW_MS).toBe(0);
     expect(
       isCausallyPlausiblePayment("2026-09-07T10:04:30.000Z", "2026-09-07T10:05:00.000Z"),
     ).toBe(false);
@@ -64,7 +64,7 @@ describe("causal payment matching (event must not predate invoice)", () => {
 });
 
 describe("webhook + retry_match enforce causality, CAS, and triage", () => {
-  const webhook = () => read("src/app/api/webhook/dana/route.ts");
+  const webhook = () => read("src/app/api/webhook/gopay/route.ts");
   const retry = () => read("src/app/api/admin/payments/events/route.ts");
 
   it("both paths compare event observation time against invoice creation time", () => {
@@ -76,7 +76,7 @@ describe("webhook + retry_match enforce causality, CAS, and triage", () => {
   });
 
   it("ambiguous candidates never settle an order (single plausible match required)", () => {
-    expect(webhook()).toContain("plausible.length === 1");
+    expect(webhook()).toContain("plausible.find");
     expect(retry()).toContain("matches.length !== 1");
     expect(retry()).toContain("multiple_active_exact_amount");
   });
@@ -92,6 +92,6 @@ describe("webhook + retry_match enforce causality, CAS, and triage", () => {
     expect(webhook()).toContain("event_predates_invoice");
     expect(webhook()).toContain("no_active_exact_amount");
     // Batasan kanal didokumentasikan pada helper (bukan disembunyikan).
-    expect(read("src/lib/payments/dana-qris.ts")).toContain("Batasan yang diakui");
+    expect(read("src/lib/payments/qris.ts")).toContain("Batasan yang diakui");
   });
 });

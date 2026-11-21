@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
+import { qrisPaymentAccountLabel } from "@/lib/payments/qris";
 
 afterEach(() => { vi.unstubAllEnvs(); });
 
@@ -9,6 +9,6 @@ it("labels the QRIS payment account from the active provider, not a stored DANA 
   vi.stubEnv("QRIS_ACTIVE_PROVIDER", "klikqris");
   expect(qrisPaymentAccountLabel()).toBe("KlikQRIS");
   vi.stubEnv("QRIS_ACTIVE_PROVIDER", "");
-  expect(qrisPaymentAccountLabel()).toBe("DANA Business");
+  expect(qrisPaymentAccountLabel()).toBe("");
   expect(qrisPaymentAccountLabel("gopay")).toBe("GoPay Merchant");
 });

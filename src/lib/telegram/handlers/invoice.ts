@@ -22,7 +22,7 @@ import { invoiceItemName } from "@/lib/telegram/messages/format";
 import { getActiveVariant, formatDuration, formatVariantLabel, buyerWarrantyLabel, effectiveVariantStock, type VariantSummary } from "@/lib/catalog";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
-import { createActiveQrisInvoice, isActiveQrisConfigured, qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice, isActiveQrisConfigured, qrisPaymentAccountLabel } from "@/lib/payments/qris";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
 // 2026-09-25): grup Axvara_Notif hanya menerima "Lunas — Telegram" saat order
@@ -31,7 +31,7 @@ import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
-import { activeQrisProvider } from "@/lib/payments/dana-qris";
+import { activeQrisProvider } from "@/lib/payments/qris";
 import { clampQty, clearPendingAction } from "./shared";
 import { handleShowQty } from "./catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
@@ -79,7 +79,7 @@ export async function handlePayWithQris(
     return;
   }
 
-  // Gate rail aktif: DANA atau GoPay, mana pun yang terkonfigurasi.
+  // Gate rail aktif: GoPay atau KlikQRIS harus dipilih dan dikonfigurasi.
   if (!isActiveQrisConfigured()) {
     await sendMessage({
       chat_id: chatId,

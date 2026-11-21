@@ -23,11 +23,11 @@ vi.mock("@/lib/telegram/api", () => ({
 vi.mock("@/lib/telegram/payment-maintenance", () => ({ notifyPaymentMaintenance: async () => false }));
 
 const qris = vi.hoisted(() => ({ create: vi.fn(), reissue: vi.fn() }));
-vi.mock("@/lib/payments/dana-qris", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/payments/dana-qris")>()),
+vi.mock("@/lib/payments/qris", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/qris")>()),
   isActiveQrisConfigured: () => true,
   createActiveQrisInvoice: qris.create,
-  reissueDanaQrisInvoice: qris.reissue,
+  reissueGopayQrisInvoice: qris.reissue,
 }));
 vi.mock("@/lib/fulfillment/deliver", () => ({ createFulfillmentJob: vi.fn(async () => null) }));
 

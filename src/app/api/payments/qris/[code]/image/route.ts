@@ -19,7 +19,7 @@ export async function GET(
   const transaction = await queryFirst(
     `SELECT qris_payload, provider, provider_qris_url, status, expires_at
      FROM payment_transactions
-     WHERE order_code=? AND provider IN ('dana','gopay','klikqris')`,
+     WHERE order_code=? AND (provider IN ('dana','gopay','klikqris') OR provider IS NULL)`,
     orderCode,
   );
   if (!transaction || (!transaction.qris_payload && transaction.provider !== "klikqris")) return new NextResponse("Not found", { status: 404 });

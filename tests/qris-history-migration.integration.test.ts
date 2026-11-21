@@ -1,8 +1,8 @@
+import { seedLegacyDanaInvoice } from "./helpers/qris-fixture";
 import fs from "node:fs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { calculateCrc16, createDanaQrisInvoice } from "@/lib/payments/dana-qris";
-import { NextRequest } from "next/server";
+import { DANA_AMOUNT_REUSED_SQL } from "@/lib/payments/dana-history";
 let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(async () => {
   fixture = createD1Fixture(); stubFulfillmentKey();
@@ -12,9 +12,6 @@ beforeEach(async () => {
     DROP TRIGGER payment_invoice_history_update;
     DROP TABLE payment_invoice_history; DROP TABLE dana_qris_legacy_ranges;
     ALTER TABLE payment_transactions DROP COLUMN invoice_issued_at;`);
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED", "true"); vi.stubEnv("DANA_WEBHOOK_SECRET", "fixture");
-  vi.stubEnv("DANA_STATIC_QRIS", qr+calculateCrc16(qr));
   vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "false"); vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External network disabled"); }));
 });
@@ -39,20 +36,13 @@ it("backfills surviving invoice history, preserves terminal states, and marks on
   expect(fixture.sql.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   expect(fixture.sql.prepare("PRAGMA integrity_check").get()!.integrity_check).toBe("ok");
 });
-it("routes an unknowable old nominal to bank review instead of paying a new order", async () => {
+it("flags an unknowable old DANA nominal for bank review", () => {
   oldOrder("OLD-REISSUED",2,10100,10000); migrate();
   insertTestOrder(fixture.sql,"AXV-20260910-NEW00001",{channel:"web"});
-  vi.spyOn(crypto,"getRandomValues").mockImplementation(array=>{(array as Uint32Array)[0]=41;return array;});
-  const invoice = await createDanaQrisInvoice("AXV-20260910-NEW00001",10000);
-  expect(invoice.payableAmount).toBe(10042); // absent from surviving rows, but uncertain
-  const { POST } = await import("@/app/api/webhook/dana/route");
-  const response=await POST(new NextRequest("http://localhost/api/webhook/dana",{
-    method:"POST",headers:{"content-type":"application/json","x-webhook-secret":"fixture"},
-    body:JSON.stringify({event_id:"delayed-unknown-old-qr",amount:10042}),
-  }));
-  expect(response.status).toBe(200);
+  seedLegacyDanaInvoice(fixture.sql,"AXV-20260910-NEW00001",10000);
+  expect(fixture.sql.prepare(`SELECT ${DANA_AMOUNT_REUSED_SQL} AS reused FROM payment_transactions pt WHERE pt.order_code=?`)
+    .get("AXV-20260910-NEW00001")?.reused).toBe(1);
   expect(fixture.sql.prepare("SELECT status FROM orders WHERE code='AXV-20260910-NEW00001'").get()!.status).toBe("pending");
-  expect(fixture.sql.prepare("SELECT last_error FROM dana_webhook_events").get()!.last_error).toBe("amount_reused_requires_review");
   expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_invoice_history").get()!.n).toBe(2);
 });
 it("captures renewal time from old writers during the migrate-before-deploy interval", () => {

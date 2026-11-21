@@ -3,7 +3,7 @@
 //
 // Berlaku untuk SEMUA rail QRIS (dana + gopay): history ber-provider sehingga
 // nominal yang pernah dipakai rail lain tidak saling mengotori. Matcher WAJIB
-// filter provider sebelum memakai predikat ini (lihat webhook dana/gopay).
+// filter provider sebelum memakai predikat ini (webhook GoPay dan rekonsiliasi admin).
 //
 // 2026-11-14: riwayat hanya dianggap bentrok bila invoice order lain dengan
 // nominal sama masih hidup/berakhir dalam DANA_AMOUNT_REUSE_WINDOW_HOURS

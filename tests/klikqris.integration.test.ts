@@ -1,10 +1,11 @@
+import { seedLegacyDanaInvoice } from "./helpers/qris-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { createActiveQrisInvoice, createDanaQrisInvoice, calculateCrc16 } from "@/lib/payments/dana-qris";
-import { klikQrisMoney, klikQrisTime, validKlikQrisImage, reconcileKlikQrisPayment } from "@/lib/payments/klikqris";
+import { createActiveQrisInvoice } from "@/lib/payments/qris";
+import { createKlikQrisInvoice, klikQrisMoney, klikQrisTime, validKlikQrisImage, reconcileKlikQrisPayment } from "@/lib/payments/klikqris";
 import { POST as callback } from "@/app/api/payments/klikqris/callback/route";
 
 const mocks=vi.hoisted(()=>({ ensure:vi.fn(async()=>true),send:vi.fn(async()=>({ok:true})),pedia:vi.fn(async()=>({})),
@@ -328,9 +329,8 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
   expect(text).toContain("pemeriksaan manual");expect(text.length).toBeLessThanOrEqual(1024);
  });
  it("applies the additive migration without altering a legacy DANA invoice",async()=>{
-  await seed();const qr="00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED","true");vi.stubEnv("DANA_STATIC_QRIS",qr+calculateCrc16(qr));vi.stubEnv("DANA_WEBHOOK_SECRET","fixture");
-  const old=await createDanaQrisInvoice(A,1000);
+  await seed();
+  const old=seedLegacyDanaInvoice(fixture.sql,A,1000);
   fixture.sql.exec("ALTER TABLE payment_transactions DROP COLUMN provider_qris_url");
   const {readFileSync}=await import("node:fs");fixture.sql.exec(readFileSync("drizzle/migrations/0069_klikqris_provider_image.sql","utf8"));
   expect(tx().provider).toBe("dana");expect(tx().payable_amount).toBe(old.payableAmount);expect(tx().provider_qris_url).toBeNull();
@@ -340,10 +340,10 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
   await expect(createActiveQrisInvoice(A,1000)).rejects.toThrow("klikqris_not_configured");expect(fetchMock).not.toHaveBeenCalled();
  });
  it("keeps an existing DANA invoice after the gateway selection changes",async()=>{
-  await seed();const qr="00020101021153033605802ID6304";
-  vi.stubEnv("DANA_QRIS_ENABLED","true");vi.stubEnv("DANA_STATIC_QRIS",qr+calculateCrc16(qr));vi.stubEnv("DANA_WEBHOOK_SECRET","fixture");
-  const old=await createDanaQrisInvoice(A,1000);const reused=await createActiveQrisInvoice(A,1000);
-  expect(reused.payableAmount).toBe(old.payableAmount);expect(tx().provider).toBe("dana");expect(posts()).toBe(0);
+  await seed();
+  const old=seedLegacyDanaInvoice(fixture.sql,A,1000);await expect(createActiveQrisInvoice(A,1000)).rejects.toThrow("qris_provider_conflict");
+  await expect(createKlikQrisInvoice(A,1000)).rejects.toThrow("klikqris_provider_conflict");
+  expect(tx().payable_amount).toBe(old.payableAmount);expect(tx().provider).toBe("dana");expect(posts()).toBe(0);
  });
  it("allows equal totals for different provider order IDs without cross-matching them",async()=>{
   await checkout(A);await checkout(B);paid(A);expect((await hook()).status).toBe(200);
@@ -471,10 +471,9 @@ describe("KlikQRIS settlement boundaries",()=>{
    expect(await claimKlikQrisPollReconcile(A)).toBe(false);
  });
  it("keeps automatic polling local for legacy DANA invoices",async()=>{
-   await seed();const qr="00020101021153033605802ID6304";
-   vi.stubEnv("DANA_QRIS_ENABLED","true");vi.stubEnv("DANA_STATIC_QRIS",qr+calculateCrc16(qr));vi.stubEnv("DANA_WEBHOOK_SECRET","fixture");
-   await createDanaQrisInvoice(A,1000);fetchMock.mockClear();const {GET}=await import("@/app/api/orders/route");
+   await seed();
+    seedLegacyDanaInvoice(fixture.sql,A,1000);fetchMock.mockClear();const {GET}=await import("@/app/api/orders/route");
    const body=await (await GET(new NextRequest(`https://axvara.tech/api/orders?code=${A}`))).json();
-   expect(body.order.status).toBe("pending");expect(fetchMock).not.toHaveBeenCalled();
+   expect(body.order).toMatchObject({ status:"pending", qris_reissue_allowed:false, qris:{payable_amount:1042} });expect(fetchMock).not.toHaveBeenCalled();
  });
 });

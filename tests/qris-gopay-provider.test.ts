@@ -7,7 +7,7 @@ import {
   isQrisProvider,
   makeDynamicQris,
   parseQrisWebhook,
-} from "@/lib/payments/dana-qris";
+} from "@/lib/payments/qris";
 
 const DANA_FIXTURE_BASE = "00020101021153033605802ID5911AXVARA TEST6007JAKARTA6304";
 const danaFixture = () => `${DANA_FIXTURE_BASE}${calculateCrc16(DANA_FIXTURE_BASE)}`;
@@ -16,7 +16,7 @@ const danaFixture = () => `${DANA_FIXTURE_BASE}${calculateCrc16(DANA_FIXTURE_BAS
 const GOPAY_FIXTURE_BASE = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI51440014ID.CO.QRIS.WWW0215ID10111111111110303UMI5204899953033605802ID5911AXVARA TEST6006SLEMAN61055558162070703A016304";
 const gopayFixture = () => `${GOPAY_FIXTURE_BASE}${calculateCrc16(GOPAY_FIXTURE_BASE)}`;
 
-describe("QRIS multi-provider core (Fase 0, DANA tidak berubah)", () => {
+describe("GoPay QRIS core", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
   });
@@ -50,22 +50,17 @@ describe("QRIS multi-provider core (Fase 0, DANA tidak berubah)", () => {
     expect(getGopayInvoiceMerchantId(malformed + calculateCrc16(malformed))).toBeNull();
   });
 
-  it("makeDynamicQris DANA tetap identik (tidak regresi)", () => {
-    const dynamic = makeDynamicQris(danaFixture(), 50_260);
-    expect(dynamic).toContain("010212");
-    expect(dynamic).toContain("5405502605802ID");
-    expect(dynamic.slice(-4)).toBe(calculateCrc16(dynamic.slice(0, -4)));
-  });
-
-  it("isQrisProvider hanya terima dana/gopay", () => {
-    expect(isQrisProvider("dana")).toBe(true);
+  it("isQrisProvider only accepts GoPay and KlikQRIS", () => {
+    expect(isQrisProvider("dana")).toBe(false);
+    expect(isQrisProvider("klikqris")).toBe(true);
     expect(isQrisProvider("gopay")).toBe(true);
     expect(isQrisProvider("shopee")).toBe(false);
     expect(isQrisProvider("")).toBe(false);
   });
 
-  it("defaults to DANA and retains explicit GoPay selection when configuration is incomplete", () => {
-    expect(activeQrisProvider()).toBe("dana");
+  it("requires explicit selection and retains GoPay selection when configuration is incomplete", () => {
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "");
+    expect(activeQrisProvider()).toBeNull();
     vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
     expect(activeQrisProvider()).toBe("gopay");
     expect(isGopayQrisConfigured()).toBe(false);

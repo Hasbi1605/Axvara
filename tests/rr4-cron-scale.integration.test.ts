@@ -17,11 +17,11 @@ let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(async () => {
   fixture = createD1Fixture();
   stubFulfillmentKey();
-  const { calculateCrc16 } = await import("@/lib/payments/dana-qris");
-  vi.stubEnv("DANA_QRIS_ENABLED", "true");
-  vi.stubEnv("DANA_WEBHOOK_SECRET", "x");
-  const qr = "00020101021153033605802ID6304";
-  vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
+  const { calculateCrc16 } = await import("@/lib/payments/qris");
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_POLLER_SECRET", "x");
+  const qr = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+  vi.stubEnv("GOPAY_STATIC_QRIS", qr + calculateCrc16(qr));
   vi.stubEnv("CRON_SECRET", "c");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
@@ -242,8 +242,8 @@ describe("RR4-06 stale initializing recovers without depending on other pending 
       (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,expires_at)
       VALUES ('RR406-1','X','6280',?,10000,'qris','pending','pending','telegram',datetime('now','+15 minutes'))`)
       .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "F", price: 10000, qty: 1 }]));
-    const { createDanaQrisInvoice } = await import("@/lib/payments/dana-qris");
-    await createDanaQrisInvoice("RR406-1", 10000);
+    const { createGopayQrisInvoice } = await import("@/lib/payments/qris");
+    await createGopayQrisInvoice("RR406-1", 10000);
     fixture.sql.prepare("UPDATE orders SET expires_at=datetime('now','-20 minutes') WHERE code='RR406-1'").run();
     fixture.sql.prepare("UPDATE payment_transactions SET status='initializing', created_at=datetime('now','-20 minutes') WHERE order_code='RR406-1'").run();
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n).toBe(0);
@@ -266,8 +266,8 @@ describe("RR4-06 stale initializing recovers without depending on other pending 
       (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,expires_at)
       VALUES ('RR406-FRESH','X','6280',?,10000,'qris','pending','pending','telegram',datetime('now','+10 minutes'))`)
       .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "F", price: 10000, qty: 1 }]));
-    const { createDanaQrisInvoice } = await import("@/lib/payments/dana-qris");
-    await createDanaQrisInvoice("RR406-FRESH", 10000);
+    const { createGopayQrisInvoice } = await import("@/lib/payments/qris");
+    await createGopayQrisInvoice("RR406-FRESH", 10000);
     fixture.sql.prepare("UPDATE payment_transactions SET status='initializing', created_at=datetime('now') WHERE order_code='RR406-FRESH'").run();
     await cronRun(300);
     await cronRun(300);

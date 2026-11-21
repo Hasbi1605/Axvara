@@ -23,7 +23,7 @@ export const KLIKQRIS_POLL_HEALTH_KEY = "klikqris_health_poll_failed";
 export const QRIS_HEALTH_EVENTS_SQL = `SELECT SUM(CASE WHEN status IN ('received','ignored') THEN 1 ELSE 0 END) AS unmatched,
   SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
   MAX(CASE WHEN status='matched' THEN processed_at END) AS last_match
-  FROM dana_webhook_events WHERE (provider IN ('dana','gopay','klikqris') OR provider IS NULL)
+  FROM dana_webhook_events WHERE provider IN ('gopay','klikqris')
     AND created_at >= date('now','-7 days') AND datetime(created_at) >= datetime('now','-7 days')`;
 
 export function readTelegramWebhookHealth(value: unknown): { error: string | null; pending: number | null } {
@@ -174,6 +174,6 @@ export function evaluateQris(signals: QrisSignals): ServiceStatus {
   if ((signals.klikQrisPollFailures ?? 0) > 0) return { level: "degraded", detail: `KlikQRIS: ${signals.klikQrisPollFailures} cek status gagal` };
   if (signals.failed7d > 0) return { level: "degraded", detail: `QRIS: ${signals.failed7d} event gagal 7 hari` };
   if (signals.unmatched7d > 10) return { level: "degraded", detail: `QRIS: ${signals.unmatched7d} event tak cocok 7 hari` };
-  if (signals.lastMatchAt) return { level: "healthy", detail: "QRIS Hook mencocokkan pembayaran" };
+  if (signals.lastMatchAt) return { level: "healthy", detail: "QRIS mencocokkan pembayaran" };
   return { level: "configured", detail: "QRIS terkonfigurasi, belum ada pembayaran cocok" };
 }

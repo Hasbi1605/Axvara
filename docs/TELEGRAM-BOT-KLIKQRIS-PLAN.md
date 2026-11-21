@@ -1,5 +1,8 @@
 # Rencana Eksekusi — Bot Telegram Auto Order + KlikQRIS
 
+> **Arsip:** keterangan DANA QRIS / Android di bawah hanya histori. FX-18 memensiunkan rail tersebut; lihat ARCHITECTURE §16 dan aturan pembayaran terbaru.
+
+
 > **ARSIP / SUPERSEDED 5 September 2026.** KlikQRIS tidak lagi digunakan.
 > Implementasi aktif memakai QRIS dinamis DANA Business dan Android QRIS Hook
 > untuk web, Telegram, dan WhatsApp. Lihat `docs/ARCHITECTURE.md` bagian 13.

@@ -220,14 +220,14 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
         const response = await fetch(`/api/admin/proofs/${action.order.proofId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: action.kind, reason: actionNote.trim() || undefined }) });
         const data = await response.json().catch(() => ({})) as { error?: string; payment_updated?: boolean };
         if (!response.ok) throw new Error(data.error || "Review bukti gagal");
-        // Screenshot QRIS = bukti pendukung saja; QRIS Hook tetap otoritatif,
+        // Screenshot QRIS = bukti pendukung saja; mutasi merchant tetap otoritatif,
         // jadi server sengaja membalas `payment_updated:false` dan order TETAP
         // pending. Toast "dikonfirmasi lunas" di kasus itu adalah kabar palsu
         // yang bisa membuat barang dikirim sebelum uang masuk.
         toast.success(
           action.kind === "reject" ? "Bukti ditolak."
             : data.payment_updated === false
-              ? "Bukti disetujui sebagai referensi. Status lunas tetap menunggu QRIS Hook."
+              ? "Bukti disetujui sebagai referensi. Status lunas tetap menunggu verifikasi mutasi."
               : "Mutasi cocok dan pesanan dikonfirmasi lunas.",
         );
       } else if (action.kind === "handover") {

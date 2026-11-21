@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { Miniflare } from "miniflare";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { calculateCrc16, createGopayQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createGopayQrisInvoice } from "@/lib/payments/qris";
 import { GET } from "@/app/api/webhook/gopay/pending/route";
 
 vi.mock("@/lib/payments/gopay-wake", () => ({ scheduleGopayWake: vi.fn() }));

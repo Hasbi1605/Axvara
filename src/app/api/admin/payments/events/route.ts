@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { readJsonBody } from "@/lib/http-body";
 import { execRun, isD1Mode, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import { isFutureIso } from "@/lib/expiry";
-import { activeQrisProvider, isCausallyPlausiblePayment } from "@/lib/payments/dana-qris";
+import { activeQrisProvider, isCausallyPlausiblePayment } from "@/lib/payments/qris";
 import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
 import { PAYMENT_ATTENTION_SQL, PAYMENT_ATTENTION_WHERE } from "@/lib/admin-overview-queries";
 
@@ -39,9 +39,9 @@ export async function GET(request: NextRequest) {
     queryFirst(PAYMENT_ATTENTION_SQL),
   ]);
   for (const row of lastRows) {
-    if (row.provider === "dana" || row.provider === "gopay" || row.provider === "klikqris") health.providers[row.provider].last_event_at = String(row.created_at);
+    if (row.provider === "gopay" || row.provider === "klikqris") health.providers[row.provider].last_event_at = String(row.created_at);
   }
-  health.last_event_at = health.providers[health.provider].last_event_at;
+  health.last_event_at = health.provider ? health.providers[health.provider].last_event_at : null;
   const total = Number(totalRow?.count || 0);
   return NextResponse.json({
     events,
@@ -160,14 +160,6 @@ function paymentHealth() {
       webhook_url: `${siteUrl}/api/payments/klikqris/callback`,
       secret_header: "signature (JSON body)", last_event_at: null as string | null,
     },
-    dana: {
-      enabled: process.env.DANA_QRIS_ENABLED === "true",
-      payload_configured: Boolean(process.env.DANA_STATIC_QRIS?.trim()),
-      webhook_configured: Boolean(process.env.DANA_WEBHOOK_SECRET?.trim()),
-      webhook_url: `${siteUrl}/api/webhook/dana`,
-      secret_header: "X-Webhook-Secret",
-      last_event_at: null as string | null,
-    },
     gopay: {
       enabled: process.env.GOPAY_QRIS_ENABLED === "true",
       payload_configured: Boolean(process.env.GOPAY_STATIC_QRIS?.trim()),
@@ -178,7 +170,10 @@ function paymentHealth() {
     },
   };
   return {
-    ...providers[provider],
+    ...(provider ? providers[provider] : {
+      enabled: false, payload_configured: false, webhook_configured: false,
+      webhook_url: "", secret_header: "", last_event_at: null,
+    }),
     provider,
     providers,
     mode: "dynamic-qris",

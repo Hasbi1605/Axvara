@@ -17,8 +17,8 @@ vi.mock("@/lib/telegram/api", () => ({
   answerCallbackQuery: vi.fn(async () => {}),
   withLoadingIndicator: async (_chat: unknown, _label: unknown, fn: (done: () => Promise<void>) => Promise<unknown>) => fn(async () => {}),
 }));
-vi.mock("@/lib/payments/dana-qris", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/payments/dana-qris")>()),
+vi.mock("@/lib/payments/qris", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/qris")>()),
   isActiveQrisConfigured: () => true,
 }));
 
@@ -267,7 +267,7 @@ describe("R3 correction 1: gateway/crypto expiry + cancel push", () => {
     const { code } = await cryptoOrder("en");
     terminate(code, "kadaluarsa", true);
     fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_user_id,telegram_chat_id,locale,expires_at) VALUES('AXV-20260101-QRISQRIS','b','','[]',9000,'qris','kadaluarsa','expired','telegram','55','55','id',datetime('now','-1 hour'))").run();
-    fx.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at) VALUES('AXV-20260101-QRISQRIS','dana','static','po1','m',9000,9017,'expired',?)").run(new Date(Date.now() - 3_600_000).toISOString());
+    fx.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at) VALUES('AXV-20260101-QRISQRIS','gopay','static','po1','m',9000,9017,'expired',?)").run(new Date(Date.now() - 3_600_000).toISOString());
     const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
     expect(await probeCount()).toBe(2);
     expect((await sendQrisExpiryNotifications(1)).sent).toBe(1); // ceiling honoured

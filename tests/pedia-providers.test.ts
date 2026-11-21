@@ -89,7 +89,7 @@ describe("quote and order snapshots", () => {
     const { db } = await seed();
     const { POST } = await import("@/app/api/pedia/quote/route");
     const q = await (await POST(request({ product_id: 1, tier_id: 1, quantity: 250, target: "https://instagram.com/buyer" }))).json();
-    vi.stubEnv("DANA_QRIS_ENABLED", "false");
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "");
     const { POST: orders } = await import("@/app/api/pedia/orders/route");
     const res = await orders(request({ quote_token: q.quote_token, customer_wa: "081234567890", customer_email: "test@example.com" }));
     expect(res.status).not.toBe(409);

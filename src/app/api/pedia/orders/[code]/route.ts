@@ -126,7 +126,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     } catch { payment = null; }
   }
-  const qrisProvider = tx ? ["dana", "gopay", "klikqris"].includes(String(tx.provider)) : false;
+  const qrisProvider = tx ? ["dana", "gopay", "klikqris"].includes(String(tx.provider ?? "dana")) : false;
 
   let snap: Record<string, unknown> = {};
   try { snap = JSON.parse(String(item.snapshot_json ?? "{}")) ?? {}; } catch { /* legacy */ }

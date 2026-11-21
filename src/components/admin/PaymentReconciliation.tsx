@@ -8,10 +8,11 @@ import { IosIcon } from "@/components/admin/AdminIcon";
 import { useToast } from "@/components/ui/Toast";
 import { Dialog } from "@/components/ui/Dialog";
 
-type QrisProvider = "dana" | "gopay" | "klikqris";
+type ActiveQrisProvider = "gopay" | "klikqris";
+type QrisProvider = "dana" | ActiveQrisProvider;
 type ProviderHealth = { enabled: boolean; payload_configured: boolean; webhook_configured: boolean; webhook_url: string; secret_header: string; last_event_at?: string | null };
 type EventRow = { id: number; provider?: string; amount: number; sender_name?: string; status: "received" | "matched" | "ignored" | "failed"; reviewed_by?: string | null; review_note?: string; order_code?: string; last_error?: string; created_at: string; processed_at?: string };
-type EventsData = { events?: EventRow[]; attention?: number; counts?: Record<string, number>; pagination?: { page: number; pages: number; total: number }; last_event_at?: string | null; health?: ProviderHealth & { provider?: QrisProvider; providers?: Record<QrisProvider, ProviderHealth>; mode: string }; error?: string };
+type EventsData = { events?: EventRow[]; attention?: number; counts?: Record<string, number>; pagination?: { page: number; pages: number; total: number }; last_event_at?: string | null; health?: ProviderHealth & { provider?: ActiveQrisProvider | null; providers?: Record<ActiveQrisProvider, ProviderHealth>; mode: string }; error?: string };
 
 export function PaymentReconciliation({ onChanged }: { onChanged?: () => void }) {
   const toast = useToast();
@@ -67,9 +68,9 @@ export function PaymentReconciliation({ onChanged }: { onChanged?: () => void })
     finally { setRetrying(null); }
   };
   const healthOk = Boolean(data.health?.enabled && data.health.payload_configured && data.health.webhook_configured);
-  const provider = data.health ? data.health.provider || "dana" : undefined;
-  const providerLabel = provider === "klikqris" ? "KlikQRIS" : provider === "gopay" ? "GoPay" : provider === "dana" ? "DANA" : "";
-  const lastEventAt = provider && data.health?.providers ? data.health.providers[provider]?.last_event_at : data.last_event_at;
+  const provider = data.health?.provider;
+  const providerLabel = provider === "klikqris" ? "KlikQRIS" : provider === "gopay" ? "GoPay" : "";
+  const lastEventAt = data.health?.last_event_at;
   const attention = data.attention;
   const markReviewed = async () => {
     if (!reviewEvent || reviewSaving || note.trim().length < 5 || note.trim().length > 500) return;
@@ -96,17 +97,14 @@ export function PaymentReconciliation({ onChanged }: { onChanged?: () => void })
 <StatCard label={`Event terakhir${!loading && data.health ? ` ${providerLabel}` : ""}`} value={loading ? <Skeleton className="h-8 w-32" /> : error || !data.health ? "Belum diketahui" : <span className="text-base">{lastEventAt ? formatDate(lastEventAt) : "Belum ada"}</span>} />
 <StatCard label="Perlu dicek" value={loading ? <Skeleton className="h-8 w-16" /> : error || attention == null ? "—" : attention} />
 </div>
-    {!loading && data.health && <Card className="p-4 sm:p-5">
+    {!loading && provider && data.health && <Card className="p-4 sm:p-5">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">{provider === "klikqris" ? <>
 <h3 className="text-sm font-semibold text-admin-fg">Gateway KlikQRIS</h3>
 <p className="mt-1 text-xs leading-5 text-admin-muted">Callback memakai signature tersimpan dan konfirmasi status server. Batas bayar AXVARA tetap 15 menit; pembayaran terlambat diperiksa manual, tanpa pengiriman otomatis. URL callback diberikan per invoice.</p>
-</> : provider === "gopay" ? <>
-<h3 className="text-sm font-semibold text-admin-fg">Poller GoBiz server (GoPay)</h3>
-<p className="mt-1 text-xs leading-5 text-admin-muted">Provider efektif untuk invoice baru: GoPay. Mutasi GoBiz dikirim oleh poller server ke webhook GoPay, bukan aplikasi Android QRIS Hook. Periksa proses poller dan sesi GoBiz di server bila pembayaran belum terdeteksi.</p>
 </> : <>
-<h3 className="text-sm font-semibold text-admin-fg">Setup aplikasi QRIS Hook</h3>
-<p className="mt-1 text-xs leading-5 text-admin-muted">Provider efektif untuk invoice baru: DANA. Aktifkan Notification Access, pilih merchant DANA, matikan Debug Mode, lalu isi URL dan <strong className="text-admin-muted">nilai rahasia sebenarnya</strong> yang tersimpan sebagai Pages Secret <span className="font-mono text-admin-muted">DANA_WEBHOOK_SECRET</span>.</p>
+<h3 className="text-sm font-semibold text-admin-fg">Poller GoBiz server (GoPay)</h3>
+<p className="mt-1 text-xs leading-5 text-admin-muted">Provider efektif untuk invoice baru: GoPay. Mutasi GoBiz dikirim oleh poller server ke webhook GoPay. Periksa proses poller dan sesi GoBiz di server bila pembayaran belum terdeteksi.</p>
 </>}</div>
         <Button variant="outline" type="button" onClick={() => void copyWebhookUrl()}>
 <IosIcon name="copy" size={13} tint="currentColor" /> Salin URL</Button>
@@ -121,10 +119,6 @@ export function PaymentReconciliation({ onChanged }: { onChanged?: () => void })
 <dd className="mt-1 font-mono text-xs text-admin-muted">{data.health.secret_header}</dd>
 </div>
       </dl>
-      {provider === "dana" && <>
-<p className="mt-3 rounded-xl border border-admin-warning/20 bg-admin-warning/[0.06] px-3 py-2 text-xs leading-5 text-admin-warning">Jangan ketik teks <span className="font-mono">DANA_WEBHOOK_SECRET</span> pada kolom Optional secret; itu hanya nama variabel, bukan nilainya.</p>
-      <p className="mt-3 text-xs leading-5 text-admin-muted">Setelah disimpan, tekan <strong className="text-admin-muted">Retry pending</strong> di aplikasi. Status berhasil harus <strong className="text-admin-success">Sent / HTTP 2xx</strong>; transaksi muncul di tabel rekonsiliasi ini.</p>
-</>}
       <p className="mt-3 text-xs leading-5 text-admin-muted">Status konfigurasi hanya menunjukkan flag dan secret terisi, bukan kesehatan poller, sesi GoBiz, atau penerimaan notifikasi. Invoice lama tetap mengikuti provider saat diterbitkan; verifikasi mutasi pada merchant invoice tersebut.</p>
     </Card>}
     <Card className="overflow-hidden rounded-xl">

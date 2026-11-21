@@ -23,8 +23,8 @@ vi.mock("@/lib/payments/nowpayments", async (importOriginal) => {
   return { ...actual, createNowpaymentsInvoice: (...args: never[]) => nowMock.create(...args) };
 });
 const qrisMock = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("@/lib/payments/dana-qris", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/payments/dana-qris")>();
+vi.mock("@/lib/payments/qris", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/payments/qris")>();
   return {
     ...actual,
     isActiveQrisConfigured: () => true,

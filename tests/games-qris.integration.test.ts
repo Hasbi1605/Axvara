@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture } from "./helpers/d1-fixture";
-import { calculateCrc16, createActiveQrisInvoice } from "@/lib/payments/dana-qris";
+import { calculateCrc16, createActiveQrisInvoice } from "@/lib/payments/qris";
 
 const mocks = vi.hoisted(() => ({ paid: vi.fn(async () => undefined) }));
 vi.mock("@/lib/payments/paid-fulfillment", () => ({ schedulePaidFulfillment: mocks.paid }));
@@ -15,10 +15,8 @@ const QR = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111
 beforeEach(() => {
   fixture = createD1Fixture();
   mocks.paid.mockClear();
-  for (const name of ["DANA_QRIS_ENABLED", "GOPAY_QRIS_ENABLED", "KLIKQRIS_ENABLED"]) vi.stubEnv(name, "true");
-  vi.stubEnv("DANA_STATIC_QRIS", QR + calculateCrc16(QR));
+  for (const name of ["GOPAY_QRIS_ENABLED", "KLIKQRIS_ENABLED"]) vi.stubEnv(name, "true");
   vi.stubEnv("GOPAY_STATIC_QRIS", QR + calculateCrc16(QR));
-  vi.stubEnv("DANA_WEBHOOK_SECRET", SECRET);
   vi.stubEnv("GOPAY_POLLER_SECRET", SECRET);
   vi.stubEnv("KLIKQRIS_API_KEY", "fixture-key");
   vi.stubEnv("KLIKQRIS_MERCHANT_ID", "123");
@@ -35,7 +33,7 @@ const request = (path: string, body: unknown, headers: Record<string, string> = 
 });
 
 describe("Games paid QRIS routes dispatch only Games", () => {
-  it.each(["dana", "gopay", "klikqris"])("%s callback schedules Games once, without Market outbox", async provider => {
+  it.each(["gopay", "klikqris"])("%s callback schedules Games once, without Market outbox", async provider => {
     vi.stubEnv("QRIS_ACTIVE_PROVIDER", provider);
     const details = {
       order_id: CODE, id_merchant: "123", amount: 11000, total_amount: 11101,
@@ -45,10 +43,7 @@ describe("Games paid QRIS routes dispatch only Games", () => {
     if (provider === "klikqris") vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: true, data: details })));
     const invoice = await createActiveQrisInvoice(CODE, 11000);
     let hook: () => Promise<Response>;
-    if (provider === "dana") {
-      const { POST } = await import("@/app/api/webhook/dana/route");
-      hook = () => POST(request("/api/webhook/dana", { amount: invoice.payableAmount, event_id: "fixture-dana-games" }, { "x-webhook-secret": SECRET }));
-    } else if (provider === "gopay") {
+    if (provider === "gopay") {
       const { POST } = await import("@/app/api/webhook/gopay/route");
       const raw = JSON.stringify({ amount: invoice.payableAmount, order_code: CODE, event_id: "gopay-poller:fixture-games",
         payment: { id: "fixture-games" }, merchant_id: MERCHANT, currency: "IDR", transaction_status: "settlement", paid_at: new Date().toISOString() });
@@ -72,7 +67,7 @@ describe("Games paid QRIS routes dispatch only Games", () => {
   });
 
   it("serves an AXG QR image through the shared QRIS route", async () => {
-    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "dana");
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
     await createActiveQrisInvoice(CODE, 11000);
     const { GET } = await import("@/app/api/payments/qris/[code]/image/route");
     const response = await GET(new NextRequest(`https://axvara.test/api/payments/qris/${CODE}/image`), { params: Promise.resolve({ code: CODE }) });
