@@ -433,7 +433,7 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
     }
     return "retried";
   }
-  const sent = await fencePurchaseSend(execRun, "sk", id, claim.leaseOwner);
+  const sent = await fencePurchaseSend(db, "sk", id, claim.leaseOwner);
   if (!Number(sent.changes ?? 0)) return "retried";
   try {
     const skVariantId = Number(String(link.sk_variant_id));

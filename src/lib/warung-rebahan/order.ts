@@ -517,7 +517,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
     return "retried";
   }
   // Persist before POST; a timeout must retain this evidence, never repurchase.
-  const sent = await fencePurchaseSend(execRun, "wr", id, claim.owner);
+  const sent = await fencePurchaseSend(db, "wr", id, claim.owner);
   if (!Number(sent.changes ?? 0)) return "retried";
   // WR3 Jaspay: keluarga `jaspay:` TIDAK PERNAH lewat POST premium.
   // Salah famili = order salah produk + invoice tak terkorelasi.

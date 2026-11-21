@@ -66,9 +66,9 @@ export function claimStalePurchase(
   ).catch(() => ({ changes: 0 }));
 }
 
-export function fencePurchaseSend(execRun: DatabaseAccess["execRun"], supplier: PurchaseSupplier, id: number, owner: string) {
+export function fencePurchaseSend(db: DatabaseAccess, supplier: PurchaseSupplier, id: number, owner: string) {
   const { table, variant, itemLink } = PURCHASE_LINKS[supplier];
-  return execRun(
+  return db.execRun(
     `UPDATE ${table} SET request_sent_at=datetime('now'), updated_at=datetime('now')
      WHERE id=? AND status='claimed' AND lease_owner=? AND request_sent_at IS NULL
        AND datetime(lease_expires_at) > datetime('now')
