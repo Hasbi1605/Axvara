@@ -131,10 +131,20 @@ it("cleanup is bounded and preserves active login windows and recent audit histo
   const now = Math.floor(Date.now() / LOGIN_WINDOW_MS), old = now - 200;
   for (let n = 0; n < 205; n++) fx.sql.prepare("INSERT INTO security_auth_attempts VALUES(?,?,1)").run(`old-${n}`, old);
   fx.sql.prepare("INSERT INTO security_auth_attempts VALUES('active',?,10)").run(now);
-  for (let n = 0; n < 505; n++) fx.sql.exec("INSERT INTO security_events(event,subject_hash,route,method,created_at) VALUES('login_failed','hash','/api/auth/login','POST',datetime('now','-40 days'))");
+  // Owner decision 2026-11-21 keeps security_events for 90 days, so seed
+  // genuinely expired rows (100 days) to exercise the bounded 500/run prune.
+  for (let n = 0; n < 505; n++) fx.sql.exec("INSERT INTO security_events(event,subject_hash,route,method,created_at) VALUES('login_failed','hash','/api/auth/login','POST',datetime('now','-100 days'))");
   fx.sql.exec("INSERT INTO security_events(event,subject_hash,route,method) VALUES('login_succeeded','hash','/api/auth/login','POST')");
   await runMaintenanceCleanup(createDatabaseAccess(fx.db));
   expect(fx.sql.prepare("SELECT COUNT(*) n FROM security_auth_attempts").get()?.n).toBe(6);
   expect(fx.sql.prepare("SELECT attempts FROM security_auth_attempts WHERE client_hash='active'").get()?.attempts).toBe(10);
+  // 505 expired - 500 bounded + 1 recent.
   expect(fx.sql.prepare("SELECT COUNT(*) n FROM security_events").get()?.n).toBe(6);
+  // A 90-day window keeps 40-day-old rows (regression guard against the old
+  // 30-day policy). The second tick also drains the 5 rows left by the bound.
+  fx.sql.exec("INSERT INTO security_events(event,subject_hash,route,method,created_at) VALUES('login_failed','hash','/api/auth/login','POST',datetime('now','-40 days'))");
+  fx.sql.exec("UPDATE store_settings SET value=datetime('now','-61 minutes') WHERE key='maintenance_cleanup_at'");
+  await runMaintenanceCleanup(createDatabaseAccess(fx.db));
+  expect(fx.sql.prepare("SELECT COUNT(*) n FROM security_events").get()?.n).toBe(2);
+  expect(fx.sql.prepare("SELECT julianday('now')-julianday(MAX(created_at)) AS age FROM security_events WHERE event='login_failed'").get()?.age).toBeGreaterThan(39);
 });

@@ -208,13 +208,15 @@ describe("Telegram paid notice privacy and conversation ownership", () => {
     expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='12345'").get()?.pending_action).toBe("search:");
   });
 
-  it.each([null, "", "  "])("requests optional WA only for an idle conversation (%s)", async pending => {
+  it.each([null, "", "  "])("never installs a WA-number prompt for a paid order, even when idle (%s)", async pending => {
     order("IDLE", "12345", "");
     fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id='12345'").run(pending);
     const budget = createBudgetedDatabase(40, 2, fx.db);
     expect(await notifyTelegramBuyerPaid("IDLE", budget.access)).toBe(true);
-    expect(budget.used).toBe(6);
-    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='12345'").get()?.pending_action).toBe("wa_after_paid:IDLE");
+    // FX-16 owner decision: Telegram delivery happens in this chat, so the paid
+    // notice never begs for a WhatsApp number and sets no pending action.
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='12345'").get()?.pending_action).toBe(pending);
+    expect(vi.mocked(sendMessage).mock.calls.at(-1)?.[0].text).not.toMatch(/cadangan|nomor WhatsApp aktif/);
   });
 
   it.each(["-100500", "99999", ""])("uses the verified order owner instead of stale saved chat %s", async saved => {

@@ -40,7 +40,6 @@ export type TelegramPaidDelivery = "instant" | "queued" | "manual";
 export function orderPaidMessage(
   orderCode: string,
   productName: string,
-  needsWhatsApp = false,
   delivery: TelegramPaidDelivery = "manual",
   opts?: TgLocaleOpts,
 ): string {
@@ -61,13 +60,6 @@ export function orderPaidMessage(
     "",
     deliveryLine,
   ];
-  if (needsWhatsApp) {
-    lines.push(
-      en
-        ? "Reply with an active WhatsApp number as backup (e.g. <code>08123456789</code>)."
-        : "Kirim nomor WhatsApp aktif sebagai cadangan (mis. <code>08123456789</code>).",
-    );
-  }
   return lines.join("\n");
 }
 

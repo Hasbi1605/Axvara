@@ -18,7 +18,7 @@ export function eligibleAivaultLine(value: unknown): Row | null {
 }
 export const AIVAULT_RETRYABLE_SQL = `status='needs_admin' AND attempt_count=0 AND request_sent_at IS NULL AND provider_order_id IS NULL
   AND receipt_ciphertext IS NULL AND receipt_iv IS NULL AND completed_at IS NULL
-  AND last_error IN ('quote_unavailable','stock_unavailable','insufficient_balance','price_conflict','preflight_unavailable')
+  AND last_error IN ('quote_unavailable','stock_unavailable','insufficient_balance','price_conflict','price_increased','preflight_unavailable')
   AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
   AND EXISTS(SELECT 1 FROM orders o WHERE o.code=aivault_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram'))
   AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.aivault_link_id=aivault_order_links.id AND f.order_code=aivault_order_links.order_code AND f.item_index=aivault_order_links.item_index
@@ -162,6 +162,9 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     const q=quote.kind==="ok" ? parseAivaultQuote(quote.json) : null;
     let error: string | null=null;
     if (!q || q.service_id!==link.service_id || q.quantity!==link.quantity) error="quote_unavailable";
+    // Owner decision 2026-11-21: cap the live quote against the paid snapshot
+    // (StoreBat/Mirai parity). More than 2% above `cost_usd` never POSTs.
+    else if (q.final_total > Number(link.cost_usd) * 1.02 + 1e-9) error="price_increased";
     else if (q.stock<Number(link.quantity)) error="stock_unavailable";
     else if (!q.sufficient_balance) error="insufficient_balance";
     else if (q.price_conflict) error="price_conflict";

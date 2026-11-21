@@ -34,15 +34,15 @@ describe("FX-13 X4-3 — Telegram phone validator shares the web rule", () => {
 
 describe("FX-13 X4-5 — paid message uses the shared manual-wait ETA", () => {
   it("manual delivery cites the canonical queue ceiling", () => {
-    const id = orderPaidMessage("AXV-20260101-ABCDEF12", "Produk", false, "manual");
+    const id = orderPaidMessage("AXV-20260101-ABCDEF12", "Produk", "manual");
     expect(id).toContain(`maksimal ${WR_QUEUED_MAX_HOURS} jam`);
     expect(id).toContain("umumnya kurang dari 1 jam");
-    const en = orderPaidMessage("AXV-20260101-ABCDEF12", "Produk", false, "manual", { locale: "en" });
+    const en = orderPaidMessage("AXV-20260101-ABCDEF12", "Produk", "manual", { locale: "en" });
     expect(en).toContain(`up to ${WR_QUEUED_MAX_HOURS} hours`);
   });
 
   it("queued delivery cites the same ceiling", () => {
-    const id = orderPaidMessage("AXV-20260101-ABCDEF12", "Produk", false, "queued");
+    const id = orderPaidMessage("AXV-20260101-ABCDEF12", "Produk", "queued");
     expect(id).toContain(`${WR_QUEUED_MAX_HOURS} jam`);
   });
 });
