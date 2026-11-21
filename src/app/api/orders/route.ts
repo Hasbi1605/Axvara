@@ -10,6 +10,7 @@ import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema, withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
+import { createdCheckoutResponse, existingCheckoutResponse, paymentMethodProblem } from "@/lib/orders/checkout/response";
 import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
@@ -28,17 +29,58 @@ import type { NowpaymentsUsdExpected } from "@/lib/payments/nowpayments";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-/**
- * Copy pembeli saat invoice gateway (Sekalipay) atau crypto gagal dibuat,
- * ambigu, atau masih `initializing` saat checkout. Menggantikan kalimat
- * "Tagihan sedang disiapkan. Coba checkout yang sama." yang membingungkan
- * (keputusan owner 7 Nov 2026). QRIS punya copy persiapan sendiri dan tidak
- * memakai helper ini. Locale mengikuti pesanan/kutipan; default ID.
- */
-function paymentMethodProblem(locale: string | null | undefined): string {
-  return locale === "en"
-    ? "This payment method is having problems. Please try another payment method."
-    : "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.";
+function routeDeps() {
+  return {
+    readFreshOrder: (code: unknown) =>
+      queryFirst(
+        "SELECT code,quote_id,subtotal,status,payment_status,payment_method,locale,buyer_access_version,buyer_access_format FROM orders WHERE code=?",
+        code,
+      ).catch(() => null),
+    readTransaction: (code: unknown) =>
+      queryFirst("SELECT provider,requested_amount FROM payment_transactions WHERE order_code=?", code),
+    readOrderStatus: (code: unknown) => queryFirst("SELECT status FROM orders WHERE code=?", code),
+    createBuyerAccessSession,
+    createCheckoutCredentialGrant,
+    createActiveQrisInvoice: (code: string, amount: number) => createActiveQrisInvoice(code, amount),
+    reconcileNowpayments: async (code: string) => {
+      const { reconcileNowpaymentsPayment, claimNowpaymentsPollReconcile } = await import("@/lib/payments/nowpayments");
+      const claimed = await claimNowpaymentsPollReconcile(code);
+      if (claimed) {
+        await reconcileNowpaymentsPayment(code).catch(() => null);
+      }
+      const { buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
+      const payment = await buildNowpaymentsPaymentView(code).catch(() => null);
+      return { claimed, payment };
+    },
+    createSekalipayGatewayPreclaimView: async (live: Record<string, unknown>) => {
+      const { buildSekalipayGatewayPaymentView } = await import("@/lib/payments/payment-view");
+      let payment = await buildSekalipayGatewayPaymentView(String(live.code));
+      if (payment?.state === "initializing") {
+        try {
+          const { claimSekalipayGatewayPoll } = await import("@/lib/payments/payment-view");
+          if (!await claimSekalipayGatewayPoll(String(live.code))) throw new Error("gateway_poll_deferred");
+          const saved = await queryFirst(`SELECT o.customer_name,o.customer_email,o.customer_wa,pt.gateway_channel,pt.gateway_estimated_fee FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=? AND pt.provider='sekalipay_gateway'`, live.code);
+          if (saved) {
+            const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
+            await createSekalipayGatewayInvoice(String(live.code), Number(live.subtotal), String(saved.gateway_channel), { name: String(saved.customer_name), email: String(saved.customer_email), phone: String(saved.customer_wa) }, Number(saved.gateway_estimated_fee));
+            payment = await buildSekalipayGatewayPaymentView(String(live.code));
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message === "gateway_poll_deferred") return { kind: "deferred" as const };
+          try {
+            const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+            await reconcileSekalipayGatewayPayment(String(live.code));
+            payment = await buildSekalipayGatewayPaymentView(String(live.code));
+          } catch { /* Saved claim stays bound; retry uses GET only. */ }
+        }
+      }
+      if (!payment || payment.state === "initializing") return { kind: "generic" as const };
+      return { kind: "reused" as const, payment };
+    },
+    readSavedGatewayRow: null as never,
+    createSekalipayGatewayInvoice: null as never,
+    reconcileSekalipayGateway: null as never,
+  };
 }
 
 const schema = z.object({
@@ -70,100 +112,6 @@ const schema = z.object({
   proof_url: z.string().trim().max(600).nullable().optional().default(null),
   quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
 });
-
-function closedCheckoutResponse(status: unknown, locale: "en" | "id") {
-  if (!["dibatalkan", "kadaluarsa"].includes(String(status))) return null;
-  return NextResponse.json({
-    error: locale === "en" ? "This order is closed. Get a new quote to continue." : "Pesanan ini sudah ditutup. Ambil harga terbaru untuk lanjut.",
-    error_code: "checkout_order_closed",
-  }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
-}
-
-async function existingCheckoutResponse(existing: Record<string, unknown>) {
-  // Saved retry SELALU baca ulang status + locale terbaru dari DB (snapshot
-  // stale tidak pernah dikembalikan): fresh row di sini untuk reuse decision
-  // + locale respons.
-  const fresh = await queryFirst(
-    "SELECT code,quote_id,subtotal,status,payment_status,payment_method,locale,buyer_access_version,buyer_access_format FROM orders WHERE code=?",
-    existing.code,
-  ).catch(() => null);
-  const live = (fresh ?? existing) as Record<string, unknown>;
-  const locale = live.locale === "en" ? "en" : "id";
-  const closed = closedCheckoutResponse(live.status, locale);
-  if (closed) return closed;
-  const buyer_access_session = await createBuyerAccessSession(live);
-  const checkout_credential_grant = await createCheckoutCredentialGrant(live);
-  // Saved retry: resolves BEFORE new-order flags/FX checks — same order, same
-  // provider binding, access-safe recovery. Never reserve again; never POST
-  // blind; never switch provider (reconcile known id via GET only).
-  if (live.status === "pending") {
-    const tx = await queryFirst("SELECT provider,requested_amount FROM payment_transactions WHERE order_code=?", live.code);
-    if (!tx && String(live.payment_method ?? "").startsWith("sekalipay_gateway:")) {
-      // ponytail: a preclaim orphan expires unless its original request finishes; add durable dispatch if recovery is required.
-      return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
-    }
-    if (tx?.provider === "klikqris") {
-      try {
-        const inv = await createActiveQrisInvoice(String(live.code), Number(tx.requested_amount));
-        const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
-        const status = current?.status ?? live.status;
-        return closedCheckoutResponse(status, locale) ?? NextResponse.json({ code: live.code, subtotal: live.subtotal, status, buyer_access_session, checkout_credential_grant, reused: true, locale, qris: {
-          payable_amount: inv.payableAmount, unique_code: inv.uniqueCode,
-          image_url: inv.qrisUrl, expires_at: inv.expiresAt,
-        } }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
-      } catch {
-        return NextResponse.json({ error: "Tagihan sedang disiapkan. Tunggu sebentar lalu coba lagi dengan checkout yang sama.", code: existing.code }, { status: 503 });
-      }
-    }
-    if (tx?.provider === "nowpayments") {
-      // Saved crypto: flag-off/new-config irrelevant — status/reconcile runs
-      // via saved binding (readable). Ambiguous/initializing-with-id recovers
-      // inside reconcile; failure => 503 retry-same-quote (no cancel, no POST).
-      try {
-        const { reconcileNowpaymentsPayment, claimNowpaymentsPollReconcile } = await import("@/lib/payments/nowpayments");
-        if (await claimNowpaymentsPollReconcile(String(live.code))) {
-          await reconcileNowpaymentsPayment(String(live.code)).catch(() => null);
-        }
-        const { buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
-        const payment = await buildNowpaymentsPaymentView(String(live.code)).catch(() => null);
-        if (payment) {
-          const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
-          const status = current?.status ?? live.status;
-          return closedCheckoutResponse(status, locale) ?? NextResponse.json({ code: live.code, subtotal: live.subtotal, status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
-        }
-      } catch { /* fall through to generic reuse below */ }
-      return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code }, { status: 503 });
-    }
-    if (tx?.provider === "sekalipay_gateway") {
-      const { buildSekalipayGatewayPaymentView } = await import("@/lib/payments/payment-view");
-      let payment = await buildSekalipayGatewayPaymentView(String(live.code));
-      if (payment?.state === "initializing") {
-        try {
-          const { claimSekalipayGatewayPoll } = await import("@/lib/payments/payment-view");
-          if (!await claimSekalipayGatewayPoll(String(live.code))) throw new Error("gateway_poll_deferred");
-          const saved = await queryFirst(`SELECT o.customer_name,o.customer_email,o.customer_wa,pt.gateway_channel,pt.gateway_estimated_fee FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=? AND pt.provider='sekalipay_gateway'`, live.code);
-          if (saved) {
-            const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
-            await createSekalipayGatewayInvoice(String(live.code), Number(live.subtotal), String(saved.gateway_channel), { name: String(saved.customer_name), email: String(saved.customer_email), phone: String(saved.customer_wa) }, Number(saved.gateway_estimated_fee));
-            payment = await buildSekalipayGatewayPaymentView(String(live.code));
-          }
-        } catch (error) {
-          if (error instanceof Error && error.message === "gateway_poll_deferred") return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
-          try {
-            const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
-            await reconcileSekalipayGatewayPayment(String(live.code));
-            payment = await buildSekalipayGatewayPaymentView(String(live.code));
-          } catch { /* Saved claim stays bound; retry uses GET only. */ }
-        }
-      }
-      if (!payment || payment.state === "initializing") return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
-      const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
-      const status = current?.status ?? live.status;
-      return closedCheckoutResponse(status, locale) ?? NextResponse.json({ code: live.code, subtotal: live.subtotal, status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
-    }
-  }
-  return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: live.status, buyer_access_session, checkout_credential_grant, reused: true, locale }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
-}
 
 // Rate-limit terpusat (issue #14): satu implementasi di src/lib/rateLimit.ts
 // agar batas tidak tersebar + IP anti-spoof (cf-connecting-ip > x-real-ip,
@@ -231,7 +179,7 @@ export async function POST(req: NextRequest) {
   } catch { return NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }); }
 
   const previous = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
-  if (previous) return existingCheckoutResponse(previous);
+  if (previous) return existingCheckoutResponse(previous, routeDeps());
 
   // Guard email lapis kedua (migrasi 0033 + revamp 2026-09-23): zod di atas
   // SUDAH mewajibkan email valid untuk semua order web, jadi blok ini kini
@@ -529,14 +477,14 @@ export async function POST(req: NextRequest) {
   } catch (e: unknown) {
     if (e instanceof StockReservationError) {
       const winner = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
-      if (winner) return existingCheckoutResponse(winner);
+      if (winner) return existingCheckoutResponse(winner, routeDeps());
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("UNIQUE")) {
       const existing = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
       if (existing) {
-        return existingCheckoutResponse(existing);
+        return existingCheckoutResponse(existing, routeDeps());
       }
       return NextResponse.json({ error: "Kode pesanan bentrok, coba lagi." }, { status: 409 });
     }
@@ -619,21 +567,28 @@ export async function POST(req: NextRequest) {
   trackFunnelEvent({ stage: "order", method: payment_method === "qris" ? `qris:${activeQrisProvider()}` : payment_method,
     subtotal: quote.subtotal, locale: quote.locale, productId: quote.items[0]?.product_id,
     variantId: quote.items[0]?.variant_id, quantity: quote.items.reduce((sum, item) => sum + item.qty, 0) }, req);
-  return NextResponse.json({
+  // Created 201 body (keys/order/values/status) owned by
+  // src/lib/orders/checkout/response.ts (3B-2); the route only awaits the
+  // buyer proofs and wraps.
+  return createdCheckoutResponse({
     code,
-    buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
-    checkout_credential_grant: await createCheckoutCredentialGrant({ code, quote_id: quote.quote_id, buyer_access_version: 1, buyer_access_format: "pin6" }),
+    quoteId: quote.quote_id,
     subtotal: quote.subtotal,
-    status: "pending",
-    locale: quote.locale,
-    qris: qrisInvoice ? {
-      payable_amount: qrisInvoice.payableAmount,
-      unique_code: qrisInvoice.uniqueCode,
-      image_url: qrisInvoice.qrisUrl,
-      expires_at: qrisInvoice.expiresAt,
+    locale: quote.locale ?? "id",
+    qrisInvoice: qrisInvoice ? {
+      payableAmount: qrisInvoice.payableAmount,
+      uniqueCode: qrisInvoice.uniqueCode,
+      qrisUrl: qrisInvoice.qrisUrl,
+      expiresAt: qrisInvoice.expiresAt,
     } : null,
-    ...(cryptoView || gatewayView ? { payment: cryptoView ?? gatewayView } : {}),
-  }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
+    cryptoView,
+    gatewayView,
+    proofs: {
+      buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
+      checkout_credential_grant: await createCheckoutCredentialGrant({ code, quote_id: quote.quote_id, buyer_access_version: 1, buyer_access_format: "pin6" }),
+      quote_id: quote.quote_id,
+    },
+  });
 }
 
 export async function GET(req: NextRequest) {

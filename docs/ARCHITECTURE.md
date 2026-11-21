@@ -2108,7 +2108,8 @@ axvara/
 │   │                            # inventory-binding, manifest, types
 │   ├── orders/                  # (sebagian) helper order bersama
 │   │   ├── status-flags.ts      # SQL flag kesiapan + re-query penyegar supplier, dipakai GET /api/orders dan POST /api/orders/lookup (3B-1)
-│   │   └── detail-view.ts       # pembentuk body GET /api/orders dari baris pasca-refresh (3B-1)
+│   │   ├── detail-view.ts       # pembentuk body GET /api/orders dari baris pasca-refresh (3B-1)
+│   │   └── checkout/response.ts # body POST reused/closed/created + wiring proof (3B-2; guard/pembayaran/createOrder tetap di route)
 │   ├── suppliers/
 │   │   ├── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault, Mirai, StoreBat; TUNVN hanya predikat JS)
 │   │   └── purchase-state.ts    # WR/SK: backoff, predikat paid/enabled dan Retry, CAS klaim fresh/inline dan send fence sebelum POST
