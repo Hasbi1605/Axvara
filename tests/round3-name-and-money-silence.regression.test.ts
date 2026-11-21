@@ -95,6 +95,10 @@ describe("B1 DITOLAK: klaim retry tetap tanpa penaikan counter & tanpa debounce"
     expect(route).not.toContain("attempt_count=attempt_count+1");
     const worker = read("src/lib/warung-rebahan/order.ts");
     expect(worker).toContain("attempt_count=attempt_count-1");
-    expect(worker).toMatch(/status='claimed', attempt_count=\?/);
+    // B2: klaim fresh WR dipindah ke helper bersama; worker tetap memanggilnya
+    // dan SQL klaim (penaikan counter milik worker) kini ada di purchase-state.
+    expect(worker).toContain('claimFreshPurchase(db, "wr"');
+    const claim = read("src/lib/suppliers/purchase-state.ts");
+    expect(claim).toMatch(/status='claimed', attempt_count=\?/);
   });
 });
