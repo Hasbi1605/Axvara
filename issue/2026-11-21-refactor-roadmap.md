@@ -539,7 +539,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | T2 | T | lokal | Terukur: create 2/2/2/3, process sukses 21/21/21/23, retryable 18/18/18/23, retry sukses 13/13/13/14, retry retryable 10/10/10/14 (menggantikan angka MAP-2). TUNVN menyelesaikan receipt terlambat pada lease kedaluwarsa pemilik sama = perilaku sah (§3.3), A4 tidak boleh menyamakan. Total TUNVN 23 memakai notify-buyer asli: perubahan notify bisa mengubahnya |
 | T3 | T | lokal | 33 `it.fails` untuk B3b/B4b/B5/2C |
 | T4 | T | lokal | 72 kunci + urutan; sebelum 3A masih wajib T4b |
-| T4b | T | belum | Sisa gap sebelum 3A (review Wonder): asimetri drain `games_catalog`, isolasi kegagalan budget `drainDirtyGroupsIfBudget`, `applyOnly` saat budget habis |
+| T4b | T | lokal (commit T4b); nit: drain-swallow belum assert drain dipanggil, `synced>=1` | Sisa gap sebelum 3A (review Wonder): asimetri drain `games_catalog`, isolasi kegagalan budget `drainDirtyGroupsIfBudget`, `applyOnly` saat budget habis |
 | T5 | T | lokal (commit T5/T7) | Wonder APPROVE-WITH-NITS; race diperkuat barrier dua-kedatangan |
 | T6 | T | lokal | |
 | T7 | T | lokal (commit T5/T7) | |
