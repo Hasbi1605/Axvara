@@ -12,6 +12,12 @@ Prioritas berdasarkan sering berubah × rumit. Satu modul per commit, dengan tes
 5. `src/components/admin/SupplierAdminPanel.tsx` (±1.150 baris) — pecah per supplier.
 Kandidat lebih rendah: `product-detail-client.tsx`, `CopyEditorSheet.tsx`, `telegram/keyboards.ts`.
 
+## Jaring pengaman refactor (21 Nov 2026 malam)
+Characterization test sudah ada sebelum refactor #3/#4 (tanpa perubahan `src/`):
+- `tests/characterization/small-suppliers-claim.test.ts` — 80 test, satu suite kontrak untuk 4 supplier kecil; peta: `issue/2026-11-21-small-suppliers-claim-map.md`.
+- `tests/characterization/wr-sk-state-machine.test.ts` — 22 test + 7 `it.todo("BUG? …")`; tabel transisi WR/SK + perbedaan yang boleh/tidak boleh disatukan: `issue/2026-11-21-wr-sk-state-machine-map.md`.
+- Dugaan bug terbuka (belum diperbaiki): (1) WR `handleOrderError`/Jaspay mengklasifikasi ambigu lewat regex teks, sehingga `WrNetworkError` dengan pesan lain bisa melepas sent-fence dan membeli ulang — melanggar `docs/agent-rules/supplier-wr-sk.md` (WrNetworkError = ambigu); (2) WR stale sweep me-requeue claimed basi yang sudah punya invoice; (3) admin Retry WR (unpaid/disabled) dan SK (disabled) bisa memutasi baris yang dispatch tolak; (4) WR exhausted menandai seluruh order failed walau item lain masih antre; (5) SK pemulihan terminal dari claim terkirim meninggalkan lease kedaluwarsa; (6) SK melaporkan sukses setelah kalah CAS receipt.
+
 ## Ditunda (kecil/sedang)
 - Backoff di proxy VPS untuk respons 409 supplier-sync (supplier nonaktif) — repo `axvara-wr-proxy`, hanya membuang request; prioritas rendah.
 - Log DLQ permanen (mcp-worker) — butuh tabel D1 + binding mcp-worker + tampilan admin; dampak kecil karena cron cadangan memulihkan order dari D1.

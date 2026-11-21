@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-21 — Characterization test sebelum refactor #3/#4 (tanpa ubah `src/`): suite kontrak claim-CAS/lease/retry/gating lunas untuk AIVault/StoreBat/Mirai/TUNVN, dan state machine WR/SK (eksklusivitas klaim, lease, backoff, ambigu tanpa rePOST, admin retry); 7 dugaan bug dicatat sebagai `it.todo` + peta transisi — `tests/characterization/{small-suppliers-claim,wr-sk-state-machine}.test.ts`, `issue/2026-11-21-{wr-sk-state-machine,small-suppliers-claim}-map.md`, `issue/2026-11-21-audit-followups.md` — (verifikasi: full suite 609 file, 8223 lulus + 7 todo; tsc 0)
+
 - 2026-11-21 — Perbaiki test CI Linux: ringkasan kegagalan backup D1 di `tests/d1-backup-r2.test.ts` ditulis ke file sementara, bukan `/dev/stdout` (runner Linux menolak append ke stdout pipe → CI push audit gagal di tahap Test sebelum deploy) — `tests/d1-backup-r2.test.ts` — (verifikasi: test 4/4 lulus lokal; tsc 0; CI sebelumnya 606/607 file lulus, hanya file ini gagal)
 
 - 2026-11-21 — Tindak lanjut audit dicatat sebagai keputusan owner (refactor 5 hotspot ditunda sampai stabil, backoff VPS, log DLQ permanen, monitor backup, hapus env pasca-deploy, riwayat git publik) — `issue/2026-11-21-audit-followups.md` — (verifikasi: dokumentasi saja; `git diff --check` bersih)
