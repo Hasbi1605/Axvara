@@ -19,6 +19,7 @@
 
 import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import { alertSupplierAdminOnce } from "@/lib/fulfillment/supplier-escalation";
+import { isPaidForSupplierPurchase, nextPurchaseAttemptIso, PURCHASE_PAID_SQL, PURCHASE_PAID_SQL_ALIASED } from "@/lib/suppliers/purchase-state";
 import { escapeHtml } from "@/lib/telegram/messages/format";
 import {
   createSkTransaction,
@@ -76,12 +77,6 @@ export const SK_LINK_STATUSES = [
 
 export function isSkLinkStatus(status: unknown): status is (typeof SK_LINK_STATUSES)[number] {
   return (SK_LINK_STATUSES as readonly string[]).includes(String(status));
-}
-
-function nextAttemptIso(attempt: number): string {
-  const minutes =
-    SK_RETRY_DELAYS_MINUTES[Math.min(Math.max(attempt - 1, 0), SK_RETRY_DELAYS_MINUTES.length - 1)];
-  return new Date(Date.now() + minutes * 60_000).toISOString();
 }
 
 /** Correlation key stabil per kebutuhan pembelian canonical. */
@@ -174,7 +169,7 @@ export async function createSkOrderLink(
            max_attempts, next_attempt_at, idempotency_key)
           SELECT code, ?,?,?, 'pending', 0, ?, datetime('now'), ?
           FROM orders
-          WHERE code=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0`,
+          WHERE code=? AND ${PURCHASE_PAID_SQL}`,
         String(skVariantId),
         qty,
         skCost * qty,
@@ -203,7 +198,7 @@ export async function createSkOrderLink(
              max_attempts, next_attempt_at)
             SELECT code, ?,?,?, 'pending', 0, ?, datetime('now')
             FROM orders
-            WHERE code=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0`,
+            WHERE code=? AND ${PURCHASE_PAID_SQL}`,
           String(skVariantId),
           qty,
           skCost * qty,
@@ -243,7 +238,7 @@ export async function createSkOrderLinksForOrder(
   const db = database ?? createDatabaseAccess();
   if (!isSkEnabled()) return 0;
   const order = await db.queryFirst(`SELECT items, status, payment_status, supplier_purchase_disabled FROM orders WHERE code=?`, orderCode).catch(() => null);
-  if (!order || order.status !== "lunas" || order.payment_status !== "paid" || Number(order.supplier_purchase_disabled)) return 0;
+  if (!order || !isPaidForSupplierPurchase(order)) return 0;
   let items: SkOrderItemLike[] = [];
   try {
     const parsed = JSON.parse(String(order.items || "[]"));
@@ -274,7 +269,7 @@ export async function reconcileMissingSkLinks(
       // Filter actual missing links in SQL, rather than spending one query per
       // item across the latest paid orders. Linked history must not starve buys.
       `SELECT o.code, o.items FROM orders o
-       WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
+       WHERE ${PURCHASE_PAID_SQL_ALIASED}
          AND datetime(COALESCE(o.paid_at, o.created_at)) > datetime('now','-7 days')
          AND EXISTS (
            SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) je
@@ -330,7 +325,7 @@ export async function processSkPendingOrders(
        WHERE l.status IN ('pending','retry')
          AND l.attempt_count < l.max_attempts
           AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
-          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
             WHERE fi.order_code=l.order_code AND (fi.sk_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.sk_variant_id=l.sk_variant_id)
               AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
@@ -371,7 +366,7 @@ async function claimSkLink(
        WHERE id=? AND status IN ('pending','retry') AND request_sent_at IS NULL
          AND COALESCE(sk_invoice,'')='' AND attempt_count=? AND attempt_count < max_attempts
          AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
       attempt,
       leaseOwner,
       leaseUntil,
@@ -387,7 +382,7 @@ async function claimSkLink(
        WHERE id=? AND status='claimed' AND request_sent_at IS NULL
          AND COALESCE(sk_invoice,'')='' AND attempt_count=?
          AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
       leaseOwner,
       leaseUntil,
       id, attempt,
@@ -461,7 +456,7 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
     `UPDATE sk_order_links SET request_sent_at=datetime('now'), updated_at=datetime('now')
      WHERE id=? AND status='claimed' AND lease_owner=? AND request_sent_at IS NULL
        AND datetime(lease_expires_at) > datetime('now')
-       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
        AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
          WHERE fi.order_code=sk_order_links.order_code AND (fi.sk_link_id=sk_order_links.id OR fi.id=sk_order_links.fulfillment_item_id OR pv.sk_variant_id=sk_order_links.sk_variant_id)
            AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
@@ -568,7 +563,7 @@ async function handleSkOrderError(
          next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed'
            AND lease_owner=? AND attempt_count=? AND request_sent_at IS NOT NULL AND COALESCE(sk_invoice,'')=''`,
       exhausted ? SK_FINAL_REJECTION : message,
-      exhausted ? null : nextAttemptIso(attempt),
+      exhausted ? null : nextPurchaseAttemptIso(attempt, SK_RETRY_DELAYS_MINUTES),
       id, owner, attempt,
     );
     if (exhausted && changed.changes && await settleExhaustedSkRetries(db, id)) return "failed";
@@ -593,7 +588,7 @@ export async function settleExhaustedSkRetries(db: DatabaseAccess, linkId?: numb
   if (!db.d1 || !db.canSpend(11)) return 0;
   const link = await db.queryFirst(`SELECT l.id, l.order_code, fi.id AS item_id
     FROM (SELECT * FROM sk_order_links WHERE ${EXHAUSTED_SK_CAS} ${linkId === undefined ? "" : "AND id=?"}) l
-    JOIN orders o ON o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
+    JOIN orders o ON o.code=l.order_code AND ${PURCHASE_PAID_SQL_ALIASED}
     JOIN fulfillment_items fi ON fi.order_code=l.order_code
     LEFT JOIN product_variants pv ON pv.id=fi.variant_id
     WHERE (fi.id=l.fulfillment_item_id OR (l.fulfillment_item_id IS NULL AND pv.sk_variant_id=l.sk_variant_id))
@@ -672,7 +667,7 @@ export async function reconcileBlockedSkBalance(
           AND (CASE WHEN l.last_error='preflight_insufficient_balance' THEN datetime(l.created_at) >= datetime('now','-${SK_BLOCKED_MAX_AGE_HOURS} hours')
             ELSE datetime(l.updated_at) IS NULL OR datetime(l.updated_at) >= datetime('now','-${SK_BLOCKED_MAX_AGE_HOURS} hours') END)
          AND (COALESCE(l.last_error,'')!='preflight_insufficient_balance' OR l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
          AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
            WHERE fi.order_code=l.order_code AND (fi.sk_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.sk_variant_id=l.sk_variant_id)
              AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
@@ -701,7 +696,7 @@ export async function reconcileBlockedSkBalance(
             AND (CASE WHEN last_error='preflight_insufficient_balance' THEN datetime(created_at) >= datetime('now','-${SK_BLOCKED_MAX_AGE_HOURS} hours')
               ELSE datetime(updated_at) IS NULL OR datetime(updated_at) >= datetime('now','-${SK_BLOCKED_MAX_AGE_HOURS} hours') END)
            AND (COALESCE(last_error,'')!='preflight_insufficient_balance' OR next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
            AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
              WHERE fi.order_code=sk_order_links.order_code AND (fi.sk_link_id=sk_order_links.id OR fi.id=sk_order_links.fulfillment_item_id OR pv.sk_variant_id=sk_order_links.sk_variant_id)
                AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
@@ -720,7 +715,7 @@ export async function retryFailedSkOrders(database?: DatabaseAccess): Promise<nu
       `UPDATE sk_order_links SET next_attempt_at=datetime('now'), updated_at=datetime('now')
        WHERE status='retry' AND attempt_count < max_attempts
          AND datetime(next_attempt_at) <= datetime('now')
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
     )
     .catch(() => ({ changes: 0 as number | undefined }));
   return Number(res.changes ?? 0);

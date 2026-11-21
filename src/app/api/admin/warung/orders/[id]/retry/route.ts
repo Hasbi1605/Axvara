@@ -7,13 +7,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { queryFirst, execRun } from "@/lib/db";
+import { isPaidForSupplierRetry, isSupplierRetryableStatus, PURCHASE_PAID_SQL_ALIASED } from "@/lib/suppliers/purchase-state";
 import { isWrEnabled } from "@/lib/warung-rebahan/client";
 import { WR_LINK_STATUSES } from "@/lib/warung-rebahan/order";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
-
-const RETRYABLE = ["pending", "retry", "failed", "blocked_balance"];
 
 export async function POST(
   request: NextRequest,
@@ -38,8 +37,7 @@ export async function POST(
   if (!(WR_LINK_STATUSES as readonly string[]).includes(status)) {
     return NextResponse.json({ error: "unknown_status", status }, { status: 500 });
   }
-  if (!RETRYABLE.includes(status) || link.order_status !== "lunas" || link.payment_status !== "paid"
-    || Number(link.supplier_purchase_disabled) !== 0) {
+  if (!isSupplierRetryableStatus(status) || !isPaidForSupplierRetry(link)) {
     return NextResponse.json({ error: "not_retryable", status }, { status: 409 });
   }
   // Percobaan habis (2026-10-10): `failed` karena 3 kegagalan PRA-KIRIM
@@ -86,7 +84,7 @@ export async function POST(
          request_sent_at=NULL, attempt_count=0, updated_at=datetime('now')
        WHERE id=? AND status='failed' AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL
          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code
-           AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+           AND ${PURCHASE_PAID_SQL_ALIASED})`,
       linkId,
       Number(link.attempt_count || 0),
     ).catch(() => ({ changes: 0 as number | undefined }));
@@ -104,7 +102,7 @@ export async function POST(
        request_sent_at=NULL, attempt_count=?, updated_at=datetime('now')
      WHERE id=? AND status=? AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL
        AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code
-         AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+         AND ${PURCHASE_PAID_SQL_ALIASED})`,
     preSendFailure ? 0 : Number(link.attempt_count || 0),
     linkId,
     status,

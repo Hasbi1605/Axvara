@@ -6,11 +6,10 @@ import { requireAdmin } from "@/lib/auth";
 import { queryFirst, execRun } from "@/lib/db";
 import { isSkEnabled } from "@/lib/sekalipay/client";
 import { SK_LINK_STATUSES } from "@/lib/sekalipay/order";
+import { isPaidForSupplierRetry, isSupplierRetryableStatus, PURCHASE_PAID_SQL_ALIASED } from "@/lib/suppliers/purchase-state";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
-
-const RETRYABLE = ["pending", "retry", "failed", "blocked_balance"];
 
 export async function POST(
   request: NextRequest,
@@ -36,13 +35,13 @@ export async function POST(
     return NextResponse.json({ error: "unknown_status", status }, { status: 500 });
   }
   if (String(link.last_error || "").startsWith("cancelled_by_admin")
-    || link.order_status !== "lunas" || link.payment_status !== "paid" || Number(link.supplier_purchase_disabled) !== 0) {
+    || !isPaidForSupplierRetry(link)) {
     return NextResponse.json({ error: "not_retryable", message: "Pesanan dibatalkan atau belum lunas; retry supplier ditolak." }, { status: 409 });
   }
   if (link.sk_invoice || link.request_sent_at) {
     return NextResponse.json({ error: "reconciliation_required", message: "Permintaan sudah dikirim ke Sekalipay. Gunakan rekonsiliasi, bukan retry pembelian." }, { status: 409 });
   }
-  if (!RETRYABLE.includes(status)) {
+  if (!isSupplierRetryableStatus(status)) {
     return NextResponse.json({ error: "not_retryable", status }, { status: 409 });
   }
   const preSendFailure = status === "failed";
@@ -57,7 +56,7 @@ export async function POST(
        AND request_sent_at IS NULL AND COALESCE(sk_invoice,'')=''
        AND COALESCE(last_error,'') NOT LIKE 'cancelled_by_admin%'
        AND EXISTS(SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code
-         AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+         AND ${PURCHASE_PAID_SQL_ALIASED})`,
     preSendFailure ? 0 : Number(link.attempt_count || 0),
     linkId,
     status,

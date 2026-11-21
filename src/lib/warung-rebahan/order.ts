@@ -29,6 +29,7 @@
 //    idempotency) — jadi fencing dilakukan SEPENUHNYA di sisi Axvara.
 
 import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
+import { isPaidForSupplierPurchase, nextPurchaseAttemptIso, PURCHASE_PAID_SQL, PURCHASE_PAID_SQL_ALIASED } from "@/lib/suppliers/purchase-state";
 import {
   createOrder,
   fetchTransactions,
@@ -101,12 +102,6 @@ export function isWrLinkStatus(status: unknown): status is (typeof WR_LINK_STATU
   return (WR_LINK_STATUSES as readonly string[]).includes(String(status));
 }
 
-function nextAttemptIso(attempt: number): string {
-  const minutes =
-    WR_RETRY_DELAYS_MINUTES[Math.min(Math.max(attempt - 1, 0), WR_RETRY_DELAYS_MINUTES.length - 1)];
-  return new Date(Date.now() + minutes * 60_000).toISOString();
-}
-
 /**
  * Correlation key stabil per kebutuhan pembelian canonical.
  * Agregasi qty: duplicate cart lines dengan (order, varian) sama digabung
@@ -177,7 +172,7 @@ export async function createWrOrderLink(
            max_attempts, next_attempt_at, idempotency_key)
           SELECT code, ?,?,?, 'pending', 0, ?, datetime('now'), ?
           FROM orders
-          WHERE code=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0`,
+          WHERE code=? AND ${PURCHASE_PAID_SQL}`,
         wrVariantId,
         qty,
         wrCost * qty,
@@ -209,7 +204,7 @@ export async function createWrOrderLink(
              max_attempts, next_attempt_at)
             SELECT code, ?,?,?, 'pending', 0, ?, datetime('now')
             FROM orders
-            WHERE code=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0`,
+            WHERE code=? AND ${PURCHASE_PAID_SQL}`,
           wrVariantId,
           qty,
           wrCost * qty,
@@ -261,7 +256,7 @@ export async function createWrOrderLinksForOrder(
   const order = await db
     .queryFirst(`SELECT items, status, payment_status, supplier_purchase_disabled FROM orders WHERE code=?`, orderCode)
     .catch(() => null);
-  if (!order || order.status !== "lunas" || order.payment_status !== "paid" || Number(order.supplier_purchase_disabled)) return 0;
+  if (!order || !isPaidForSupplierPurchase(order)) return 0;
   let items: OrderItemLike[] = [];
   try {
     const parsed = JSON.parse(String(order.items || "[]"));
@@ -307,7 +302,7 @@ export async function reconcileMissingWrLinks(
   const candidates = await db
     .queryAll(
       `SELECT o.code, o.items FROM orders o
-       WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
+       WHERE ${PURCHASE_PAID_SQL_ALIASED}
          AND datetime(COALESCE(o.paid_at, o.created_at)) > datetime('now','-7 days')
          AND json_valid(o.items)
          AND EXISTS (
@@ -365,7 +360,7 @@ export async function processWrPendingOrders(
        WHERE l.status IN ('pending','retry')
          AND l.attempt_count < l.max_attempts
           AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
-          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
             WHERE fi.order_code=l.order_code AND (fi.wr_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.wr_variant_id=l.wr_variant_id)
               AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
@@ -494,7 +489,7 @@ async function claimLink(
          WHERE id=? AND status IN ('pending','retry') AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
            AND attempt_count=? AND attempt_count < max_attempts
            AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
       attempt,
       leaseOwner,
       leaseUntil,
@@ -511,7 +506,7 @@ async function claimLink(
          updated_at=datetime('now')
        WHERE id=? AND status='claimed' AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')='' AND attempt_count=?
          AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
       leaseOwner,
       leaseUntil,
       id,
@@ -546,7 +541,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
     `UPDATE wr_order_links SET request_sent_at=datetime('now'), updated_at=datetime('now')
      WHERE id=? AND status='claimed' AND lease_owner=? AND request_sent_at IS NULL
        AND datetime(lease_expires_at) > datetime('now')
-       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
        AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
          WHERE fi.order_code=wr_order_links.order_code AND (fi.wr_link_id=wr_order_links.id OR fi.id=wr_order_links.fulfillment_item_id OR pv.wr_variant_id=wr_order_links.wr_variant_id)
            AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
@@ -696,7 +691,7 @@ async function processOneJaspayLink(
          lease_owner=NULL, lease_expires_at=NULL, next_attempt_at=?, updated_at=datetime('now')
        WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
       "jaspay_cap_check_db_error",
-      nextAttemptIso(attempt + 1),
+      nextPurchaseAttemptIso(attempt + 1, WR_RETRY_DELAYS_MINUTES),
       id,
     );
     return "retried";
@@ -782,7 +777,7 @@ export async function recoverJaspayByExactRef(
      WHERE id=? AND status IN ('submitted','ordering','claimed') AND request_sent_at IS NOT NULL AND COALESCE(wr_order_id,'')=''
        AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))
        AND (status!='claimed' OR lease_expires_at IS NOT NULL)
-       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
        AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
          WHERE fi.order_code=wr_order_links.order_code AND (fi.wr_link_id=wr_order_links.id OR fi.id=wr_order_links.fulfillment_item_id OR pv.wr_variant_id=wr_order_links.wr_variant_id)
            AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
@@ -957,7 +952,7 @@ async function handleJaspayOrderError(
        lease_owner=NULL, lease_expires_at=NULL,
        next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
     message,
-    nextAttemptIso(attempt),
+    nextPurchaseAttemptIso(attempt, WR_RETRY_DELAYS_MINUTES),
     id,
   );
   return "retried";
@@ -1044,7 +1039,7 @@ async function handleOrderError(
        lease_owner=NULL, lease_expires_at=NULL,
         next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
     message,
-    nextAttemptIso(attempt),
+    nextPurchaseAttemptIso(attempt, WR_RETRY_DELAYS_MINUTES),
     id,
   );
   return "retried";
@@ -1111,7 +1106,7 @@ export async function reconcileBlockedBalance(
        FROM wr_order_links l WHERE l.status='blocked_balance'
          AND datetime(l.updated_at) >= datetime('now','-${WR_BLOCKED_MAX_AGE_HOURS} hours')
          AND l.request_sent_at IS NULL AND COALESCE(l.wr_order_id,'')=''
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
          AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
            WHERE fi.order_code=l.order_code AND (fi.wr_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.wr_variant_id=l.wr_variant_id)
              AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
@@ -1141,7 +1136,7 @@ export async function reconcileBlockedBalance(
            next_attempt_at=datetime('now'), updated_at=datetime('now')
          WHERE id=? AND status='blocked_balance' AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
            AND datetime(updated_at) >= datetime('now','-${WR_BLOCKED_MAX_AGE_HOURS} hours') AND COALESCE(wr_cost,0) <= ?
-           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
+           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
            AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
              WHERE fi.order_code=wr_order_links.order_code AND (fi.wr_link_id=wr_order_links.id OR fi.id=wr_order_links.fulfillment_item_id OR pv.wr_variant_id=wr_order_links.wr_variant_id)
                AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
@@ -1162,7 +1157,7 @@ export async function retryFailedWrOrders(database?: DatabaseAccess): Promise<nu
       `UPDATE wr_order_links SET next_attempt_at=datetime('now'), updated_at=datetime('now')
        WHERE status='retry' AND attempt_count < max_attempts
          AND datetime(next_attempt_at) <= datetime('now')
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
     )
     .catch(() => ({ changes: 0 as number | undefined }));
   return Number(res.changes ?? 0);
