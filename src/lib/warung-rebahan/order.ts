@@ -29,7 +29,15 @@
 //    idempotency) — jadi fencing dilakukan SEPENUHNYA di sisi Axvara.
 
 import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
-import { isPaidForSupplierPurchase, nextPurchaseAttemptIso, PURCHASE_PAID_SQL, PURCHASE_PAID_SQL_ALIASED } from "@/lib/suppliers/purchase-state";
+import {
+  claimFreshPurchase,
+  claimStalePurchase,
+  fencePurchaseSend,
+  isPaidForSupplierPurchase,
+  nextPurchaseAttemptIso,
+  PURCHASE_PAID_SQL,
+  PURCHASE_PAID_SQL_ALIASED,
+} from "@/lib/suppliers/purchase-state";
 import {
   createOrder,
   fetchTransactions,
@@ -481,38 +489,10 @@ async function claimLink(
   const leaseOwner = `cron-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
   const leaseUntil = new Date(Date.now() + WR_CLAIM_LEASE_SECONDS * 1000).toISOString();
   // Jalur 1: klaim fresh (belum ada yang pegang).
-  const fresh = await db
-    .execRun(
-      `UPDATE wr_order_links SET status='claimed', attempt_count=?,
-         lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'),
-         updated_at=datetime('now')
-         WHERE id=? AND status IN ('pending','retry') AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
-           AND attempt_count=? AND attempt_count < max_attempts
-           AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
-      attempt,
-      leaseOwner,
-      leaseUntil,
-      id,
-      attempt - 1,
-    )
-    .catch(() => ({ changes: 0 as number | undefined }));
+  const fresh = await claimFreshPurchase(db, "wr", id, attempt, leaseOwner, leaseUntil);
   if (Number(fresh.changes ?? 0) > 0) return { outcome: "claimed", owner: leaseOwner };
   // Jalur 2: ambil alih lease basi — HANYA bila request belum keluar.
-  const stale = await db
-    .execRun(
-      `UPDATE wr_order_links SET status='claimed',
-         lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'),
-         updated_at=datetime('now')
-       WHERE id=? AND status='claimed' AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')='' AND attempt_count=?
-         AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
-      leaseOwner,
-      leaseUntil,
-      id,
-      attempt,
-    )
-    .catch(() => ({ changes: 0 as number | undefined }));
+  const stale = await claimStalePurchase(db, "wr", id, attempt, leaseOwner, leaseUntil);
   if (Number(stale.changes ?? 0) > 0) return { outcome: "claimed", owner: leaseOwner };
   // Selain itu: ambigu (sudah terkirim / diklaim worker sehat) atau kalah race.
   const current = await db
@@ -537,17 +517,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
     return "retried";
   }
   // Persist before POST; a timeout must retain this evidence, never repurchase.
-  const sent = await execRun(
-    `UPDATE wr_order_links SET request_sent_at=datetime('now'), updated_at=datetime('now')
-     WHERE id=? AND status='claimed' AND lease_owner=? AND request_sent_at IS NULL
-       AND datetime(lease_expires_at) > datetime('now')
-       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
-       AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
-         WHERE fi.order_code=wr_order_links.order_code AND (fi.wr_link_id=wr_order_links.id OR fi.id=wr_order_links.fulfillment_item_id OR pv.wr_variant_id=wr_order_links.wr_variant_id)
-           AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
-    id,
-    claim.owner,
-  );
+  const sent = await fencePurchaseSend(execRun, "wr", id, claim.owner);
   if (!Number(sent.changes ?? 0)) return "retried";
   // WR3 Jaspay: keluarga `jaspay:` TIDAK PERNAH lewat POST premium.
   // Salah famili = order salah produk + invoice tak terkorelasi.

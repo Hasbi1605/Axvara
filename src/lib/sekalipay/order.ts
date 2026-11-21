@@ -19,7 +19,15 @@
 
 import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import { alertSupplierAdminOnce } from "@/lib/fulfillment/supplier-escalation";
-import { isPaidForSupplierPurchase, nextPurchaseAttemptIso, PURCHASE_PAID_SQL, PURCHASE_PAID_SQL_ALIASED } from "@/lib/suppliers/purchase-state";
+import {
+  claimFreshPurchase,
+  claimStalePurchase,
+  fencePurchaseSend,
+  isPaidForSupplierPurchase,
+  nextPurchaseAttemptIso,
+  PURCHASE_PAID_SQL,
+  PURCHASE_PAID_SQL_ALIASED,
+} from "@/lib/suppliers/purchase-state";
 import { escapeHtml } from "@/lib/telegram/messages/format";
 import {
   createSkTransaction,
@@ -358,36 +366,9 @@ async function claimSkLink(
   const attempt = Number(link.attempt_count || 0) + 1;
   const leaseOwner = `sk-cron-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
   const leaseUntil = new Date(Date.now() + SK_CLAIM_LEASE_SECONDS * 1000).toISOString();
-  const fresh = await db
-    .execRun(
-      `UPDATE sk_order_links SET status='claimed', attempt_count=?,
-         lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'),
-         updated_at=datetime('now')
-       WHERE id=? AND status IN ('pending','retry') AND request_sent_at IS NULL
-         AND COALESCE(sk_invoice,'')='' AND attempt_count=? AND attempt_count < max_attempts
-         AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
-      attempt,
-      leaseOwner,
-      leaseUntil,
-      id, attempt - 1,
-    )
-    .catch(() => ({ changes: 0 as number | undefined }));
+  const fresh = await claimFreshPurchase(db, "sk", id, attempt, leaseOwner, leaseUntil);
   if (Number(fresh.changes ?? 0) > 0) return { outcome: "claimed", leaseOwner };
-  const stale = await db
-    .execRun(
-      `UPDATE sk_order_links SET status='claimed',
-         lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'),
-         updated_at=datetime('now')
-       WHERE id=? AND status='claimed' AND request_sent_at IS NULL
-         AND COALESCE(sk_invoice,'')='' AND attempt_count=?
-         AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
-      leaseOwner,
-      leaseUntil,
-      id, attempt,
-    )
-    .catch(() => ({ changes: 0 as number | undefined }));
+  const stale = await claimStalePurchase(db, "sk", id, attempt, leaseOwner, leaseUntil);
   if (Number(stale.changes ?? 0) > 0) return { outcome: "claimed", leaseOwner };
   const current = await db
     .queryFirst(`SELECT status, request_sent_at FROM sk_order_links WHERE id=?`, id)
@@ -452,16 +433,7 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
     }
     return "retried";
   }
-  const sent = await execRun(
-    `UPDATE sk_order_links SET request_sent_at=datetime('now'), updated_at=datetime('now')
-     WHERE id=? AND status='claimed' AND lease_owner=? AND request_sent_at IS NULL
-       AND datetime(lease_expires_at) > datetime('now')
-       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
-       AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
-         WHERE fi.order_code=sk_order_links.order_code AND (fi.sk_link_id=sk_order_links.id OR fi.id=sk_order_links.fulfillment_item_id OR pv.sk_variant_id=sk_order_links.sk_variant_id)
-           AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
-    id, claim.leaseOwner,
-  );
+  const sent = await fencePurchaseSend(execRun, "sk", id, claim.leaseOwner);
   if (!Number(sent.changes ?? 0)) return "retried";
   try {
     const skVariantId = Number(String(link.sk_variant_id));

@@ -2111,7 +2111,7 @@ axvara/
 │   │   └── detail-view.ts       # pembentuk body GET /api/orders dari baris pasca-refresh (3B-1)
 │   ├── suppliers/
 │   │   ├── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault, Mirai, StoreBat; TUNVN hanya predikat JS)
-│   │   └── purchase-state.ts    # WR/SK: backoff dan predikat paid/enabled untuk pembelian dan Retry
+│   │   └── purchase-state.ts    # WR/SK: backoff, predikat paid/enabled dan Retry, CAS klaim fresh/inline dan send fence sebelum POST
 │   ├── telegram/
 │   │   ├── messages.ts          # BARREL
 │   │   ├── messages/            # format, catalog (detail ringkas; detail varian di keyboard), purchase, status, group, help, admin

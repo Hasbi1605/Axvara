@@ -548,7 +548,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | A3 StoreBat | E | lokal (commit A3) | Wonder APPROVE. Catatan: bila kelak predikat JS disatukan, bentuk ketat `=== 0` adalah kanonis dan itu perubahan kelas B |
 | A4 TUNVN | E | lokal (commit A4) | Wonder APPROVE |
 | B1 | E | lokal (commit B1) | Wonder APPROVE-WITH-NITS; rank status tetap lokal (di deliver.ts) |
-| B2 | E | belum | |
+| B2 | E | lokal (commit B2) | Wonder APPROVE. Tindak lanjut E kecil: fence menerima `db`, bukan `execRun` terlepas |
 | B2b (invoice kosong) | B | belum | |
 | B3 | E | belum | |
 | B3b (R1) | B | belum | |
