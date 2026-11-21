@@ -169,7 +169,7 @@ describe("POST /api/webhook/wr-email", () => {
     expect(sent.length).toBe(1);
   });
 
-  it("buyer tanpa email → fallback antrekan WA (idempoten), bukan gagal", async () => {
+  it("buyer tanpa email → ditahan tanpa fallback WhatsApp", async () => {
     seedOrder("AXV-20260916-NOMAIL", "", "628999");
     fixture.sql.prepare(
       "INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-20260916-NOMAIL','RBHN-20260916-NOMAIL','v-x',1,1000,'processing')",
@@ -180,9 +180,10 @@ describe("POST /api/webhook/wr-email", () => {
       headers: { "content-type": "application/json", "x-wr-email-secret": "wr-email-test-secret" },
       body: JSON.stringify({ gmail_message_id: "msg-nomail", subject: "Update pesanan #RBHN-20260916-NOMAIL", body_html: UPDATE_HTML.replaceAll("DCB922", "NOMAIL") }),
     }) as never);
-    expect(await res.json()).toMatchObject({ status: "forwarded", channel: "whatsapp" });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({ status: "held", reason: "no_buyer_contact" });
     const outbox = fixture.sql.prepare("SELECT destination FROM whatsapp_outbox WHERE idempotency_key LIKE 'wr-email:%'").get() as Record<string, unknown>;
-    expect(outbox.destination).toBe("628999");
+    expect(outbox).toBeUndefined();
   });
 
   it("Resend gagal → 502 + log error, retry forwarder mencoba lagi TANPA duplikat log", async () => {

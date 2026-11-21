@@ -1,6 +1,6 @@
 import { wrSaleQuantitySql } from "@/lib/warung-rebahan/new-sales";
 // src/lib/commerce.ts — Channel-agnostic commerce operations
-// Shared between web, Telegram, and WhatsApp for order creation,
+// Shared between web and Telegram for order creation,
 // stock reservation, and payment management.
 
 import { qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
@@ -22,17 +22,17 @@ import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillme
 import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, miraiEligibility, storebatEligibility, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 
 export type ChannelOrderInput = {
-  salesChannel: "web" | "telegram" | "whatsapp";
+  salesChannel: "web" | "telegram";
   productId: number;
   productName: string;
   variantId: number;
   variant: VariantSummary;
-  customerId: string; // member_id for WA, user_id for TG, customer_name for web
+  customerId: string; // user_id for TG, customer_name for web
   customerName: string;
   customerWa?: string;
   customerEmail?: string;
   conversationId?: string; // group/chat ID
-  idempotencyKey: string; // deterministic key, e.g. wa:pay:<conversationId>:<memberId>:<variantId>
+  idempotencyKey: string;
   paymentMethod?: string;
   paymentAccount?: string;
 };
@@ -77,7 +77,7 @@ export type AtomicChannelOrderInput = {
   customerName: string;
   customerWa?: string;
   customerEmail?: string | null;
-  salesChannel: "web" | "telegram" | "whatsapp";
+  salesChannel: "web" | "telegram";
   telegramChatId?: string | null;
   telegramUserId?: string | null;
   conversationId?: string | null;
@@ -99,7 +99,7 @@ export type AtomicChannelOrderInput = {
  * untuk error yang dilempar — bila isolate Cloudflare dihentikan di tengah
  * (batas CPU, eviction), stok sudah berkurang tanpa order apa pun yang bisa
  * memulihkannya, dan cron expiry tidak menemukan apa-apa untuk dikembalikan.
- * Web dan WhatsApp sudah atomik; ini menyatukan kanal ketiga ke pola yang sama.
+ * Web sudah atomik; ini membawa Telegram ke pola yang sama.
  *
  * Pola single-winner mengikuti `createPendingChannelOrder`: guard row
  * `operation_guards` dengan CHECK(valid=1) membatalkan seluruh batch bila
@@ -108,6 +108,7 @@ export type AtomicChannelOrderInput = {
 export async function createChannelOrderAtomic(
   input: AtomicChannelOrderInput,
 ): Promise<PendingOrder> {
+  assertSalesChannel(input.salesChannel);
   try {
     return await reserveChannelOrder(input);
   } catch (error) {
@@ -243,7 +244,7 @@ async function reserveChannelOrder(
     orderItems = orderItems.map((raw,index) => {
       const line = input.lines[index];
       const row = configById.get(line.variantId);
-      if (!row || (input.salesChannel === "whatsapp" && row.buyer_field_key != null)) throw new Error("unsupported_buyer_input");
+      if (!row) throw new Error("unsupported_buyer_input");
       const item = raw as BuyerFieldSnapshot & { tunvn_eligibility?: unknown; aivault_eligibility?: unknown; storebat_eligibility?: unknown; mirai_eligibility?: unknown };
       const qty = input.lines.filter(other => other.variantId === line.variantId).reduce((n,other) => n + other.qty,0);
       validateBuyerFields(row,item.buyer_fields,qty);
@@ -609,21 +610,8 @@ export function parsePaymentDisplaySnapshot(raw: unknown): PaymentDisplaySnapsho
   }
 }
 
-/**
- * One gateway inbox event maps to one order attempt. A later payment-method
- * message gets a different inbox id, so the same member can buy it again.
- */
-export function buildWhatsAppOrderIdempotencyKey(
-  conversationId: string,
-  memberId: string,
-  inboxId: string,
-  variantId: number,
-): string {
-  const eventId = inboxId.trim();
-  if (!eventId) throw new Error("missing_whatsapp_inbox_id");
-  return ["wa", "order", conversationId, memberId, eventId, String(variantId)]
-    .map((part) => encodeURIComponent(part))
-    .join(":");
+function assertSalesChannel(channel: string): void {
+  if (channel !== "web" && channel !== "telegram") throw new Error("unsupported_sales_channel");
 }
 
 export function isReusablePendingOrder(order: PendingOrderState, now = Date.now()): boolean {
@@ -640,6 +628,7 @@ export function isReusablePendingOrder(order: PendingOrderState, now = Date.now(
  * it returns the existing order idempotently without re-decrementing stock.
  */
 export async function createPendingChannelOrder(input: ChannelOrderInput): Promise<PendingOrder> {
+  assertSalesChannel(input.salesChannel);
   assertOrderAccessConfigured();
   // 1. Idempotency check: look for existing pending or active order with this key
   if (isD1Mode()) {

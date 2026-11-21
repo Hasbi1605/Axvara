@@ -184,7 +184,7 @@ describe("Pesan lunas Telegram mengikuti kelas kirim (instan / MBO / manual)", (
   it("WR Made By Order → pesan tunggu + janji kirim otomatis ke chat ini", async () => {
     const text = await paidText("AXV-20261004-PAID0002", 21, 2);
     expect(text).toContain("Made By Order");
-    expect(text).toContain("maks 12 jam");
+    expect(text).toContain("maksimal 12 jam");
     expect(text).toContain("otomatis ke chat ini");
     expect(text).not.toContain("nomor WhatsApp");
   });
@@ -302,13 +302,6 @@ describe("Garansi: varian tanpa data garansi tidak ditulis 'Tanpa Garansi'", () 
     expect(texts.some((t) => /garansi/i.test(t))).toBe(false);
   });
 
-  it("WhatsApp detail produk tidak menulis 'Tanpa Garansi'", async () => {
-    const { getProductDetail } = await import("@/lib/catalog");
-    const { productDetailMessage } = await import("@/lib/whatsapp/messages");
-    const detail = await getProductDetail(1);
-    const msg = productDetailMessage("Prime Video", null, detail!.variants);
-    expect(msg).not.toContain("Tanpa Garansi");
-  });
 });
 
 describe("Pengiriman kredensial Telegram hanya ke pemilik kanonis", () => {

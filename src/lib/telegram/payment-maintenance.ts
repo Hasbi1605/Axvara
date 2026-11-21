@@ -11,8 +11,8 @@ export async function notifyPaymentMaintenance(chatId: number): Promise<boolean>
     text: [
       "<b>Pembayaran sedang maintenance / Payment under maintenance</b>",
       "",
-      "Pembayaran otomatis sedang maintenance. Untuk sementara, silakan hubungi admin lewat website untuk dibantu order manual.",
-      "Automatic payment is under maintenance. For now, please contact the admin via the website to place a manual order.",
+      "Pembayaran otomatis sedang maintenance. Untuk sementara, hubungi admin jika butuh bantuan. Pemesanan hanya lewat website atau bot Telegram.",
+      "Automatic payment is under maintenance. Contact the admin for help. Orders are only available on the website or Telegram bot.",
       "",
       "Sudah membayar? Simpan bukti pembayaran dan hubungi admin dengan kode pesananmu.",
       "Already paid? Keep your payment proof and contact the admin with your order code.",

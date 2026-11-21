@@ -533,15 +533,9 @@ export default function OrderSuccessPage() {
   // `instantPreparing` di bawah — supaya tidak ada bacaan yang hilang
   // sepersekian detik kemudian saat panel kredensial muncul. Teks hanya keluar
   // bila memang ada yang perlu dibaca (B lambat / C1 / C2 / WR / delivered).
-  const destination = order.email
-    ? ui.delivery.destinationEmail(order.email)
-    : ui.delivery.destinationWa(order.wa);
-  // Copy 2026-10-07 (permintaan owner): pesanan otomatis tidak lagi dijanjikan
-  // via WhatsApp/Telegram — detail dikirim ke email saat order + tampil di
-  // halaman ini. Order lama tanpa email tetap fallback ke nomor WA tersamar.
   const toBuyer = order.email
     ? <>{ui.delivery.toBuyerEmail}</>
-    : <>{ui.delivery.toBuyerWa(destination)}</>;
+    : <>{ui.delivery.toBuyerPanel}</>;
   let delivery: { title: string; lead: ReactNode; note: ReactNode; skeleton?: boolean };
   if (supplierSending && !instantSlow) {
     // Supplier masih memproses (link berjalan): skeleton menyiapkan yang
@@ -558,13 +552,13 @@ export default function OrderSuccessPage() {
   } else if (supplierSending) {
     delivery = {
       title: ui.delivery.autoTitle,
-      lead: order.email ? <>{ui.delivery.autoSlowEmail}</> : <>{ui.delivery.autoSlowWa(destination)}</>,
+      lead: order.email ? ui.delivery.autoSlowEmail : ui.delivery.autoSlowPanel,
       note: <>{ui.delivery.autoNote}</>,
     };
   } else if (order.fulfillmentStatus === "delivered") {
     delivery = {
       title: ui.delivery.deliveredTitle,
-      lead: order.email ? <>{ui.delivery.deliveredEmail}</> : <>{ui.delivery.deliveredWa(destination)}</>,
+      lead: order.email ? ui.delivery.deliveredEmail : ui.delivery.deliveredPanel,
       note: <>{ui.delivery.deliveredNote(Boolean(order.email))}</>,
     };
   } else if (order.queuedDelivery && !supplierOwned && fulfillmentStatus !== "delivered") {
@@ -600,7 +594,7 @@ export default function OrderSuccessPage() {
   } else if (instantSending) {
     delivery = {
       title: ui.delivery.autoTitle,
-      lead: order.email ? <>{ui.delivery.autoSlowEmail}</> : <>{ui.delivery.autoSlowWa(destination)}</>,
+      lead: order.email ? ui.delivery.autoSlowEmail : ui.delivery.autoSlowPanel,
       note: <>{ui.delivery.autoNote}</>,
     };
   } else if (supplierOwned) {

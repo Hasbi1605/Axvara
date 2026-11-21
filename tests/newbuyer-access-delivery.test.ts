@@ -198,20 +198,6 @@ describe("kanal privat: kode sampai ke buyer, tidak ke payload tersimpan", () =>
     for (const row of logs) expect(JSON.stringify(row)).not.toContain(code);
   });
 
-  it("DM WhatsApp kredensial TIDAK memuat kode (outbox teks polos)", async () => {
-    seedOrder(NEW_CODE, "web", 1);
-    const db = createDatabaseAccess(fx.db);
-    vi.stubEnv("WHATSAPP_ENABLED", "true");
-    vi.stubEnv("WHATSAPP_CREDENTIAL_DM_ENABLED", "true");
-    const { deliverWebCredentialViaWhatsApp } = await import("@/lib/warung-rebahan/deliver");
-    await deliverWebCredentialViaWhatsApp(NEW_CODE, "Email: a@b.c", db);
-    const body = fx.sql.prepare("SELECT payload FROM whatsapp_outbox LIMIT 1").get() as { payload: string };
-    expect(body.payload).toContain("Email: a@b.c");
-    expect(body.payload).not.toContain("Kode Akses");
-    const code = await deriveOrderAccessCode({ code: NEW_CODE, buyer_access_version: 1, buyer_access_format: "code26" });
-    expect(body.payload).not.toContain(code);
-  });
-
   it("Pedia status email order baru memuat kode + link tanpa access code", async () => {
     seedOrder(PEDIA_CODE, "web", 1);
     // notifyPediaPaid now routes through the fenced lifecycle channel

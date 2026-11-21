@@ -1,8 +1,7 @@
-import { QRIS_PAYMENT_DEADLINE_NOTICE } from "@/lib/payment-maintenance";
 // src/lib/whatsapp/messages.ts — WhatsApp message templates (plain text + *bold*)
 // Uses WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```monospace```
 
-import { type VariantSummary, buyerDeliveryKind, buyerWarrantyLabel, formatRupiah } from "@/lib/catalog";
+import { formatRupiah } from "@/lib/catalog";
 import { SITE, adminTelegramLink } from "@/lib/site";
 import { formatWarrantyWhatsApp } from "@/lib/warranty-policy";
 
@@ -37,290 +36,8 @@ export function formatWIBTime(): { greeting: string; tanggal: string; jam: strin
   };
 }
 
-export type WhatsAppProductLabel = { name: string; whatsappAlias?: string | null };
-
-export type WhatsAppPaymentMethod = "QRIS" | "SEABANK" | "EWALLET";
-
-/**
- * Broadcast grup bersifat publik ke seluruh anggota (order WA historis), jadi
- * bagian yang mengidentifikasi pembeli disamarkan — pola sama dengan
- * `maskAdminWa`/`maskAdminEmail`: pertahankan kepala + ekor, sembunyikan tengah.
- */
-export function maskOrderCode(code: string): string {
-  const c = String(code ?? "").trim();
-  if (c.length <= 4) return "••••";
-  return `${c.slice(0, 4)}••••${c.slice(-4)}`;
-}
-
-/** Nominal persis tidak pernah dicetak di grup; hanya penanda ter-mask. */
-export const MASKED_TOTAL = "Rp•••••";
-
-/** A CMS alias is presentation-only; blank always falls back to the web name. */
-export function getWhatsAppDisplayName(product: WhatsAppProductLabel): string {
-  return (product.whatsappAlias?.trim() || product.name.trim()).toUpperCase();
-}
-
-export function listProductsMessage(products: WhatsAppProductLabel[]): string {
-  const { greeting, tanggal, jam } = formatWIBTime();
-
-  // Related products may deliberately share one WhatsApp display alias.
-  const uniqueBrands = Array.from(
-    new Set(products.map(getWhatsAppDisplayName))
-  ).sort((a, b) => a.localeCompare(b));
-
-  const lines = [
-    "「 *LIST MENU AXVARA* 」",
-    "彡.〰️〰️〰️〰️〰️.彡",
-    `⊱┊ ${greeting}`,
-    `⊱┊ Tanggal : ${tanggal}`,
-    `⊱┊ Jam : ${jam}`,
-    "┈┈┈┈┈┈┈┈┈┈",
-    "",
-  ];
-
-  uniqueBrands.forEach((brand) => {
-    lines.push(`꧁ঔৣ★ ${brand}`);
-  });
-
-  lines.push("");
-  lines.push("Ketik nama produk untuk melihat pilihan varian.");
-  lines.push("Ketik *garansi* untuk membaca ketentuan.");
-  lines.push("");
-  lines.push("━━━━━━━━━━━━━━━━━━━━");
-  lines.push("*Belanja & update produk AXVARA:*");
-  lines.push(`✈️ Telegram: ${adminTelegramLink()}`);
-  lines.push(`🌐 Website: ${SITE.webUrl}`);
-
-  return lines.join("\n");
-}
-
-export function productDetailMessage(productName: string, _description: string | null, variants: VariantSummary[]): string {
-  const lines = [
-    "━━━━━━━━━━━━━━━━━━━━",
-    `*${productName.toUpperCase()}*`,
-    "━━━━━━━━━━━━━━━━━━━━",
-    "",
-  ];
-
-  variants.forEach((v, i) => {
-    const num = i + 1;
-    const war = buyerWarrantyLabel(v);
-    // Label pengiriman singkat (migrasi 0032, parity Telegram; SK auto ikut
-    // instan 2026-10-02 — regresi checkout MBO palsu Prime Video SK).
-    // Tanpa emoji — teks polos agar tidak terlihat seperti AI slop.
-    const deliv = buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Dikirim admin";
-    lines.push(`${num}. *${v.label}*`);
-    lines.push(`   ${deliv}`);
-    if (war) lines.push(`   🛡 ${war}`);
-    lines.push(`   「 *${formatRupiah(v.price)}* 」`);
-    if (v.stock === 0) lines.push("   ❌ *HABIS*");
-    lines.push("");
-  });
-
-  const available = variants.filter(v => v.stock !== 0);
-  if (available.length > 0) {
-    lines.push("┈┈┈┈┈┈┈┈┈┈");
-    lines.push(`Balas dengan angka *1-${variants.length}* untuk memilih.`);
-  } else {
-    lines.push("Semua varian sedang habis.");
-  }
-
-  return lines.join("\n");
-}
-
-export function variantSelectedMessage(productName: string, variant: VariantSummary, minQty = 1): string {
-  const war = buyerWarrantyLabel(variant);
-  const need = Math.max(1, Number(minQty) || 1);
-  const lines = [
-    "━━━━━━━━━━━━━━━━━━━━",
-    "*VARIAN DIPILIH*",
-    "━━━━━━━━━━━━━━━━━━━━",
-    `${productName.toUpperCase()} — *${variant.label}*`,
-  ];
-  if (war) lines.push(`🛡 ${war}`);
-  lines.push(`「 *${formatRupiah(variant.price)}* 」`);
-  // Minimum pembelian (migrasi 0034): WA order selalu qty 1, jadi varian
-  // min>1 (mis. GSuite 50) tidak bisa dibeli dari WA — arahkan ke web/Telegram.
-  if (need > 1) {
-    lines.push("");
-    lines.push(`📦 *Minimal pembelian ${need}* — order grup ini 1 per pesanan.`);
-    lines.push(`Lanjut via web (axvara.tech) atau Telegram @Axvara_bot dengan jumlah ≥ ${need}.`);
-    return lines.join("\n");
-  }
-  lines.push("");
-  lines.push("Pilih pembayaran dengan mengetik:");
-  // Maintenance sementara (2026-09-17): E-Wallet & SeaBank dinonaktifkan
-  // di semua platform — hanya QRIS. Teks opsi manual dihilangkan di WA.
-  lines.push("*QRIS*");
-  return lines.join("\n");
-}
-
-export function paymentChoiceMessage(): string {
-  return [
-    "━━━━━━━━━━━━━━━━━━━━",
-    "*PILIH PEMBAYARAN*",
-    "━━━━━━━━━━━━━━━━━━━━",
-    "Ketik salah satu metode berikut:",
-    "",
-    "• *QRIS* — scan kode QR",
-  ].join("\n");
-}
-
-/** Pesan maintenance untuk metode manual yang diminta selama maintenance. */
-export function manualPaymentMaintenanceMessage(): string {
-  return [
-    "━━━━━━━━━━━━━━━━━━━━",
-    "*PEMBAYARAN MAINTENANCE*",
-    "━━━━━━━━━━━━━━━━━━━━",
-    "E-Wallet & Transfer Bank sedang maintenance.",
-    "Silakan bayar via *QRIS* — ketik *QRIS* untuk lanjut.",
-  ].join("\n");
-}
-
-export function paymentMessage(params: {
-  orderCode: string;
-  productName: string;
-  variantLabel: string;
-  duration: string;
-  warranty: string;
-  total: number;
-  method: WhatsAppPaymentMethod;
-  qrisUrl?: string;
-  seabankAccount?: string;
-  seabankName?: string;
-  ewalletAccount?: string;
-  ewalletName?: string;
-}): string {
-  const lines = [
-    "━━━━━━━━━━━━━━━━━━━━",
-    "*PEMBAYARAN AXVARA*",
-    "━━━━━━━━━━━━━━━━━━━━",
-    `🛍 ${params.productName.toUpperCase()} — *${params.variantLabel}*`,
-  ];
-  if (params.warranty) {
-    lines.push(`🛡 ${params.warranty}`);
-  }
-  lines.push(`💰 Total: *${formatRupiah(params.total)}*`);
-  lines.push(`💳 Metode: *${params.method}*`);
-  lines.push("");
-
-  if (params.method === "QRIS") {
-    lines.push(`⏰ ${QRIS_PAYMENT_DEADLINE_NOTICE}`);
-    lines.push("QRIS di grup WhatsApp tidak bisa diperpanjang. Jangan bayar QRIS yang hangus; buat pesanan baru untuk mendapatkan QRIS baru.");
-    lines.push("Scan gambar QRIS yang dikirim setelah pesan ini.");
-    lines.push("Bayar tepat sesuai total; status lunas terdeteksi otomatis.");
-    lines.push("Screenshot opsional. Jika dikirim, cukup beri caption *QRIS*.");
-  }
-
-  if (params.method === "SEABANK" && params.seabankAccount && params.seabankName) {
-    lines.push(`No. rekening: ${params.seabankAccount}`);
-    lines.push(`Atas nama: ${params.seabankName}`);
-  }
-
-  if (params.method === "EWALLET" && params.ewalletAccount && params.ewalletName) {
-    lines.push(`Nomor: ${params.ewalletAccount}`);
-    lines.push(`Atas nama: ${params.ewalletName}`);
-  }
-
-  lines.push("");
-  if (params.method !== "QRIS") {
-    lines.push("Transfer tepat sesuai total, lalu kirim screenshot bukti");
-    lines.push(`dengan caption *${params.method}*. Tidak perlu mengetik kode pesanan.`);
-  }
-  lines.push(`_Referensi otomatis: ${params.orderCode}_`);
-
-  return lines.join("\n");
-}
-
-export function proofAcknowledgementMessage(orderCode: string): string {
-  return [
-    `Bukti pembayaran untuk ${orderCode} sudah diterima.`,
-    "Status: menunggu verifikasi.",
-    "Bukti tidak otomatis berarti pembayaran sudah sah.",
-  ].join("\n");
-}
-
 export function warrantyMessage(): string {
   return formatWarrantyWhatsApp();
-}
-
-// Error responses
-export function notFoundMessage(): string {
-  return "Produk tidak ditemukan. Ketik *list* untuk melihat produk.";
-}
-
-export function ambiguousMessage(candidates: string[]): string {
-  const lines = ["Beberapa produk cocok:", ""];
-  candidates.forEach(c => lines.push(`• ${c}`));
-  lines.push("");
-  lines.push("Ketik nama yang lebih spesifik.");
-  return lines.join("\n");
-}
-
-export function sessionExpiredMessage(): string {
-  return "Sesi sudah kedaluwarsa. Ketik nama produk lagi untuk memilih.";
-}
-
-export function noSelectionMessage(): string {
-  return "Belum ada varian yang dipilih. Ketik nama produk dan pilih angka terlebih dahulu.";
-}
-
-export function variantUnavailableMessage(): string {
-  return "Varian ini baru saja tidak tersedia. Ketik nama produk untuk melihat pilihan terbaru.";
-}
-
-export function proofFormatErrorMessage(orderCode: string): string {
-  return [
-    "Bukti belum dapat dikenali. Kirim ulang foto/screenshot dengan caption:",
-    "",
-    "*QRIS*.",
-    `Referensi aktif: ${orderCode}`,
-  ].join("\n");
-}
-
-export function proofWrongOwnerMessage(): string {
-  return "Bukti ini tidak dapat diproses untuk pesanan Anda.";
-}
-
-export function proofDuplicateMessage(orderCode: string): string {
-  return `Bukti untuk ${orderCode} sudah diterima sebelumnya. Menunggu verifikasi.`;
-}
-
-export function gatewayErrorMessage(): string {
-  return "Terjadi kesalahan. Silakan coba lagi dalam beberapa saat.";
-}
-
-export function paymentDetectedMessage(params: {
-  orderCode: string;
-  productName?: string;
-  variantLabel?: string;
-  total?: number;
-  method?: string;
-}): string {
-  const lines = [
-    "🎊🎉 *PEMBAYARAN BERHASIL!* 🎉🎊",
-    "━━━━━━━━━━━━━━━━━━━━",
-    "",
-    `✅ Order: *${maskOrderCode(params.orderCode)}*`,
-  ];
-  if (params.productName) {
-    lines.push(`🛍 ${params.productName}${params.variantLabel ? ` — *${params.variantLabel}*` : ""}`);
-  }
-  if (params.total) {
-    // Privacy grup: jangan pernah mencetak nominal persis pembeli.
-    lines.push(`💰 Total: *${MASKED_TOTAL}*`);
-  }
-  if (params.method) {
-    lines.push(`💳 Via: *${params.method}*`);
-  }
-  lines.push("");
-  lines.push("🚀 Pesanan lunas sedang diproses admin. Pembeli tidak perlu membayar ulang.");
-  lines.push("");
-  lines.push("━━━━━━━━━━━━━━━━━━━━");
-  lines.push("💎 Terima kasih sudah belanja di *AXVARA*!");
-  lines.push(`🌐 ${SITE.webUrl}`);
-  lines.push(`✈️ ${adminTelegramLink()}`);
-  return lines.join("\n");
 }
 
 // ---- Admin .d command: order completed ----
@@ -348,9 +65,9 @@ export function orderCompletedMessage(params: {
   lines.push("Jangan lupa order lagi ya! 🔥🔥🔥");
   lines.push("");
   lines.push("━━━━━━━━━━━━━━━━━━━━");
-  lines.push("🛒 Ketik *list* untuk lihat produk terbaru");
+  lines.push("🛒 Pesan hanya lewat website atau bot Telegram");
   lines.push(`🌐 ${SITE.webUrl}`);
-  lines.push(`✈️ ${adminTelegramLink()}`);
+  lines.push(`✈️ ${adminTelegramLink()}?start=beli`);
   return lines.join("\n");
 }
 
@@ -394,10 +111,6 @@ export function welcomeNewMemberMessage(name?: string): string {
     "━━━━━━━━━━━━━━━━━━━━",
   ];
   return lines.join("\n");
-}
-
-export function qrisExpiredMessage(orderCode: string): string {
-  return `⏰ *QRIS Hangus — Pesanan Kedaluwarsa*\n${orderCode}\n\nBatas pembayaran 15 menit sudah habis. Jangan bayar QRIS lama. QRIS di grup WhatsApp tidak bisa diperpanjang; buat pesanan baru di website atau Telegram untuk mendapatkan QRIS baru.`;
 }
 
 /**

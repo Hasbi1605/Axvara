@@ -17,6 +17,14 @@ import { parseProductDescription } from "@/lib/product-copy/format";
 
 const MIGRATION = fs.readFileSync("drizzle/migrations/0040_axvara_product_copy.sql", "utf8");
 
+it("directs domain orders to web or Telegram and requires an order code for follow-up", () => {
+  const key = "1kmv595we6s";
+  const id = CURATED_VARIANT_COPY.find(entry => entry.key === key)?.langkah?.join(" ");
+  const en = CURATED_VARIANT_COPY_EN[key]?.langkah?.join(" ");
+  expect(id).toMatch(/website atau bot Telegram.*kode pesanan/);
+  expect(en).toMatch(/website or Telegram bot.*order code/);
+});
+
 function entryStrings(entry: CuratedVariantCopy): string[] {
   return [
     ...(entry.paket ?? []),

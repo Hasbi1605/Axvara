@@ -1,19 +1,6 @@
-// F-H1 (2026-09-22) — order WR kanal WhatsApp TIDAK boleh ditandai
-// `delivered` saat kill-switch DM kredensial mati.
-//
-// Kenapa ini yang paling berbahaya dari seluruh audit UX: `delivered` adalah
-// status terminal yang dibaca pembeli ("Selesai") DAN dipercaya admin. Dulu
-// `deliverWhatsAppCredential` hanya `return` saat flag mati, sehingga
-// `processCredentialDelivery` lanjut menulis `delivery_status='delivered'`
-// walau NOL pesan terkirim — pembeli menerima nihil, admin mengira beres, dan
-// tidak ada satu pun jejak kegagalan.
-//
-// Pembeda penting yang diuji di sini: kanal WEB memang boleh settle tanpa DM
-// (punya token capability + panel pesanan + email sebagai jalur pengambilan),
-// sementara kanal WHATSAPP tidak punya jalur lain sama sekali.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { processCredentialDelivery } from "@/lib/warung-rebahan/deliver";
+import { processCredentialDelivery, processDueCredentialDeliveries } from "@/lib/warung-rebahan/deliver";
 import { seedWrCatalog, setupWrFixture } from "./helpers";
 
 afterEach(() => {
@@ -47,7 +34,23 @@ async function seedWhatsAppLink(fx: Awaited<ReturnType<typeof setupWrFixture>>) 
   return Number((fx.sql.prepare("SELECT id FROM wr_order_links WHERE wr_order_id='ORD-WA-1'").get() as { id: number }).id);
 }
 
-describe("F-H1: kill-switch DM WA tidak boleh menghasilkan 'delivered' palsu", () => {
+describe("FX-15: legacy WR WhatsApp delivery is always manual", () => {
+  it("rescues an order that WR called delivered when it only queued a WhatsApp credential", async () => {
+    const fx = await setupWrFixture();
+    try {
+      const linkId = await seedWhatsAppLink(fx);
+      fx.sql.prepare("UPDATE wr_order_links SET delivery_status='delivered', delivered_at=datetime('now') WHERE id=?").run(linkId);
+      fx.sql.exec(`UPDATE orders SET fulfillment_status='delivered';
+        INSERT INTO whatsapp_outbox(idempotency_key,destination,message_type,payload,status,last_error)
+        VALUES ('wa:text:wr-delivery:AXV-20260922-WA00001','628111222333','text','fixture','dead','sales_notifications_retired')`);
+      await processDueCredentialDeliveries(createDatabaseAccess(fx.db));
+      expect(fx.sql.prepare("SELECT fulfillment_status FROM orders").get()?.fulfillment_status).toBe("manual_required");
+      expect(fx.sql.prepare("SELECT status FROM fulfillment_items").get()?.status).toBe("manual_required");
+      expect(fx.sql.prepare("SELECT delivery_last_error FROM wr_order_links WHERE id=?").get(linkId)?.delivery_last_error).toBe("legacy_whatsapp_manual_handover");
+    } finally {
+      fx.close();
+    }
+  });
   it("flag MATI → delivery TIDAK delivered dan alasannya tercatat", async () => {
     const fx = await setupWrFixture();
     try {
@@ -64,7 +67,7 @@ describe("F-H1: kill-switch DM WA tidak boleh menghasilkan 'delivered' palsu", (
       expect(delivered).toBe(false);
       expect(link.delivery_status).not.toBe("delivered");
       // Alasan wajib terekam agar admin tahu sebabnya, bukan gagal tanpa jejak.
-      expect(String(link.delivery_last_error ?? "")).toContain("whatsapp_credential_dm_disabled");
+      expect(String(link.delivery_last_error ?? "")).toContain("legacy_whatsapp_manual_handover");
       // Tidak ada pesan yang benar-benar dikirim ke pembeli.
       const outbox = fx.sql.prepare("SELECT COUNT(*) AS n FROM whatsapp_outbox").get() as { n: number };
       expect(Number(outbox.n)).toBe(0);
@@ -73,7 +76,7 @@ describe("F-H1: kill-switch DM WA tidak boleh menghasilkan 'delivered' palsu", (
     }
   });
 
-  it("flag HIDUP → kredensial masuk antrean WA dan delivery settled", async () => {
+  it("does not dispatch a historical WR credential even with the old env enabled", async () => {
     const fx = await setupWrFixture();
     try {
       const linkId = await seedWhatsAppLink(fx);
@@ -87,10 +90,10 @@ describe("F-H1: kill-switch DM WA tidak boleh menghasilkan 'delivered' palsu", (
         .get(linkId) as { delivery_status: string };
       const outbox = fx.sql.prepare("SELECT COUNT(*) AS n FROM whatsapp_outbox").get() as { n: number };
 
-      expect(delivered).toBe(true);
-      expect(link.delivery_status).toBe("delivered");
-      // Outbox = antrean durable; settled sah karena pesan sudah masuk antrean.
-      expect(Number(outbox.n)).toBeGreaterThan(0);
+      expect(delivered).toBe(false);
+      expect(link.delivery_status).toBe("failed");
+      expect(Number(outbox.n)).toBe(0);
+      expect(fx.sql.prepare("SELECT fulfillment_status FROM orders").get()?.fulfillment_status).toBe("manual_required");
     } finally {
       fx.close();
     }

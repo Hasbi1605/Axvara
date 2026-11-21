@@ -34,6 +34,15 @@ function legacySale(status = "pending", key = CODE) {
   fixture.sql.prepare("INSERT INTO whatsapp_outbox(idempotency_key,channel,destination,message_type,payload,status) VALUES(?,'whatsapp',?,'sale_completed','legacy sale',?)").run(`wa:sale-completed:${key}`, GROUP, status);
 }
 describe("retired completed purchase notifications", () => {
+  it.each(["wa:payment_detected:legacy", "wa:qris-expired:legacy", "wa:text:wr-delivery:legacy", "wr-email:legacy"])(
+    "quarantines historical sales text %s before calling the gateway", async key => {
+      fixture.sql.prepare("INSERT INTO whatsapp_outbox(idempotency_key,destination,message_type,payload) VALUES(?,?,'text','sales fixture')").run(key, GROUP);
+      const { sendTextMessage } = await import("@/lib/whatsapp/gateway");
+      expect(await processWhatsAppOutboxRow(fixture.sql.prepare("SELECT * FROM whatsapp_outbox").get()!)).toBe(true);
+      expect(sendTextMessage).not.toHaveBeenCalled();
+      expect(fixture.sql.prepare("SELECT status,last_error FROM whatsapp_outbox").get()).toEqual({status:"dead",last_error:"sales_notifications_retired"});
+    },
+  );
   it("never sends an existing purchase notification even when the group is enabled", async () => {
     legacySale();
     await processWhatsAppOutboxRow(fixture.sql.prepare("SELECT * FROM whatsapp_outbox").get()!);

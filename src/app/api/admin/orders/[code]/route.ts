@@ -87,31 +87,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       await execRun(`UPDATE orders SET admin_note=? WHERE code=?`, adminNote, code);
     } catch { /* admin_note best-effort */ }
     await schedulePaidFulfillment(code, "apps", "admin_paid_qris");
-    // WA: kabar payment_detected + notif admin (cermin webhook dana route).
-    try {
-      const waRow = await queryFirst(`SELECT sales_channel, channel_conversation_id FROM orders WHERE code=?`, code);
-      if (String(waRow?.sales_channel) === "whatsapp" && waRow?.channel_conversation_id) {
-        const orderDetail = await queryFirst(`SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`, code);
-        const snap = orderDetail?.variant_snapshot ? JSON.parse(String(orderDetail.variant_snapshot)) : {};
-        const { paymentDetectedMessage } = await import("@/lib/whatsapp/messages");
-        const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
-        await enqueueWhatsAppMessage(
-          waOutboxKey("payment_detected", code),
-          String(waRow.channel_conversation_id),
-          paymentDetectedMessage({
-            orderCode: code,
-            productName: snap.product_name,
-            variantLabel: snap.label,
-            total: Number(orderDetail?.subtotal || 0),
-            method: String(orderDetail?.payment_method || "QRIS").toUpperCase(),
-          }),
-        ).catch(() => false);
+    if (String(row.sales_channel) === "whatsapp") {
+      try {
         const { notifyWhatsAppPaidAdmin } = await import("@/lib/telegram/order-notifications");
         await notifyWhatsAppPaidAdmin(code).catch(() => false);
-      }
-    } catch { /* antrean bertahan; cron memproses yang due */ }
-    // Notif admin + buyer mengikuti jalur ensureFulfillmentForPaidOrder
-    // (email kredensial web / DM Telegram / WA) — sama persis dengan hook.
+      } catch { /* Cron retries. */ }
+    }
     return NextResponse.json({ ok: true, code, status: "lunas", via: "manual_qris_acc" });
   }
 

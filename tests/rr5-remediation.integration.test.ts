@@ -268,16 +268,15 @@ describe("RR5 bounded recovery and delivery", () => {
     await cron();
     expect(sendTextMessage).not.toHaveBeenCalled(); expect(current().order.fulfillment_status).toBe("manual_required");
   });
-  it("RR5-06 enabled WhatsApp delivery honors proof hold, then sends after proof is present", async () => {
+  it("FX-15 legacy paid WhatsApp goes to manual even with old delivery and proof flags set", async () => {
     await seed({ channel: "whatsapp" });
     vi.stubEnv("WHATSAPP_CREDENTIAL_DM_ENABLED", "true");
     vi.stubEnv("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT", "true");
     fixture.sql.exec("UPDATE orders SET payment_method='seabank'");
-    await cron(); expect(sendTextMessage).not.toHaveBeenCalled();
-    fixture.sql.prepare(`INSERT INTO payment_proofs(order_code,conversation_id,member_id,external_message_id,claimed_method,r2_key,content_type,byte_size,sha256,status)
-      VALUES(?,'dummy','6280','dummy','SEABANK','dummy','image/png',1,'dummy','submitted')`).run(CODE);
-    for (let i = 0; i < 4; i++) await cron();
-    expect(sendTextMessage).toHaveBeenCalledTimes(1); expect(current().order.fulfillment_status).toBe("delivered");
+    await cron(); await cron();
+    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(current().order.fulfillment_status).toBe("manual_required");
+    expect(current().items.map(item => item.status)).toEqual(["manual_required"]);
   });
   it("RR5-05 a unique-item worker cannot settle inventory after a newer owner takes the item", async () => {
     const { order, product, jobId } = await seed({ mode: "unique" });

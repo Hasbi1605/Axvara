@@ -13,8 +13,6 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret } from "../crypto";
 import { markDelivered } from "../inventory";
 import { sendMessage } from "@/lib/telegram/api";
-import { sendTextMessage } from "@/lib/whatsapp/gateway";
-import { isEnabled } from "@/lib/feature-flags";
 import type { Row } from "./types";
 import { MAX_ATTEMPTS, RETRY_DELAYS } from "./types";
 import { findReservedForOrderVariant, inventoryMatchesItem } from "./inventory-binding";
@@ -52,11 +50,11 @@ async function claimItemLease(
   // same CAS, avoiding separate item-read, secret-read and snapshot statements.
   const claimed = await queryFirst(
     `UPDATE fulfillment_items SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now'),
-       delivered_ciphertext=CASE WHEN recipient_channel IN ('telegram','whatsapp') AND fulfillment_mode='shared'
+       delivered_ciphertext=CASE WHEN recipient_channel='telegram' AND fulfillment_mode='shared'
          AND (delivered_ciphertext IS NULL OR delivered_iv IS NULL)
          THEN (SELECT shared_secret_ciphertext FROM product_variants WHERE id=fulfillment_items.variant_id AND product_id=fulfillment_items.product_id)
          ELSE delivered_ciphertext END,
-       delivered_iv=CASE WHEN recipient_channel IN ('telegram','whatsapp') AND fulfillment_mode='shared'
+       delivered_iv=CASE WHEN recipient_channel='telegram' AND fulfillment_mode='shared'
          AND (delivered_ciphertext IS NULL OR delivered_iv IS NULL)
          THEN (SELECT shared_secret_iv FROM product_variants WHERE id=fulfillment_items.variant_id AND product_id=fulfillment_items.product_id)
          ELSE delivered_iv END
@@ -111,7 +109,7 @@ async function deliverShared(
   orderCode: string, productId: number, variantId: number, qty: number, database: DatabaseAccess,
 ): Promise<boolean> {
   const { queryFirst, execRun, isD1Mode } = database;
-  const push = recipientChannel === "telegram" || recipientChannel === "whatsapp";
+  const push = recipientChannel === "telegram";
   const secret = !push && variantId && isD1Mode()
     ? await queryFirst(
         `SELECT shared_secret_ciphertext, shared_secret_iv FROM product_variants WHERE id=? AND product_id=?`,
@@ -325,8 +323,9 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
     return false;
   }
 
-  const mode = String(order.sales_channel) === "whatsapp" && !isEnabled("WHATSAPP_FULFILLMENT") ? "manual" : String(item.fulfillment_mode || "manual");
   const recipientChannel = String(item.recipient_channel || order.sales_channel || "telegram");
+  const legacyWa = order.sales_channel === "whatsapp" || recipientChannel === "whatsapp";
+  const mode = legacyWa ? "manual" : String(item.fulfillment_mode || "manual");
   const recipientTarget = String(item.recipient_target || "");
   const productId = Number(item.product_id);
   const variantId = item.variant_id != null ? Number(item.variant_id) : 0;
@@ -334,7 +333,7 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
 
   try {
     // Empty recipient → manual, never send to nobody (issue #4).
-    if ((recipientChannel === "telegram" || recipientChannel === "whatsapp") && !recipientTarget) {
+    if (!legacyWa && recipientChannel === "telegram" && !recipientTarget) {
       throw new Error("no_recipient_for_channel");
     }
     const settledManual = await settleManualOrWeb(itemId, leaseFence, recipientChannel, mode, order.customer_email, database);
@@ -418,41 +417,18 @@ export async function sendToRecipient(
   target: string,
   orderCode: string,
   plaintext: string,
-  qty: number,
+  _qty: number,
   database: DatabaseAccess = createDatabaseAccess(),
   variantId = 0,
   productName?: string,
   automatic?: { itemId: number; leaseFence: string },
 ): Promise<string> {
-  const qtySuffix = qty > 1 ? ` (×${qty})` : "";
-  if (channel === "whatsapp") {
-    // Kill-switch DM kredensial (19 Sep 2026, default mati pasca-restriction
-    // nomor BOT). Skip diam — order channel whatsapp dialihkan ke manual
-    // (admin kirim dari HP), kode + mekanisme UTUH.
-    if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) {
-      throw new Error("web_channel_requires_manual_handover:serahkan manual via admin_note");
-    }
-    const message = `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}${qtySuffix}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`;
-    if (automatic) {
-      return sendFencedCredential(database, automatic.itemId, automatic.leaseFence, "whatsapp", [message], async text => {
-        const result = await sendTextMessage({ target, message: text });
-        // The legacy gateway /send may return 500 or an unreadable response
-        // after sending. Only its explicit pre-send rejections are retryable.
-        return { ...result, definiteFailure: result.outcomeUnknown !== true && [
-          "baileys_gateway_not_configured", "unauthorized", "whatsapp_not_connected",
-          "missing_target_or_message", "target_not_allowed", "gateway_cooldown_active",
-        ].includes(result.error ?? "") };
-      });
-    }
-    const sendResult = await sendTextMessage({ target, message });
-    if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
-    return sendResult.messageId || "";
-  }
   if (channel === "web") {
     // Kanal web dikirim lewat email oleh sendItem; jalur ini tidak boleh
     // dipakai untuk web (tidak ada tujuan push selain email).
     throw new Error("web_channel_uses_email_delivery");
   }
+  if (channel !== "telegram") throw new Error("unsupported_delivery_channel");
   const { resolveCredentialTermsForVariants, resolveCredentialTermsByItem } = await import("@/lib/orders/credential-terms");
   const copies = variantId
     ? await resolveCredentialTermsForVariants([variantId], database)

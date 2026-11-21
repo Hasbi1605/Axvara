@@ -1480,7 +1480,7 @@ Rekonsiliasi admin menambahkan label **KlikQRIS** dan panduan signature + konfir
 
 ## Pemberitahuan maintenance pembayaran — 2026-10-18
 
-✅ Diimplementasikan, publikasi melalui CI. Banner statis di bawah navbar Market/Pedia memakai latar putih 4%, garis putih 10%, teks putih 80% dan CTA putih **Order manual via WhatsApp**; tanpa titik/pill kuning, animasi, overlay atau countdown. Container 1280px, padding 16px mobile/24–32px desktop, teks dan tombol bertumpuk di mobile dan sejajar mulai `sm`, tap target ≥44px dan fokus cyan. Checkout menampilkan judul **Pembayaran sedang maintenance**, CTA WA serta petunjuk bagi pembeli yang sudah membayar; formulir pembayaran disembunyikan. Pedia tetap mempertahankan daftar jenis layanan dan mengganti formulir sesudah pilihan produk. Banner dan panel menggunakan komponen bersama `shared/PaymentMaintenanceNotice.tsx`; tautan absolut menuju hub WA terpusat agar benar pada kedua host. Bot menampilkan copy yang sama beserta tombol order manual, katalog dan Pesanan saya. Tidak mencantumkan estimasi pemulihan yang belum diketahui.
+✅ Diimplementasikan, publikasi melalui CI. Banner statis di bawah navbar Market/Pedia memakai latar putih 4%, garis putih 10%, teks putih 80% dan CTA putih **Hubungi admin**; tanpa titik/pill kuning, animasi, overlay atau countdown. Container 1280px, padding 16px mobile/24–32px desktop, teks dan tombol bertumpuk di mobile dan sejajar mulai `sm`, tap target ≥44px dan fokus cyan. Checkout menampilkan judul **Pembayaran sedang maintenance**, CTA bantuan via `/wa` serta petunjuk bagi pembeli yang sudah membayar; formulir pembayaran disembunyikan. Pedia tetap mempertahankan daftar jenis layanan dan mengganti formulir sesudah pilihan produk. Banner dan panel menggunakan komponen bersama `shared/PaymentMaintenanceNotice.tsx`; tautan absolut menuju hub WA terpusat agar benar pada kedua host. Bot menampilkan copy bantuan dwibahasa beserta tombol hubungi admin, katalog dan Pesanan saya. Tidak mencantumkan estimasi pemulihan yang belum diketahui.
 
 ## Pembaruan Pedia 2026-10-15 — spesifikasi terkini
 
@@ -2504,8 +2504,7 @@ JavaScript atau permintaan API. Latar Midnight #080C1E dengan glow cyan statis,
 kartu maksimal 560px/radius 28px, logo prism putih dari geometri mark existing,
 judul “Kami sedang maintenance” langsung setelah brand tanpa pill status atau
 titik kuning (revisi 2026-10-17). Kartu estimasi cyan menampilkan 07.00–08.00 WIB dan tanggal kalender WIB berikutnya
-sesuai reset UTC. Teks “pagi nanti” menghindari ambiguitas hari setelah tengah
-malam. Tombol utama putih “Order manual via WhatsApp” menuju hub /wa; tombol
+sesuai reset UTC. Teks mengarahkan pemesanan ke bot Telegram atau web setelah maintenance. Tombol utama putih “Hubungi admin” menuju hub /wa (dukungan, bukan pemesanan); tombol
 kedua “Coba buka toko lagi” memuat beranda. Catatan menyebut estimasi dan bantuan
 bagi yang sudah membayar. Hub saat maintenance menampilkan hanya nomor aktif
 dari registri kontak existing, support Telegram dan jam layanan; konteks pesan

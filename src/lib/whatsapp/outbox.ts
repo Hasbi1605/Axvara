@@ -64,11 +64,13 @@ function paceDelayMsLive(): number {
   return base + Math.floor(Math.random() * WA_OUTBOX_PACE_JITTER_MS);
 }
 
-export type WaOutboxKind = "payment_detected" | "text";
-
-export function waOutboxKey(kind: WaOutboxKind, ref: string): string {
-  return `wa:${kind}:${ref}`;
-}
+// Retire already-queued sales rows by their historical keys, not by the generic
+// `text` type, which is still a supported group transport.
+const RETIRED_SALES = `(message_type IN ('sale_completed','payment_detected')
+  OR idempotency_key GLOB 'wa:payment_detected:*'
+  OR idempotency_key GLOB 'wa:qris-expired:*'
+  OR idempotency_key GLOB 'wa:text:*'
+  OR idempotency_key GLOB 'wr-email:*')`;
 
 function nextAttemptSql(minutes: number): string {
   return `datetime('now', '+${minutes} minutes')`;
@@ -156,7 +158,7 @@ export async function claimWhatsAppOutboxRow(row: Record<string, unknown>, datab
   return { outcome: "claimed", workerId };
 }
 
-/** Pulihkan lease `sending` basi; pensiunkan sale_completed ke `dead`.
+/** Pulihkan lease `sending` basi; pensiunkan pesan transaksi ke `dead`.
  *
  * Harus dipanggil dari jalur runtime (cron) sebelum mengambil baris due —
  * bukan dari SQL buatan tes. Syarat ketat:
@@ -177,17 +179,17 @@ export async function recoverStaleWhatsAppLeases(database: DatabaseAccess = crea
     const result = await execRun(
       `UPDATE whatsapp_outbox
         SET status=CASE
-              WHEN message_type='sale_completed' THEN 'dead'
+              WHEN ${RETIRED_SALES} THEN 'dead'
               WHEN attempt_count>=? THEN 'dead'
               ELSE 'failed' END,
             worker_id=NULL, locked_until=NULL,
             last_error=CASE
-              WHEN message_type='sale_completed' THEN 'sales_notifications_retired'
+              WHEN ${RETIRED_SALES} THEN 'sales_notifications_retired'
               WHEN attempt_count>=? THEN 'lease_recovered_exhausted:delivery_outcome_unknown'
               ELSE 'lease_recovered:delivery_outcome_unknown' END,
            next_attempt_at=datetime('now'), updated_at=datetime('now')
         WHERE (status='sending' AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now')))
-           OR (message_type='sale_completed' AND status IN ('pending','failed'))`,
+           OR (${RETIRED_SALES} AND status IN ('pending','failed'))`,
       WA_OUTBOX_MAX_ATTEMPTS,
       WA_OUTBOX_MAX_ATTEMPTS,
     );
@@ -215,8 +217,9 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
 
   const fresh = (await queryFirst(`SELECT * FROM whatsapp_outbox WHERE id=?`, id)) ?? row;
   let botIdentity: { botNumber: string; botRevision: string } | undefined;
-  if (fresh.message_type === "sale_completed") {
-    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='sales_notifications_retired',updated_at=datetime('now') WHERE id=? AND worker_id=?", id, workerId);
+  if (['sale_completed', 'payment_detected'].includes(String(fresh.message_type))
+      || /^(wa:(payment_detected|qris-expired|text):|wr-email:)/.test(String(fresh.idempotency_key))) {
+    await execRun(`UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='sales_notifications_retired',updated_at=datetime('now') WHERE id=? AND worker_id=?`, id, workerId);
     return true;
   }
   let message = String(fresh.payload || "");

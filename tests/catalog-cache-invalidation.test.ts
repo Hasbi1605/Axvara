@@ -277,7 +277,7 @@ describe("checkout, restock, expiry, and inventory invalidation", () => {
     expect(readRevisionRow("market")).toBe(revAfterTg);
 
     await createPendingChannelOrder({
-      salesChannel: "whatsapp",
+      salesChannel: "web",
       productId: 1,
       productName: "ChatGPT Plus",
       variantId: 1,

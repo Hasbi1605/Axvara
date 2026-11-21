@@ -17,7 +17,7 @@ export type FulfillmentOrderItem = {
 };
 
 export type FulfillmentRecipient = {
-  channel: "web" | "telegram" | "whatsapp";
+  channel: "web" | "telegram";
   target: string;
 };
 

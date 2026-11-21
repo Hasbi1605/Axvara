@@ -392,6 +392,7 @@ export async function POST(request: NextRequest) {
       `SELECT COUNT(*) AS wr_delivery_due FROM wr_order_links
        WHERE (delivery_status IN ('queued','failed')
               OR delivery_status='sending')
+         AND COALESCE(delivery_last_error,'')!='legacy_whatsapp_manual_handover'
          AND (delivery_next_attempt_at IS NULL
               OR datetime(delivery_next_attempt_at) <= datetime('now'))`,
     ).catch(() => null) : null;
@@ -424,7 +425,7 @@ export async function POST(request: NextRequest) {
     const pendingExpiryManualWa = Number((queueRow as Record<string, unknown> | null)?.expiry_manual_wa ?? 0);
     const pendingExpiryAny = pendingExpiry + pendingExpiryInit + pendingExpiryManualWa;
     const pendingQrisNotice = Number(queueRow?.qris_notice ?? 0);
-    let pendingWa = Number(queueRow?.wa ?? 0);
+    const pendingWa = Number(queueRow?.wa ?? 0);
     const pendingStaleWa = Number(queueRow?.wa_stale ?? 0);
     const pendingJobs = Number(queueRow?.jobs ?? 0);
     const pendingCreated = Number(queueRow?.created ?? 0);
@@ -560,7 +561,7 @@ export async function POST(request: NextRequest) {
     }
 
     step("queues_counted");
-    let waWorkPending = pendingWa + pendingStaleWa;
+    const waWorkPending = pendingWa + pendingStaleWa;
     const runExpiry = async () => {
       let marketRestocked = false;
       const onMarketChanged = () => { marketRestocked = true; };
@@ -771,8 +772,6 @@ export async function POST(request: NextRequest) {
       if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5) && hasTime(TIME_TELEGRAM_BATCH)) {
         const notices = await sendQrisExpiryNotifications(15, database, { hasTime: () => hasTime(TIME_EXPIRY_NOTICE) });
         results.qris_expiry_notifications = notices.sent;
-        pendingWa += notices.whatsappQueued;
-        waWorkPending += notices.whatsappQueued;
         if (noticeCount > Number(results.qris_expiry_notifications) && !deferredOut.includes("notify")) deferredOut.push("notify");
       } else if (noticeCount > 0 && !deferredOut.includes("notify")) deferredOut.push("notify");
       // === FASE NOTIFY: notifikasi TG + reminder + outbox WA ===

@@ -83,10 +83,10 @@ INSERT INTO fulfillment_inventory(product_id,variant_id,status,secret_ciphertext
     if (!good.ok) throw new Error("workerd atomic failed: " + (good.error ?? "unknown"));
     expect(good.ok).toBe(true);
     expect(await db.prepare("SELECT subtotal,locale FROM orders WHERE code='TG-WORKER-OK'").first()).toMatchObject({ subtotal: 90000, locale: "en" });
-    const nonTg = await call("WA-WORKER-OK", [{ productId: 1, variantId: 1, qty: 1, fulfillmentMode: "manual", stock: 10 }],
-      [{ product_id: 1, variant_id: 1, price: 10000, qty: 1 }], 10000, { salesChannel: "whatsapp", locale: "en" });
+    const nonTg = await call("WEB-WORKER-OK", [{ productId: 1, variantId: 1, qty: 1, fulfillmentMode: "manual", stock: 10 }],
+      [{ product_id: 1, variant_id: 1, price: 10000, qty: 1 }], 10000, { salesChannel: "web", locale: "en" });
     expect(nonTg.ok).toBe(true);
-    expect(await db.prepare("SELECT locale FROM orders WHERE code='WA-WORKER-OK'").first()).toMatchObject({ locale: "id" });
+    expect(await db.prepare("SELECT locale FROM orders WHERE code='WEB-WORKER-OK'").first()).toMatchObject({ locale: "id" });
     const reset = async () => { await db.batch([
       db.prepare("DELETE FROM orders"), db.prepare("UPDATE product_variants SET stock=20,price=10000 WHERE id=1"),
       db.prepare("UPDATE product_variants SET stock=10 WHERE id=3"), db.prepare("UPDATE fulfillment_inventory SET status='available',order_code=NULL,reserved_at=NULL")

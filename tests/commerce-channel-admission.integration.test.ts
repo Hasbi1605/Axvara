@@ -52,7 +52,17 @@ it.each([1, 2])("rejects Telegram when product %i is disabled without any stock,
   expect(state()).toEqual(before);
 });
 
-it.each(["web", "whatsapp"] as const)("allows %s orders for Telegram-disabled products", async salesChannel => {
+it("rejects runtime WhatsApp order creation before touching D1", async () => {
+  const before = state();
+  const queries = fx.control.queries;
+  await expect(createChannelOrderAtomic({ ...input, salesChannel: "whatsapp" as AtomicChannelOrderInput["salesChannel"] }))
+    .rejects.toThrow("unsupported_sales_channel");
+  expect(fx.control.queries).toBe(queries);
+  expect(state()).toEqual(before);
+});
+
+it("allows web orders for Telegram-disabled products", async () => {
+  const salesChannel = "web";
   fx.sql.exec("UPDATE products SET telegram_enabled=0");
 
   const result = await createChannelOrderAtomic({ ...input, salesChannel });

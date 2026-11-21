@@ -352,7 +352,7 @@ Source `axvara-gopay-poller/src/pages-forward.ts`; rilis VPS terpasang
 - Build maintenance saat rilis KlikQRIS false. Rollback memakai rilis CI; pertahankan key/merchant/flag KlikQRIS untuk invoice lama dan penanganan late payment. Lihat ARCHITECTURE §16.11/README.
 
 ### Maintenance pembayaran — 2026-10-18
-- Switch build publik `NEXT_PUBLIC_PAYMENTS_MAINTENANCE="true"` pada langkah build Pages di `ci.yml` menghentikan pembayaran baru web/Telegram/WA dan reissue, dengan pemberitahuan order manual via hub WA. Ini nilai build nonrahasia, bukan env/secret runtime Pages.
+- Switch build publik `NEXT_PUBLIC_PAYMENTS_MAINTENANCE="true"` pada langkah build Pages di `ci.yml` menghentikan pembayaran baru web/Telegram dan reissue. Hub `/wa` hanya untuk bantuan, bukan pemesanan (keputusan owner 21 November). Ini nilai build nonrahasia, bukan env/secret runtime Pages.
 - Pemulihan: ubah nilai CI ke `"false"`, verifikasi, commit/push; perubahan env Cloudflare saja tidak mengubah bundle lama. Dev memakai prefix env; test menguji kedua mode.
 - Jangan menonaktifkan webhook/status/fulfillment/cleanup atau menghapus invoice lama. Mode terpisah dari kuota D1, tanpa auto-resume/estimasi jam selesai atau siaran massal otomatis.
 - **Audit FX-13 (21 November 2026, lokal):** pemberitahuan maintenance Telegram dibuat dwibahasa ID+EN dan tombolnya "💬 Hubungi admin / Contact admin" menuju hub admin `/wa` (`PAYMENT_MANUAL_ORDER_URL`) — bukan lagi "Order manual via WhatsApp" yang menyiratkan alur beli WA yang sudah pensiun. Gate ini berjalan sebelum locale/DB dibaca (nol query), jadi kedua bahasa ditulis sekaligus. Web/Pedia `PaymentMaintenanceNotice`/`ManualOrderPanel` tetap memakai hub `/wa` yang sama sesuai PRD. Tanpa perubahan kontrak 503, env, atau rail.

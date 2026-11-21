@@ -3,6 +3,12 @@
 Scope: `axvara/gateway/`. Aturan root AXVARA berlaku. Source produksi kanonis
 berpindah dari folder saudara `axvara-wa-gateway` pada 24 Oktober 2026.
 
+**21 November 2026 — keputusan owner (FX-15, lokal):** hanya web dan bot Telegram
+yang menjadi kanal jual. Gateway WA tetap untuk promo, siaran grup, sambutan dan
+balasan dukungan `.d`/`garansi`/arahan ke kanal resmi. Jangan menambah checkout,
+notifikasi transaksi atau DM kredensial. `/send` teks grup bertoken tetap ada;
+`/send-image` legacy dihapus (tidak memengaruhi gambar pada endpoint promo).
+
 Audit dependency27Oktober: Fastify5.12.7, Sharp0.35.5, fast-uri4.2.3/3.1.9,
 music-metadata11.16.1 dipatch kompatibel; Baileys/Node22/session/runtime tidak
 diganti. Sharp dipanggil transitif Baileys thumbnail, sehingga tidak boleh

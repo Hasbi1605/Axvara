@@ -579,12 +579,12 @@ app.post("/send-promo", (request, reply) => sendGroupNotification(request, reply
 app.post("/send-broadcast", (request, reply) => sendGroupNotification(request, reply, true));
 app.post("/send-welcome", (request, reply) => sendGroupNotification(request, reply, "welcome"));
 
-async function sendLegacy(request: FastifyRequest, reply: FastifyReply, image: boolean) {
+async function sendLegacy(request: FastifyRequest, reply: FastifyReply) {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ status: false, reason: "unauthorized" });
-  const body = (request.body ?? {}) as { target?: string; message?: string; imageUrl?: string; caption?: string; inboxId?: string };
+  const body = (request.body ?? {}) as { target?: string; message?: string; inboxId?: string };
   if (!sock || !isConnected) return reply.status(503).send({ status: false, reason: "whatsapp_not_connected" });
   const target = body.target;
-  if (!target || !(image ? body.imageUrl : body.message)) return reply.status(400).send({ status: false, reason: image ? "missing_target_or_url" : "missing_target_or_message" });
+  if (!target || !body.message) return reply.status(400).send({ status: false, reason: "missing_target_or_message" });
   const allowed = () => target === TARGET_GROUP_ID || target === notificationGroup?.id;
   if (!allowed()) return reply.status(403).send({ status: false, reason: "target_not_allowed" });
   if (Date.now() < dangerPausedUntil) return reply.status(429).send({ status: false, reason: "gateway_cooldown_active" });
@@ -596,7 +596,7 @@ async function sendLegacy(request: FastifyRequest, reply: FastifyReply, image: b
         if (!session.current()) return { rejection: [503, "whatsapp_not_connected"] } as const;
         if (!allowed()) return { rejection: [403, "target_not_allowed"] } as const;
         const quoted = quotedMessage(target, body.inboxId);
-        const content = image ? { image: { url: body.imageUrl! }, caption: body.caption } : { text: body.message! };
+        const content = { text: body.message! };
         const pending = session.socket!.sendMessage(target, content, quoted ? { quoted } : undefined);
         void pending.catch(() => {});
         return { pending, quoted: Boolean(quoted) };
@@ -610,14 +610,13 @@ async function sendLegacy(request: FastifyRequest, reply: FastifyReply, image: b
     if (String(error?.message || "") === "gateway_cooldown_active") {
       return reply.status(429).send({ status: false, reason: "gateway_cooldown_active" });
     }
-    return reply.status(500).send({ status: false, reason: error?.message || (image ? "image_send_failed" : "send_failed") });
+    return reply.status(500).send({ status: false, reason: error?.message || "send_failed" });
   }
 }
 class LegacyAdmissionError extends Error {
   constructor(readonly status: number, reason: string) { super(reason); }
 }
-app.post("/send", (request, reply) => sendLegacy(request, reply, false));
-app.post("/send-image", (request, reply) => sendLegacy(request, reply, true));
+app.post("/send", (request, reply) => sendLegacy(request, reply));
 
 // Proxy Warung Rebahan (Opsi A): DINONAKTIFKAN 2026-09-14 — traffic WR pindah
 // ke app akun kedua `axvara-wr-proxy` (static egress via QuotaGuard).

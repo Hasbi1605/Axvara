@@ -781,7 +781,7 @@ function CheckoutInner() {
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
                 <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">{text("No WA aktif *", "Active WhatsApp number *")}</label>
                 <input id="checkout-wa" type="tel" inputMode="tel" autoComplete="tel" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} aria-describedby={fieldErrors.wa ? "checkout-wa-hint checkout-wa-error" : "checkout-wa-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
-                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Nomor aktif untuk terima produk, info pesanan, dan bantuan via WhatsApp bila ada kendala.", "An active number for product delivery, order updates, and WhatsApp support.")}</p>
+                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Nomor WhatsApp aktif untuk verifikasi dan bantuan. Produk tersedia lewat email atau halaman pesanan.", "An active WhatsApp number for verification and support. Find your product by email or on the order page.")}</p>
                 {fieldErrors.wa && <p id="checkout-wa-error" className="mt-1.5 text-xs text-red-300">{message(fieldErrors.wa)}</p>}
               </div>
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">

@@ -195,23 +195,7 @@ describe("peringatan umur antrean", () => {
   });
 });
 
-describe("kabar WA pembeli web saat akun siap", () => {
-  it("mengirim pemberitahuan + tautan invoice, BUKAN kredensialnya, tanpa footer /garansi", () => {
-    const src = read("src/lib/warung-rebahan/deliver.ts");
-    expect(src).toContain("notifyWebBuyerCredentialsReady");
-    expect(src).toContain("wr-web-ready:");
-    expect(src).toContain("/pesanan/${orderCode}");
-    // Pemberitahuan web tidak boleh membawa plaintext kredensial.
-    const fn = src.slice(src.indexOf("async function notifyWebBuyerCredentialsReady"));
-    const body = fn.slice(0, fn.indexOf("\n}\n"));
-    expect(body).not.toContain("plaintext");
-    // Footer /garansi dihapus dari DM (keputusan owner 2026-09-18).
-    expect(body).not.toContain("garansi");
-    expect(body).toContain("WHATSAPP_ENABLED");
-  });
-});
-
-describe("Fase B — kredensial 3 jalur (keputusan owner 2026-09-18)", () => {
+describe("Kredensial WR via email dan panel web", () => {
   it("formatter: key 'akses otp'/URL dinormalisasi, bukan JSON mentah", async () => {
     const { formatWrAccountDetails } = await import("@/lib/warung-rebahan/deliver");
     const out = formatWrAccountDetails([
@@ -251,39 +235,6 @@ describe("Fase B — kredensial 3 jalur (keputusan owner 2026-09-18)", () => {
     }
   });
 
-  it("delivery web mengantrekan isi WA (idempoten) + skip email bila tanpa alamat", async () => {
-    const fx = createD1Fixture();
-    try {
-      await insertTestProduct(fx.sql, "manual", 1);
-      fx.sql.prepare(
-        `INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,sales_channel)
-         VALUES('AXV-20260918-WB0001','Buyer','628000000000',NULL,'[]',10000,'qris','lunas','paid','web')`,
-      ).run();
-      const { createDatabaseAccess } = await import("@/lib/db-access");
-      const db = createDatabaseAccess(fx.db);
-      const { deliverWebCredentialViaWhatsApp, deliverWebCredentialViaEmail } =
-        await import("@/lib/warung-rebahan/deliver");
-      vi.stubEnv("WHATSAPP_ENABLED", "true");
-      vi.stubEnv("WHATSAPP_CREDENTIAL_DM_ENABLED", "true");
-      const { enqueueWhatsAppMessage } = await import("@/lib/whatsapp/outbox");
-      void enqueueWhatsAppMessage;
-      await deliverWebCredentialViaWhatsApp("AXV-20260918-WB0001", "Email: a@b.c · Password: p", db);
-      await deliverWebCredentialViaWhatsApp("AXV-20260918-WB0001", "Email: a@b.c · Password: p", db);
-      const waRows = fx.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE idempotency_key LIKE '%wr-delivery:AXV-20260918-WB0001%'").get() as { n: number };
-      expect(waRows.n).toBe(1);
-      const body = fx.sql.prepare("SELECT payload FROM whatsapp_outbox WHERE idempotency_key LIKE '%wr-delivery:AXV-20260918-WB0001%'").get() as { payload: string };
-      expect(body.payload).toContain("Email: a@b.c");
-      // Footer /garansi dihapus dari DM kredensial (keputusan owner 2026-09-18):
-      // perintah itu untuk grup (webhook /garansi), bukan DM buyer.
-      expect(body.payload).not.toContain("garansi");
-      expect(body.payload).toContain("JANGAN bagikan");
-      // Tanpa email: skip diam, bukan error.
-      await expect(deliverWebCredentialViaEmail("AXV-20260918-WB0001", "Email: a@b.c", db)).resolves.toBeUndefined();
-    } finally {
-      fx.close();
-    }
-  });
-
   it("email kredensial idempoten: kirim 2x hanya 1 email keluar", async () => {
     const fx = createD1Fixture();
     try {
@@ -316,55 +267,5 @@ describe("Fase B — kredensial 3 jalur (keputusan owner 2026-09-18)", () => {
     expect(page).toContain("order.credentialsReady");
     const lookup = read("src/app/api/orders/lookup/route.ts");
     expect(lookup).toContain("credentials_ready");
-  });
-});
-
-describe("Kill-switch DM kredensial WA 19 Sep 2026 (flag mati = skip, kode utuh)", () => {
-  it("flag mati: notify + deliver SKIP tanpa enqueue; delivery web tetap settled via token", async () => {
-    const fx = createD1Fixture();
-    try {
-      await insertTestProduct(fx.sql, "manual", 1);
-      fx.sql.prepare(
-        `INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,sales_channel)
-         VALUES('AXV-20260919-KS0001','Buyer','628000000001',NULL,'[]',10000,'qris','lunas','paid','web')`,
-      ).run();
-      // Flag MATI (default): tidak di-stub.
-      const { createDatabaseAccess } = await import("@/lib/db-access");
-      const db = createDatabaseAccess(fx.db);
-      const { deliverWebCredentialViaWhatsApp } = await import("@/lib/warung-rebahan/deliver");
-      vi.stubEnv("WHATSAPP_ENABLED", "true");
-      await deliverWebCredentialViaWhatsApp("AXV-20260919-KS0001", "Email: a@b.c", db);
-      const n = fx.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE idempotency_key LIKE '%KS0001%'").get() as { n: number };
-      expect(n.n).toBe(0);
-    } finally {
-      fx.close();
-    }
-  });
-
-  it("flag nyala: perilaku DM lama utuh (kode tidak dihapus)", async () => {
-    const fx = createD1Fixture();
-    try {
-      await insertTestProduct(fx.sql, "manual", 1);
-      fx.sql.prepare(
-        `INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,sales_channel)
-         VALUES('AXV-20260919-KS0002','Buyer','628000000002',NULL,'[]',10000,'qris','lunas','paid','web')`,
-      ).run();
-      vi.stubEnv("WHATSAPP_CREDENTIAL_DM_ENABLED", "true");
-      vi.stubEnv("WHATSAPP_ENABLED", "true");
-      const { createDatabaseAccess } = await import("@/lib/db-access");
-      const db = createDatabaseAccess(fx.db);
-      const { deliverWebCredentialViaWhatsApp } = await import("@/lib/warung-rebahan/deliver");
-      await deliverWebCredentialViaWhatsApp("AXV-20260919-KS0002", "Email: a@b.c", db);
-      const n = fx.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE idempotency_key LIKE '%KS0002%'").get() as { n: number };
-      expect(n.n).toBe(1);
-    } finally {
-      fx.close();
-    }
-  });
-
-  it("fungsi DM masih ada di source (gate, bukan hapus)", () => {
-    expect(read("src/lib/warung-rebahan/deliver.ts")).toContain("async function notifyWebBuyerCredentialsReady");
-    expect(read("src/lib/warung-rebahan/deliver.ts")).toContain("export async function deliverWebCredentialViaWhatsApp");
-    expect(read("src/lib/warung-rebahan/deliver.ts")).toContain("WHATSAPP_CREDENTIAL_DM_ENABLED");
   });
 });

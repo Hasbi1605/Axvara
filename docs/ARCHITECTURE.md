@@ -3214,7 +3214,7 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
   filter `?sellable=1|0`, urutan `?sort=sellable` (sellable dulu); endpoint
   `games/products/enable-wave`, `pedia/credits`, `warung/credentials` DIHAPUS.
 
-Mulai 5 September 2026, Baileys gateway produksi berjalan di Heroku dan seluruh fitur transaksi WhatsApp aktif untuk GID pada `WHATSAPP_GROUP_ALLOWLIST`. Flag aktif meliputi `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`, `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, dan `WHATSAPP_FULFILLMENT`. **Sejak 19 Sep 2026 `WHATSAPP_CREDENTIAL_DM_ENABLED=false` (default mati)** — auto-DM kredensial ke buyer dimatikan pasca-restriction nomor BOT; grup tetap penuh, kredensial via email + panel + manual HP. Outbound `/send` dan `/send-image` wajib memakai shared gateway token; pesan inbound di-cache terbatas selama 20 menit agar balasan dapat memakai quoted message Baileys. Target kirim dinormalisasi di adapter via `normalizeWhatsAppTarget` (2026-09-18 sore, live): nomor HP mentah (`628…`/`08…`, seperti tersimpan di outbox) menjadi JID DM `<62…>@s.whatsapp.net` — Baileys baru melempar `jidDecode(...)` undefined untuk target tanpa domain (bukti prod: 2 baris `wr-web-ready` gagal 4x sejak 13:20 UTC 18 Sep). Pola DM ketat (`^62\\d{9,13}$`/`^0\\d{9,13}$`); JID grup (`@g.us`) dan ID non-pola dikembalikan apa adanya agar gateway yang menolak, bukan salah alamat.
+Baileys gateway berjalan di Heroku. Alur pembeli WhatsApp lama dipensiunkan; kontrak promo, sambutan dan dukungan saat ini ada di §16.12. `/send` teks grup tetap memakai token dan mendukung quoted reply Baileys.
 - **Hardening umur nomor gateway (19 Sep 2026, deploy DITUNDA sampai restriction lepas — deploy = restart = reconnect saat dibatasi = memperpanjang).** `axvara-wa-gateway/src/index.ts`: (1) 401/loggedOut = TIDAK reconnect otomatis (hammer = signature bot; diam + terpantau, pairing manual oleh owner); (2) 515 reconnect cepat 1 dtk; sisanya exponential backoff + jitter (maks ~60 dtk); (3) teardown socket lama (`end()` + hapus listener) sebelum bikin baru — anti zombie socket / konflik sesi; (4) `cachedGroupMetadata` TTL 5 mnt (hemat fetch partisipan tiap kirim, sesuai FAQ resmi); (5) jeda baca acak 1–2,5 dtk sebelum teruskan inbound; (6) antrean outbound serial + jeda 4–8 dtk + cooldown 15 mnt setelah 3 sinyal bahaya (`gateway_cooldown_active`, `/send` 429 saat cooldown); (7) `/health` memaparkan `lastDisconnectCode/lastDisconnectAt/reconnectCount`. Jangan ganti string browser, jangan hapus `baileys_auth_keys`, satu socket per dyno.
 
 ### Tabel Baru (migrasi 0007)
@@ -3245,7 +3245,7 @@ Migrasi `0010_dana_dynamic_qris.sql` menambah `unique_code` dan `qris_payload` p
 - **Media Bukti & Anti-SSRF:** Gateway Baileys mengunduh image message dan menyediakan token URL acak sekali pakai selama 10 menit. Pages hanya menerima HTTPS, memvalidasi anti-SSRF terhadap private IP/loopback, men-stream maksimal 5 MB, memverifikasi magic bytes (JPG/PNG/WebP), menghitung SHA-256, lalu menyimpan privat di Cloudflare R2 prefix `bukti/whatsapp/`. Shared gateway token tidak pernah diteruskan ke URL media.
 - **Review & Otoritas Pembayaran:** Bukti QRIS hanya evidence opsional dan tidak dapat melunasi order. `POST /api/webhook/dana` adalah satu-satunya authority QRIS; SeaBank/e-wallet tetap memakai review admin CAS. Pembayaran QRIS yang sudah terdeteksi tidak ditahan oleh kewajiban screenshot WhatsApp.
 - **Lifecycle Stok & Pembayaran:** QRIS berlaku 15 menit untuk SEMUA kanal (keputusan owner 2026-10-11; sebelumnya Telegram/Web 60 menit dengan 1x perpanjangan QR — window 60 menit itu yang membuat 1 order iseng mengunci stok 1 jam). QR mati = order kedaluwarsa = stok dilepas via cron ±5 menit. Pembeli yang berubah pikiran / salah varian membatalkan sendiri dari halaman pesanan atau lacak pesanan (`POST /api/orders/[code]/cancel`: verifikasi kode + WA/email checkout pola lookup, 404 generik anti-oracle, hanya pending+unpaid, CAS `transitionPendingOrder` yang sama dengan admin sehingga kalah race vs webhook = 409 jujur + stok tidak ganda + ledger paid tidak tersentuh). QRIS Hook memperbarui ledger+order dalam satu batch guard. Cron memakai deadline order DANA (fallback invoice untuk legacy tanpa deadline), memeriksa deadline ulang dalam batch sebelum melepas stok. Migrasi 0026 menyesuaikan deadline WA/QR pengganti yang sudah pending dan menambah `payment_transactions.expiry_notice_state` (`renewable`/`terminal`). `src/lib/payments/qris-expiry-notifications.ts` mengirim tombol pembaruan hanya bersama pesan kedaluwarsa pertama Telegram; kegagalan kirim tetap pending, dan pesan terminal WA memakai outbox idempoten per order. Marker reset saat reissue bersama reset delivery foto Telegram, tanpa membuat QR tambahan. Helper memakai budget D1 request yang sama (1 list + maksimal 2 query per pesan). Notifikasi mengikuti cron 5 menit; deadline penerimaan pembayaran tidak menunggu cron. `GET /api/orders?code=...` dan `/api/orders/[code]` mengembalikan `expires_at` dan `qris_reissue_allowed` untuk halaman pesanan. Rail manual WhatsApp tanpa ledger tetap memakai TTL sebelumnya.
-- **Proteksi Kredensial Fulfillment:** Job hanya dapat di-claim setelah order `lunas/paid`; mode dipatok oleh `variant_snapshot` order dan shared secret diambil dari varian terpilih. Varian shared tanpa secret terenkripsi dan varian unique tanpa inventory gagal tertutup sebelum order bot dibuat. Pengiriman WhatsApp selalu via pesan langsung (DM) ke `channel_member_id`/`customer_wa`, tidak pernah ke grup. Gate `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT` menahan job sampai bukti diserahkan, dan `WHATSAPP_FULFILLMENT` dapat memaksa jalur manual selama rollout.
+- **Proteksi Kredensial Fulfillment:** Job hanya dapat di-claim setelah order `lunas/paid`; mode dipatok oleh `variant_snapshot` order dan shared secret diambil dari varian terpilih. Varian shared tanpa secret terenkripsi dan varian unique tanpa inventory gagal tertutup sebelum order bot dibuat. Order WhatsApp historis memerlukan handover manual, tanpa pengiriman otomatis ke WhatsApp.
 
 ### Migrasi 0025 — Riwayat penerbitan QRIS
 
@@ -3457,13 +3457,9 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `tests/warung-rebahan/sync-roundtrip.regression.test.ts`.
 - **Kejujuran status pengiriman + jalan keluar admin (audit UX 2026-09-22):** pola akar yang
   ditutup di sini bukan satu bug, melainkan **server sudah tahu jawabannya tetapi UI
-  membuangnya**. (1) `deliverWhatsAppCredential` dulu `return` diam saat kill-switch
-  `WHATSAPP_CREDENTIAL_DM_ENABLED` mati, sehingga `processCredentialDelivery` tetap menulis
-  `delivery_status='delivered'` walau NOL pesan terkirim — pembeli kanal WhatsApp melihat
-  "Selesai" dan menerima nihil. Kini **throw** (`whatsapp_credential_dm_disabled`) → retry →
-  `failed` → antrean handover. Bedakan tegas dengan `deliverWebCredentialViaWhatsApp` yang
-  MEMANG boleh skip diam: kanal web punya token capability + panel pesanan + email sebagai
-  jalur pengambilan, kanal WhatsApp tidak punya jalur lain. (2) `fulfillment_status='failed'`
+  membuangnya**. (1) Order WA historis yang belum diserahkan membutuhkan
+  handover manual, bukan penanda delivered setelah sekadar enqueue pesan WA.
+  (2) `fulfillment_status='failed'`
   (ditulis `warung-rebahan/order.ts` saat attempt WR habis dan `deliver.ts` saat delivery
   habis 5 percobaan) tidak punya tombol apa pun di admin padahal
   `recordManualHandoverDetailed` menerimanya — order lunas yang gagal kirim = jalan buntu
@@ -3914,8 +3910,7 @@ bot meneruskannya sebagai email branding Axvara (nol jejak "Warung Rebahan"):
 - **Join + kirim:** invoice → `wr_order_links.wr_order_id` → buyer
   (`orders.customer_email`). Kirim via Resend (`RESEND_API_KEY` +
   `FORWARD_FROM_EMAIL`, mis. `noreply@axvara.id` — JANGAN SMTP Gmail
-  pribadi). Buyer tanpa email → fallback teks ke WA via `whatsapp_outbox`
-  (idempoten `wr-email:order:invoice:kind`, diproses cron).
+  pribadi). Pembeli tanpa email → `held` / `no_buyer_contact`, tanpa fallback DM WhatsApp.
 - **Idempoten:** `wr_email_forward_log.gmail_message_id` UNIQUE (migrasi
   0036) — retry forwarder = `duplicate` tanpa kirim ulang. Status:
   `forwarded` / `duplicate` / `unmatched` (invoice tak dikenal, untuk
@@ -5445,6 +5440,19 @@ Indeks `idx_orders_telegram_pending_chat` pada migrasi0075 mempersempit guard/pr
 
 
 ### 16.12 Notifikasi grup WA dan admin Telegram — 24 Oktober 2026
+
+**21 November 2026 — keputusan owner (FX-15, implementasi lokal):** web dan bot
+Telegram adalah satu-satunya kanal jual. Gateway/outbox WA tetap untuk promo,
+siaran, sambutan dan balasan dukungan (`.d` khusus admin, `garansi`, arahan ke
+kanal resmi). Hub `/wa` adalah bantuan yang dimulai pembeli; bukan checkout.
+`whatsapp_sales_notifications` adalah nama key konfigurasi promo lama, bukan
+sakelar transaksi. `/send` teks grup dipertahankan; `/send-image` legacy dihapus.
+Pembayaran, expiry/pengingat dan kredensial tidak lagi dikirim melalui WA;
+antrean transaksi legacy dipensiunkan tanpa menghapus baris. Penulisan order
+baru menolak WA; DB CHECK, laporan/admin, expiry stok dan notifikasi lunas
+internal Telegram untuk pesanan WA historis tetap. Pesanan lunas yang belum
+diserahkan masuk handover manual. Flag rollout penjualan/fulfillment WA yang
+lama tidak dibaca lagi; tidak ada perubahan konfigurasi hosting atau migrasi.
 
 **17 November 2026 — Bot Promo kedua (implementasi lokal; publikasi via CI).**
 `src/lib/whatsapp/promo-bot.ts` memisahkan konfigurasi store_settings

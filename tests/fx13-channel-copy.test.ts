@@ -13,7 +13,6 @@ import { isValidContactPhone } from "@/lib/telegram/handlers/payment-contact";
 import { isValidWaNumber } from "@/lib/order-contact";
 import { orderPaidMessage } from "@/lib/telegram/messages/status";
 import { WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
-import * as wa from "@/lib/whatsapp/messages";
 import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import { PAYMENT_MANUAL_ORDER_URL } from "@/lib/payment-maintenance";
 
@@ -47,32 +46,6 @@ describe("FX-13 X4-5 — paid message uses the shared manual-wait ETA", () => {
   });
 });
 
-describe("FX-13 X4-4 — group celebration masks buyer-identifying details", () => {
-  it("masks order code and total while staying celebratory", () => {
-    const msg = wa.paymentDetectedMessage({
-      orderCode: "AXV-20260906-TEST5678",
-      productName: "CHATGPT PLUS",
-      variantLabel: "1 Bulan",
-      total: 89000,
-      method: "QRIS",
-    });
-    expect(msg).toContain("PEMBAYARAN BERHASIL");
-    expect(msg).toContain("Terima kasih");
-    expect(msg).toContain("CHATGPT PLUS");
-    expect(msg).not.toContain("AXV-20260906-TEST5678");
-    expect(msg).toContain("••••");
-    expect(msg).not.toContain("Rp89.000");
-  });
-});
-
-describe("FX-13 X4-6 — WhatsApp QRIS expiry text is channel-accurate", () => {
-  it("does not claim QRIS can never be extended", () => {
-    const msg = wa.qrisExpiredMessage("AXV-20260906-TEST5678");
-    expect(msg).not.toContain("Tidak ada perpanjangan QRIS");
-    expect(msg).toContain("grup WhatsApp");
-  });
-});
-
 describe("FX-13 X4-8 — maintenance notice points to admin contact in ID+EN", () => {
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "true");
@@ -84,7 +57,9 @@ describe("FX-13 X4-8 — maintenance notice points to admin contact in ID+EN", (
     expect(await notifyPaymentMaintenance(123)).toBe(true);
     const payload = mocks.send.mock.calls[0]?.[0] as { text: string; reply_markup: unknown };
     expect(payload.text).toContain("hubungi admin");
-    expect(payload.text).toContain("contact the admin");
+    expect(payload.text).toContain("the admin for help");
+    expect(payload.text).toContain("website or Telegram bot");
+    expect(payload.text).not.toMatch(/manual order/i);
     expect(payload.text).not.toContain("order manual lewat WhatsApp");
     const kb = JSON.stringify(payload.reply_markup);
     expect(kb).toContain(PAYMENT_MANUAL_ORDER_URL);

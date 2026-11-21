@@ -132,6 +132,10 @@ describe("payment maintenance before financial side effects", () => {
     const html = renderToStaticMarkup(<><PaymentMaintenanceNotice /><ManualOrderPanel /></>);
     expect(html).toContain("Pembayaran sedang maintenance");
     expect(html).toContain("https://axvara.tech/wa?pesan=");
+    expect(html).toContain(">Hubungi admin</a>");
+    expect(html).toContain("Telegram");
+    expect(decodeURIComponent(PAYMENT_MANUAL_ORDER_URL)).not.toMatch(/order manual/i);
+    expect(html).not.toMatch(/order (manual|dibantu)/i);
     expect(html).toContain("kode pesananmu");
     expect(html).not.toContain("<form");
     expect(html).not.toContain("07.00");

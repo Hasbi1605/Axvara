@@ -14,11 +14,11 @@
 // - Detail akun dienkripsi AES-256-GCM sebelum disimpan (tidak plaintext).
 // - Web retrieval memakai capability token (hash di DB, raw hanya ke
 //   pembeli) — TIDAK dibuka hanya dengan kode order (P0-6).
-// - Telegram hanya private chat; WhatsApp hanya DM via outbox.
+// - Telegram hanya private chat; order WhatsApp historis diserahkan manual.
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
-import { isEnabled } from "@/lib/feature-flags";
+import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-binding";
 import { rewriteSupplierDocsLinks } from "@/lib/product-copy/format";
 import { decodeJaspayVariantId, isJaspayVariantId } from "./jaspay";
 import { persistJaspayProgress } from "./progress";
@@ -33,7 +33,14 @@ export type WrOrderLinkRow = {
   status: string;
 };
 
-export type WrDeliveryChannel = "web" | "telegram" | "whatsapp";
+const WR_MANUAL_WA = "legacy_whatsapp_manual_handover";
+// Old WR WA delivery called enqueue success "delivered". Recover only when
+// the recorded transport is dead, not sent or currently owned by a worker.
+const WA_WR_UNSENT = `(delivery_status='delivered' AND delivery_channel='whatsapp'
+  AND COALESCE(delivery_last_error,'')!='skipped_manual_handover'
+  AND EXISTS (SELECT 1 FROM whatsapp_outbox w
+    WHERE w.idempotency_key='wa:text:wr-delivery:' || wr_order_links.order_code
+      AND w.status='dead'))`;
 
 /** Urutan monotonik status vendor: index naik = maju. Regresi dilarang. */
 const WR_STATUS_RANK: Record<string, number> = {
@@ -988,13 +995,14 @@ export async function queueCredentialDelivery(linkId: number, database?: Databas
     `SELECT sales_channel FROM orders WHERE code=?`,
     String(link.order_code || ""),
   ).catch(() => null);
-  const channel = String(order?.sales_channel || "web") as WrDeliveryChannel;
+  const channel = String(order?.sales_channel || "web");
   await execRun(
     `UPDATE wr_order_links SET delivery_status='queued', delivery_channel=?,
        delivery_next_attempt_at=datetime('now'), updated_at=datetime('now')
-     WHERE id=? AND delivery_status!='delivered'`,
+     WHERE id=? AND delivery_status!='delivered' AND COALESCE(delivery_last_error,'')!=?`,
     channel,
     linkId,
+    WR_MANUAL_WA,
   ).catch(() => undefined);
   return true;
 }
@@ -1008,8 +1016,7 @@ const WR_DELIVERY_LEASE_MS = 120_000;
 
 /**
  * Proses satu delivery kredensial dengan claim/lease (P0-6). Telegram hanya
- * private chat; WhatsApp hanya DM via outbox; web via capability token
- * (tidak ada push — delivered saat token diterbitkan durable).
+ * private chat, web via capability token dan email, WA historis manual.
  */
 export async function processCredentialDelivery(
   linkId: number,
@@ -1030,11 +1037,13 @@ export async function processCredentialDelivery(
     `UPDATE wr_order_links SET delivery_status='sending',
        delivery_attempt_count=delivery_attempt_count+1,
        delivery_next_attempt_at=?, delivery_last_error=?, updated_at=datetime('now')
-     WHERE id=? AND delivery_status IN ('queued','failed')
+     WHERE id=? AND (delivery_status IN ('queued','failed') OR ${WA_WR_UNSENT})
+       AND COALESCE(delivery_last_error,'')!=?
        AND (delivery_next_attempt_at IS NULL OR datetime(delivery_next_attempt_at) <= datetime('now'))`,
     leaseUntil,
     `lease:${leaseOwner}`,
     linkId,
+    WR_MANUAL_WA,
   ).catch(() => ({ changes: 0 as number | undefined }));
   if (Number(claimed.changes ?? 0) === 0) {
     const cur = await queryFirst(`SELECT delivery_status FROM wr_order_links WHERE id=?`, linkId).catch(
@@ -1042,7 +1051,8 @@ export async function processCredentialDelivery(
     );
     return String(cur?.delivery_status || "") === "delivered";
   }
-  const link = await queryFirst(`SELECT * FROM wr_order_links WHERE id=?`, linkId).catch(() => null);
+  const link = await queryFirst(`SELECT l.*, o.sales_channel AS order_sales_channel
+    FROM wr_order_links l JOIN orders o ON o.code=l.order_code WHERE l.id=?`, linkId).catch(() => null);
   if (!link || !link.wr_account_details) {
     await execRun(`UPDATE wr_order_links SET delivery_status='failed', delivery_last_error='no_credential' WHERE id=?`, linkId).catch(
       () => undefined,
@@ -1064,6 +1074,33 @@ export async function processCredentialDelivery(
     ).catch(() => undefined);
     return true;
   }
+  if (link.delivery_channel === "whatsapp" || link.order_sales_channel === "whatsapp") {
+    const orderCode = String(link.order_code);
+    const order = await queryFirst("SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'", orderCode);
+    if (order) {
+      if (!link.fulfillment_item_id) await ensureFulfillmentItems(order, db);
+      const itemId = await bindWrLinkToFulfillmentItem(linkId, db);
+      // A WR "delivered" item with no completed transport is only stored, not
+      // handed over. Leave genuinely delivered/manual-handover rows alone.
+      if (!itemId) throw new Error("legacy_whatsapp_handover_item_missing");
+      const manual = await execRun(`UPDATE fulfillment_items SET status='manual_required', locked_until=NULL,
+        delivered_ciphertext=COALESCE(delivered_ciphertext,?), delivered_iv=COALESCE(delivered_iv,?),
+        updated_at=datetime('now') WHERE id=? AND order_code=? AND status!='sending'
+        AND (status!='delivered' OR delivered_message_id GLOB 'wr:*')
+        AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%'`, link.wr_account_details, link.wr_account_iv, itemId, orderCode);
+      if (!manual.changes && !(await queryFirst(`SELECT id FROM fulfillment_items WHERE id=? AND status='delivered'`, itemId))) {
+        throw new Error("legacy_whatsapp_handover_item_busy");
+      }
+      // WR completion may have marked the aggregate delivered before transport.
+      await execRun(`UPDATE orders SET fulfillment_status='manual_required',updated_at=datetime('now')
+        WHERE code=? AND status='lunas' AND payment_status='paid'
+        AND EXISTS(SELECT 1 FROM fulfillment_items WHERE id=? AND status='manual_required')`, orderCode, itemId);
+    }
+    await execRun(`UPDATE wr_order_links SET delivery_status='failed',delivery_last_error=?,
+      delivered_at=NULL,delivery_next_attempt_at=NULL,updated_at=datetime('now') WHERE id=? AND delivery_last_error=?`,
+      WR_MANUAL_WA, linkId, `lease:${leaseOwner}`);
+    return false;
+  }
   // Lengkapi langkah completion yang mungkin terputus (bind → settle →
   // agregat) SEBELUM mengirim: panel /pesanan + tombol Ambil Detail Produk
   // membaca fulfillment_items, bukan wr_order_links. Idempoten.
@@ -1083,10 +1120,10 @@ export async function processCredentialDelivery(
     // Normalisasi display di USE-time (2026-09-18 sore): data lama yang
     // tersimpan sebagai JSON mentah `{"product":..,"details":"a:\r\nb"}`
     // (bukti prod: link 95FC8669 tampil mentah di panel) diformat rapi
-    // SEKARANG untuk SEMUA kanal (panel, WA, email, Telegram) — tanpa
+    // SEKARANG untuk SEMUA kanal (panel, email, Telegram) — tanpa
     // mengubah ciphertext yang tersimpan.
     const plaintext = normalizeAccountDetailsForDisplay(stored);
-    const channel = String(link.delivery_channel || "web") as WrDeliveryChannel;
+    const channel = String(link.delivery_channel || "web");
     if (channel === "web") {
       // Web: tidak ada push channel. Delivery = token capability diterbitkan
       // durable (lihat issueCredentialToken). settled saat token ada.
@@ -1100,36 +1137,8 @@ export async function processCredentialDelivery(
       if (!token && !(await hasValidCredentialToken(String(link.order_code), db))) {
         throw new Error("capability_token_issue_failed");
       }
-      // Kabari pembeli lewat WA (2026-09-18). Wajib sejak kelas antrean ikut
-      // auto-order: tunggunya bisa berjam-jam, jadi pembeli sudah menutup
-      // halaman dan tidak akan tahu produknya siap.
-      await notifyWebBuyerCredentialsReady(String(link.order_code), db).catch(() => undefined);
-      // Kirim ISI kredensial via WA + email (keputusan owner 2026-09-18,
-      // Fase B). Pembeli MBO menunggu jam-jaman — kabar + tautan saja tidak
-      // cukup; mereka harus menerima detailnya di kontaknya langsung.
-      // Keduanya best-effort idempoten: kegagalan salah satu TIDAK
-      // menggagalkan delivery (token + panel tetap jalan sebagai jalur
-      // pengambilan), tapi dicatat di last_error untuk retry berikutnya.
-      // Urutan: WA dulu (kontak utama checkout), lalu email.
-      const webPushErrors: string[] = [];
-      try {
-        await deliverWebCredentialViaWhatsApp(String(link.order_code), plaintext, db);
-      } catch (e) { webPushErrors.push(`wa:${e instanceof Error ? e.message : String(e)}`); }
-      try {
-        await deliverWebCredentialViaEmail(String(link.order_code), plaintext, db, { resend: accountUpdated });
-      } catch (e) { webPushErrors.push(`email:${e instanceof Error ? e.message : String(e)}`); }
-      if (webPushErrors.length === 2) {
-        // Dua-duanya gagal = tidak ada jalur push yang sampai; tandai agar
-        // retry berikutnya mencoba lagi (jangan settled diam-diam).
-        throw new Error(webPushErrors.join(" | ").slice(0, 300));
-      }
-      if (webPushErrors.length === 1) {
-        await execRun(
-          `UPDATE wr_order_links SET delivery_last_error=? WHERE id=?`,
-          `web_push_partial: ${webPushErrors[0].slice(0, 200)}`,
-          linkId,
-        ).catch(() => undefined);
-      }
+      // Preserve panel settlement even if the email push is unavailable.
+      await deliverWebCredentialViaEmail(String(link.order_code), plaintext, db, { resend: accountUpdated }).catch(() => undefined);
     } else if (channel === "telegram") {
       await deliverTelegramCredential(String(link.order_code), plaintext, db, String(link.wr_variant_id));
       // Salinan email (2026-11-04) untuk pembeli Telegram dengan produk wajib-email.
@@ -1142,7 +1151,7 @@ export async function processCredentialDelivery(
         }
       } catch { /* email best-effort */ }
     } else {
-      await deliverWhatsAppCredential(String(link.order_code), plaintext, db);
+      throw new Error("unsupported_delivery_channel");
     }
     const now = new Date().toISOString();
     await execRun(
@@ -1282,10 +1291,10 @@ export async function processDueCredentialDeliveries(
   const due = await db
     .queryAll(
       `SELECT id FROM wr_order_links
-       WHERE delivery_status IN ('queued','failed')
+       WHERE (delivery_status IN ('queued','failed') OR ${WA_WR_UNSENT}) AND COALESCE(delivery_last_error,'')!=?
          AND (delivery_next_attempt_at IS NULL OR datetime(delivery_next_attempt_at) <= datetime('now'))
        ORDER BY delivery_next_attempt_at ASC, id ASC LIMIT ?`,
-      Math.max(1, Math.min(limit, 20)),
+      WR_MANUAL_WA, Math.max(1, Math.min(limit, 20)),
     )
     .catch(() => [] as Record<string, unknown>[]);
   const paceMs = options.paceMs ?? (process.env.NODE_ENV === "test" ? 0 : 1_000);
@@ -1325,135 +1334,11 @@ async function deliverTelegramCredential(orderCode: string, plaintext: string, d
 }
 
 /**
- * Pemberitahuan WA untuk pembeli channel WEB saat detail akun siap.
- * Sengaja TIDAK mengirim kredensial: isinya hanya kabar + tautan invoice,
- * karena pengambilan tetap wajib verifikasi nomor WA + capability token.
- * Best-effort dan idempoten (kunci outbox per order): kegagalan kirim tidak
- * boleh menggagalkan delivery — token sudah terbit dan panel sudah bisa
- * dipakai, jadi kabar adalah nilai tambah, bukan syarat settled.
- */
-async function notifyWebBuyerCredentialsReady(orderCode: string, db: DatabaseAccess): Promise<void> {
-  if (process.env.WHATSAPP_ENABLED !== "true") return;
-  // Kill-switch DM kredensial (19 Sep 2026, default mati pasca-restriction nomor
-  // BOT — memulai chat baru = yang dibatasi WA). Skip DIAM agar delivery tetap
-  // settled via email + panel; kode + mekanisme UTUH, nyalakan via env.
-  if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) return;
-  const order = await db
-    .queryFirst(`SELECT customer_wa, items FROM orders WHERE code=?`, orderCode)
-    .catch(() => null);
-  const target = String(order?.customer_wa || "").trim();
-  if (!target) return;
-  const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
-  const productNames = parseProductNames(order?.items);
-  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
-  const invoiceUrl = `${siteUrl}/pesanan/${orderCode}`;
-  await enqueueWhatsAppMessage(
-    waOutboxKey("text", `wr-web-ready:${orderCode}`),
-    target,
-    `*PESANAN AXVARA SUDAH SIAP!*\nOrder: ${orderCode}\n${productNames}\n\n`
-      + `Buka halaman pesanan untuk melihat detail akunmu:\n${invoiceUrl}\n\n`
-      + `Masukkan nomor WA ini saat diminta.`,
-  );
-}
-
-async function deliverWhatsAppCredential(orderCode: string, plaintext: string, db: DatabaseAccess): Promise<void> {
-  // Kill-switch DM kredensial (lihat notifyWebBuyerCredentialsReady).
-  //
-  // WAJIB THROW, bukan `return` diam (2026-09-22). Beda tegas dengan
-  // `deliverWebCredentialViaWhatsApp` di bawah: pembeli kanal WEB punya jalur
-  // pengambilan lain (token capability + panel pesanan + email), jadi skip DM
-  // di sana memang "settled". Pembeli kanal WHATSAPP tidak punya jalur lain —
-  // tidak ada panel, tidak ada email wajib. `return` diam membuat pemanggil
-  // (processCredentialDelivery) menulis `delivery_status='delivered'` padahal
-  // NOL pesan terkirim: pembeli melihat "Selesai" dan menerima nihil,
-  // sementara admin mengira beres. Dengan throw, link jatuh ke jalur retry →
-  // `failed` → antrean handover manual yang terlihat admin.
-  if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) {
-    throw new Error("whatsapp_credential_dm_disabled");
-  }
-  const order = await db
-    .queryFirst(`SELECT channel_member_id, customer_wa FROM orders WHERE code=?`, orderCode)
-    .catch(() => null);
-  if (!order) throw new Error("order_not_found");
-  // HANYA DM: channel_member_id (DM) diutamakan; customer_wa sebagai fallback
-  // DM. TIDAK PERNAH ke channel_conversation_id (grup).
-  const target = String(order.channel_member_id || order.customer_wa || "");
-  if (!target) throw new Error("no_whatsapp_dm_target");
-  const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
-  const productNames = parseProductNames(order.items);
-  const queued = await enqueueWhatsAppMessage(
-    waOutboxKey("text", `wr-delivery:${orderCode}`),
-    target,
-    `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}\n${productNames}\n\nDetail akses:\n${plaintext}\n\nSimpan baik-baik.`,
-  );
-  if (!queued) throw new Error("whatsapp_outbox_enqueue_failed");
-  // Outbox = durable queue: cron WA mengirimnya; delivery WR settled saat
-  // pesan durable di antrean (kontrak outbox: retry sampai sent/dead).
-}
-
-/** Potong teks panjang menjadi beberapa pesan WA (maks ~1500 char/pesan).
- *  Batas formatter 2000 char → maksimal 2 pesan. */
-function splitWaMessages(text: string, maxLen = 1500): string[] {
-  if (text.length <= maxLen) return [text];
-  const out: string[] = [];
-  let rest = text;
-  while (rest.length > 0 && out.length < 3) {
-    if (rest.length <= maxLen) { out.push(rest); break; }
-    let cut = rest.lastIndexOf("\n", maxLen);
-    if (cut < maxLen * 0.5) cut = maxLen;
-    out.push(rest.slice(0, cut));
-    rest = rest.slice(cut).replace(/^\n+/, "");
-  }
-  return out;
-}
-
-/**
- * Isi kredensial untuk pembeli channel WEB via WA (Fase B, 2026-09-18).
- * Beda dari notifyWebBuyerCredentialsReady (kabar + tautan): ini mengirim
- * ISI detail akun — keputusan owner agar pembeli MBO yang menunggu
- * jam-jaman menerima produknya di kontaknya langsung.
- * Idempoten via kunci outbox `wr-delivery:<code>[:pN]` — retry tidak ganda.
- * Hanya DM (customer_wa checkout); tidak pernah ke grup.
- */
-export async function deliverWebCredentialViaWhatsApp(
-  orderCode: string,
-  plaintext: string,
-  db: DatabaseAccess,
-): Promise<void> {
-  if (process.env.WHATSAPP_ENABLED !== "true") throw new Error("whatsapp_disabled");
-  // Kill-switch DM kredensial (lihat notifyWebBuyerCredentialsReady). Beda dari
-  // fungsi di atas: pemanggil (processCredentialDelivery) mengandalkan throw
-  // untuk tahu push gagal — tapi saat flag mati, skip = settled via email/panel,
-  // jadi return diam agar TIDAK menggagalkan delivery.
-  if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) return;
-  const order = await db
-    .queryFirst(`SELECT customer_name, customer_wa, items FROM orders WHERE code=?`, orderCode)
-    .catch(() => null);
-  if (!order) throw new Error("order_not_found");
-  const target = String(order.customer_wa || "").trim();
-  if (!target) throw new Error("no_whatsapp_target");
-  const { enqueueWhatsAppMessage, waOutboxKey } = await import("@/lib/whatsapp/outbox");
-  const productNames = parseProductNames(order.items);
-  const firstName = String(order.customer_name || "").trim().split(/\s+/)[0] || "Kak";
-  const chunks = splitWaMessages(plaintext);
-  for (let i = 0; i < chunks.length; i++) {
-    const part = chunks.length > 1 ? ` (bagian ${i + 1}/${chunks.length})` : "";
-    const queued = await enqueueWhatsAppMessage(
-      waOutboxKey("text", `wr-delivery:${orderCode}${chunks.length > 1 ? `:p${i + 1}` : ""}`),
-      target,
-      `*DETAIL AKUN SIAP — ${orderCode}*${part}\nHalo ${firstName}, ini detail ${productNames} kamu:\n\n${chunks[i]}\n\n`
-      + `Simpan baik-baik dan JANGAN bagikan ke siapa pun.`,
-    );
-    if (!queued) throw new Error("whatsapp_outbox_enqueue_failed");
-  }
-}
-
-/**
  * Isi kredensial untuk pembeli channel WEB via email (Fase B, 2026-09-18).
  * Template "Detail Akun Siap" via Resend (lihat buildCredentialReadyTemplate).
  * Idempoten via `wr_email_forward_log` kunci `wr-cred-email:<order>` —
  * retry delivery tidak mengirim email ganda. Pembeli tanpa email = skip
- * diam (bukan error): jalur WA + panel tetap mencakupnya.
+ * diam (bukan error): panel tetap mencakupnya.
  */
 export async function deliverWebCredentialViaEmail(
   orderCode: string,

@@ -1,16 +1,18 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
-Privasi broadcast grup 21 November 2026 (audit FX-13, lokal): notifikasi LUNAS
-order WA historis (`paymentDetectedMessage`, `src/lib/whatsapp/messages.ts`)
-kini menyamarkan kode order (`maskOrderCode`, kepala + `••••` + 4 ekor) dan
-nominal (`MASKED_TOTAL = "Rp•••••"`) karena grup dibaca seluruh anggota; nada
-perayaan + nama produk + ucapan terima kasih dipertahankan, kalimat penutup
-netral "Pesanan lunas sedang diproses admin. Pembeli tidak perlu membayar ulang."
-(menggantikan "Pesanan kamu…" yang ambigu di grup). Jangan mengembalikan kode
-order/nominal persis ke broadcast grup. Teks QRIS kedaluwarsa WA juga diperbaiki
-menjadi "QRIS di grup WhatsApp tidak bisa diperpanjang; buat pesanan baru di
-website atau Telegram" — order WA memang dikecualikan dari reissue
-(`sales_channel !== 'whatsapp'`), jadi ini akurat per-kanal, bukan klaim global.
+**21 November 2026 — keputusan owner (FX-15, implementasi lokal):** kanal jual
+sekarang dan ke depan hanya **web dan bot Telegram**. Grup WhatsApp bukan kanal
+jual; pertahankan promo/siaran dan sambutan yang sudah ada. `.d` khusus admin,
+`garansi`, arahan untuk intent belanja lama, dan hub `/wa` untuk bantuan yang
+dimulai pembeli tetap tersedia, bukan jalur pemesanan/pembayaran. Jangan tambahkan
+lagi checkout, unggah bukti, notifikasi transaksi grup, atau DM pembayaran,
+pengingat, kedaluwarsa maupun kredensial. `/send` grup, auth/webhook, dan cron
+outbox bersama tetap; `/send-image` lama tidak dipakai dan dihapus.
+
+Order WA historis tetap terbaca di admin/laporan tanpa migrasi; notifikasi lunas
+internal di grup admin Telegram dan expiry stok tetap berjalan. Order lunas yang
+belum diserahkan masuk handover manual admin, bukan dikirim ulang oleh bot WA.
+Antrean transaksi WA lama dipensiunkan ke `dead`, tanpa menghapus riwayat.
 
 Auth webhook header-only 21 November 2026 (audit AU-B1-2, lokal): `authenticateWebhook`
 (`src/lib/whatsapp/gateway.ts`) HANYA menerima token dari header `x-webhook-token`

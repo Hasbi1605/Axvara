@@ -1,6 +1,11 @@
 # Rencana Eksekusi — Varian Produk Terpusat dan Bot Grup WhatsApp AXVARA
 
-**Status:** implemented, cross-checked, dan hardened
+**Status:** dokumen historis. **21 November 2026 — keputusan owner:** hanya web
+dan bot Telegram kanal jual. Bagian katalog transaksi, pemesanan/pembayaran,
+bukti, notifikasi dan fulfillment WA di bawah bukan kontrak aktif atau izin
+rollout. Grup WA hanya untuk promo/siaran dan sambutan existing, dengan balasan
+dukungan; lihat [aturan gateway](agent-rules/whatsapp-gateway.md) dan
+ARCHITECTURE §16.12 untuk kontrak saat ini. Data historis tetap disimpan.
 
 > Pembaruan transport 5 September 2026: runtime produksi telah beralih penuh
 > ke Baileys pada gateway Heroku. Referensi Fonnte di dokumen rencana ini
@@ -1060,9 +1065,9 @@ Flag minimum:
 - WHATSAPP_GROUP_DISCOVERY;
 - WHATSAPP_GROUP_PAYMENT;
 - WHATSAPP_PROOF_INTAKE;
-- WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT;
+- gate bukti fulfillment WA (legacy, sudah dihapus);
 - WHATSAPP_KLIKQRIS;
-- WHATSAPP_FULFILLMENT.
+- gate fulfillment WA (legacy, sudah dihapus).
 
 Urutan aktivasi:
 

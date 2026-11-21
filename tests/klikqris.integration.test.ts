@@ -60,7 +60,8 @@ afterEach(()=>{fixture.close();vi.unstubAllGlobals();vi.unstubAllEnvs();vi.resto
 async function seed(code=A,channel:"telegram"|"web"|"whatsapp"="telegram"){
  await createChannelOrderAtomic({orderCode:code,lines:[{productId:1,variantId:1,qty:1,fulfillmentMode:"manual",stock:100}],
   items:[{product_id:1,variant_id:1,qty:1,price:1000,name:"Fixture"}],variantSnapshot:"{}",subtotal:1000,
-  primaryVariantId:1,customerName:"Fixture",salesChannel:channel,paymentMethod:"qris",paymentAccount:"QRIS",fulfillmentStatus:"not_required"});
+  primaryVariantId:1,customerName:"Fixture",salesChannel:channel==="whatsapp"?"web":channel,paymentMethod:"qris",paymentAccount:"QRIS",fulfillmentStatus:"not_required"});
+ if(channel==="whatsapp")fixture.sql.prepare("UPDATE orders SET sales_channel='whatsapp' WHERE code=?").run(code);
 }
 async function checkout(code=A){await seed(code);return createActiveQrisInvoice(code,1000);}
 const row=(code=A)=>fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;

@@ -96,11 +96,11 @@ describe("kanal web: kabar pembeli lewat email", () => {
     expect(ledger(`email:delivery-failed:${CODE}`)).toBe("sent");
   });
 
-  it("order web lama tanpa email tetap jatuh ke outbox WA (perilaku lama)", async () => {
+  it("order web lama tanpa email tidak mengirim ke WhatsApp", async () => {
     webOrder(null);
-    expect(await notifyBuyerDeliveryFailed(CODE, createDatabaseAccess(fx.db))).toBe(true);
+    expect(await notifyBuyerDeliveryFailed(CODE, createDatabaseAccess(fx.db))).toBe(false);
     expect(sendForwardEmail).not.toHaveBeenCalled();
-    expect(outboxRows()).toBe(1);
+    expect(outboxRows()).toBe(0);
   });
 
   it("Telegram: kabar yang sama tidak terkirim dua kali", async () => {

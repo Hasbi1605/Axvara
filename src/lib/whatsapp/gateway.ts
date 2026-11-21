@@ -70,14 +70,6 @@ export function normalizeWhatsAppTarget(raw: unknown): string {
   return target;
 }
 
-export type SendImageParams = {
-  target: string;
-  imageUrl: string;
-  caption?: string;
-  inboxId?: string; // reply to incoming inboxid
-  filename?: string;
-};
-
 // ---- Timing-Safe Comparison ----
 
 /**
@@ -251,16 +243,6 @@ export async function salesGatewayControl(action: "status" | "pair" | "number", 
   const body = await response.json();
   if (!response.ok) throw new Error(body.reason || "Gateway WhatsApp belum siap.");
   return body as { connected: boolean; botNumber: string; botRevision?: string; groupId?: string; groupName?: string; groupSubject?: string; pairingCode?: string; error?: string; blocked?: boolean };
-}
-
-export function sendImageMessage(params: SendImageParams): Promise<WhatsAppSendResult> {
-  return callGateway("/send-image", {
-    target: normalizeWhatsAppTarget(params.target),
-    imageUrl: params.imageUrl,
-    caption: params.caption,
-    inboxId: params.inboxId,
-    filename: params.filename,
-  }, 20_000);
 }
 
 // ---- SSRF-Safe Media Download ----

@@ -369,54 +369,6 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
   return mapVariant(row);
 }
 
-// ---- Bot name search (Telegram/WhatsApp) ----
-
-export async function searchProductByName(input: string): Promise<{ exact: ProductSummary | null; candidates: ProductSummary[] }> {
-  const normalized = normalizeInput(input);
-  const products = await listActiveProducts();
-
-  // 1. Exact name match
-  const exactName = products.find(p => normalizeInput(p.name) === normalized);
-  if (exactName) return { exact: exactName, candidates: [] };
-
-  // 2. Exact slug match
-  const exactSlug = products.find(p =>
-    p.slug.toLowerCase() === input.trim().toLowerCase()
-    || normalizeInput(p.slug) === normalized
-  );
-  if (exactSlug) return { exact: exactSlug, candidates: [] };
-
-  // 3. Exact search-keyword alias match
-  const exactAlias = products.find(p => p.aliases.some(a => normalizeInput(a) === normalized));
-  if (exactAlias) return { exact: exactAlias, candidates: [] };
-
-  // 4. WhatsApp display aliases may intentionally be shared by related
-  // products. A unique exact match can open directly; duplicates remain a
-  // candidate list instead of silently selecting the first product.
-  const displayAliasMatches = products.filter(
-    p => p.whatsappAlias && normalizeInput(p.whatsappAlias) === normalized,
-  );
-  if (displayAliasMatches.length === 1) {
-    return { exact: displayAliasMatches[0], candidates: [] };
-  }
-  if (displayAliasMatches.length > 1) {
-    return { exact: null, candidates: displayAliasMatches.slice(0, 5) };
-  }
-
-  // 5. Prefix/contains match (max 5 candidates)
-  const candidates = products.filter(p => {
-    const n = normalizeInput(p.name);
-    return n.includes(normalized) || normalized.includes(n) ||
-      (p.whatsappAlias ? normalizeInput(p.whatsappAlias).includes(normalized) || normalized.includes(normalizeInput(p.whatsappAlias)) : false) ||
-      p.aliases.some(a => {
-        const na = normalizeInput(a);
-        return na.includes(normalized) || normalized.includes(na);
-      });
-  }).slice(0, 5);
-
-  return { exact: null, candidates };
-}
-
 // ---- Format helpers ----
 
 export function formatDuration(v: Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">>): string {
@@ -593,10 +545,6 @@ export function formatRupiah(amount: number): string {
 }
 
 // ---- Internal helpers ----
-
-function normalizeInput(input: string): string {
-  return input.toLowerCase().trim().replace(/\s+/g, " ").replace(/[^\w\s]/g, "");
-}
 
 function parseAliases(raw: unknown): string[] {
   if (!raw) return [];

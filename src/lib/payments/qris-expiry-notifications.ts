@@ -3,10 +3,9 @@ import { sendMessage } from "@/lib/telegram/api";
 import { paymentExpiredKeyboard, qrisExpiredKeyboard } from "@/lib/telegram/keyboards";
 import { orderCancelledMessage, orderExpiredMessage, qrisExpiredMessage } from "@/lib/telegram/messages/status";
 import { invoiceItemSummary } from "@/lib/telegram/messages/format";
-import { qrisExpiredMessage as waExpiredMessage } from "@/lib/whatsapp/messages";
 
 // Separate invoice expiry (one renewal available) from terminal order expiry.
-// A persisted marker retries failed Telegram sends; WA uses its durable outbox.
+// A persisted marker retries failed Telegram and web sends.
 //
 // Kanal WEB disertakan sejak 2026-09-23 (F7). Sebelumnya filter hanya
 // `('telegram','whatsapp')` sehingga pembeli web TIDAK PERNAH diingatkan —
@@ -46,11 +45,11 @@ const NEW_RAIL_TERMINAL_NOTICE_WHERE = `(o.sales_channel='telegram' AND COALESCE
  * payment_transactions pt`): QRIS branches need a TX row, the new-rail branch
  * also covers terminal orders that never got one. */
 export const QRIS_EXPIRY_NOTICE_WHERE = `((pt.provider IN ('dana','gopay')
-  AND o.sales_channel IN ('telegram','whatsapp','web')
+  AND o.sales_channel IN ('telegram','web')
   AND CASE o.sales_channel
         WHEN 'web' THEN TRIM(COALESCE(o.customer_email,''))!=''
         WHEN 'telegram' THEN COALESCE(o.telegram_chat_id,'')!=''
-        ELSE COALESCE(o.channel_conversation_id,'')!='' END
+        ELSE FALSE END
   AND ((o.status='pending' AND pt.status='pending' AND o.sales_channel IN ('telegram','web')
         AND o.qris_reissue_count=0 AND julianday(o.expires_at)>julianday('now')
         AND julianday(pt.expires_at)<=julianday('now')
@@ -177,7 +176,7 @@ export async function sendQrisExpiryNotifications(
   // giliran adil. Di dalam jalur, yang TERBARU dulu agar baris gagal tenggelam.
   const rows = await database.queryAll(`SELECT * FROM (
       SELECT o.code, o.status, o.sales_channel, o.telegram_chat_id, o.items,
-        o.channel_conversation_id, o.customer_email, pt.expires_at, pt.provider, o.payment_method, o.locale,
+        o.customer_email, pt.expires_at, pt.provider, o.payment_method, o.locale,
         ROW_NUMBER() OVER (PARTITION BY o.status='pending'
                            ORDER BY julianday(COALESCE(pt.expires_at,o.expires_at)) DESC, o.code) AS lane_rank
       FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
@@ -187,7 +186,6 @@ export async function sendQrisExpiryNotifications(
   const paceMs = options.paceMs ?? (process.env.NODE_ENV === "test" ? 0 : 1_000);
   const sleep = options.sleepImpl ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   let sent = 0;
-  let whatsappQueued = 0;
   let emailSent = 0;
   let emailCalls = 0;
   for (const row of rows) {
@@ -199,14 +197,7 @@ export async function sendQrisExpiryNotifications(
     const state = terminal ? "terminal" : "renewable";
     const code = String(row.code);
     try {
-      if (row.sales_channel === "whatsapp") {
-        if (!row.channel_conversation_id) continue;
-        await database.execRun(`INSERT OR IGNORE INTO whatsapp_outbox
-          (idempotency_key,channel,destination,message_type,payload,status,attempt_count,next_attempt_at)
-          VALUES (?,'whatsapp',?,'text',?,'pending',0,datetime('now'))`,
-          `wa:qris-expired:${code}`, String(row.channel_conversation_id), waExpiredMessage(code));
-        whatsappQueued++;
-      } else if (row.sales_channel === "web") {
+      if (row.sales_channel === "web") {
         // Web tidak punya kanal chat: satu-satunya jalur push adalah email.
         // Baris tanpa email sudah disaring WHERE; guard ini hanya pengaman.
         const to = String(row.customer_email || "").trim();
@@ -243,5 +234,5 @@ export async function sendQrisExpiryNotifications(
       sent++;
     } catch { /* Leave marker unset: next cron retries. */ }
   }
-  return { sent, whatsappQueued, emailSent };
+  return { sent, emailSent };
 }
