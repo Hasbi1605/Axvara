@@ -527,8 +527,8 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | Kode | Kelas | Status | Catatan |
 |---|---|---|---|
 | Fase 0 | T/B | deploy ✓ `6ae08195`; push `ad711d6f` | 21 Nov |
-| T1 | T | WR/SK lokal (commit ini); supplier kecil belum | Premium sukses 5 stmt (6 invite) di luar scan; angka Jaspay 29 khusus fixture, bukan batas umum |
-| T2 | T | belum | |
+| T1 | T | lokal (WR/SK `f3fd8cca`, supplier kecil commit T2) | Premium sukses 5 stmt (6 invite) di luar scan; angka Jaspay 29 khusus fixture, bukan batas umum |
+| T2 | T | lokal | Terukur: create 2/2/2/3, process sukses 21/21/21/23, retryable 18/18/18/23, retry sukses 13/13/13/14, retry retryable 10/10/10/14 (menggantikan angka MAP-2). TUNVN menyelesaikan receipt terlambat pada lease kedaluwarsa pemilik sama = perilaku sah (§3.3), A4 tidak boleh menyamakan. Total TUNVN 23 memakai notify-buyer asli: perubahan notify bisa mengubahnya |
 | T3 | T | lokal | 33 `it.fails` untuk B3b/B4b/B5/2C |
 | T4 | T | belum | |
 | T5 | T | belum | |
