@@ -311,8 +311,9 @@ perbaiki diam-diam, dan jangan ubah `src/`.
 - Sebelum B3: sweep NULL vs `''`, refund/last attempt, dan link yang sudah terkirim tetap
   recoverable.
 - Sebelum B4: advance terminal/processing, replay, loss, dan webhook yang menang.
-- Kasus acceptance untuk B3b, B4b, B5, dan 2C disiapkan sebagai test berbadan, lalu
-  diaktifkan dan dibuktikan lulus di langkah B masing-masing.
+- Kasus acceptance untuk B3b, B4b, B5, dan 2C disiapkan sebagai test berbadan `it.fails`
+  (gagal = bug tereproduksi; diratifikasi PM 21 Nov), lalu dibalik menjadi `it` biasa dan
+  dibuktikan lulus di langkah B masing-masing.
 
 **T4: cron** (prasyarat 3A, 3C; MAP-1 (b)§5, (c)§5)
 - (i) Snapshot golden **seluruh** objek `results` cron operations, yaitu 72 kunci terukur
@@ -360,11 +361,15 @@ perbaiki diam-diam, dan jangan ubah `src/`.
   terkait, dan workerd lulus tanpa perubahan assertion. Statement count sesuai T1/T2.
 
 **2B: State machine WR/SK (refactor #3).** Lampiran MAP-3 §6. Urutan default:
-**B1 → B2 → B3 → B3b → B4 → B4b → B5 → 2C**.
+**B1 → B2 → B2b → B3 → B3b → B4 → B4b → B5 → 2C**.
 - **B1 (E):** backoff/rank murni, predikat eligibility paid/enabled, dan wrapper admin
   retry.
 - **B2 (E):** helper klaim fresh/inline dan send-fence di callsite nyata. Gate 6/6–14 dan
   seleksi due tidak berubah.
+- **B2b (B):** CAS receipt Premium (`wr_order_id IS NULL OR =?`) diselaraskan dengan klaim/sweep
+  (`COALESCE(wr_order_id,'')=''`) agar baris invoice kosong `''` (hanya data lama; tidak ada
+  penulis `''`) tetap menerima invoice yang diterima. Tanpa jalur pembelian kedua (temuan T3,
+  diverifikasi Wonder).
 - **B3 (E):** ekstraksi sweep unsent.
 - **B3b (B), yaitu R1:** tambah `EXISTS` lunas/paid/enabled **hanya** pada UPDATE bulk
   requeue klaim kedaluwarsa yang tanpa sent marker dan tanpa invoice. Bukan pada jalur
@@ -522,9 +527,9 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | Kode | Kelas | Status | Catatan |
 |---|---|---|---|
 | Fase 0 | T/B | deploy ✓ `6ae08195`; push `ad711d6f` | 21 Nov |
-| T1 | T | belum | |
+| T1 | T | WR/SK lokal (commit ini); supplier kecil belum | Premium sukses 5 stmt (6 invite) di luar scan; angka Jaspay 29 khusus fixture, bukan batas umum |
 | T2 | T | belum | |
-| T3 | T | belum | |
+| T3 | T | lokal | 33 `it.fails` untuk B3b/B4b/B5/2C |
 | T4 | T | belum | |
 | T5 | T | belum | |
 | T6 | T | belum | |
@@ -535,6 +540,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | A4 TUNVN | E | belum | |
 | B1 | E | belum | |
 | B2 | E | belum | |
+| B2b (invoice kosong) | B | belum | |
 | B3 | E | belum | |
 | B3b (R1) | B | belum | |
 | B4 | E | belum | |
