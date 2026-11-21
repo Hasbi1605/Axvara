@@ -3,7 +3,7 @@
 // ORDER BY are served by idx_orders_expires_dt (status, datetime(expires_at)).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
-import { EXPIRED_ORDER_CANDIDATES_SQL } from "@/app/api/cron/publish-scheduled/route";
+import { EXPIRED_ORDER_CANDIDATES_SQL } from "@/lib/expiry";
 
 let f: ReturnType<typeof createD1Fixture>;
 beforeEach(() => {
