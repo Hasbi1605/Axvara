@@ -2104,7 +2104,8 @@ axvara/
 │   │   └── catalog-sweep.ts    # gerbang waktu sweep WR/SK 14/60 mnt + freshness diff 10 mnt (3C-1)
 │   ├── cron/lite/
 │   │   ├── jobs.ts             # daftar job dan tipe LiteJob, tanpa impor
-│   │   └── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis
+│   │   ├── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis
+│   │   └── jobs/               # badan job yang dipindah dari route (3A): promo.ts, cleanup.ts; dipanggil via await import()
 │   ├── fulfillment/
 │   │   ├── deliver.ts           # BARREL
 │   │   └── delivery/            # claim, send, process, ensure, reconcile, handover,
