@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap A4 (kelas E): TUNVN memakai `isPaidOrder` untuk dua cek JS yang identik token-per-token; keempat predikat SQL, klaim CASE milik adapter, auto-recovery, `reconcileId` dan larangan auto-replay tetap lokal; jumlah statement tetap (create 3, process 23/23, retry 14/14). 2A selesai dengan hasil akhir yang sengaja asimetris — `src/lib/tunvn/orders.ts`, `issue/2026-11-21-refactor-roadmap.md` — (verifikasi: small-suppliers + TUNVN + workerd 249/249 lulus tanpa ubah assertion; tsc 0; review Wonder APPROVE)
+
 - 2026-11-22 — Roadmap A3 (kelas E): StoreBat memakai `PAID_ORDER_SQL` + `claimLink`; predikat JS `paid` tetap lokal karena lebih ketat (`=== 0` menolak NaN/undefined), owner guard sadar-kedaluwarsa, replay `failed_no_charge` dan Muse Buff tidak berubah; jumlah statement tetap — `src/lib/storebat/orders.ts` — (verifikasi: small-suppliers + StoreBat + workerd 169/169 lulus tanpa ubah assertion; tsc 0; review Wonder APPROVE)
 
 - 2026-11-22 — Roadmap A2 (kelas E): Mirai memakai helper Tier-1 link-lease (predikat lunas + klaim); pagar pra-POST yang lebih sempit dan aturan replay GET-404 tetap lokal; jumlah statement tetap (create 2, process 21/18, retry 13/10) — `src/lib/mirai/orders.ts` — (verifikasi: small-suppliers + Mirai + workerd 165/165 lulus tanpa ubah assertion; tsc 0; review Wonder APPROVE)

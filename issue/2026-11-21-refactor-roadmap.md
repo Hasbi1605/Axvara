@@ -362,6 +362,12 @@ perbaiki diam-diam, dan jangan ubah `src/`.
 - Acceptance: `tests/characterization/small-suppliers-claim.test.ts`, test supplier
   terkait, dan workerd lulus tanpa perubahan assertion. Statement count sesuai T1/T2.
 
+**Hasil akhir 2A (22 Nov, sengaja asimetris; jangan "dirapikan" sebagai ekstraksi):**
+AIVault dan Mirai memakai predikat JS + SQL + `claimLink` bersama. StoreBat memakai SQL +
+`claimLink` bersama, tetapi cek JS `paid` tetap lokal karena lebih ketat (`=== 0`). TUNVN hanya
+memakai predikat JS bersama; empat predikat SQL dan klaim CASE tetap milik adapter. Menyatukan
+lebih jauh adalah perubahan kelas B.
+
 **2B: State machine WR/SK (refactor #3).** Lampiran MAP-3 §6. Urutan default:
 **B1 → B2 → B2b → B3 → B3b → B4 → B4b → B5 → 2C**.
 - **B1 (E):** backoff/rank murni, predikat eligibility paid/enabled, dan wrapper admin
@@ -540,7 +546,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | A1 AIVault | E | lokal (commit A1) | Wonder APPROVE |
 | A2 Mirai | E | lokal (commit A2) | Wonder APPROVE |
 | A3 StoreBat | E | lokal (commit A3) | Wonder APPROVE. Catatan: bila kelak predikat JS disatukan, bentuk ketat `=== 0` adalah kanonis dan itu perubahan kelas B |
-| A4 TUNVN | E | belum | |
+| A4 TUNVN | E | lokal (commit A4) | Wonder APPROVE |
 | B1 | E | belum | |
 | B2 | E | belum | |
 | B2b (invoice kosong) | B | belum | |

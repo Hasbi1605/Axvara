@@ -2,6 +2,7 @@ import { createDatabaseAccess,type DatabaseAccess } from "@/lib/db-access";
 import { encryptSecret,decryptSecret } from "@/lib/fulfillment/crypto";
 import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-binding";
 import { notifyBuyerTunvnProcessing } from "@/lib/notify-buyer";
+import { isPaidOrder } from "@/lib/suppliers/link-lease";
 import { isTunvnConfigured,isTunvnSyncEnabled,fetchTunvnProducts,fetchTunvnBalance } from "./client";
 import { buyTunvnProduct,orderTunvnBuff,tunvnRequest,tunvnBuffText,parseTunvnResponse,tunvnProviderId } from "./purchase";
 
@@ -36,10 +37,6 @@ class PreflightError extends Error {
 export function tunvnOrderLines(order:Row):Row[] {
   try { const items:unknown=JSON.parse(String(order.items ?? "[]")); return Array.isArray(items) ? items.map(item=>item && typeof item==="object" && !Array.isArray(item) ? item : {}) : []; } catch { return []; }
 }
-function paid(order:Row):boolean {
-  return order.status==="lunas" && order.payment_status==="paid" && (order.order_kind ?? "apps")==="apps"
-    && !Number(order.supplier_purchase_disabled) && ["web","telegram"].includes(String(order.sales_channel));
-}
 export function eligibleTunvnLine(value:unknown):Row|null {
   if (!value || typeof value!=="object" || Array.isArray(value)) return null;
   const item=value as Row;
@@ -59,7 +56,7 @@ export function eligibleTunvnLine(value:unknown):Row|null {
 export async function createTunvnOrderLinks(orderCode:string,db:DatabaseAccess=createDatabaseAccess()):Promise<number> {
   if (!db.d1 || !isTunvnConfigured() || !isTunvnSyncEnabled() || !db.canSpend(5)) return 0;
   const order=await db.queryFirst("SELECT * FROM orders WHERE code=?",orderCode);
-  if (!order || !paid(order)) return 0;
+  if (!order || !isPaidOrder(order)) return 0;
   const rows=tunvnOrderLines(order).flatMap((item,index)=>{
     const e=eligibleTunvnLine(item);
     if (!e) return [];
@@ -202,7 +199,7 @@ async function processLink(db:DatabaseAccess,id:number,reconcile=false,deadlineM
     const order=await db.queryFirst("SELECT * FROM orders WHERE code=?",link.order_code);
     const item=order ? tunvnOrderLines(order)[Number(link.item_index)] : null;
     const e=item ? eligibleTunvnLine(item) : null;
-    if (!order || !paid(order) || !e || e.kind!==link.kind || e.source_product_id!==link.source_product_id || item!.variant_id!==link.variant_id
+    if (!order || !isPaidOrder(order) || !e || e.kind!==link.kind || e.source_product_id!==link.source_product_id || item!.variant_id!==link.variant_id
       || item!.product_id!==link.product_id || item!.qty!==link.quantity || e.cost_usdt!==link.cost_usdt
       || (link.kind==="buff" && (item!.buyer_fields as Row)?.muse_invite_code!==link.invite_code)) { await settle(db,link,"needs_admin","snapshot_mismatch"); return { claimed:true, rateLimited:false }; }
     let fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index);
