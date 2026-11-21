@@ -1,5 +1,10 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## B4 22 Nov (lokal)
+
+- `src/lib/suppliers/purchase-state.ts` memuat rank status vendor dan CAS berdasarkan invoice terikat + status sebelumnya. Lookup, deduplikasi, replay, audit, dan efek lanjutan tetap di wrapper `deliver.ts` masing-masing supplier.
+- Hanya SK yang mengosongkan lease saat CAS advance menang (H5). WR tetap tidak melepas lease pada CAS ini; perubahan itu beserta jalur completion Premium/Jaspay masuk B4b.
+
 ## B3b/R1 22 Nov (lokal)
 
 - UPDATE bulk klaim kedaluwarsa WR/SK hanya mengembalikan link tanpa bukti

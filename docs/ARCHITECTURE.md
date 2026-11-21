@@ -2118,7 +2118,7 @@ axvara/
 │   │   └── checkout/guards.ts   # komputasi guard murni (email wajib, min/max qty, price_changed) atas baris yang dibaca route; baca DB, urutan, early return tetap di route (3B-3)
 │   ├── suppliers/
 │   │   ├── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault, Mirai, StoreBat; TUNVN hanya predikat JS)
-│   │   └── purchase-state.ts    # WR/SK: backoff, predikat paid/enabled dan Retry, CAS klaim fresh/inline, send fence sebelum POST, dan requeue bulk klaim kedaluwarsa yang belum terkirim (B3)
+│   │   └── purchase-state.ts    # WR/SK: backoff, eligibility, CAS klaim/send fence, requeue unsent, rank vendor dan CAS invoice/status (B4; replay/audit tetap per supplier)
 │   ├── telegram/
 │   │   ├── messages.ts          # BARREL
 │   │   ├── messages/            # format, catalog (detail ringkas; detail varian di keyboard), purchase, status, group, help, admin

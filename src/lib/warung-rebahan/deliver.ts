@@ -20,6 +20,7 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-binding";
 import { rewriteSupplierDocsLinks } from "@/lib/product-copy/format";
+import { casAdvanceBoundInvoice, supplierVendorStatusRank } from "@/lib/suppliers/purchase-state";
 import { decodeJaspayVariantId, isJaspayVariantId } from "./jaspay";
 import { persistJaspayProgress } from "./progress";
 import type { JaspayOrderResult } from "./client";
@@ -42,21 +43,8 @@ const WA_WR_UNSENT = `(delivery_status='delivered' AND delivery_channel='whatsap
     WHERE w.idempotency_key='wa:text:wr-delivery:' || wr_order_links.order_code
       AND w.status='dead'))`;
 
-/** Urutan monotonik status vendor: index naik = maju. Regresi dilarang. */
-const WR_STATUS_RANK: Record<string, number> = {
-  pending: 0,
-  claimed: 1,
-  retry: 1,
-  blocked_balance: 1,
-  submitted: 2,
-  ordering: 2,
-  processing: 3,
-  completed: 4,
-  failed: 4,
-};
-
 export function wrStatusRank(status: unknown): number {
-  return WR_STATUS_RANK[String(status)] ?? -1;
+  return supplierVendorStatusRank(status);
 }
 
 /**
@@ -118,28 +106,7 @@ export async function advanceWrLinkMonotonic(
     );
     return true;
   }
-  const now = new Date().toISOString();
-  const sets = [`status='${toStatus}'`, `last_event_at='${now}'`];
-  const values: unknown[] = [];
-  if (eventId) {
-    sets.push(`last_event_id=?`);
-    values.push(eventId);
-  }
-  if (fields) {
-    for (const [key, value] of Object.entries(fields)) {
-      sets.push(`${key}=?`);
-      values.push(value);
-    }
-  }
-  sets.push(`updated_at=datetime('now')`);
-  // CAS: hanya menang bila status saat ini masih `from` (fenced — worker
-  // lain yang sudah memajukan tidak ditimpa).
-  const res = await execRun(
-    `UPDATE wr_order_links SET ${sets.join(", ")} WHERE wr_order_id=? AND status=?`,
-    ...values,
-    wrOrderId,
-    from,
-  ).catch(() => ({ changes: 0 as number | undefined }));
+  const res = await casAdvanceBoundInvoice(execRun, "wr", wrOrderId, from, toStatus, fields, eventId);
   const applied = Number(res.changes ?? 0) > 0;
   await logWebhookEvent(
     db,

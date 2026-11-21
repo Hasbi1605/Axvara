@@ -552,7 +552,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | B2b (invoice kosong) | B | lokal (commit B2b) | Premium + Jaspay; Sol repro + Wonder APPROVE |
 | B3 | E | lokal (commit B3) | Wonder APPROVE |
 | B3b (R1) | B | lokal (commit B3b) | Sol repro + Wonder APPROVE; expected-fail 33→29 |
-| B4 | E | belum | |
+| B4 | E | lokal (commit B4, 22 Nov) | Rank dan CAS invoice/status bersama; pelepasan lease tetap khusus SK; B4b terpisah |
 | B4b (lease WR) | B | belum | |
 | B5 (R2) | B | belum | |
 | C1 (H4 migrasi) | B | belum | D1 disetujui |

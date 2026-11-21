@@ -18,6 +18,7 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { encryptSecret } from "@/lib/fulfillment/crypto";
 import { rewriteSupplierDocsLinks } from "@/lib/product-copy/format";
+import { casAdvanceBoundInvoice, supplierVendorStatusRank } from "@/lib/suppliers/purchase-state";
 import { normalizeAccountDetailsForDisplay } from "@/lib/warung-rebahan/deliver";
 import type { SkTrxDetail, SkWebhookEvent } from "./client";
 
@@ -31,20 +32,8 @@ export type SkOrderLinkRow = {
   status: string;
 };
 
-const SK_STATUS_RANK: Record<string, number> = {
-  pending: 0,
-  claimed: 1,
-  retry: 1,
-  blocked_balance: 1,
-  submitted: 2,
-  ordering: 2,
-  processing: 3,
-  completed: 4,
-  failed: 4,
-};
-
 export function skStatusRank(status: unknown): number {
-  return SK_STATUS_RANK[String(status)] ?? -1;
+  return supplierVendorStatusRank(status);
 }
 
 export async function advanceSkLinkMonotonic(
@@ -95,26 +84,7 @@ export async function advanceSkLinkMonotonic(
     );
     return true;
   }
-  const now = new Date().toISOString();
-  const sets = [`status='${toStatus}'`, `last_event_at='${now}'`, "lease_owner=NULL", "lease_expires_at=NULL"];
-  const values: unknown[] = [];
-  if (eventId) {
-    sets.push(`last_event_id=?`);
-    values.push(eventId);
-  }
-  if (fields) {
-    for (const [key, value] of Object.entries(fields)) {
-      sets.push(`${key}=?`);
-      values.push(value);
-    }
-  }
-  sets.push(`updated_at=datetime('now')`);
-  const res = await execRun(
-    `UPDATE sk_order_links SET ${sets.join(", ")} WHERE sk_invoice=? AND status=?`,
-    ...values,
-    skInvoice,
-    from,
-  ).catch(() => ({ changes: 0 as number | undefined }));
+  const res = await casAdvanceBoundInvoice(execRun, "sk", skInvoice, from, toStatus, fields, eventId);
   const applied = Number(res.changes ?? 0) > 0;
   if (applied) onAdvanced?.();
   await logSkWebhookEvent(

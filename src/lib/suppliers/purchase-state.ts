@@ -95,3 +95,55 @@ export function requeueUnsentStalePurchases(db: DatabaseAccess, supplier: Purcha
          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=${table}.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`,
   );
 }
+
+/** Urutan monotonik status vendor: index naik = maju. Regresi dilarang. */
+const VENDOR_STATUS_RANK: Record<string, number> = {
+  pending: 0,
+  claimed: 1,
+  retry: 1,
+  blocked_balance: 1,
+  submitted: 2,
+  ordering: 2,
+  processing: 3,
+  completed: 4,
+  failed: 4,
+};
+
+export function supplierVendorStatusRank(status: unknown): number {
+  return VENDOR_STATUS_RANK[String(status)] ?? -1;
+}
+
+export function casAdvanceBoundInvoice(
+  execRun: DatabaseAccess["execRun"],
+  supplier: PurchaseSupplier,
+  boundInvoice: string,
+  from: string,
+  toStatus: "processing" | "completed" | "failed",
+  fields: Partial<Record<"completed_at" | "last_error", unknown>> | null,
+  eventId?: string,
+) {
+  const { table, invoice } = PURCHASE_LINKS[supplier];
+  const now = new Date().toISOString();
+  const sets = [`status='${toStatus}'`, `last_event_at='${now}'`];
+  // Preserve SK's H5 cleanup; WR's winning lease cleanup is a separate change (B4b).
+  if (supplier === "sk") sets.push("lease_owner=NULL", "lease_expires_at=NULL");
+  const values: unknown[] = [];
+  if (eventId) {
+    sets.push(`last_event_id=?`);
+    values.push(eventId);
+  }
+  if (fields) {
+    for (const [key, value] of Object.entries(fields)) {
+      sets.push(`${key}=?`);
+      values.push(value);
+    }
+  }
+  sets.push(`updated_at=datetime('now')`);
+  // Only the exact bound invoice at the observed status can advance.
+  return execRun(
+    `UPDATE ${table} SET ${sets.join(", ")} WHERE ${invoice}=? AND status=?`,
+    ...values,
+    boundInvoice,
+    from,
+  ).catch(() => ({ changes: 0 as number | undefined }));
+}
