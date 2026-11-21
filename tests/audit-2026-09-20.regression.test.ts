@@ -127,10 +127,15 @@ describe("PROOF-LEAK — endpoint order publik tidak membocorkan kunci R2 privat
     // lain tidak boleh jadi jalan pintas.
     const bySegment = read("src/app/api/orders/[code]/route.ts");
     const byQuery = read("src/app/api/orders/route.ts");
+    const detailView = read("src/lib/orders/detail-view.ts");
     expect(bySegment).toContain('GET as getOrder');
     expect(bySegment).toContain('getOrder(new NextRequest');
-    expect(byQuery).toContain("waMasked");
-    expect(byQuery).toContain("emailMasked");
+    // 3B-1: masking + body builder moved to detail-view.ts; the route only
+    // calls it. Guard both the call site and the moved expressions.
+    expect(byQuery).toContain("maskBuyerContact");
+    expect(byQuery).toContain("buildStatusDetailView");
+    expect(detailView).toContain("waMasked");
+    expect(detailView).toContain("emailMasked");
     expect(bySegment).not.toMatch(/proof_url:\s*row\./);
     expect(byQuery).not.toMatch(/proof_url:\s*row\./);
   });
