@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap A2 (kelas E): Mirai memakai helper Tier-1 link-lease (predikat lunas + klaim); pagar pra-POST yang lebih sempit dan aturan replay GET-404 tetap lokal; jumlah statement tetap (create 2, process 21/18, retry 13/10) — `src/lib/mirai/orders.ts` — (verifikasi: small-suppliers + Mirai + workerd 165/165 lulus tanpa ubah assertion; tsc 0; review Wonder APPROVE)
+
 - 2026-11-22 — Roadmap A1 (kelas E): helper Tier-1 `src/lib/suppliers/link-lease.ts` (`isPaidOrder`, `PAID_ORDER_SQL[_ALIASED]`, `claimLink` dengan tabel tertutup) dan migrasi AIVault; SQL identik byte-per-byte, jumlah statement tetap (create 2, process 21/18, retry 13/10) — `src/lib/suppliers/link-lease.ts`, `src/lib/aivault/orders.ts`, `docs/ARCHITECTURE.md` — (verifikasi: characterization + AIVault + workerd 317/317 lulus tanpa ubah assertion; tsc 0; review Wonder APPROVE)
 
 - 2026-11-21 — Roadmap refactor + fondasi fitur (member, reseller, API key, affiliate, virtual number): 17 kontrak beku, kelas langkah T/E/B + protokol anti-regresi, fase 0–4 dengan prasyarat, keputusan D1 (H4) disetujui, rekomendasi D2–D9; empat peta baca-saja + tiga review independen sebagai lampiran — `issue/2026-11-21-refactor-roadmap.md`, `issue/refactor-2026-11/*`, `issue/2026-11-21-audit-followups.md` — (verifikasi: dokumentasi saja; tiga review OK-with-changes, koreksi dimasukkan; `git diff --check` bersih)

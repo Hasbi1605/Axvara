@@ -538,7 +538,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | T6 | T | lokal | |
 | T7 | T | belum | |
 | A1 AIVault | E | lokal (commit A1) | Wonder APPROVE |
-| A2 Mirai | E | belum | |
+| A2 Mirai | E | lokal (commit A2) | Wonder APPROVE |
 | A3 StoreBat | E | belum | |
 | A4 TUNVN | E | belum | |
 | B1 | E | belum | |

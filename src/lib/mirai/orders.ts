@@ -1,6 +1,7 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-binding";
+import { claimLink, isPaidOrder, PAID_ORDER_SQL, PAID_ORDER_SQL_ALIASED } from "@/lib/suppliers/link-lease";
 import {
   fetchMiraiBalance,
   fetchMiraiPackages,
@@ -21,13 +22,6 @@ export { miraiEligibility, type MiraiEligibility };
 type Row = Record<string, unknown>;
 export const MIRAI_ORDERS_PER_RUN = 8;
 export const MIRAI_ORPHANS_PER_RUN = 8;
-
-const paid = (o: Row) =>
-  o.status === "lunas" &&
-  o.payment_status === "paid" &&
-  (o.order_kind ?? "apps") === "apps" &&
-  !Number(o.supplier_purchase_disabled) &&
-  ["web", "telegram"].includes(String(o.sales_channel));
 
 function lines(o: Row): Row[] {
   try {
@@ -66,7 +60,7 @@ export const MIRAI_RETRYABLE_SQL = `status='needs_admin' AND attempt_count=0 AND
   AND receipt_ciphertext IS NULL AND receipt_iv IS NULL AND completed_at IS NULL
   AND last_error IN ('package_unavailable','stock_unavailable','insufficient_balance','balance_unavailable','package_quantity_invalid','price_increased','preflight_unavailable')
   AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
-  AND EXISTS(SELECT 1 FROM orders o WHERE o.code=mirai_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram'))
+  AND EXISTS(SELECT 1 FROM orders o WHERE o.code=mirai_order_links.order_code AND ${PAID_ORDER_SQL_ALIASED})
   AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.mirai_link_id=mirai_order_links.id AND f.order_code=mirai_order_links.order_code AND f.item_index=mirai_order_links.item_index
     AND f.status IN ('queued','retry','failed','manual_required') AND f.fulfillment_mode='manual' AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL
     AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.aivault_link_id IS NULL AND f.storebat_link_id IS NULL AND f.inventory_id IS NULL)`;
@@ -77,7 +71,7 @@ export async function createMiraiOrderLinks(
 ): Promise<number> {
   if (!db.d1 || !isMiraiConfigured() || !isMiraiSyncEnabled() || !db.canSpend(5)) return 0;
   const order = await db.queryFirst("SELECT items,status,payment_status,order_kind,supplier_purchase_disabled,sales_channel FROM orders WHERE code=?", code);
-  if (!order || !paid(order)) return 0;
+  if (!order || !isPaidOrder(order)) return 0;
   const rows = lines(order).flatMap((item, index) => {
     const e = eligibleMiraiLine(item);
     const externalOrderId = `${code}-${index}`;
@@ -96,8 +90,7 @@ export async function createMiraiOrderLinks(
        ),
        j.value->>'key',j.value->>'key'
      FROM orders JOIN json_each(?) j
-     WHERE code=? AND items=? AND status='lunas' AND payment_status='paid'
-       AND supplier_purchase_disabled=0 AND COALESCE(order_kind,'apps')='apps' AND sales_channel IN ('web','telegram')`,
+     WHERE code=? AND items=? AND ${PAID_ORDER_SQL}`,
     JSON.stringify(rows),
     code,
     order.items,
@@ -336,15 +329,7 @@ async function interpret(
 
 async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity): Promise<{ claimed: boolean; rateLimited: boolean }> {
   const owner = crypto.randomUUID();
-  const claimed = await db.execRun(
-    `UPDATE mirai_order_links
-     SET lease_owner=?, lease_expires_at=datetime('now','+90 seconds'), status='claimed'
-     WHERE id=? AND status IN ('pending','claimed','processing')
-       AND datetime(next_attempt_at)<=datetime('now')
-       AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))`,
-    owner,
-    id,
-  );
+  const claimed = await claimLink(db, "mirai", id, owner);
   if (!claimed.changes) return { claimed: false, rateLimited: false };
   const link = await db.queryFirst("SELECT * FROM mirai_order_links WHERE id=? AND lease_owner=?", id, owner);
   if (!link) return { claimed: true, rateLimited: false };
@@ -361,7 +346,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     const e = eligibleMiraiLine(item);
     if (
       !order ||
-      !paid(order) ||
+      !isPaidOrder(order) ||
       !item ||
       !e ||
       e.package_code !== link.package_code ||
@@ -645,8 +630,7 @@ export async function processMiraiOrders(
     ? [{ code: options.orderCode }]
     : await db.queryAll(
         `SELECT o.code FROM orders o
-         WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
-           AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram')
+         WHERE ${PAID_ORDER_SQL_ALIASED}
            AND EXISTS(
              SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) j
              WHERE json_extract(j.value,'$.mirai_eligibility.version')=1
