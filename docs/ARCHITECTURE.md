@@ -3297,7 +3297,7 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
 - **Modul:** `src/lib/warung-rebahan/` — `client.ts` (fetch edge + HMAC webhook + error
   classification + mode proxy Opsi A), `sync.ts` (upsert produk/varian + exclusion +
   markup + agregat induk + sync cursor budget-aware; entrypoint eager, dengan leaf
-  `sync/{types,constants,writes}.ts` sejak roadmap 3D-1 dan `sync/index.ts` hanya re-export), `order.ts` (link pending +
+  `sync/{types,constants,writes}.ts` sejak roadmap 3D-1, `sync/{pricing,exclusion}.ts` (pemetaan murni tanpa DB) sejak 3D-2 dan `sync/index.ts` hanya re-export), `order.ts` (link pending +
   claim/lease exact-once + retry backoff + reconcile stuck + reconciler lunas-tanpa-link),
   `deliver.ts` (enkripsi akun AES-256-GCM + delivery Telegram/WhatsApp/Web +
   token kapabilitas + antrean delivery durable + agregat order), `saldo.ts`
