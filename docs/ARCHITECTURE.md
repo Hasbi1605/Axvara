@@ -2103,6 +2103,8 @@ axvara/
 │   │   ├── deliver.ts           # BARREL
 │   │   └── delivery/            # claim, send, process, ensure, reconcile, handover,
 │   │                            # inventory-binding, manifest, types
+│   ├── suppliers/
+│   │   └── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault)
 │   ├── telegram/
 │   │   ├── messages.ts          # BARREL
 │   │   ├── messages/            # format, catalog (detail ringkas; detail varian di keyboard), purchase, status, group, help, admin

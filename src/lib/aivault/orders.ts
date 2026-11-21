@@ -1,12 +1,12 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { encryptSecret, decryptSecret } from "@/lib/fulfillment/crypto";
 import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-binding";
+import { claimLink, isPaidOrder, PAID_ORDER_SQL_ALIASED } from "@/lib/suppliers/link-lease";
 import { isAivaultConfigured, isAivaultSyncEnabled, fetchAivaultQuote, fetchAivaultOrder, parseAivaultQuote, validServiceId, validProviderId, numeric, record } from "./client";
 import { buyAivaultProduct } from "./purchase";
 type Row = Record<string, unknown>;
 export const AIVAULT_ORDERS_PER_RUN = 8;
 export const AIVAULT_ORPHANS_PER_RUN = 8;
-const paid = (o: Row) => o.status === "lunas" && o.payment_status === "paid" && (o.order_kind ?? "apps") === "apps" && !Number(o.supplier_purchase_disabled) && ["web","telegram"].includes(String(o.sales_channel));
 function lines(o: Row): Row[] { try { const v: unknown = JSON.parse(String(o.items)); return Array.isArray(v) ? v.map(x => record(x) ? x : {}) : []; } catch { return []; } }
 export function eligibleAivaultLine(value: unknown): Row | null {
   if (!record(value) || !record(value.aivault_eligibility) || value.unique_units) return null;
@@ -20,14 +20,14 @@ export const AIVAULT_RETRYABLE_SQL = `status='needs_admin' AND attempt_count=0 A
   AND receipt_ciphertext IS NULL AND receipt_iv IS NULL AND completed_at IS NULL
   AND last_error IN ('quote_unavailable','stock_unavailable','insufficient_balance','price_conflict','price_increased','preflight_unavailable')
   AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
-  AND EXISTS(SELECT 1 FROM orders o WHERE o.code=aivault_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram'))
+  AND EXISTS(SELECT 1 FROM orders o WHERE o.code=aivault_order_links.order_code AND ${PAID_ORDER_SQL_ALIASED})
   AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.aivault_link_id=aivault_order_links.id AND f.order_code=aivault_order_links.order_code AND f.item_index=aivault_order_links.item_index
     AND f.status IN ('queued','retry','failed','manual_required') AND f.fulfillment_mode='manual' AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL
     AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.storebat_link_id IS NULL AND f.mirai_link_id IS NULL AND f.inventory_id IS NULL)`;
 export async function createAivaultOrderLinks(code: string, db: DatabaseAccess = createDatabaseAccess()): Promise<number> {
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled() || !db.canSpend(5)) return 0;
   const order = await db.queryFirst("SELECT * FROM orders WHERE code=?",code);
-  if (!order || !paid(order)) return 0;
+  if (!order || !isPaidOrder(order)) return 0;
   const rows = lines(order).flatMap((item, index) => {
     const e = eligibleAivaultLine(item);
     return e
@@ -40,7 +40,7 @@ export async function createAivaultOrderLinks(code: string, db: DatabaseAccess =
       COALESCE((SELECT fx_idr_per_usd FROM aivault_products WHERE service_id=(j.value->>'service')),
         (SELECT CASE WHEN CAST(fx_rate_text AS REAL)>0 THEN CAST(fx_rate_text AS REAL) END FROM crypto_market_snapshot WHERE id=1))
     FROM orders o JOIN json_each(?) j
-    WHERE o.code=? AND o.items=? AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram')`,JSON.stringify(rows),code,order.items);
+    WHERE o.code=? AND o.items=? AND ${PAID_ORDER_SQL_ALIASED}`,JSON.stringify(rows),code,order.items);
   return Number(r.changes ?? 0);
 }
 async function settle(db: DatabaseAccess, link: Row, status: string, error: string | null) {
@@ -116,8 +116,7 @@ async function interpret(db: DatabaseAccess, link: Row, r: { status: number; tex
 }
 async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity): Promise<{ claimed: boolean; rateLimited: boolean }> {
   const owner=crypto.randomUUID();
-  const claimed=await db.execRun(`UPDATE aivault_order_links SET lease_owner=?,lease_expires_at=datetime('now','+90 seconds'),status='claimed'
-    WHERE id=? AND status IN ('pending','claimed','processing') AND datetime(next_attempt_at)<=datetime('now') AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))`,owner,id);
+  const claimed=await claimLink(db,"aivault",id,owner);
   if (!claimed.changes) return { claimed: false, rateLimited: false };
   const link=await db.queryFirst("SELECT * FROM aivault_order_links WHERE id=? AND lease_owner=?",id,owner);
   if (!link) return { claimed: true, rateLimited: false };
@@ -126,7 +125,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
   try {
     const order=await db.queryFirst("SELECT * FROM orders WHERE code=?",link.order_code);
     const item=order ? lines(order)[Number(link.item_index)] : null, e=eligibleAivaultLine(item);
-    if (!order || !paid(order) || !item || !e || e.service_id!==link.service_id || e.cost_usd!==link.cost_usd || item.variant_id!==link.variant_id || item.product_id!==link.product_id || item.qty!==link.quantity || link.external_order_id!==`${link.order_code}-${link.item_index}`) { await settle(db,link,"needs_admin","snapshot_mismatch"); return { claimed: true, rateLimited: false }; }
+    if (!order || !isPaidOrder(order) || !item || !e || e.service_id!==link.service_id || e.cost_usd!==link.cost_usd || item.variant_id!==link.variant_id || item.product_id!==link.product_id || item.qty!==link.quantity || link.external_order_id!==`${link.order_code}-${link.item_index}`) { await settle(db,link,"needs_admin","snapshot_mismatch"); return { claimed: true, rateLimited: false }; }
     let fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index);
     if (!fulfillment) { await ensureFulfillmentItems(order,db); fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index); }
     if (!fulfillment) { await settle(db,link,"pending","fulfillment_missing"); return { claimed: true, rateLimited: false }; }
@@ -206,7 +205,7 @@ export async function processAivaultOrders(db: DatabaseAccess = createDatabaseAc
   const field = (path: string) => `json_extract(${item},'$.${path}')`;
   const type = (path: string) => `json_type(${item},'$.${path}')`;
   const integer = (path: string) => `(${type(path)}='integer' AND ${field(path)} BETWEEN 1 AND 9007199254740991)`;
-  const orphans = options.orderCode ? [{ code: options.orderCode }] : await db.queryAll(`SELECT o.code FROM orders o WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram')
+  const orphans = options.orderCode ? [{ code: options.orderCode }] : await db.queryAll(`SELECT o.code FROM orders o WHERE ${PAID_ORDER_SQL_ALIASED}
     AND json_type(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END)='array'
     AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) j
       WHERE j.type='object'
