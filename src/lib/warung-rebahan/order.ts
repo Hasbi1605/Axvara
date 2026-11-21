@@ -37,6 +37,7 @@ import {
   nextPurchaseAttemptIso,
   PURCHASE_PAID_SQL,
   PURCHASE_PAID_SQL_ALIASED,
+  requeueUnsentStalePurchases,
 } from "@/lib/suppliers/purchase-state";
 import {
   createOrder,
@@ -1519,17 +1520,7 @@ export async function refreshStaleWrSyncContext(
 export async function recoverStaleClaims(database?: DatabaseAccess): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isWrEnabled()) return 0;
-  const res = await db
-    .execRun(
-      `UPDATE wr_order_links SET status='pending', lease_owner=NULL,
-         attempt_count=MAX(0, attempt_count-1),
-         lease_expires_at=NULL, last_error='stale_claim_recovered',
-         updated_at=datetime('now')
-       WHERE status='claimed' AND request_sent_at IS NULL
-         AND COALESCE(wr_order_id,'')=''
-         AND lease_expires_at IS NOT NULL
-         AND datetime(lease_expires_at) <= datetime('now')`,
-    );
+  const res = await requeueUnsentStalePurchases(db, "wr");
   return Number(res.changes ?? 0);
 }
 

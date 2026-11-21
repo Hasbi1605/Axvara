@@ -27,6 +27,7 @@ import {
   nextPurchaseAttemptIso,
   PURCHASE_PAID_SQL,
   PURCHASE_PAID_SQL_ALIASED,
+  requeueUnsentStalePurchases,
 } from "@/lib/suppliers/purchase-state";
 import { escapeHtml } from "@/lib/telegram/messages/format";
 import {
@@ -825,16 +826,7 @@ export async function reconcileFreshSkOrders(database?: DatabaseAccess, limit = 
 export async function recoverStaleSkClaims(database?: DatabaseAccess, options: { reportLookupFailure?: boolean } = {}): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isSkEnabled()) return 0;
-  const res = await db
-    .execRun(
-      `UPDATE sk_order_links SET status='pending', lease_owner=NULL,
-         attempt_count=MAX(0, attempt_count-1),
-         lease_expires_at=NULL, last_error='stale_claim_recovered',
-         updated_at=datetime('now')
-       WHERE status='claimed' AND request_sent_at IS NULL AND COALESCE(sk_invoice,'')=''
-         AND lease_expires_at IS NOT NULL
-         AND datetime(lease_expires_at) <= datetime('now')`,
-    );
+  const res = await requeueUnsentStalePurchases(db, "sk");
   // A Worker can die AFTER request_sent_at but BEFORE storing the invoice.
   // Those claims must be read back by stable ref_id, never requeued to buy.
   const ambiguous = await db.queryAll(

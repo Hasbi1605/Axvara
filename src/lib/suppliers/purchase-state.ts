@@ -79,3 +79,18 @@ export function fencePurchaseSend(db: DatabaseAccess, supplier: PurchaseSupplier
     id, owner,
   );
 }
+
+export function requeueUnsentStalePurchases(db: DatabaseAccess, supplier: PurchaseSupplier) {
+  const { table, invoice } = PURCHASE_LINKS[supplier];
+  // Preserve each supplier's original SQL bytes, including the invoice rider's placement.
+  const beforeInvoice = supplier === "wr" ? "\n         " : " ";
+  return db.execRun(
+    `UPDATE ${table} SET status='pending', lease_owner=NULL,
+         attempt_count=MAX(0, attempt_count-1),
+         lease_expires_at=NULL, last_error='stale_claim_recovered',
+         updated_at=datetime('now')
+       WHERE status='claimed' AND request_sent_at IS NULL${beforeInvoice}AND COALESCE(${invoice},'')=''
+         AND lease_expires_at IS NOT NULL
+         AND datetime(lease_expires_at) <= datetime('now')`,
+  );
+}
