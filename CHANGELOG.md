@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-21 — Perbaiki test CI Linux: ringkasan kegagalan backup D1 di `tests/d1-backup-r2.test.ts` ditulis ke file sementara, bukan `/dev/stdout` (runner Linux menolak append ke stdout pipe → CI push audit gagal di tahap Test sebelum deploy) — `tests/d1-backup-r2.test.ts` — (verifikasi: test 4/4 lulus lokal; tsc 0; CI sebelumnya 606/607 file lulus, hanya file ini gagal)
+
 - 2026-11-21 — Tindak lanjut audit dicatat sebagai keputusan owner (refactor 5 hotspot ditunda sampai stabil, backoff VPS, log DLQ permanen, monitor backup, hapus env pasca-deploy, riwayat git publik) — `issue/2026-11-21-audit-followups.md` — (verifikasi: dokumentasi saja; `git diff --check` bersih)
 
 - 2026-11-21 — FX-19 keamanan repo publik: kredensial akun pembeli asli di test diganti fixture sintetis, data pembeli (email/HP/kode order/ref invoice) di docs/issue/CHANGELOG/test/komentar disamarkan, detail infrastruktur (IP VPS, target SSH, path kunci, IAM, email operator) dipindah ke `.ops-private.md` lokal git-ignored (backup asli di luar repo); `scripts/digiflazz-preflight.mjs` membaca target SSH dari env lokal `AXVARA_VPS_SSH_TARGET`/`AXVARA_VPS_SSH_KEY`; item yang hanya ada di riwayat git dicatat untuk owner — `AGENTS.md`, `docs/**`, `issue/**`, `CHANGELOG.md`, `tests/**`, `scripts/digiflazz-preflight.mjs`, `.gitignore` — (verifikasi: pindai ulang 0 kredensial pembeli/IP/kunci/token; 1.604 tes fokus + preflight 7/7 + wr-email-forward 10/10; tsc 0; full suite di tree final dicatat di entri ringkasan)
