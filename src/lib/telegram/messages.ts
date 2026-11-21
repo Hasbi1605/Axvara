@@ -12,7 +12,7 @@
 //   catalog.ts   — welcome, katalog, kategori, detail, cari, daftar order
 //   purchase.ts  — konfirmasi, jumlah, keranjang, invoice, pengingat
 //   status.ts    — lunas, kirim, kedaluwarsa/batal, status, error, stok
-//   group.ts     — keamanan grup (deep-link + redirect + notice)
+//   group.ts     — keamanan grup (deep-link + redirect)
 //   help.ts      — bantuan + ketentuan/klaim garansi
 //   admin.ts     — notifikasi grup admin (Web/Telegram/WhatsApp)
 //
@@ -40,13 +40,13 @@ export {
 } from "./messages/purchase";
 
 export {
-  orderPaidMessage, deliveryMessage, supplierCredentialMessage, type TelegramPaidDelivery, whatsAppInputPromptMessage, orderExpiredMessage,
+  orderPaidMessage, type TelegramPaidDelivery, whatsAppInputPromptMessage, orderExpiredMessage,
   orderCancelledMessage, orderStatusMessage, qrisRenewRejectedMessage, outOfStockMessage,
   alreadyPendingMessage, errorMessage, waSavedAfterPaymentMessage, invalidWhatsAppMessage, qrisExpiredMessage,
 } from "./messages/status";
 
 export {
-  privateChatDeepLink, groupCheckoutRedirectMessage, groupDeliveryNoticeMessage,
+  privateChatDeepLink, groupCheckoutRedirectMessage,
 } from "./messages/group";
 
 export {
@@ -61,5 +61,5 @@ export {
 export {
   adminTelegramOrderCreatedMessage, adminTelegramOrderPaidMessage,
   adminDeliveryFailedNotification, adminWebOrderPaidMessage,
-  adminWhatsAppOrderCreatedMessage, adminWhatsAppOrderPaidMessage,
+  adminWhatsAppOrderPaidMessage,
 } from "./messages/admin";

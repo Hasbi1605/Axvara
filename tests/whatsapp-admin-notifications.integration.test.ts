@@ -57,16 +57,8 @@ async function cronRun() {
 // Order WA wajib masuk grup Telegram admin — judul WA, bukan judul Telegram,
 // memakai marker idempoten yang sama agar redelivery/cron tidak ganda.
 describe("WhatsApp orders notify the Telegram admin group", () => {
-  it("formats created + paid admin messages for WhatsApp", async () => {
-    const { adminWhatsAppOrderCreatedMessage, adminWhatsAppOrderPaidMessage } = await import("@/lib/telegram/messages");
-    const created = adminWhatsAppOrderCreatedMessage({
-      createdAt: "2026-10-24 00:37:00",
-      orderCode: "AXV-1", productNames: "Fixture ×1", amount: 10000,
-      customerName: "628111", channelMember: "628111", paymentMethod: "qris",
-    });
-    expect(created).toContain("Order Baru — WhatsApp");
-    expect(created).toContain("07.37 WIB");
-    expect(created).toContain("AXV-1");
+  it("formats paid admin message for WhatsApp", async () => {
+    const { adminWhatsAppOrderPaidMessage } = await import("@/lib/telegram/messages");
     const paid = adminWhatsAppOrderPaidMessage({
       orderCode: "AXV-1", productNames: "Fixture ×1", amount: 10000,
       customerName: "628111", channelMember: "628111", paymentMethod: "qris",
@@ -75,21 +67,19 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(paid).toContain("AXV-1");
   });
 
-  it("notifies order-created for a pending WhatsApp order and marks it once", async () => {
+  it("order-created WhatsApp notice has no live path (owner 2026-10-10)", async () => {
     seedWhatsAppOrder("WA-CREATED", "pending");
-    const { notifyWhatsAppOrderCreated } = await import("@/lib/telegram/order-notifications");
     const { sendMessage } = await import("@/lib/telegram/api");
     vi.mocked(sendMessage).mockClear();
-    expect(await notifyWhatsAppOrderCreated("WA-CREATED")).toBe(true);
-    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(sendMessage).mock.calls[0]?.[0]).toMatchObject({ chat_id: "999" });
-    expect(String((vi.mocked(sendMessage).mock.calls[0]?.[0] as unknown as Record<string, unknown>)?.text || "")).toContain("Order Baru — WhatsApp");
+    const BOUND = 8;
+    for (let i = 0; i < BOUND; i++) {
+      const r = await cronRun();
+      expect(r.status).toBe(200);
+    }
+    const texts = vi.mocked(sendMessage).mock.calls.map((c) => String(((c[0] as unknown) as Record<string, unknown>)?.text || ""));
+    expect(texts.some((t) => t.includes("Order Baru — WhatsApp"))).toBe(false);
     expect(fixture.sql.prepare("SELECT telegram_order_notified_at FROM orders WHERE code='WA-CREATED'").get()
-      ?.telegram_order_notified_at).not.toBeNull();
-    // Idempoten: panggilan kedua tidak mengirim lagi.
-    vi.mocked(sendMessage).mockClear();
-    expect(await notifyWhatsAppOrderCreated("WA-CREATED")).toBe(true);
-    expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
+      ?.telegram_order_notified_at).toBeNull();
   });
 
   it("cron TIDAK mengirim Order Baru — hanya Lunas yang masuk grup (owner 2026-10-10, paritas Web)", async () => {

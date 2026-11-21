@@ -9,7 +9,6 @@ import {
   adminTelegramOrderCreatedMessage,
   adminTelegramOrderPaidMessage,
   adminWebOrderPaidMessage,
-  adminWhatsAppOrderCreatedMessage,
   adminWhatsAppOrderPaidMessage,
   orderPaidMessage,
   orderReminderMessage,
@@ -250,61 +249,6 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
   try {
     if (database.canSpend(5)) await notifyTelegramPaidAdmin(orderCode, database);
   } catch { /* Cron retries via telegram_paid_admin_notified_at. */ }
-  return true;
-}
-
-/** Notify Axvara_Notif as soon as a WhatsApp order exists.
- *
- * Idempoten via kolom marker yang sama dengan jalur Telegram
- * (`telegram_order_notified_at`): klaim CAS `IS NULL` + kirim + tandai,
- * sehingga redelivery webhook / retry cron tidak mengirim ganda.
- */
-export async function notifyWhatsAppOrderCreated(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
-  const { queryFirst, execRun } = database;
-  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-  if (!adminChatId || !telegramNotificationsConfigured()) return false;
-
-  const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_name, o.channel_member_id, o.customer_wa,
-            o.payment_method, o.created_at, o.telegram_order_notified_at,
-            pt.payable_amount, o.subtotal
-     FROM orders o
-     LEFT JOIN payment_transactions pt ON pt.order_code=o.code
-     WHERE o.code=? AND o.sales_channel='whatsapp'
-       AND o.telegram_order_notified_at IS NULL`,
-    orderCode,
-  );
-  if (!order) return true;
-
-  const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
-  const member = String(order.channel_member_id || order.customer_wa || "");
-  const paymentMethod = String(order.payment_method || "qris");
-  const sent = await sendMessage({
-    chat_id: adminChatId,
-    text: adminWhatsAppOrderCreatedMessage({
-      createdAt: order.created_at,
-      orderCode: String(order.code),
-      productNames: productNames(order.items),
-      amount: Number(order.payable_amount ?? order.subtotal ?? 0),
-      customerName: String(order.customer_name || member || "Pembeli WhatsApp"),
-      channelMember: member,
-      paymentMethod,
-    }),
-    parse_mode: "HTML",
-    reply_markup: webOrderAdminKeyboard({
-      customerWa: member,
-      customerName: String(order.customer_name || "Pembeli WhatsApp"),
-      orderCode: String(order.code),
-      siteUrl,
-    }),
-  });
-  if (!sent.ok) return false;
-
-  await execRun(
-    `UPDATE orders SET telegram_order_notified_at=datetime('now'), updated_at=datetime('now')
-     WHERE code=? AND telegram_order_notified_at IS NULL`,
-    orderCode,
-  );
   return true;
 }
 

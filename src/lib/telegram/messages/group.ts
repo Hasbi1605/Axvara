@@ -26,14 +26,3 @@ export function groupCheckoutRedirectMessage(botUsername: string): string {
     "Kredensial produk tidak pernah dikirim ke grup.",
   ].join("\n");
 }
-
-export function groupDeliveryNoticeMessage(): string {
-  return [
-    "<b>Cek chat pribadi</b>",
-    "",
-    "Produk sudah dikirim ke <b>chat pribadi</b> kamu dengan bot.",
-    "Buka chat pribadi bot dan tekan START bila belum.",
-    "",
-    "Kredensial tidak pernah ditampilkan di grup.",
-  ].join("\n");
-}

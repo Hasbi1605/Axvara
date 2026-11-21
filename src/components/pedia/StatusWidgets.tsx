@@ -1,49 +1,4 @@
-// src/components/pedia/ProgressRing.tsx — Cincin progres pesanan (PD-12).
-// SVG 160px, stroke gradien Pedia, transisi dashoffset 600ms, aria-valuenow.
 import type { Locale } from "@/lib/i18n/locale";
-
-export function ProgressRing({ percent, done, total, locale = "id" }: { percent: number; done: number; total: number; locale?: Locale }) {
-  const size = 160;
-  const stroke = 10;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const clamped = Math.max(0, Math.min(100, percent));
-  return (
-    <div
-      role="progressbar"
-      aria-valuenow={Math.round(clamped)}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-label={locale === "en" ? `Progress ${Math.round(clamped)} percent` : `Progres ${Math.round(clamped)} persen`}
-      className="relative mx-auto h-40 w-40"
-    >
-      <svg width={size} height={size} className="-rotate-90">
-        <defs>
-          <linearGradient id="pxring" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#00E5FF" />
-            <stop offset="1" stopColor="#8B5CF6" />
-          </linearGradient>
-        </defs>
-        <circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} fill="none" />
-        <circle
-          cx={size / 2} cy={size / 2} r={r}
-          stroke="url(#pxring)" strokeWidth={stroke} fill="none" strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c - (c * clamped) / 100}
-          style={{ transition: "stroke-dashoffset 600ms var(--ease-out)" }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-display text-2xl font-bold text-white" style={{ fontVariantNumeric: "tabular-nums" }}>
-          {Math.round(clamped)}%
-        </span>
-        <span className="text-xs text-white/55" style={{ fontVariantNumeric: "tabular-nums" }}>
-          {done.toLocaleString(locale === "en" ? "en-US" : "id-ID")} / {total.toLocaleString(locale === "en" ? "en-US" : "id-ID")}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 // src/components/pedia/StatusPill.tsx — Label status bahasa pembeli (§5.3).
 const LABELS: Record<string, string> = {
@@ -89,31 +44,5 @@ export function StatusPill({ status, locale = "id" }: { status: string; locale?:
     <span className={`inline-flex h-7 items-center rounded-full px-3 text-[12.5px] font-bold ${tone}`}>
       {pediaStatusLabel(status, locale)}
     </span>
-  );
-}
-
-// src/components/pedia/OrderTimeline.tsx — Timeline 3–4 titik (PD-12).
-export function OrderTimeline({ steps }: { steps: { label: string; done: boolean; active?: boolean }[] }) {
-  return (
-    <ol className="flex items-center gap-1">
-      {steps.map((s, i) => (
-        <li key={s.label} className="flex flex-1 items-center gap-1 last:flex-none">
-          <span className="flex flex-col items-center gap-1">
-            <span
-              className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
-                s.done ? "bg-[var(--px-violet)] text-white"
-                : s.active ? "animate-pulse bg-[#00E5FF] text-[#070a1e]"
-                : "bg-white/10 text-white/40"
-              }`}
-              aria-hidden="true"
-            >
-              {s.done ? "✓" : i + 1}
-            </span>
-            <span className="text-[10px] text-white/55">{s.label}</span>
-          </span>
-          {i < steps.length - 1 && <span className="mb-5 h-px flex-1 bg-white/10" aria-hidden="true" />}
-        </li>
-      ))}
-    </ol>
   );
 }
