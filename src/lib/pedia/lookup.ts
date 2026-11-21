@@ -80,7 +80,7 @@ export async function lookupPediaOrder(code: string, contactRaw: string, adminVi
       eta_finish: item?.eta_finish != null ? String(item.eta_finish) : null,
       created_at: row.created_at,
       expires_at: row.expires_at,
-      qris_reissue_allowed: row.payment_provider !== "dana" && row.payment_provider != null && row.status === "pending" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
+      qris_reissue_allowed: row.payment_provider === "gopay" && row.status === "pending" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url ? {
         payable_amount: row.payable_amount, unique_code: row.unique_code,
         image_url: row.dynamic_qris_url, expires_at: row.payment_expires_at,
