@@ -1,5 +1,7 @@
 import { wrJaspayCoveredSql, wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
 import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
+import { EMPTY_STATUS_FLAGS, maybeRefreshStatusFlags, readStatusFlags, type StatusFlags } from "@/lib/orders/status-flags";
+import { buildStatusDetailView, maskBuyerContact } from "@/lib/orders/detail-view";
 import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
@@ -723,11 +725,8 @@ export async function GET(req: NextRequest) {
         }
       } catch { /* Callback/manual check tetap menjadi penjamin. */ }
     }
-    // PII minimal on public endpoint: mask WA + email
-    const waFull = String(row.customer_wa ?? "");
-    const waMasked = waFull.length >= 7 ? waFull.slice(0, 5) + "****" + waFull.slice(-4) : waFull ? waFull.slice(0, 3) + "****" : "";
-    const emailFull = String(row.customer_email ?? "");
-    const emailMasked = emailFull.includes("@") ? emailFull.replace(/(^.).+(@.*)/, (_, a, b) => `${a}***${b}`) : emailFull ? "***" : null;
+    // PII minimal on public endpoint: mask WA + email (shared builder).
+    const { waMasked, emailMasked } = maskBuyerContact(row as Record<string, unknown>);
     // Panel "Detail Akun Digital" di /pesanan/[code] hanya boleh tampil bila
     // detail akun BENAR-BENAR sudah ada. Produk fulfillment manual tidak
     // pernah punya baris wr_order_links, jadi sebelumnya form verifikasi WA
@@ -735,12 +734,7 @@ export async function GET(req: NextRequest) {
     // form mati yang bikin pembeli panik tepat setelah bayar.
     // Boolean saja (tanpa isi kredensial); retrieval tetap wajib verifikasi
     // WA/capability token di /api/orders/[code]/credentials.
-    let credentialsReady = false;
-    let queuedDelivery = false;
-    let instantDelivery = false;
-    let supplierOwned = false;
-    let supplierRunning = false;
-    let hasAutomaticProgress = false;
+    let flags: StatusFlags = { ...EMPTY_STATUS_FLAGS };
     if (String(row.status) === "lunas") {
       // Satu query untuk tiga flag halaman pesanan (hemat statement):
       // - creds: detail akun sudah siap diambil pembeli (WR completed ATAU
@@ -754,63 +748,8 @@ export async function GET(req: NextRequest) {
       //   halaman memeriksa rapat. SK auto ikut instan walau fulfillment_mode
       //   lokalnya 'manual' (diselesaikan via sk_order_links, pola wr_link_id).
       // .catch: D1 lama tanpa tabel WR/SK (pra-0027/0049) → semua flag false,
-      // bukan 500.
-      const flags = await queryFirst(
-        `WITH lines AS (
-            SELECT CAST(json_extract(je.value,'$.variant_id') AS INTEGER) AS variant_id,
-                   (((json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.storebat_eligibility.version')=1 AND json_extract(je.value,'$.storebat_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.mirai_eligibility.version')=1 AND json_extract(je.value,'$.mirai_eligibility.cost_usdt')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
-                    AND json_extract(je.value,'$.tunvn_eligibility.kind') IN ('account','buff')
-                    AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0))
-                    AND ?=0) AS automatic
-           FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
-         )
-          SELECT
-           EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND wr_variant_id LIKE 'jaspay:%') AS has_automatic_progress,
-           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
-                    AND wr_account_details IS NOT NULL)
-           OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
-                    AND delivered_ciphertext IS NOT NULL)) AS creds,
-           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
-             OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)
-             OR EXISTS(SELECT 1 FROM lines WHERE automatic=1)) AS supplier_owned,
-           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
-            OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running,
-          EXISTS(SELECT 1 FROM lines l
-                 JOIN product_variants pv ON pv.id = l.variant_id
-                 LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
-                 LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
-                  WHERE CASE WHEN l.automatic=1 THEN 0
-                             WHEN pv.wr_variant_id IS NOT NULL
-                            THEN COALESCE(wv.wr_delivery_class,'made_by_order') <> 'restock'
-                            WHEN pv.sk_variant_id IS NOT NULL
-                            THEN COALESCE(sp.sk_order_process,'manual') <> 'auto'
-                            ELSE pv.fulfillment_mode = 'manual' END) AS queued,
-          (EXISTS(SELECT 1 FROM lines)
-           AND NOT EXISTS(SELECT 1 FROM lines l
-                          LEFT JOIN product_variants pv ON pv.id = l.variant_id
-                          LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
-                          WHERE pv.id IS NULL
-                             OR pv.wr_variant_id IS NOT NULL
-                             OR (pv.sk_variant_id IS NOT NULL AND COALESCE(sp.sk_order_process,'manual') <> 'auto')
-                             OR (pv.wr_variant_id IS NULL AND pv.sk_variant_id IS NULL
-                                 AND COALESCE(pv.fulfillment_mode,'manual') NOT IN ('shared','unique')))) AS instant`,
-        Number(row.supplier_purchase_disabled ?? 0),
-        String(row.items ?? "[]"),
-        String(row.items ?? "[]"),
-        code,
-        code,
-        code,
-        code,
-        code,
-        code,
-        code,
-      ).catch(() => null);
-      hasAutomaticProgress = Number(flags?.has_automatic_progress ?? 0) === 1;
-      credentialsReady = Number(flags?.creds ?? 0) === 1;
-      queuedDelivery = Number(flags?.queued ?? 0) === 1;
-      instantDelivery = Number(flags?.instant ?? 0) === 1;
-      supplierOwned = Number((flags as Record<string, unknown> | null)?.supplier_owned ?? 0) === 1;
-      supplierRunning = Number((flags as Record<string, unknown> | null)?.supplier_running ?? 0) === 1;
+      // bukan 500. Query + refresh kini di src/lib/orders/status-flags.ts.
+      flags = await readStatusFlags(code, row as Record<string, unknown>, { queryFirst });
     }
     // Pembeli yang sedang menunggu adalah pemicu termurah untuk status
     // supplier terbaru (meniru SK yang sinkron via webhook): tarik status
@@ -819,33 +758,25 @@ export async function GET(req: NextRequest) {
     // barusan menyelesaikan kredensial, halaman langsung menampilkannya
     // detik ini juga. Kegagalan = diam (cron lite tetap penjamin).
     // credentialsReady means ANY item is ready, not that every supplier finished.
-    if (String(row.status) === "lunas" && supplierRunning) {
+    if (String(row.status) === "lunas") {
       try {
         const { createDatabaseAccess } = await import("@/lib/db-access");
         const { maybeRefreshSupplierOrder } = await import("@/lib/orders/supplier-refresh");
-        const refreshDb = createDatabaseAccess();
-        const { refreshed } = await maybeRefreshSupplierOrder(code, refreshDb);
-        if (refreshed) {
-          const after = await refreshDb
-            .queryFirst(
-              `SELECT fulfillment_status,
-                      (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
-                       OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
-                      (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
-                       OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS running
-               FROM orders WHERE code=?`,
-              code, code, code, code, code,
-            )
-            .catch(() => null);
-          if (after) {
-            credentialsReady = Number(after.creds ?? 0) === 1;
-            supplierRunning = Number(after.running ?? 0) === 1;
-            if (after.fulfillment_status != null) {
-              (row as Record<string, unknown>).fulfillment_status = after.fulfillment_status;
-            }
-          }
-        }
-      } catch { /* penyegaran best-effort; status lama tetap sah */ }
+        await maybeRefreshStatusFlags(
+          code,
+          row as Record<string, unknown>,
+          flags,
+          {
+            createAccess: () => createDatabaseAccess(),
+            maybeRefresh: (orderCode, refreshDb) => maybeRefreshSupplierOrder(orderCode, refreshDb),
+          },
+        );
+      } catch {
+        /* penyegaran best-effort; status lama tetap sah (termasuk gagal impor bundle) */
+      }
+      if (flags.fulfillmentStatus != null) {
+        (row as Record<string, unknown>).fulfillment_status = flags.fulfillmentStatus;
+      }
     }
      let uniqueUnitsProgress: {ready:number;total:number} | undefined;
     if (String(row.status) === "lunas") {
@@ -857,48 +788,35 @@ export async function GET(req: NextRequest) {
     }
     // Non-QRIS view (W3): buyer-safe crypto panel AFTER the same guard above
     // (proof/session). No secrets, no hosted-URL fabrication for direct payment.
+    // Body builder shared via src/lib/orders/detail-view.ts (receives the
+    // post-refresh row so credentials_ready cannot regress).
     const payment = row.payment_provider === "nowpayments"
       ? await import("@/lib/payments/payment-view").then((m) => m.buildNowpaymentsPaymentView(code)).catch(() => null)
       : row.payment_provider === "sekalipay_gateway" ? await import("@/lib/payments/payment-view").then((m) => m.buildSekalipayGatewayPaymentView(code)).catch(() => null)
       : null;
     return NextResponse.json({
-      order: {
-        code: row.code,
-        customer_name: row.customer_name,
-        customer_wa: waMasked,
-        customer_wa_full: undefined,
-        customer_email: emailMasked,
+      order: buildStatusDetailView({
+        row: row as Record<string, unknown>,
+        code,
+        waMasked,
+        emailMasked,
         items: withoutPrivateBuyerData(JSON.parse(String(row.items || "[]"))),
-        subtotal: row.subtotal,
-        payment_method: row.payment_method,
-        payment_account: row.payment_account,
-        status: row.status,
-        locale: (row.locale as string) ?? "id",
-        created_at: row.created_at,
-        // An incomplete KlikQRIS invoice already has its local 15-minute cap.
-        expires_at: row.payment_provider === "klikqris" && row.payment_expires_at ? row.payment_expires_at : row.expires_at,
-        qris_preparation_error: qrisPreparationError,
-        credentials_ready: credentialsReady,
-        buyer_pin_required: requiresOrderAccessCode(row),
-        queued_delivery: queuedDelivery,
-        instant_delivery: instantDelivery,
-        supplier_owned: supplierOwned,
-        supplier_running: supplierRunning,
-        // /pesanan/[code] membutuhkan ini untuk membedakan lunas-terkirim dari
-        // lunas-gagal-kirim (audit ronde 4, W-H1); /api/orders/lookup sudah punya.
-        fulfillment_status: row.fulfillment_status ?? null,
-        automatic_progress: hasAutomaticProgress ? await readAutomaticProgress(code, { queryAll }).catch(() => []) : [],
-        unique_units_progress: uniqueUnitsProgress,
-        qris_reissue_allowed: row.payment_provider === "gopay" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
-        qris: row.dynamic_qris_url ? {
+        qrisPreparationError,
+        flags,
+        automaticProgress: flags.hasAutomaticProgress ? await readAutomaticProgress(code, { queryAll }).catch(() => []) : [],
+        uniqueUnitsProgress,
+        qrisBlock: row.dynamic_qris_url ? {
           payable_amount: row.payable_amount,
           unique_code: row.unique_code,
           image_url: row.dynamic_qris_url,
           expires_at: row.payment_expires_at,
           status: row.transaction_status,
         } : null,
-        ...(payment ? { payment } : {}),
-      },
+        payment,
+        buyerPinRequired: requiresOrderAccessCode(row),
+        qrisReissueAllowed: row.payment_provider === "gopay" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
+        maxQrisReissues: MAX_QRIS_REISSUES,
+      }),
     }, { headers: { "Cache-Control": "private, no-store" } });
   }
   // Without code, don't leak all orders — require admin endpoint

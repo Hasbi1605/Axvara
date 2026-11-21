@@ -1,6 +1,7 @@
 import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
 import { queryAll } from "@/lib/db";
 import { readUniqueUnitProgress } from "@/lib/orders/unit-progress";
+import { EMPTY_STATUS_FLAGS, maybeRefreshStatusFlags, readLookupFlags, type StatusFlags } from "@/lib/orders/status-flags";
 import { NextRequest, NextResponse } from "next/server";
 import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { readJsonBody } from "@/lib/http-body";
@@ -99,61 +100,43 @@ async function lookup(req: NextRequest) {
   // Flag kredensial siap (Fase B): lookup SUDAH memverifikasi WA penuh
   // (constantTimeEqual di atas), jadi panel di hasil lacak sama amannya
   // dengan halaman pesanan — tanpa input WA ulang.
-  let credentialsReady = false;
-  let supplierOwned = false;
-  let supplierRunning = false;
-  let hasAutomaticProgress = false;
+  // Readiness SQL + refresh kini di src/lib/orders/status-flags.ts (3B-1).
+  let flags: StatusFlags = { ...EMPTY_STATUS_FLAGS };
   let fulfillmentStatus = row.fulfillment_status ?? null;
   if (String(row.status) === "lunas") {
     // Detail WR ATAU isi produk non-WR terkirim (migrasi 0043) + kepemilikan
     // supplier (pagar kalimat sesat) + link masih berjalan (pemicu segar).
-    const cred = await queryFirst(
-      `SELECT
-        EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND wr_variant_id LIKE 'jaspay:%') AS has_automatic_progress,
-        (EXISTS(SELECT 1 FROM wr_order_links
-           WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
-         OR EXISTS(SELECT 1 FROM fulfillment_items
-           WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
-        (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
-          OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)
-          OR (?=0 AND EXISTS(SELECT 1 FROM json_each(?) je
-            WHERE (json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.storebat_eligibility.version')=1 AND json_extract(je.value,'$.storebat_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.mirai_eligibility.version')=1 AND json_extract(je.value,'$.mirai_eligibility.cost_usdt')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
-              AND json_extract(je.value,'$.tunvn_eligibility.kind') IN ('account','buff')
-              AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0)))) AS supplier_owned,
-        (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
-         OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running`,
-      code, code, code, code, code, Number(row.supplier_purchase_disabled ?? 0), String(row.items ?? "[]"), code, code,
-    ).catch(() => null);
-    hasAutomaticProgress = Number(cred?.has_automatic_progress ?? 0) === 1;
-    credentialsReady = Number(cred?.creds ?? 0) === 1;
-    supplierOwned = Number((cred as Record<string, unknown> | null)?.supplier_owned ?? 0) === 1;
-    supplierRunning = Number((cred as Record<string, unknown> | null)?.supplier_running ?? 0) === 1;
+    // Compact query: creds/owned/running + automatic progress, tanpa
+    // queued/instant (panel lacak tidak memakainya).
+    const lookupFlags = await readLookupFlags(code, row as Record<string, unknown>, { queryFirst });
+    flags = { ...flags, ...lookupFlags };
     // Sama seperti halaman pesanan: pembeli yang menunggu memicu tarikan
     // status vendor sekarang (gerbang 20 dtk/order). Best-effort diam.
     // One ready item must not stop refresh for the remaining supplier items.
-    if (supplierRunning) {
+    if (flags.supplierRunning) {
+      const refreshFlags = {
+        credentialsReady: flags.credentialsReady,
+        supplierRunning: flags.supplierRunning,
+        fulfillmentStatus,
+      };
       try {
         const { createDatabaseAccess } = await import("@/lib/db-access");
         const { maybeRefreshSupplierOrder } = await import("@/lib/orders/supplier-refresh");
-        const refreshDb = createDatabaseAccess();
-        const { refreshed } = await maybeRefreshSupplierOrder(code, refreshDb);
-        if (refreshed) {
-          const after = await refreshDb.queryFirst(
-            `SELECT o.fulfillment_status,
-                    (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
-                     OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
-                    (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
-                     OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS running
-             FROM orders o WHERE o.code=?`,
-            code, code, code, code, code,
-          ).catch(() => null);
-          if (after) {
-            credentialsReady = Number(after.creds ?? 0) === 1;
-            supplierRunning = Number(after.running ?? 0) === 1;
-            if (after.fulfillment_status != null) fulfillmentStatus = after.fulfillment_status;
-          }
-        }
-      } catch { /* penjamin cron tetap berlaku */ }
+        await maybeRefreshStatusFlags(
+          code,
+          row as Record<string, unknown>,
+          refreshFlags,
+          {
+            createAccess: () => createDatabaseAccess(),
+            maybeRefresh: (orderCode, refreshDb) => maybeRefreshSupplierOrder(orderCode, refreshDb),
+          },
+        );
+      } catch {
+        /* penjamin cron tetap berlaku (termasuk gagal impor bundle) */
+      }
+      flags.credentialsReady = refreshFlags.credentialsReady;
+      flags.supplierRunning = refreshFlags.supplierRunning;
+      if (refreshFlags.fulfillmentStatus != null) fulfillmentStatus = refreshFlags.fulfillmentStatus;
     }
   }
   // Non-QRIS view (W3): same proof guard as status route above; buyer-safe only.
@@ -180,11 +163,11 @@ async function lookup(req: NextRequest) {
       expires_at: row.payment_provider === "klikqris" && row.payment_expires_at ? row.payment_expires_at : row.expires_at,
       locale: (row.locale as string) ?? "id",
       unique_units_progress: await readUniqueUnitProgress(row),
-      credentials_ready: credentialsReady,
+      credentials_ready: flags.credentialsReady,
       buyer_pin_required: requiresOrderAccessCode(row),
-      supplier_owned: supplierOwned,
-      supplier_running: supplierRunning,
-      automatic_progress: hasAutomaticProgress ? await readAutomaticProgress(code, { queryAll }).catch(() => []) : [],
+      supplier_owned: flags.supplierOwned,
+      supplier_running: flags.supplierRunning,
+      automatic_progress: flags.hasAutomaticProgress ? await readAutomaticProgress(code, { queryAll }).catch(() => []) : [],
       qris_reissue_allowed: row.payment_provider === "gopay" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url
         ? {

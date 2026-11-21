@@ -2106,6 +2106,9 @@ axvara/
 │   │   ├── deliver.ts           # BARREL
 │   │   └── delivery/            # claim, send, process, ensure, reconcile, handover,
 │   │                            # inventory-binding, manifest, types
+│   ├── orders/                  # (sebagian) helper order bersama
+│   │   ├── status-flags.ts      # SQL flag kesiapan + re-query penyegar supplier, dipakai GET /api/orders dan POST /api/orders/lookup (3B-1)
+│   │   └── detail-view.ts       # pembentuk body GET /api/orders dari baris pasca-refresh (3B-1)
 │   ├── suppliers/
 │   │   ├── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault, Mirai, StoreBat; TUNVN hanya predikat JS)
 │   │   └── purchase-state.ts    # WR/SK: backoff dan predikat paid/enabled untuk pembelian dan Retry

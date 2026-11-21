@@ -266,6 +266,11 @@ describe("Kredensial WR via email dan panel web", () => {
     expect(page).toContain("prefillContact");
     expect(page).toContain("order.credentialsReady");
     const lookup = read("src/app/api/orders/lookup/route.ts");
+    const flags = read("src/lib/orders/status-flags.ts");
+    // 3B-1: readiness SQL moved verbatim to status-flags.ts; the route now
+    // calls it. Guard both the exposure and the moved query + the call.
     expect(lookup).toContain("credentials_ready");
+    expect(flags).toContain("AS creds");
+    expect(lookup).toContain("readLookupFlags");
   });
 });
