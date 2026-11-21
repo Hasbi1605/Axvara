@@ -1,6 +1,10 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
-## B4 22 Nov (lokal)
+## B4b 22 Nov (lokal)
+
+- WR mengosongkan `lease_owner` dan `lease_expires_at` hanya di UPDATE advance otoritatif yang menang, termasuk completion baru Premium dan Jaspay. Replay, refresh akun pada status `completed`, CAS kalah, dan lease recovery Jaspay tidak berubah. Fence `request_sent_at` dan `attempt_count` tetap; tidak ada statement, bind, atau POST tambahan. SK tidak berubah.
+
+## B4 22 Nov (snapshot sebelum B4b)
 
 - `src/lib/suppliers/purchase-state.ts` memuat rank status vendor dan CAS berdasarkan invoice terikat + status sebelumnya. Lookup, deduplikasi, replay, audit, dan efek lanjutan tetap di wrapper `deliver.ts` masing-masing supplier.
 - Hanya SK yang mengosongkan lease saat CAS advance menang (H5). WR tetap tidak melepas lease pada CAS ini; perubahan itu beserta jalur completion Premium/Jaspay masuk B4b.

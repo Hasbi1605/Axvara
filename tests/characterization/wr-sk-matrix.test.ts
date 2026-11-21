@@ -202,7 +202,7 @@ describe.each(["premium", "sk"] as const)("T3 %s", family => {
     const http = wire();
     expect(await advance(invoice, "processing", null, f.db, "first")).toBe(true);
     expect(f.row()).toMatchObject({ status: "processing", request_sent_at: before.request_sent_at, attempt_count: 1 });
-    if (sk) expect(f.row().lease_owner).toBeNull(); // WR winning cleanup deliberately belongs to B4b.
+    if (sk) expect(f.row().lease_owner).toBeNull(); // WR winning cleanup is covered by the B4b cases below.
     f.set(lease);
     const replay = f.row();
     expect(await advance(invoice, "processing", null, f.db, "first")).toBe(true);
@@ -376,7 +376,7 @@ it("T3 B2/B4 signed terminal webhook wins over late SK purchase receipt", async 
 });
 
 describe("T3 B4b winning WR completion and advance", () => {
-  it.fails.each(["processing", "failed", "premium completion", "jaspay completion"] as const)("releases purchase lease on winning %s only", async branch => {
+  it.each(["processing", "failed", "premium completion", "jaspay completion"] as const)("releases purchase lease on winning %s only", async branch => {
     const f = setup(branch === "jaspay completion" ? "jaspay" : "premium");
     f.bind();
     f.set(`status='claimed', wr_order_id='${invoice}', ${sent}, ${lease}`);

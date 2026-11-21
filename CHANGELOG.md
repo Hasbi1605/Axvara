@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap B4b (kelas B): kosongkan lease pembelian WR saat CAS advance vendor atau completion baru Premium/Jaspay menang; replay, CAS kalah, fence, attempts dan SK tidak berubah — `src/lib/suppliers/purchase-state.ts`, `src/lib/warung-rebahan/deliver.ts` — (verifikasi: 4 repro merah; 217 tes fokus lulus termasuk D1/workerd, 25 expected-fail tersisa; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Koreksi rujukan job cron lite Pedia, TUNVN dan AIVault pasca-ekstraksi 3A-4; tanpa perubahan runtime — `docs/ARCHITECTURE.md` — (verifikasi: path dan simbol cocok dengan source, `git diff --check` lulus)
 
 - 2026-11-22 — Roadmap 3A-4b (kelas E): pindahkan `pedia_orders` ke `src/lib/cron/lite/jobs/pedia.ts`; dispatch/poll, checkpoint saldo IndoSMM, log/notifikasi, statistik, error subjob inti, serta marker tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/pedia.md` — (verifikasi terintegrasi: 623 file, 8.559 test lulus, 29 expected-fail, 3 TODO; TypeScript dan ESLint lulus)

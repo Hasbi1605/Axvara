@@ -535,9 +535,11 @@ export async function handleJaspayTerminal(
   }
   const plaintext = formatJaspayAccountsForDisplay(usable);
   const { ciphertext, iv } = await encryptSecret(plaintext);
-  // Full completed koheren: CAS kepemilikan invoice + settle biasa.
+  // Full completed koheren: CAS kepemilikan invoice + settle biasa. Replay mempertahankan lease.
   const completed = await execRun(
     `UPDATE wr_order_links SET wr_account_details=?, wr_account_iv=?, status='completed',
+       lease_owner=CASE WHEN status='completed' THEN lease_owner ELSE NULL END,
+       lease_expires_at=CASE WHEN status='completed' THEN lease_expires_at ELSE NULL END,
        completed_at=?, last_event_at=?, last_error=NULL, updated_at=datetime('now')
      WHERE wr_order_id=? AND status IN ('pending','claimed','retry','blocked_balance','submitted','ordering','processing','completed')
        AND wr_variant_id LIKE 'jaspay:%' AND status=?`,
@@ -660,9 +662,11 @@ export async function handleWrOrderCompleted(
   const { ciphertext, iv } = await encryptSecret(plaintext || "(detail akun kosong dari WR)");
   const now = new Date().toISOString();
   // Simpan kredensial dulu (durable) — sebelum status, agar crash di tengah
-  // tidak menghasilkan completed tanpa akun.
+  // tidak menghasilkan completed tanpa akun. Refresh akun mempertahankan lease.
   const completed = await execRun(
     `UPDATE wr_order_links SET wr_account_details=?, wr_account_iv=?, status='completed',
+       lease_owner=CASE WHEN status='completed' THEN lease_owner ELSE NULL END,
+       lease_expires_at=CASE WHEN status='completed' THEN lease_expires_at ELSE NULL END,
        completed_at=?, last_event_at=?, last_error=NULL, updated_at=datetime('now')
       WHERE wr_order_id=? AND status IN ('pending','claimed','retry','blocked_balance','submitted','ordering','processing','completed') AND status=?`,
     ciphertext,

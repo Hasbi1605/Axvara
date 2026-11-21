@@ -124,9 +124,7 @@ export function casAdvanceBoundInvoice(
 ) {
   const { table, invoice } = PURCHASE_LINKS[supplier];
   const now = new Date().toISOString();
-  const sets = [`status='${toStatus}'`, `last_event_at='${now}'`];
-  // Preserve SK's H5 cleanup; WR's winning lease cleanup is a separate change (B4b).
-  if (supplier === "sk") sets.push("lease_owner=NULL", "lease_expires_at=NULL");
+  const sets = [`status='${toStatus}'`, `last_event_at='${now}'`, "lease_owner=NULL", "lease_expires_at=NULL"];
   const values: unknown[] = [];
   if (eventId) {
     sets.push(`last_event_id=?`);
