@@ -552,18 +552,19 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | B2b (invoice kosong) | B | lokal (commit B2b) | Premium + Jaspay; Sol repro + Wonder APPROVE |
 | B3 | E | lokal (commit B3) | Wonder APPROVE |
 | B3b (R1) | B | lokal (commit B3b) | Sol repro + Wonder APPROVE; expected-fail 33→29 |
-| B4 | E | lokal (commit B4, 22 Nov) | Rank dan CAS invoice/status bersama; pelepasan lease tetap khusus SK; B4b terpisah |
+| B4 | E | lokal `dd97c2d0` (22 Nov) | Rank dan CAS invoice/status bersama; pelepasan lease tetap khusus SK; B4b terpisah |
 | B4b (lease WR) | B | lokal `eba74b42` | Advance otoritatif dan completion baru Premium/Jaspay saja; expected-fail 29→25. |
-| B5 (R2) | B | lokal (patch; belum dipublikasikan) | Kepemilikan invoice SK dijaga atomik pada receipt dan binder; advance recovery tidak menulis ulang invoice. Expected-fail 25→22; 2C tetap terpisah. |
-| C1 (H4 migrasi) | B | lokal (patch 0154; belum diterapkan) | Marker-only; deploy dan verifikasi serializer C1-PRE `ea8a58c4` sebelum migrasi; tanpa backfill atau aktivasi C2. |
-| C2 (H4 aktivasi) | B | kandidat lokal | Pagar link/agregat terpisah, replay tanpa POST; review dan rilis belum diverifikasi. |
-| 3A | E | 3A-1, 3A-2a promo, 3A-2b cleanup, 3A-3 notify, 3A-4a supplier kecil, 3A-4b Pedia, 3A-5 payments lokal | Modul job baru tidak menambah import runtime selain yang sudah dimuat route; expiry, fulfillment, WR/SK dan katalog masih inline |
-| 3B | E | 3B-1..3B-6 lokal (GET flags/detail-view; respons POST; guard; metode; slot+create; invoice; validasi) | 3B-6: validasi pra-reuse di `checkout/validate.ts` |
-| 3C | E | 3C-1, 3C-2 lokal (phase-state, catalog-sweep, OperationsContext beku) | Wonder APPROVE; berikutnya satu fase per commit |
-| 3D | E | 3D-1, 3D-2 lokal (types/constants/writes; pricing/exclusion) | 3D-1 Wonder APPROVE; 3D-2 Spark APPROVE-WITH-NITS |
-| 3E | E (UI) | belum | |
-| F1–F7 | E/B | belum | menunggu konfirmasi D2–D9 |
-| F8 | — | ditunda | |
+| B5 (R2) | B | lokal `3dd67c48` | Kepemilikan invoice SK dijaga atomik pada receipt dan binder; advance recovery tidak menulis ulang invoice. Expected-fail 25→22; 2C tetap terpisah. |
+| C1 (H4 migrasi) | B | lokal `75075e91` (sesudah C1-PRE `ea8a58c4`) | Migrasi 0154 marker-only; serializer C1-PRE wajib sudah aktif sebelum migrasi (CI memigrasikan D1 sebelum deploy Pages); tanpa backfill. Belum diterapkan ke produksi. |
+| C2 (H4 aktivasi) | B | lokal `24354b7d` | Settlement final WR: floor 26 statement sesudah SELECT due; jalur terberat memakai total 27 termasuk SELECT, atau 28 dengan bump revisi stok opsional. Replay gabungan maksimum 22, dua slot ekor utuh. Replay tanpa POST supplier; notice dengan hasil tidak diketahui tetap `sending` dan perlu triase. Rollback: jeda writer, pertahankan skema/data 0154, serializer C1-PRE, dan pagar Retry/replay sampai kedua marker selesai atau ditriase sebelum downgrade (lihat [ARCHITECTURE §16.60](../docs/ARCHITECTURE.md)). Belum dirilis atau diverifikasi di produksi. |
+| 3A | E | lokal melalui `c3fb922f` (3A-1..3A-8e) | Seluruh badan job cron lite terekstrak; sampler WhatsApp tetap di route. Satu TODO characterization lama tetap tercatat sebagai keterbatasan. |
+| 3B | E | lokal melalui `5fbee492` (3B-1..3B-6) | GET flags/detail-view, respons/guard/metode POST, slot+create, invoice, dan validasi pra-reuse selesai lokal. |
+| 3C | E | lokal melalui `69016d12` | Scheduling, konteks beku, state fase, dan keenam fase (cleanup, fulfillment, notify, expiry, WR, SK) terekstrak lokal. |
+| 3D | E | lokal melalui `fa1eeebb` (3D-1..3D-7) | Split sync WR selesai: types/constants/writes, pricing/exclusion, product, variant, prefetch/state/zeroing, sweep, Jaspay + barrel eager. |
+| 3E | E (UI) | lokal `5abc3fa9` | Panel supplier dipecah per tab; bukti 36 pasang screenshot fixture lokal dan single-flight; bukan E2E terautentikasi. |
+| Helper lintas-file | E | lokal `1172a466`, `27b36ca1`, `209ffd3b`, `205e1932` | Parser items bersama, writer sampel service-health, kadens cek saldo WR/SK, dan drain pasangan supplier lazy selesai lokal. |
+| F1–F7 | E/B | ditunda (keputusan closeout) | Ditunda eksplisit tanpa membuka atau mengubah D2–D9; rekomendasi historis di bawah tetap bukan persetujuan baru. Tidak memblokir handoff baca-saja. |
+| F8 | — | ditunda | Hanya dibuka saat supplier ke-6 tiba. |
 
 ## 11. Keputusan owner
 
@@ -578,6 +579,9 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
   aditif. Kebijakan Retry di 2C diputuskan PM: settlement link dipagari, aggregate tidak.
 - 21 Nov malam: owner menyetujui semua langkah dan mengikuti rekomendasi PM. Kerja malam
   hanya lokal; push setelah owner mengetik "gas push" (§4, mode malam).
+
+- Status closeout lokal: seluruh pekerjaan di atas hanya commit lokal. Instruksi historis "gas push" bukan persetujuan rilis; tidak ada push, deploy, atau migrasi produksi yang tersirat dari status ini, dan cakupan relaunch tidak berubah.
+- Gerbang PM pada tree runtime `9403b657bd81caaacbc2a9b9a40734f56d32023d`: 8.663 tes di 629 file lulus + satu TODO lama, termasuk Workerd; `tsc` dan ESLint ketat file helper berubah exit 0. Bukti build Pages final dicatat terpisah pada handoff.
 
 **Rekomendasi PM untuk D2–D9.** Owner sudah mendelegasikan keputusan ke rekomendasi PM.
 Butir ini tetap **dikonfirmasi ulang sebelum F-langkahnya dimulai**, karena menyangkut

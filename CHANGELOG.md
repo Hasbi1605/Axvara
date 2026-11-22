@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap closeout: perbarui status §10/§11 (B4–C2, 3A–3E, helper lintas-file; F1–F7 ditunda, F8 menunggu supplier ke-6) tanpa klaim push/deploy/build final — `issue/2026-11-21-refactor-roadmap.md` — (verifikasi: cakupan diff dan `git diff --check` lulus; docs-only)
+
 - 2026-11-22 — Roadmap 3H-4 (kelas E): satukan pemuatan drain pasangan khusus cron; mode, pagar, dan kebijakan gagal tetap milik pemanggil — `src/lib/cron/supplier-pairs.ts`, cron Lite dan Operations SK — (verifikasi: 134 tes fokus di 5 file lulus, 1 TODO lama)
 
 - 2026-11-22 — Roadmap 3H-3 (kelas E): satukan pembacaan jadwal cek saldo WR/SK tanpa mengubah anggaran, penanganan error, atau urutan fase — `src/lib/cron/saldo-check.ts`, cron Lite dan Operations — (verifikasi: 78 tes fokus di 6 file lulus)
