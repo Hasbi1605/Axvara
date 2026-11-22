@@ -148,9 +148,14 @@ export function assertD1LikePatterns(query: string, params: unknown[]): void {
   }
 }
 
-export function createD1Fixture() {
+export function createD1Fixture(schemaSql = fs.readFileSync("drizzle/schema.sql", "utf8")) {
   const sql = new DatabaseSync(":memory:");
-  sql.exec(fs.readFileSync("drizzle/schema.sql", "utf8"));
+  try {
+    sql.exec(schemaSql);
+  } catch (error) {
+    sql.close();
+    throw error;
+  }
   sql.exec("DELETE FROM product_variants; DELETE FROM products; PRAGMA foreign_keys=ON");
   const control = {
     queries: 0,

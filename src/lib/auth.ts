@@ -8,7 +8,7 @@ import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payme
 
 export type CheckoutQuoteItem = {
   buyer_field_key?: "muse_invite_code" | null;
-  buyer_fields?: { muse_invite_code?: string };
+  buyer_fields?: { muse_invite_code?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
   max_qty?: number | null;
   product_id: number;
   variant_id?: number;
@@ -421,7 +421,12 @@ const quoteItemSchema = z.object({
   product_id: z.number().int().safe().positive(), variant_id: z.number().int().safe().positive().optional(),
   name: z.string(), price: z.number().int().safe().nonnegative(), qty: z.number().int().min(1).max(100),
   buyer_field_key: z.literal("muse_invite_code").nullable().optional(),
-  buyer_fields: z.object({ muse_invite_code: z.string().regex(/^[A-Za-z0-9]{6}$/).optional() }).strict().optional(),
+  buyer_fields: z.object({
+    muse_invite_code: z.string().regex(/^[A-Za-z0-9]{6}$/).optional(),
+    pv_email: z.string().trim().max(254).optional(),
+    pv_password: z.string().max(200).optional(),
+    pv_totp_secret: z.string().trim().max(120).optional(),
+  }).strict().optional(),
   max_qty: z.number().int().min(1).max(100).nullable().optional(),
   base_price: z.number().int().safe().nonnegative().optional(), applied_tier_min_qty: z.number().int().safe().min(2).optional(),
 });

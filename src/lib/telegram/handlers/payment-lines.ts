@@ -21,7 +21,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
     const summary = await getCartSummary(ownerUserId);
     if (!summary.lines.length || summary.issues.length) return { ok: false, reason: "cart_changed" };
     if (summary.subtotal !== state.idrSubtotal) return { ok: false, reason: "subtotal_changed" };
-    const tag = await checkoutApprovalTag(summary.lines.map((l) => ({ productId: l.productId, variantId: l.variantId, qty: l.qty, price: l.price })));
+    const tag = await checkoutApprovalTag(summary.lines.map((l) => ({ productId: l.productId, variantId: l.variantId, qty: l.qty, price: l.price, buyerFields: l.buyerFields, pixelverifInput: l.pixelverifInput })));
     if (tag !== state.tag) return { ok: false, reason: "tag_changed" };
     return {
       ok: true,
@@ -29,7 +29,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
         productId: l.productId, variantId: l.variantId, qty: l.qty,
         productName: l.productName, variantLabel: l.variantLabel,
         price: l.price, basePrice: l.basePrice, appliedTierMinQty: l.appliedTierMinQty ?? null,
-        buyerFieldKey: l.buyerFieldKey, maxQty: l.maxQty, buyerFields: l.buyerFields,
+        buyerFieldKey: l.buyerFieldKey, maxQty: l.maxQty, buyerFields: l.buyerFields, pixelverifInput: l.pixelverifInput,
         stock: l.stock, fulfillmentMode: l.fulfillmentMode,
       })),
       cartLinesForEmail: summary.lines.map((l) => ({ productId: l.productId, variantId: l.variantId })),
@@ -50,7 +50,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
   const effective = resolved.price;
   if (!Number.isSafeInteger(effective) || effective <= 0) return { ok: false, reason: "price_unavailable" };
   if (effective * source.qty !== state.idrSubtotal) return { ok: false, reason: "subtotal_changed" };
-  const tag = await checkoutApprovalTag([{ productId: source.productId, variantId: source.variantId, qty: source.qty, price: effective }]);
+  const tag = await checkoutApprovalTag([{ productId: source.productId, variantId: source.variantId, qty: source.qty, price: effective, pixelverifInput: variant.pixelverif_input }]);
   if (tag !== state.tag) return { ok: false, reason: "tag_changed" };
   const product = await queryFirst(`SELECT name FROM products WHERE id=?`, source.productId).catch(() => null);
   return {
@@ -60,7 +60,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
       productName: String(product?.name ?? "Produk"),
       variantLabel: formatVariantLabel(variant),
       price: effective, basePrice: Number(variant.price), appliedTierMinQty: resolved.tier ?? null,
-      buyerFieldKey: variant.buyer_field_key, maxQty: variant.max_qty,
+      buyerFieldKey: variant.buyer_field_key, maxQty: variant.max_qty, pixelverifInput: variant.pixelverif_input,
       stock, fulfillmentMode: String(variant.fulfillment_mode || "manual"),
     }],
     cartLinesForEmail: [{ productId: source.productId, variantId: source.variantId }],

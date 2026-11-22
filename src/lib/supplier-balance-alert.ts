@@ -1,7 +1,7 @@
 import { QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import { sanitizeSyncError } from "@/lib/sync-status";
 
-export type SupplierBalanceKey = "tunvn" | "aivault" | "storebat" | "mirai";
+export type SupplierBalanceKey = "tunvn" | "aivault" | "storebat" | "mirai" | "pixelverif";
 
 export interface CheckSupplierLowBalanceOptions {
   supplier: SupplierBalanceKey;
@@ -48,6 +48,12 @@ export function storebatBalanceAlertThreshold(): number {
 
 export function miraiBalanceAlertThreshold(): number {
   return parseBalanceThreshold(process.env.MIRAI_BALANCE_ALERT_USDT, MIRAI_BALANCE_ALERT_USDT_DEFAULT);
+}
+
+export const PIXELVERIF_BALANCE_ALERT_CREDITS_DEFAULT = 5;
+
+export function pixelverifBalanceAlertThreshold(): number {
+  return parseBalanceThreshold(process.env.PIXELVERIF_BALANCE_ALERT_CREDITS, PIXELVERIF_BALANCE_ALERT_CREDITS_DEFAULT);
 }
 
 function escapeHtml(text: string): string {
@@ -293,5 +299,13 @@ export async function checkMiraiLowBalance(
   now?: number,
 ): Promise<SupplierBalanceCheckResult> {
   const { checkMiraiLowBalance: run } = await import("@/lib/mirai/balance");
+  return run(db, now);
+}
+
+export async function checkPixelverifLowBalance(
+  db: DatabaseAccess,
+  now?: number,
+): Promise<SupplierBalanceCheckResult> {
+  const { checkPixelverifLowBalance: run } = await import("@/lib/pixelverif/balance");
   return run(db, now);
 }

@@ -1,5 +1,11 @@
 # ARCHITECTURE.md — AXVARA
 
+## Katalog Pixel Verification — PV-2a (lokal)
+
+- Migrasi `0155_pixelverif_supplier.sql` menambah tabel dan identitas Pixel Verification; blok akhir `drizzle/schema.sql` memakai DDL yang sama, termasuk indeks keluarga unik. CHECK `product_variants.buyer_field_key` dari migrasi 0115 tetap khusus Muse; varian Pixel menyimpan `NULL`.
+- Proyeksi harga menjaga override harga dan markup admin dengan CAS; bila edit admin mendahului proyeksi, sinkron berikutnya mencoba lagi. Tanpa override, harga mentah dibulatkan ke enam desimal sebelum dibulatkan ke atas ke kelipatan Rp100.
+- **Checkout PV-2b1 (lokal, belum dideploy):** keluarga `pixelverif_family` atau varian dengan `pixelverif_flow_type` tidak bisa memperoleh quote atau dibuat menjadi order di D1, sekalipun aktif. Tidak ada formulir, penyimpanan baru, atau pengiriman password/kunci 2FA. Telegram tidak menawarkan varian Pixel. Cleanup existing mengosongkan ciphertext/IV untuk maksimal 50 baris lama yang kedaluwarsa, dibatalkan, atau belum dibayar setelah batas waktu dalam satu statement idempoten, tanpa mengubah ledger pesanan.
+
 ## Eskalasi order dan recovery cron — FX-11 (lokal)
 
 - `fulfillment/supplier-escalation.ts`: setelah CAS supplier menang, item `manual_required` tetap terminal; agregat paid berubah ketika semua item settled, dan job terminal diantrekan kembali agar manifest diperiksa. Satu klaim `buyer_notice_log` per alarm; timeout Telegram ambigu tidak dikirim ulang. Ringkasan admin menampilkan `aged_manual_required` (>24 jam sejak lunas) dan `games_needs_check`, terpisah dari antrean Market.

@@ -242,7 +242,7 @@ describe("error detail and publish-scheduled", () => {
     const f = fixture((job) => job === "tunvn_catalog" ? response() : ok());
     const result = await f.tick(0);
     expect(result.failures[0].error).toBe(detail);
-    expect(result.outcomes).toHaveLength(34);
+    expect(result.outcomes).toHaveLength(35);
   });
 
   it("redacts bearer, key/token/secret patterns and actual configured secrets before state or Telegram", async () => {

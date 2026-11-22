@@ -1,6 +1,7 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import { parseExpiry } from "@/lib/expiry";
 import { PAYMENT_ATTENTION_WHERE } from "@/lib/admin-overview-queries";
+import { purgeExpiredPixelverifInputs } from "./pixelverif/purge";
 
 /** Rows deleted per table per tick. Cleanup runs hourly and is resumable, so a
  * backlog drains over several ticks without one long write burst. */
@@ -8,7 +9,7 @@ const PRUNE_BATCH = 500;
 
 type PruneResult = { changes?: number };
 
-/** Owner decision 2026-11-21: prune ONLY pure append-only logs. Money/order
+/** Money/order
  * ledgers, webhook evidence under review, notice/dedupe ledgers and
  * `payment_invoice_history` are never touched here. Each prune is bounded and
  * skipped when the caller's statement budget is tight (reserving one statement
@@ -80,6 +81,8 @@ export async function runMaintenanceCleanup(db: DatabaseAccess) {
         AND id NOT IN (SELECT MAX(id) FROM pedia_supplier_balance_log GROUP BY supplier)
       ORDER BY created_at LIMIT ${PRUNE_BATCH})`,
   ));
+  const pixelPurged = await prune(db, () => purgeExpiredPixelverifInputs(db));
+
   // Webhook dedupe: Telegram retries and our own reset re-deliver within hours,
   // so 14 days is far beyond any live dedupe window. Orders stay idempotent
   // through their own guards even if an ancient update is replayed.
@@ -103,5 +106,5 @@ export async function runMaintenanceCleanup(db: DatabaseAccess) {
     VALUES('maintenance_cleanup_at',datetime('now'),datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`);
   const whatsapp = Number(sessions.changes || 0) + Number(inbox.changes || 0);
-  return { rows_cleaned: whatsapp + Number(events.changes || 0) + Number(revoked.changes || 0) + Number(claims.changes || 0) + Number(attempts.changes || 0) + Number(login.changes || 0) + Number(security.changes || 0) + syncLogs + balanceLogs + telegram + broadcasts, whatsapp_rows_cleaned: whatsapp };
+  return { rows_cleaned: whatsapp + Number(events.changes || 0) + Number(revoked.changes || 0) + Number(claims.changes || 0) + Number(attempts.changes || 0) + Number(login.changes || 0) + Number(security.changes || 0) + syncLogs + balanceLogs + telegram + broadcasts + pixelPurged, whatsapp_rows_cleaned: whatsapp };
 }

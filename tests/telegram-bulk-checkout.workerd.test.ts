@@ -16,6 +16,8 @@ it("runs createChannelOrderAtomic against real Miniflare D1", async () => {
     "CREATE TABLE product_variants (id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL, sku TEXT NOT NULL, label TEXT NOT NULL, price INTEGER NOT NULL, stock INTEGER NOT NULL DEFAULT -1, updated_at TEXT, bulk_pricing_enabled INTEGER NOT NULL DEFAULT 0, bulk_pricing_tiers TEXT NOT NULL DEFAULT '[]', min_qty INTEGER NOT NULL DEFAULT 1, fulfillment_mode TEXT NOT NULL DEFAULT 'manual', is_active INTEGER NOT NULL DEFAULT 1, shared_secret_ciphertext TEXT, shared_secret_iv TEXT, wr_variant_id TEXT, buyer_field_key TEXT, max_qty INTEGER, tunvn_buff_quantity_b INTEGER, tunvn_source_product_id INTEGER)",
     "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE NOT NULL, customer_name TEXT NOT NULL, customer_wa TEXT NOT NULL, customer_email TEXT, items TEXT, subtotal INTEGER, payment_method TEXT, payment_account TEXT, proof_url TEXT, status TEXT, sales_channel TEXT, channel_conversation_id TEXT, channel_member_id TEXT, telegram_chat_id TEXT, telegram_user_id TEXT, payment_status TEXT, fulfillment_status TEXT, variant_id INTEGER, variant_snapshot TEXT, quote_id TEXT, expires_at TEXT, locale TEXT NOT NULL DEFAULT 'id' CHECK(locale IN ('id','en')), buyer_access_version INTEGER, buyer_access_format TEXT)",
     "CREATE TABLE operation_guards (operation_id TEXT PRIMARY KEY, valid INTEGER CHECK(valid=1))",
+    "ALTER TABLE products ADD COLUMN pixelverif_family TEXT",
+    "ALTER TABLE product_variants ADD COLUMN pixelverif_flow_type TEXT",
     "ALTER TABLE product_variants ADD COLUMN tunvn_cost_usdt REAL",
     "CREATE TABLE tunvn_products(supplier_product_id INTEGER PRIMARY KEY,price_usdt REAL)",
   "ALTER TABLE products ADD COLUMN aivault_family TEXT",

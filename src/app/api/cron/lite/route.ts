@@ -90,11 +90,11 @@ export async function POST(request: NextRequest) {
       const { run } = await import("@/lib/cron/lite/jobs/sk-orders");
       Object.assign(result, await run({ job, db, deadline, result, failedCore }));
     }
-    else if (job === "tunvn_orders" || job === "aivault_orders" || job === "storebat_orders" || job === "mirai_orders") {
+    else if (job === "tunvn_orders" || job === "aivault_orders" || job === "storebat_orders" || job === "mirai_orders" || job === "pixelverif_orders") {
       const { run } = await import("@/lib/cron/lite/jobs/small-suppliers");
       Object.assign(result, await run({ job, db, deadline, result, failedCore }, job));
     }
-    else if (job === "aivault_catalog" || job === "storebat_catalog" || job === "mirai_catalog" || job === "tunvn_catalog") {
+    else if (job === "aivault_catalog" || job === "storebat_catalog" || job === "mirai_catalog" || job === "pixelverif_catalog" || job === "tunvn_catalog") {
       const { run } = await import("@/lib/cron/lite/jobs/catalog");
       const outcome = await run({ job, db, deadline, result, failedCore }, job);
       if (outcome === "fx_unavailable") {

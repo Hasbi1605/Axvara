@@ -116,6 +116,7 @@
   - `telegram_updates` > 14 hari (jendela dedupe update_id hanya jam-an; order tetap idempoten lewat guard sendiri).
   - `broadcast_deliveries` > 90 hari **hanya** untuk campaign `status='completed'` dan status terminal; baris antre aktif tidak disentuh.
   - `security_events` kini disimpan **90 hari** (naik dari 30), bounded 500/tick.
+- **PV-2b1 (lokal):** satu statement tambahan mengosongkan ciphertext/IV dari paling banyak 50 baris lama di `pixelverif_buyer_inputs` per tick. Tidak menghapus atau mengubah pesanan.
 - **Tidak pernah** disentuh: ledgers uang/order (`orders`, `payment_transactions`, `payment_invoice_history`, `order_item_costs`), bukti webhook yang masih menunggu review (baris `dana_webhook_events` yang cocok `PAYMENT_ATTENTION_WHERE`, termasuk baris FX-1), ledger notice/dedupe (`buyer_notice_log`, dsb.), `fulfillment_send_claims`, klaim/lease aktif, `whatsapp_outbox` terminal, dan `operation_guards`.
 - Timestamp dibandingkan lewat `julianday()`/`datetime()` agar format campuran (`datetime('now')` vs ISO `toISOString()`) tetap benar. Status: implementasi lokal + test; publikasi via CI.
 

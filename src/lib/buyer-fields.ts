@@ -1,17 +1,40 @@
 import { z } from "zod";
 import { miraiEligibility } from "@/lib/mirai/purchase";
 export { miraiEligibility, type MiraiEligibility } from "@/lib/mirai/purchase";
+import { pixelverifEligibility, parsePixelverifInput } from "@/lib/pixelverif/purchase";
+export { pixelverifEligibility, parsePixelverifInput, type PixelverifEligibility, type PixelverifInput } from "@/lib/pixelverif/purchase";
 
-export const buyerFieldsSchema = z.object({ muse_invite_code: z.string().trim().regex(/^[A-Za-z0-9]{6}$/, "Kode Invite Muse harus 6 huruf/angka ASCII.").optional() }).strict();
+export const buyerFieldsSchema = z.object({
+  muse_invite_code: z.string().trim().regex(/^[A-Za-z0-9]{6}$/, "Kode Invite Muse harus 6 huruf/angka ASCII.").optional(),
+  // Pixel Verification credentials: validated strictly in pixelverif/purchase.ts.
+  // Kept as opaque strings here so validateBuyerFields can route per variant type.
+  pv_email: z.string().trim().max(254).optional(),
+  pv_password: z.string().max(200).optional(),
+  pv_totp_secret: z.string().trim().max(120).optional(),
+}).strict();
 export type BuyerFields = z.infer<typeof buyerFieldsSchema>;
 export type BuyerFieldSnapshot = { buyer_field_key?: "muse_invite_code" | null; buyer_fields?: BuyerFields; max_qty?: number | null };
 export const buyerFieldLabel = (locale = "id") => locale === "en" ? "Muse invite code" : "Kode Invite Muse";
 
+/** True when the variant row is a Pixel Verification variant. */
+export function isPixelverifVariantRow(config: { pixelverif_flow_type?: unknown }): boolean {
+  return config.pixelverif_flow_type === "normal" || config.pixelverif_flow_type === "full";
+}
+
 /** Values never enter public listings, URLs, notices or email templates. */
-export function validateBuyerFields(config: { buyer_field_key?: unknown; max_qty?: unknown }, fields: unknown, qty: number): BuyerFields {
+export function validateBuyerFields(config: { buyer_field_key?: unknown; max_qty?: unknown; pixelverif_flow_type?: unknown }, fields: unknown, qty: number): BuyerFields {
   const parsed = buyerFieldsSchema.parse(fields ?? {});
   const cap = config.max_qty == null ? 100 : Number(config.max_qty);
   if (!Number.isSafeInteger(qty) || qty < 1 || !Number.isSafeInteger(cap) || cap < 1 || qty > cap) throw new Error(`Maksimal ${cap} unit per varian.`);
+  if (isPixelverifVariantRow(config)) {
+    // Pixel credentials are validated strictly here; foreign fields rejected.
+    if (parsed.muse_invite_code) throw new Error("Konfigurasi input berubah. Muat ulang checkout.");
+    const input = parsePixelverifInput(parsed);
+    return { pv_email: input.pv_email, pv_password: input.pv_password, pv_totp_secret: input.pv_totp_secret };
+  }
+  if (parsed.pv_email || parsed.pv_password || parsed.pv_totp_secret) {
+    throw new Error("Konfigurasi input berubah. Muat ulang checkout.");
+  }
   if (config.buyer_field_key == null) {
     if (Object.keys(parsed).length) throw new Error("Konfigurasi input berubah. Muat ulang checkout.");
   } else if (config.buyer_field_key !== "muse_invite_code" || !parsed.muse_invite_code) {
@@ -19,6 +42,7 @@ export function validateBuyerFields(config: { buyer_field_key?: unknown; max_qty
   }
   return parsed;
 }
+
 
 export function assertSameBuyerCode(items: { buyer_fields?: BuyerFields }[]): void {
   const codes = new Set(items.flatMap(item => item.buyer_fields?.muse_invite_code ? [item.buyer_fields.muse_invite_code.trim()] : []));
@@ -28,7 +52,10 @@ export function assertSameBuyerCode(items: { buyer_fields?: BuyerFields }[]): vo
 export function buyerSnapshotMatches(a: BuyerFieldSnapshot, b: BuyerFieldSnapshot): boolean {
   return (a.buyer_field_key ?? null) === (b.buyer_field_key ?? null)
     && (a.max_qty ?? null) === (b.max_qty ?? null)
-    && (a.buyer_fields?.muse_invite_code?.trim() ?? "") === (b.buyer_fields?.muse_invite_code?.trim() ?? "");
+    && (a.buyer_fields?.muse_invite_code?.trim() ?? "") === (b.buyer_fields?.muse_invite_code?.trim() ?? "")
+    && (a.buyer_fields?.pv_email?.trim().toLowerCase() ?? "") === (b.buyer_fields?.pv_email?.trim().toLowerCase() ?? "")
+    && (a.buyer_fields?.pv_password ?? "") === (b.buyer_fields?.pv_password ?? "")
+    && (a.buyer_fields?.pv_totp_secret?.replace(/[\s-]/g, "").toUpperCase() ?? "") === (b.buyer_fields?.pv_totp_secret?.replace(/[\s-]/g, "").toUpperCase() ?? "");
 }
 
 export type TunvnEligibility = { version: 1; kind: "account" | "buff"; source_product_id: number | null; source_variant_id: number; source_unit_b: number | null; quantity: number; cost_usdt?: number };
@@ -37,6 +64,9 @@ export function withoutPrivateBuyerData(items: unknown[]): unknown[] {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
     const publicItem = { ...raw } as Record<string,unknown>;
     delete publicItem.buyer_fields;
+    delete publicItem.pixelverif_input;
+    delete publicItem.pixelverif_fingerprint;
+    delete publicItem.pixelverif_eligibility;
     delete publicItem.tunvn_eligibility;
     delete publicItem.aivault_eligibility;
     delete publicItem.storebat_eligibility;
@@ -89,5 +119,5 @@ export function storebatEligibility(row: Record<string, unknown>, qty: number): 
 
 /** Buyer-facing catalog class, not an order admission or dispatch decision. */
 export function hasAutomaticSupplierDelivery(row: Record<string, unknown>, qty = 1): boolean {
-  return Boolean(aivaultEligibility(row, qty) || storebatEligibility(row, qty) || miraiEligibility(row, qty) || tunvnEligibility(row, qty));
+  return Boolean(aivaultEligibility(row, qty) || storebatEligibility(row, qty) || miraiEligibility(row, qty) || tunvnEligibility(row, qty) || pixelverifEligibility(row, qty));
 }

@@ -17,6 +17,7 @@ const LINK_TABLES = {
   aivault: { table: "aivault_order_links", claim: "due" },
   mirai: { table: "mirai_order_links", claim: "due" },
   storebat: { table: "storebat_order_links", claim: "due" },
+  pixelverif: { table: "pixelverif_order_links", claim: "due" },
   tunvn: { table: "tunvn_order_links", claim: "adapter" },
 } as const;
 type DueClaimSupplier = {

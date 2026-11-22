@@ -1,6 +1,7 @@
 export type CheckoutApprovalLine = {
-  buyerFields?: { muse_invite_code?: string };
+  buyerFields?: { muse_invite_code?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
   buyerFieldKey?: "muse_invite_code" | null;
+  pixelverifInput?: boolean;
   maxQty?: number | null;
   productId: number;
   variantId: number;
@@ -8,7 +9,8 @@ export type CheckoutApprovalLine = {
   price: number;
 };
 
-/** Public stale-state check, not an authorization token. Never include contacts. */
+/** Public stale-state check, not an authorization token. Never include contacts.
+ *  Pixel lines bind a SHA-256 fingerprint of the credential triple — never the values. */
 export async function checkoutApprovalTag(lines: readonly CheckoutApprovalLine[]): Promise<string> {
   if (!lines.length || lines.length > 20 || lines.some(line =>
     ![line.productId, line.variantId, line.qty, line.price].every(Number.isSafeInteger)
@@ -16,7 +18,14 @@ export async function checkoutApprovalTag(lines: readonly CheckoutApprovalLine[]
     throw new Error("invalid_checkout_snapshot");
   }
   const canonical = [...lines].sort((a,b) => a.productId-b.productId || a.variantId-b.variantId)
-    .map(line => [line.productId,line.variantId,line.qty,line.price,...(line.buyerFieldKey || line.maxQty != null ? [line.buyerFieldKey ?? null,line.maxQty ?? null,line.buyerFields?.muse_invite_code ?? null] : [])]);
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(canonical)));
+    .map(async line => {
+      const base = [line.productId,line.variantId,line.qty,line.price,...(line.buyerFieldKey || line.maxQty != null ? [line.buyerFieldKey ?? null,line.maxQty ?? null,line.buyerFields?.muse_invite_code ?? null] : [])];
+      if (!line.pixelverifInput) return base;
+      const { computeFingerprint } = await import("@/lib/fulfillment/crypto");
+      const fingerprint = await computeFingerprint(`${line.buyerFields?.pv_email ?? ""}\n${line.buyerFields?.pv_password ?? ""}\n${line.buyerFields?.pv_totp_secret ?? ""}`);
+      return [...base, "pixelverif", fingerprint];
+    });
+  const canonicalResolved = await Promise.all(canonical);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(canonicalResolved)));
   return Array.from(new Uint8Array(digest).slice(0, 6), byte => byte.toString(16).padStart(2, "0")).join("");
 }

@@ -158,6 +158,7 @@ function publicVariant(v: VariantSummary, links?: SupplierLinkMap) {
     min_qty: v.min_qty,
     max_qty: v.max_qty,
     buyer_field_key: v.buyer_field_key,
+    ...(v.pixelverif_input ? { pixelverif_input: true as const } : {}),
     fulfillment_mode: v.fulfillment_mode,
     is_active: v.is_active,
     bulk_pricing_enabled: v.bulk_pricing_enabled,

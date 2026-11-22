@@ -430,9 +430,12 @@ export async function POST(req: NextRequest) {
     locale,
   });
 
+  // Credentials stay only in the signed quote token + order-create request.
+  // Never echo password/TOTP back in the (cacheable-by-client) quote response.
+  const publicQuotedItems = quotedItems.map(({ buyer_fields: _buyerFields, ...rest }) => rest);
   return NextResponse.json({
     ok: true,
-    items: quotedItems,
+    items: publicQuotedItems,
     subtotal,
     paymentMethods: catalog,
     changes,

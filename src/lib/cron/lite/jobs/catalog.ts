@@ -16,7 +16,7 @@
 
 import { drainDirtyGroupsIfBudget, type LiteContext } from "@/lib/cron/lite/context";
 
-export type CatalogJob = "aivault_catalog" | "storebat_catalog" | "mirai_catalog" | "tunvn_catalog";
+export type CatalogJob = "aivault_catalog" | "storebat_catalog" | "mirai_catalog" | "tunvn_catalog" | "pixelverif_catalog";
 
 export type CatalogOutcome = "done" | "fx_unavailable" | "publish_failed";
 
@@ -38,6 +38,10 @@ export async function run(ctx: LiteContext, job: CatalogJob): Promise<CatalogOut
     const { isMiraiConfigured, isMiraiSyncEnabled } = await import("@/lib/mirai/client");
     configured = Boolean(isMiraiConfigured() && isMiraiSyncEnabled());
     if (configured) publish = async (d, rate, opts) => (await import("@/lib/mirai/catalog")).publishMiraiCatalog(d, rate, opts) as Promise<Synced>;
+  } else if (job === "pixelverif_catalog") {
+    const { isPixelverifConfigured, isPixelverifSyncEnabled } = await import("@/lib/pixelverif/client");
+    configured = Boolean(isPixelverifConfigured() && isPixelverifSyncEnabled());
+    if (configured) publish = async (d, rate, opts) => (await import("@/lib/pixelverif/catalog")).publishPixelverifCatalog(d, rate, opts) as Promise<Synced>;
   } else {
     const { isTunvnSyncEnabled, isTunvnConfigured } = await import("@/lib/tunvn/client");
     configured = Boolean(isTunvnSyncEnabled() && isTunvnConfigured());

@@ -1,5 +1,10 @@
 # PRD — AXVARA
 
+## Katalog Pixel Verification — PV-2a (lokal)
+
+- Google AI Pro 3 Bulan memiliki dua varian, Link Redeem dan Aktivasi Langsung. Publikasi katalog membuat produk dan varian dalam keadaan nonaktif, khusus web (tidak ditawarkan di Telegram), dengan batas satu unit per varian. Tahap ini belum mengaktifkan checkout Pixel.
+- **PV-2b1 (lokal, belum dideploy):** pesanan ditolak di web dan Telegram; toko tidak meminta password Google atau kunci setup 2FA. Pembelian memerlukan alur baru yang tidak meminta kredensial tersebut, misalnya pembeli menukarkan kode resmi sendiri di Google.
+
 ## Penanganan manual setelah lunas — FX-11 (lokal)
 
 - Market memberi kabar pembeli ketika pengiriman otomatis perlu penanganan manual; Ringkasan menampilkan jumlah pesanan lunas `manual_required` yang berumur lebih dari 24 jam. Pedia memberi satu kabar saat masuk `needs_check` biasa: hubungi admin dengan kode pesanan, jangan pesan ulang.

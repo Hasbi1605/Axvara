@@ -35,6 +35,7 @@ const GamesManagerLazy = lazy(() => import("@/components/admin/GamesManager").th
 const AivaultManagerLazy = lazy(() => import("@/components/admin/AivaultManager").then(m=>({default:m.AivaultManager})));
 const StorebatManagerLazy = lazy(() => import("@/components/admin/StorebatManager").then(m=>({default:m.StorebatManager})));
 const MiraiManagerLazy = lazy(() => import("@/components/admin/MiraiManager").then(m=>({default:m.MiraiManager})));
+const PixelverifManagerLazy = lazy(() => import("@/components/admin/PixelverifManager").then(m=>({default:m.PixelverifManager})));
 const TunvnManagerLazy = lazy(() => import("@/components/admin/TunvnManager").then((m) => ({ default: m.TunvnManager })));
 const BotAutomationManagerLazy = lazy(() => import("@/components/admin/BotAutomationManager"));
 const ArticlesManagerLazy = lazy(() => import("@/components/admin/ArticlesManager").then((m) => ({ default: m.ArticlesManager })));
@@ -48,7 +49,7 @@ const ExpensesManagerLazy = lazy(() => import("@/components/admin/finance/Expens
 const ExpenseFormSheetLazy = lazy(() => import("@/components/admin/finance/ExpenseFormSheet").then((m) => ({ default: m.ExpenseFormSheet })));
 const ProductEditorModalLazy = lazy(() => import("@/components/admin/ProductEditorModal").then((m) => ({ default: m.ProductEditorModal })));
 
-const ADMIN_SECTIONS: AdminSection[] = ["summary","expenses","products","orders","categories","payments","topup","warung","sekalipay","tunvn","aivault","storebat","mirai","pairs","links","pedia","games","articles","banners","broadcasts","subscribers","bot","agent","settings"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","expenses","products","orders","categories","payments","topup","warung","sekalipay","tunvn","aivault","storebat","mirai","pixelverif","pairs","links","pedia","games","articles","banners","broadcasts","subscribers","bot","agent","settings"];
 
 export default function AdminPage() {
   const toast = useToast();
@@ -173,6 +174,7 @@ export default function AdminPage() {
       {tab==="aivault" && <Suspense fallback={sectionFallback("AIVault")}><AivaultManagerLazy /></Suspense>}
       {tab==="storebat" && <Suspense fallback={sectionFallback("StoreBat")}><StorebatManagerLazy /></Suspense>}
       {tab==="mirai" && <Suspense fallback={sectionFallback("Mirai")}><MiraiManagerLazy /></Suspense>}
+      {tab==="pixelverif" && <Suspense fallback={sectionFallback("Pixel Verification")}><PixelverifManagerLazy /></Suspense>}
       {tab==="tunvn" && <Suspense fallback={sectionFallback("TUNVN")}>{<TunvnManagerLazy />}</Suspense>}
       {tab==="broadcasts" && <Suspense fallback={sectionFallback("siaran")}><BroadcastManagerLazy /></Suspense>}
       {tab==="bot" && <Suspense fallback={sectionFallback("otomasi bot")}>{<BotAutomationManagerLazy />}</Suspense>}

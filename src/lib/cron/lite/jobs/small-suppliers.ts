@@ -1,13 +1,14 @@
 import { QueryBudgetExceeded } from "@/lib/db-access";
 import type { LiteContext } from "@/lib/cron/lite/context";
 
-type SmallSupplierJob = "tunvn_orders" | "aivault_orders" | "storebat_orders" | "mirai_orders";
+type SmallSupplierJob = "tunvn_orders" | "aivault_orders" | "storebat_orders" | "mirai_orders" | "pixelverif_orders";
 
 export async function run(ctx: LiteContext, which: SmallSupplierJob): Promise<Record<string, unknown>> {
   const { db, deadline } = ctx;
   if (which === "tunvn_orders") return runTunvnOrders(db, deadline);
   if (which === "aivault_orders") return runAivaultOrders(db, deadline);
   if (which === "storebat_orders") return runStorebatOrders(db, deadline);
+  if (which === "pixelverif_orders") return runPixelverifOrders(db, deadline);
   return runMiraiOrders(db, deadline);
 }
 
@@ -16,7 +17,7 @@ type Db = LiteContext["db"];
 async function runSupplierBalanceCheck(
   db: Db,
   out: Record<string, unknown>,
-  prefix: "tunvn" | "aivault" | "storebat" | "mirai",
+  prefix: "tunvn" | "aivault" | "storebat" | "mirai" | "pixelverif",
   loadAndCheck: () => Promise<{ checked: boolean; balance?: number; alerted?: boolean; error?: string }>,
 ) {
   if (!db.canSpend(5)) return;
@@ -76,6 +77,18 @@ async function runMiraiOrders(db: Db, deadline: number) {
   await runSupplierBalanceCheck(db, out, "mirai", async () => {
     const { checkMiraiLowBalance } = await import("@/lib/mirai/balance");
     return checkMiraiLowBalance(db);
+  });
+  return out;
+}
+
+async function runPixelverifOrders(db: Db, deadline: number) {
+  const { processPixelverifOrders } = await import("@/lib/pixelverif/orders");
+  const out: Record<string, unknown> = {
+    pixelverif_orders_processed: await processPixelverifOrders(db, { deadlineMs: deadline - 5_000 }),
+  };
+  await runSupplierBalanceCheck(db, out, "pixelverif", async () => {
+    const { checkPixelverifLowBalance } = await import("@/lib/pixelverif/balance");
+    return checkPixelverifLowBalance(db);
   });
   return out;
 }

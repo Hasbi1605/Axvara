@@ -19,7 +19,7 @@ import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/qris";
 import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
-import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, miraiEligibility, storebatEligibility, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, miraiEligibility, pixelverifEligibility, storebatEligibility, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 
 export type ChannelOrderInput = {
   salesChannel: "web" | "telegram";
@@ -237,7 +237,7 @@ async function reserveChannelOrder(
   const guardIds: string[] = [];
   const statements: D1Statement[] = [];
   const configIds = [...new Set(input.lines.map(line => line.variantId))];
-  const configs = (await d1.prepare(`SELECT pv.id,pv.sku,pv.max_qty,pv.buyer_field_key,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,pv.storebat_product_id,p.storebat_family,pv.storebat_cost_usd,pv.storebat_fx_idr_per_usd,pv.mirai_package_code,p.mirai_family,pv.mirai_cost_usdt,pv.mirai_fx_idr_per_usdt,p.slug AS product_slug FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${configIds.map(() => "?").join(",")})`).bind(...configIds).all()).results as Record<string, unknown>[];
+  const configs = (await d1.prepare(`SELECT pv.id,pv.sku,pv.max_qty,pv.buyer_field_key,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,pv.storebat_product_id,p.storebat_family,pv.storebat_cost_usd,pv.storebat_fx_idr_per_usd,pv.mirai_package_code,p.mirai_family,pv.mirai_cost_usdt,pv.mirai_fx_idr_per_usdt,pv.pixelverif_flow_type,pv.pixelverif_validity,pv.pixelverif_cost_usd,pv.pixelverif_fx_idr_per_usd,p.slug AS product_slug FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${configIds.map(() => "?").join(",")})`).bind(...configIds).all()).results as Record<string, unknown>[];
   const configById = new Map(configs.map(row => [Number(row.id),row]));
   try {
     assertSameBuyerCode(input.items as BuyerFieldSnapshot[]);
@@ -245,7 +245,7 @@ async function reserveChannelOrder(
       const line = input.lines[index];
       const row = configById.get(line.variantId);
       if (!row) throw new Error("unsupported_buyer_input");
-      const item = raw as BuyerFieldSnapshot & { tunvn_eligibility?: unknown; aivault_eligibility?: unknown; storebat_eligibility?: unknown; mirai_eligibility?: unknown };
+      const item = raw as BuyerFieldSnapshot & { tunvn_eligibility?: unknown; aivault_eligibility?: unknown; storebat_eligibility?: unknown; mirai_eligibility?: unknown; pixelverif_eligibility?: unknown };
       const qty = input.lines.filter(other => other.variantId === line.variantId).reduce((n,other) => n + other.qty,0);
       validateBuyerFields(row,item.buyer_fields,qty);
       if (!buyerSnapshotMatches(item,{ buyer_field_key:(row.buyer_field_key ?? null) as "muse_invite_code" | null,max_qty:row.max_qty == null ? null : Number(row.max_qty),buyer_fields:item.buyer_fields })) throw new StockReservationError("buyer_config_changed");
@@ -254,6 +254,9 @@ async function reserveChannelOrder(
       delete clean.aivault_eligibility;
       delete clean.storebat_eligibility;
       delete clean.mirai_eligibility;
+      delete clean.pixelverif_eligibility;
+      const pvEligibility = pixelverifEligibility(row,line.qty);
+      if (row.pixelverif_flow_type && !pvEligibility?.cost_usd) throw new StockReservationError("invalid_supplier_identity");
       const mrEligibility = input.salesChannel === "telegram" ? miraiEligibility(row,line.qty) : undefined;
       if ((row.mirai_package_code || row.mirai_family) && !mrEligibility?.cost_usdt) throw new StockReservationError("invalid_supplier_identity");
       const sbEligibility = input.salesChannel === "telegram" ? storebatEligibility(row,line.qty) : undefined;
@@ -269,13 +272,15 @@ async function reserveChannelOrder(
                   AND (pv.aivault_service_id IS ? AND p.aivault_family IS ? AND (SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) IS ?)
                   AND (pv.storebat_product_id IS ? AND p.storebat_family IS ? AND pv.storebat_cost_usd IS ? AND pv.storebat_fx_idr_per_usd IS ?)
                   AND (pv.mirai_package_code IS ? AND p.mirai_family IS ? AND pv.mirai_cost_usdt IS ? AND pv.mirai_fx_idr_per_usdt IS ?)
+                  AND (pv.pixelverif_flow_type IS ? AND pv.pixelverif_validity IS ? AND pv.pixelverif_cost_usd IS ? AND pv.pixelverif_fx_idr_per_usd IS ?)
                   AND (pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?))
+                  ${row.pixelverif_flow_type ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='pixelverif_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
                   ${row.aivault_service_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='aivault_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
                   ${row.storebat_product_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='storebat_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
                   ${row.mirai_package_code ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='mirai_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
         ${String(row.sku ?? "").startsWith("TUNVN-") ? "AND NOT EXISTS (SELECT 1 FROM store_settings WHERE key='tunvn_catalog_lease' AND json_extract(value,'$.until') > unixepoch('now')*1000)" : ""}
-        ) THEN 1 ELSE 0 END`).bind(guardId,line.variantId,row.buyer_field_key ?? null,row.max_qty ?? null,qty,row.sku ?? null,row.tunvn_buff_quantity_b ?? null,row.product_slug ?? null,row.tunvn_source_product_id ?? null,row.aivault_service_id ?? null,row.aivault_family ?? null,row.aivault_source_cost_usd ?? null,row.storebat_product_id ?? null,row.storebat_family ?? null,row.storebat_cost_usd ?? null,row.storebat_fx_idr_per_usd ?? null,row.mirai_package_code ?? null,row.mirai_family ?? null,row.mirai_cost_usdt ?? null,row.mirai_fx_idr_per_usdt ?? null,row.tunvn_cost_usdt ?? null,row.tunvn_source_cost_usdt ?? null));
-      return { ...clean,...(mrEligibility ? { mirai_eligibility:mrEligibility } : {}),...(sbEligibility ? { storebat_eligibility:sbEligibility } : {}), ...(avEligibility ? { aivault_eligibility:avEligibility } : {}),...(eligibility ? { tunvn_eligibility:eligibility } : {}) };
+        ) THEN 1 ELSE 0 END`).bind(guardId,line.variantId,row.buyer_field_key ?? null,row.max_qty ?? null,qty,row.sku ?? null,row.tunvn_buff_quantity_b ?? null,row.product_slug ?? null,row.tunvn_source_product_id ?? null,row.aivault_service_id ?? null,row.aivault_family ?? null,row.aivault_source_cost_usd ?? null,row.storebat_product_id ?? null,row.storebat_family ?? null,row.storebat_cost_usd ?? null,row.storebat_fx_idr_per_usd ?? null,row.mirai_package_code ?? null,row.mirai_family ?? null,row.mirai_cost_usdt ?? null,row.mirai_fx_idr_per_usdt ?? null,row.pixelverif_flow_type ?? null,row.pixelverif_validity ?? null,row.pixelverif_cost_usd ?? null,row.pixelverif_fx_idr_per_usd ?? null,row.tunvn_cost_usdt ?? null,row.tunvn_source_cost_usdt ?? null));
+      return { ...clean,...(pvEligibility ? { pixelverif_eligibility:pvEligibility } : {}),...(mrEligibility ? { mirai_eligibility:mrEligibility } : {}),...(sbEligibility ? { storebat_eligibility:sbEligibility } : {}), ...(avEligibility ? { aivault_eligibility:avEligibility } : {}),...(eligibility ? { tunvn_eligibility:eligibility } : {}) };
     });
   } catch (error) {
     if (error instanceof StockReservationError) throw error;
@@ -468,6 +473,27 @@ async function reserveChannelOrder(
       return sum + add;
     }, 0);
     if (internalSubtotal !== input.subtotal) throw new StockReservationError();
+  }
+
+  // Pixel credentials never enter orders.items plaintext: seal each eligible
+  // line into pixelverif_buyer_inputs inside the same atomic batch.
+  {
+    const { computeFingerprint, encryptSecret } = await import("@/lib/fulfillment/crypto");
+    const { maskPixelverifEmail, parsePixelverifInput } = await import("@/lib/pixelverif/purchase");
+    for (const [index, rawItem] of orderItems.entries()) {
+      const item = rawItem as Record<string, unknown>;
+      if (!item.pixelverif_eligibility) continue;
+      const inputPv = parsePixelverifInput(item.buyer_fields);
+      const sealed = await encryptSecret(JSON.stringify(inputPv));
+      const fingerprint = await computeFingerprint(`${inputPv.pv_email}\n${inputPv.pv_password}\n${inputPv.pv_totp_secret}`);
+      statements.push(
+        d1.prepare(
+          `INSERT INTO pixelverif_buyer_inputs(order_code,item_index,input_ciphertext,input_iv,email_masked,fingerprint) VALUES(?,?,?,?,?,?)`,
+        ).bind(input.orderCode, index, sealed.ciphertext, sealed.iv, maskPixelverifEmail(inputPv.pv_email), fingerprint),
+      );
+      delete item.buyer_fields;
+      item.pixelverif_fingerprint = fingerprint;
+    }
   }
 
   const windowMinutes = orderMinutes;

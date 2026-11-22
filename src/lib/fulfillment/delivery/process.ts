@@ -40,6 +40,7 @@ import { eligibleStorebatLine } from "@/lib/storebat/orders";
 import { eligibleMiraiLine } from "@/lib/mirai/orders";
 import { eligibleAivaultLine } from "@/lib/aivault/orders";
 import { eligibleTunvnLine } from "@/lib/tunvn/orders";
+import { eligiblePixelverifLine } from "@/lib/pixelverif/orders";
 
 /**
  * Proses SEBANYAK maxItems item berikutnya dari satu job (RR4-01).
@@ -109,10 +110,13 @@ export async function processJobItems(
     ? await queryAll("SELECT id FROM mirai_order_links WHERE order_code=? AND status='completed'",orderCode) : [];
   const readyAivault = snapshot.some(item=>eligibleAivaultLine(item)) && database.canSpend(COST_PER_JOB_FRAME+1)
     ? await queryAll("SELECT id FROM aivault_order_links WHERE order_code=? AND status='completed'",orderCode) : [];
+  const readyPixelverif = snapshot.some(item=>eligiblePixelverifLine(item)) && database.canSpend(COST_PER_JOB_FRAME+1)
+    ? await queryAll("SELECT id FROM pixelverif_order_links WHERE order_code=? AND status='completed'",orderCode) : [];
   const pending = itemRows.filter((row) => !["delivered", "manual_required"].includes(String(row.status)) && row.wr_link_id == null && row.sk_link_id == null
     && (!eligibleStorebatLine(snapshot[Number(row.item_index)] ?? {}) || readyStorebat.some(link=>link.id===row.storebat_link_id))
     && (!eligibleMiraiLine(snapshot[Number(row.item_index)] ?? {}) || readyMirai.some(link=>link.id===row.mirai_link_id))
     && (!eligibleAivaultLine(snapshot[Number(row.item_index)] ?? {}) || readyAivault.some(link=>link.id===row.aivault_link_id))
+    && (!eligiblePixelverifLine(snapshot[Number(row.item_index)] ?? {}) || readyPixelverif.some(link=>link.id===row.pixelverif_link_id))
     && (!eligibleTunvnLine(snapshot[Number(row.item_index)] ?? {}) || readyTunvn.some(link=>link.id===row.tunvn_link_id)));
   const todo = pending.filter((r) => Number(r.item_index) >= start).concat(pending.filter((r) => Number(r.item_index) < start));
   for (const row of todo.slice(0, Math.max(0, maxItems))) {
@@ -121,7 +125,7 @@ export async function processJobItems(
     // its ledger CAS/checkpoint. Unique still needs one extra statement.
     const copyCost = String(row.recipient_channel || channel) === "telegram" && row.fulfillment_mode !== "manual" ? 1 : 0;
     const pushCost = String(row.recipient_channel || channel) === "telegram" && row.fulfillment_mode === "unique" ? 1 : 0;
-    const itemCost = (row.tunvn_link_id != null || row.aivault_link_id != null || row.storebat_link_id != null || row.mirai_link_id != null ? 16 : row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost + pushCost;
+    const itemCost = (row.tunvn_link_id != null || row.aivault_link_id != null || row.storebat_link_id != null || row.mirai_link_id != null || row.pixelverif_link_id != null ? 16 : row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost + pushCost;
     if (!database.canSpend(itemCost + COST_PER_JOB_FRAME) || (shouldContinue && !shouldContinue())) break;
     if (row.status === "failed") { failure ??= String(row.last_error || "item failed"); continue; }
     const ok = await processItem(order, row, process.env.TELEGRAM_ADMIN_CHAT_ID, database, { jobId, lease });

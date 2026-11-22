@@ -8,6 +8,7 @@ import { isTunvnConfigured, isTunvnSyncEnabled } from "@/lib/tunvn/client";
 import { isAivaultConfigured, isAivaultSyncEnabled } from "@/lib/aivault/client";
 import { isStorebatConfigured, isStorebatSyncEnabled } from "@/lib/storebat/client";
 import { isMiraiConfigured, isMiraiSyncEnabled } from "@/lib/mirai/client";
+import { isPixelverifConfigured, isPixelverifSyncEnabled } from "@/lib/pixelverif/client";
 import { isGamesSkCatalogConfigured } from "@/lib/games/sk-catalog-sync";
 import { isPediaProxyConfigured } from "@/lib/pedia/proxy";
 import { isNowpaymentsReadable } from "@/lib/payments/rails";
@@ -40,12 +41,13 @@ export const SYNC_STALENESS_THRESHOLDS_MS = {
   aivault: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
   storebat: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
   mirai: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
+  pixelverif: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
   games_sk: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 10 * 60_000),
   pedia_indosmm: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 10 * 60_000),
   crypto_market: Math.max(STALE_MIN_THRESHOLD_MS, 3 * CRYPTO_REFRESH_AFTER_MS),
 } as const;
 
-export type SyncSourceId = "sk" | "jaspay" | "tunvn" | "tunvn_buff" | "aivault" | "storebat" | "mirai" | "games_sk" | "pedia_indosmm" | "crypto_market";
+export type SyncSourceId = "sk" | "jaspay" | "tunvn" | "tunvn_buff" | "aivault" | "storebat" | "mirai" | "pixelverif" | "games_sk" | "pedia_indosmm" | "crypto_market";
 
 export const SYNC_SOURCE_LABELS: Record<SyncSourceId, string> = {
   sk: "Sekalipay",
@@ -55,6 +57,7 @@ export const SYNC_SOURCE_LABELS: Record<SyncSourceId, string> = {
   aivault: "AIVault",
   storebat: "StoreBat",
   mirai: "Mirai",
+  pixelverif: "Pixel Verification",
   games_sk: "Games",
   pedia_indosmm: "Pedia (IndoSMM)",
   crypto_market: "FX Pasar Crypto",
@@ -185,9 +188,11 @@ const SETTINGS_KEYS = [
   "aivault_catalog_success_at",
   "storebat_catalog_success_at",
   "mirai_catalog_success_at",
+  "pixelverif_catalog_success_at",
   "aivault_catalog_last_error",
   "storebat_catalog_last_error",
   "mirai_catalog_last_error",
+  "pixelverif_catalog_last_error",
   "games_sk_catalog_success_at",
   "games_sk_catalog_last_error",
   "pedia_indosmm_diff_last_at",
@@ -199,6 +204,7 @@ const SETTINGS_KEYS = [
   "sync_stale_state_aivault",
   "sync_stale_state_storebat",
   "sync_stale_state_mirai",
+  "sync_stale_state_pixelverif",
   "sync_stale_state_games_sk",
   "sync_stale_state_pedia_indosmm",
   "sync_stale_state_crypto_market",
@@ -217,11 +223,12 @@ export async function checkSyncStaleness(
   const aivaultOn = isAivaultSyncEnabled() && isAivaultConfigured();
   const storebatOn = isStorebatSyncEnabled() && isStorebatConfigured();
   const miraiOn = isMiraiSyncEnabled() && isMiraiConfigured();
+  const pixelverifOn = isPixelverifSyncEnabled() && isPixelverifConfigured();
   const gamesOn = isGamesSkCatalogConfigured();
   const pediaOn = isPediaProxyConfigured();
   const cryptoOn = isNowpaymentsReadable();
 
-  if (!skOn && !jaspayOn && !tunvnOn && !aivaultOn && !storebatOn && !miraiOn && !gamesOn && !pediaOn && !cryptoOn) {
+  if (!skOn && !jaspayOn && !tunvnOn && !aivaultOn && !storebatOn && !miraiOn && !pixelverifOn && !gamesOn && !pediaOn && !cryptoOn) {
     return { checked: true, sources: [], alerted: [], reminded: [], recovered: [] };
   }
   if (!db.canSpend(6)) {
@@ -328,6 +335,15 @@ export async function checkSyncStaleness(
         lastSuccessMs: parseTimestampMs(rawSetting("mirai_catalog_success_at")),
         lastError: parseStoredSyncError(rawSetting("mirai_catalog_last_error"))?.error ?? null,
         thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.mirai,
+      });
+    }
+    if (pixelverifOn) {
+      probes.push({
+        id: "pixelverif",
+        label: "Pixel Verification",
+        lastSuccessMs: parseTimestampMs(rawSetting("pixelverif_catalog_success_at")),
+        lastError: parseStoredSyncError(rawSetting("pixelverif_catalog_last_error"))?.error ?? null,
+        thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.pixelverif,
       });
     }
 

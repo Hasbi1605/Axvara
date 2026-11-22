@@ -123,6 +123,9 @@ export async function validateCheckoutInput(data: unknown): Promise<ValidateOutc
     for (const item of canonicalItems) {
       const signed = quote.items.find(q => q.product_id === item.product_id && q.variant_id === item.variant_id);
       if ((signed?.buyer_fields?.muse_invite_code ?? "") !== (item.buyer_fields?.muse_invite_code ?? "")) throw new Error("changed");
+      if ((signed?.buyer_fields?.pv_email ?? "").trim().toLowerCase() !== (item.buyer_fields?.pv_email ?? "").trim().toLowerCase()) throw new Error("changed");
+      if ((signed?.buyer_fields?.pv_password ?? "") !== (item.buyer_fields?.pv_password ?? "")) throw new Error("changed");
+      if ((signed?.buyer_fields?.pv_totp_secret ?? "").replace(/[\s-]/g, "").toUpperCase() !== (item.buyer_fields?.pv_totp_secret ?? "").replace(/[\s-]/g, "").toUpperCase()) throw new Error("changed");
     }
   } catch { return { kind: "responded", response: NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }) }; }
 

@@ -8,7 +8,7 @@ import { pediaBalanceAlertRp } from "@/lib/pedia/ops-config";
 import { notLoserProductSql } from "@/lib/product-groups";
 import { isSkSyncEnabled } from "@/lib/sekalipay/client";
 import { skSaldoAlertThreshold } from "@/lib/sekalipay/saldo";
-import { aivaultBalanceAlertThreshold, miraiBalanceAlertThreshold, storebatBalanceAlertThreshold, tunvnBalanceAlertThreshold } from "@/lib/supplier-balance-alert";
+import { aivaultBalanceAlertThreshold, miraiBalanceAlertThreshold, pixelverifBalanceAlertThreshold, storebatBalanceAlertThreshold, tunvnBalanceAlertThreshold } from "@/lib/supplier-balance-alert";
 import { parseStoredSyncError, sanitizeSyncError } from "@/lib/sync-status";
 import {
   formatAgeId,
@@ -24,6 +24,7 @@ import { escapeHtml, formatRupiah, truncate } from "@/lib/telegram/messages/form
 import { isAivaultConfigured, isAivaultSyncEnabled } from "@/lib/aivault/client";
 import { isStorebatConfigured, isStorebatSyncEnabled } from "@/lib/storebat/client";
 import { isMiraiConfigured, isMiraiSyncEnabled } from "@/lib/mirai/client";
+import { isPixelverifConfigured, isPixelverifSyncEnabled } from "@/lib/pixelverif/client";
 import { isGamesSkCatalogConfigured } from "@/lib/games/sk-catalog-sync";
 import { isTunvnConfigured, isTunvnSyncEnabled } from "@/lib/tunvn/client";
 import { isWrEnabled, isWrSyncEnabled } from "@/lib/warung-rebahan/client";
@@ -170,12 +171,15 @@ const SUMMARY_SETTINGS_KEYS = [
   "aivault_balance_last_value",
   "storebat_balance_last_value",
   "mirai_balance_last_value",
+  "pixelverif_balance_last_value",
   "aivault_balance_last_ok_at",
   "storebat_balance_last_ok_at",
   "mirai_balance_last_ok_at",
+  "pixelverif_balance_last_ok_at",
   "aivault_balance_error",
   "storebat_balance_error",
   "mirai_balance_error",
+  "pixelverif_balance_error",
   "pedia_indosmm_balance_last_error",
   "jaspay_catalog_success_at",
   "jaspay_catalog_last_error",
@@ -186,9 +190,11 @@ const SUMMARY_SETTINGS_KEYS = [
   "aivault_catalog_success_at",
   "storebat_catalog_success_at",
   "mirai_catalog_success_at",
+  "pixelverif_catalog_success_at",
   "aivault_catalog_last_error",
   "storebat_catalog_last_error",
   "mirai_catalog_last_error",
+  "pixelverif_catalog_last_error",
   "games_sk_catalog_success_at",
   "games_sk_catalog_last_error",
   "pedia_indosmm_diff_last_at",
@@ -200,6 +206,7 @@ const SUMMARY_SETTINGS_KEYS = [
   "sync_stale_state_aivault",
   "sync_stale_state_storebat",
   "sync_stale_state_mirai",
+  "sync_stale_state_pixelverif",
   "sync_stale_state_games_sk",
   "sync_stale_state_pedia_indosmm",
   "sync_stale_state_crypto_market",
@@ -584,6 +591,13 @@ export async function collectDailyAdminSummaryData(
       thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.mirai,
     },
     {
+      id: "pixelverif",
+      active: isPixelverifSyncEnabled() && isPixelverifConfigured(),
+      lastSuccessMs: parseTimestampMs(setting("pixelverif_catalog_success_at")),
+      lastError: parseStoredSyncError(setting("pixelverif_catalog_last_error"))?.error ?? null,
+      thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.pixelverif,
+    },
+    {
       id: "games_sk",
       active: isGamesSkCatalogConfigured(),
       lastSuccessMs: parseTimestampMs(setting("games_sk_catalog_success_at")),
@@ -740,6 +754,28 @@ export async function collectDailyAdminSummaryData(
       isLow: false,
       thresholdFormatted: `${formatDecimalAmount(miraiThr)} USDT`,
       error: miraiErr,
+    });
+  }
+
+  const pixelverifValRaw = setting("pixelverif_balance_last_value");
+  const pixelverifErr = parseBalanceErrText(setting("pixelverif_balance_error"));
+  const pixelverifThr = pixelverifBalanceAlertThreshold();
+  if (pixelverifValRaw !== undefined && pixelverifValRaw !== "" && Number.isFinite(Number(pixelverifValRaw))) {
+    const val = Number(pixelverifValRaw);
+    balances.push({
+      label: "Pixel Verification",
+      formatted: `${formatDecimalAmount(val)} credits`,
+      isLow: val < pixelverifThr,
+      thresholdFormatted: `${formatDecimalAmount(pixelverifThr)} credits`,
+      error: pixelverifErr,
+    });
+  } else if (pixelverifErr) {
+    balances.push({
+      label: "Pixel Verification",
+      formatted: "belum terbaca",
+      isLow: false,
+      thresholdFormatted: `${formatDecimalAmount(pixelverifThr)} credits`,
+      error: pixelverifErr,
     });
   }
 

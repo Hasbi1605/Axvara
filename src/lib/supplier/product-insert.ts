@@ -1,5 +1,5 @@
 export type SupplierProductInsertOptions = {
-  familyColumn: "storebat_family" | "mirai_family" | "aivault_family";
+  familyColumn: "storebat_family" | "mirai_family" | "aivault_family" | "pixelverif_family";
   hasDescriptionEn: boolean;
   imageExpr: string;
   whereFilter?: string;

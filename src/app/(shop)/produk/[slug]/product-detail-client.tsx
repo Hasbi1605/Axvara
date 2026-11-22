@@ -405,6 +405,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       minQty: variantMinQtyOf(variant),
       maxQty: variant.max_qty,
       buyerFieldKey: variant.buyer_field_key,
+      pixelverifInput: variant.pixelverif_input === true,
       fulfillmentMode: variant.fulfillment_mode,
       inventoryAvailable: variant.inventory_available ?? null,
       bulkTiers: usableBulkTiers(variant, variant.price),

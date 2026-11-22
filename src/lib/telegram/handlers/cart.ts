@@ -86,7 +86,7 @@ export async function handleCartAdd(
     await sendMessage({
       chat_id: chatId,
       text: result.reason === "out_of_stock" ? outOfStockMessage({ locale: ctx.locale })
-        : result.reason === "cart_full" ? (ctx.locale === "en" ? "Cart max 20 variants." : "Keranjang maks 20 varian.")
+                : result.reason === "cart_full" ? (ctx.locale === "en" ? "Cart max 20 variants." : "Keranjang maks 20 varian.")
         : result.reason === "unique_limit" ? (ctx.locale === "en" ? "Max 10 unique-stock units per order." : "Maks 10 unit stok unik per pesanan.")
         : result.reason === "cart_changed" ? (ctx.locale === "en" ? "Cart or stock changed. Recheck cart." : "Keranjang/stok berubah. Cek ulang keranjang.")
         : result.reason === "invalid_quantity" ? (ctx.locale === "en" ? "Quantity must be 1–100." : "Jumlah harus 1–100.")

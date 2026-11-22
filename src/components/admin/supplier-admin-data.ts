@@ -7,7 +7,7 @@ type Family = { key: string; name: string; slug?: string; label?: string };
 export type MarkupTier = { min_qty: number; markup_percent: number };
 
 type Product = {
-  id?: number | string; supplier_product_id?: number | string; service_id?: string; package_code?: string;
+  id?: number | string; supplier_product_id?: number | string; service_id?: string; package_code?: string; service_key?: string; flow_type?: string;
   wr_variant_id?: string; sk_variant_id?: string; wr_product_id?: string; sk_product_id?: string;
   wr_variant_name?: string; sk_variant_name?: string; wr_product_name?: string | null; sk_product_name?: string | null;
   wr_price?: number; sk_price?: number; wr_stock?: number; sk_stock?: number;
@@ -57,7 +57,7 @@ export type BuffData = {
 export type OrderLink = {
   id: number; order_code: string; item_index?: number | null; quantity: number; kind?: string;
   source_product_id?: number | null; provider_batch_id?: string | null; storebat_product_id?: number;
-  service_id?: string; package_code?: string; cost_usd?: number | null; cost_usdt?: number | null;
+  service_id?: string; package_code?: string; service_key?: string; flow_type?: string; cost_usd?: number | null; cost_usdt?: number | null;
   wr_order_id?: string | null; sk_invoice?: string | null;
   wr_cost?: number | null; sk_cost?: number | null;
   wr_variant_name?: string | null; wr_product_name?: string | null;
@@ -107,14 +107,19 @@ const configs = {
     currency: "USDT" as const, mode: "manual" as const, itemId: "package_code" as const, orderId: "package_code" as const,
     syncPath: "publish", maxMarkup: 1000, percentStep: 0.5,
   },
+  pixelverif: {
+    name: "Pixel Verification",
+    currency: "USD" as const, mode: "manual" as const, itemId: "service_key" as const, orderId: "flow_type" as const,
+    syncPath: "publish", maxMarkup: 1000, percentStep: 0.5,
+  },
 };
 
 export type Supplier = keyof typeof configs;
 export type SupplierConfig = {
   name: string;
   currency: Currency; mode: "fixed" | "manual";
-  itemId: "id" | "supplier_product_id" | "service_id" | "package_code" | "wr_variant_id" | "sk_variant_id";
-  orderId: "source_product_id" | "service_id" | "storebat_product_id" | "package_code" | "wr_order_id" | "sk_invoice";
+  itemId: "id" | "supplier_product_id" | "service_id" | "package_code" | "service_key" | "flow_type" | "wr_variant_id" | "sk_variant_id";
+  orderId: "source_product_id" | "service_id" | "storebat_product_id" | "package_code" | "flow_type" | "wr_order_id" | "sk_invoice";
   lazy?: boolean; syncPath: string; excludedLabel?: string; exclusions?: boolean; sandbox?: boolean;
   exclusionsPlaceholder?: string;
   searchPlaceholder?: string; searchLabel?: string; statusFilterLabel?: string;

@@ -14,7 +14,7 @@ export async function alertSupplierAdminOnce(db: DatabaseAccess, code: string, k
   return true;
 }
 
-export async function escalateSupplierManual(db: DatabaseAccess, code: string, supplier: "tunvn" | "aivault" | "storebat" | "mirai", id: unknown) {
+export async function escalateSupplierManual(db: DatabaseAccess, code: string, supplier: "tunvn" | "aivault" | "storebat" | "mirai" | "pixelverif", id: unknown) {
   const manual = `EXISTS(SELECT 1 FROM fulfillment_items fi JOIN ${supplier}_order_links l ON l.id=fi.${supplier}_link_id
     WHERE fi.order_code=? AND l.id=? AND l.status='needs_admin' AND fi.status='manual_required'
       AND fi.last_error='supplier_needs_admin')`;

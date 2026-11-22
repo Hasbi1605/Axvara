@@ -14,6 +14,7 @@ import { TELEGRAM_MAX_QTY } from "./keyboards";
 export type CartLine = {
   buyerFields?: BuyerFields;
   buyerFieldKey?: "muse_invite_code" | null;
+  pixelverifInput?: boolean;
   maxQty?: number | null;
   productId: number;
   variantId: number;
@@ -59,7 +60,7 @@ export async function addToCart(
   // invoice; default 1 = perilaku lama.
   minQtyRaw = 1,
   buyerFields?: BuyerFields,
-): Promise<{ ok: boolean; reason?: "invalid_variant" | "invalid_quantity" | "out_of_stock" | "cart_full" | "unique_limit" | "below_minimum" | "cart_changed" }> {
+): Promise<{ ok: boolean; reason?: "invalid_variant" | "invalid_quantity" | "out_of_stock" | "cart_full" | "unique_limit" | "below_minimum" | "cart_changed" | "pixelverif_unavailable" }> {
   if (!isD1Mode()) return { ok: false, reason: "invalid_variant" };
   if (!Number.isSafeInteger(rawQty) || rawQty < 1 || rawQty > TELEGRAM_MAX_QTY) return { ok: false, reason: "invalid_quantity" };
   const variant = await getActiveVariant(variantId);
@@ -144,7 +145,8 @@ export async function setCartLineQty(userId: string, variantId: number, rawQty: 
      WHERE id IN (
        SELECT c.id FROM candidate c JOIN product_variants pv ON pv.id=? AND pv.product_id=c.product_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
        JOIN products p ON p.id=c.product_id AND p.is_active=1 AND p.telegram_enabled=1
-        WHERE c.next_qty=CAST(c.next_qty AS INTEGER) AND c.next_qty>=MAX(1,pv.min_qty) AND c.next_qty<=? AND (pv.stock=-1 OR c.next_qty<=pv.stock)
+        WHERE 1=1
+          AND c.next_qty=CAST(c.next_qty AS INTEGER) AND c.next_qty>=MAX(1,pv.min_qty) AND c.next_qty<=? AND (pv.stock=-1 OR c.next_qty<=pv.stock)
           AND (pv.max_qty IS NULL OR c.next_qty<=pv.max_qty)
          AND (pv.fulfillment_mode!='unique' OR c.next_qty<=(
            SELECT COUNT(*) FROM fulfillment_inventory fi
@@ -197,7 +199,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
   if (!isD1Mode()) return { lines, subtotal: 0, totalQty: 0, issues };
     const rows = await queryAll(
     `SELECT c.id, c.updated_at, c.product_id, c.variant_id, c.qty,c.buyer_fields,pv.buyer_field_key,pv.max_qty, p.name as product_name,
-            p.is_active AS product_active, p.telegram_enabled,
+            p.is_active AS product_active, p.telegram_enabled, p.pixelverif_family, pv.pixelverif_flow_type,
             pv.product_id AS v_product_id, pv.label AS v_label, pv.price AS v_price,
             pv.bulk_pricing_enabled AS v_bulk_enabled, pv.bulk_pricing_tiers AS v_bulk_tiers,
             p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
@@ -276,6 +278,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     lines.push({
       buyerFields:fields,
       buyerFieldKey:row.buyer_field_key === "muse_invite_code" ? "muse_invite_code" : null,
+      pixelverifInput: row.pixelverif_flow_type != null,
       maxQty:row.max_qty == null ? null : Number(row.max_qty),
       productId: Number(row.product_id),
       variantId,

@@ -91,6 +91,10 @@ export type VariantSummary = {
   min_qty: number;
   max_qty?: number | null;
   buyer_field_key?: "muse_invite_code" | null;
+  /** Pixel Verification variant: checkout collects Gmail credentials (see pixelverif/purchase). */
+  pixelverif_input?: true;
+  /** Legacy guard kept for stale clients; new code uses pixelverif_input. */
+  pixelverif_ordering_blocked?: true;
   automatic_delivery?: boolean;
   /**
    * Modal manual per unit dalam rupiah (migrasi 0058, milik admin, default 0).
@@ -633,6 +637,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),
     max_qty: row.max_qty == null ? null : Number(row.max_qty),
     buyer_field_key: row.buyer_field_key === "muse_invite_code" ? "muse_invite_code" : null,
+    ...(row.pixelverif_flow_type != null ? { pixelverif_input: true as const } : {}),
     ...(hasAutomaticSupplierDelivery(row) ? { automatic_delivery:true } : {}),
     manual_cost: Math.max(0, Math.floor(Number(row.manual_cost ?? 0) || 0)),
     fulfillment_mode: String(row.fulfillment_mode || "manual"),

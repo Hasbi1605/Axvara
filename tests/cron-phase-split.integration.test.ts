@@ -325,7 +325,7 @@ describe("Worker runOperationsTick", () => {
     expect(labels.slice(0, 3)).toEqual(["lite:payments", "lite:expiry", "lite:fulfillment"]);
     expect(labels.slice(-3)).toEqual(["synth:home", "synth:catalog", "synth:quote"]);
     expect(report.outcomes.map((o) => o.step)).toEqual([
-      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:storebat_orders", "lite:mirai_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:storebat_catalog", "lite:mirai_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:tg_webhook", "lite:cleanup",
+      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:storebat_orders", "lite:mirai_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:storebat_catalog", "lite:mirai_catalog", "lite:pixelverif_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:tg_webhook", "lite:cleanup",
       "publish-scheduled",
       "synth:home", "synth:catalog", "synth:quote",
     ]);

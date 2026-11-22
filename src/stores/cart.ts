@@ -14,7 +14,7 @@ import { activeTier, bulkUnitEstimate, nextReachableTier, safeBulkTiers } from "
  */
 export type CartItem = CartInput & { qty: number };
 
-type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; maxQty?: number | null; buyerFieldKey?: "muse_invite_code" | null; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
+type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; maxQty?: number | null; buyerFieldKey?: "muse_invite_code" | null; pixelverifInput?: boolean; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
 
 type CartStore = {
   items: CartItem[];
@@ -133,7 +133,7 @@ export const useCart = create<CartStore>()(
             // Refresh metadata basi dari katalog terbaru (stok efektif,
             // inventory, min, mode): baris lama yang di-add ulang tidak
             // mempertahankan angka basi — qty lalu di-clamp ke [lo, hi].
-            const updated = { ...existing, maxQty: product.maxQty, buyerFieldKey: product.buyerFieldKey, stock: product.stock ?? existing.stock, inventoryAvailable: product.inventoryAvailable ?? existing.inventoryAvailable, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode, bulkTiers: product.bulkTiers ?? existing.bulkTiers };
+            const updated = { ...existing, maxQty: product.maxQty, buyerFieldKey: product.buyerFieldKey, pixelverifInput: product.pixelverifInput ?? existing.pixelverifInput, stock: product.stock ?? existing.stock, inventoryAvailable: product.inventoryAvailable ?? existing.inventoryAvailable, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode, bulkTiers: product.bulkTiers ?? existing.bulkTiers };
             if (maxFor(updated) < lo) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
             const hi = maxFor(updated);
             const nextQty = clampQty(existing.qty + qty, lo, hi);

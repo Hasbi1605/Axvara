@@ -214,6 +214,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         minQty: selectedMinQty,
         maxQty: selected.max_qty,
         buyerFieldKey: selected.buyer_field_key,
+        pixelverifInput: selected.pixelverif_input === true,
         fulfillmentMode: selected.fulfillment_mode,
         bulkTiers: selectedTiers,
       }, safeModalQty);

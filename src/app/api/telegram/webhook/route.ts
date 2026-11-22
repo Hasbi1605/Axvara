@@ -319,7 +319,7 @@ export async function POST(request: NextRequest) {
     const photos = update.message?.photo;
     const photoFileId = Array.isArray(photos) && photos.length > 0 ? photos[photos.length - 1]?.file_id : undefined;
     if ((msgTextRaw || photoFileId) && chatId) {
-      await handleCommand(msgTextRaw, chatId, update.message?.chat?.type ?? "private", from, photoFileId);
+      await handleCommand(msgTextRaw, chatId, update.message?.chat?.type ?? "private", from, photoFileId, update.message?.message_id);
       await markDone(updateId);
       return NextResponse.json({ ok: true });
     }

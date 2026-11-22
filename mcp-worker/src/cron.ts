@@ -77,6 +77,7 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "aivault_orders", alarm: "hard", group: "orders" },
   { phase: "lite", lite: "storebat_orders", alarm: "hard", group: "orders" },
   { phase: "lite", lite: "mirai_orders", alarm: "hard", group: "orders" },
+  { phase: "lite", lite: "pixelverif_orders", alarm: "hard", group: "orders" },
   { phase: "lite", lite: "pedia_orders", alarm: "hard", group: "orders" },
   // AXVARA Games (docs/GAMES.md §12.3): dispatch + polling; no-op tanpa kredensial.
   { phase: "lite", lite: "games_orders", alarm: "hard", group: "orders" },
@@ -85,6 +86,7 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "aivault_catalog", alarm: "soft", group: "catalog" },
   { phase: "lite", lite: "storebat_catalog", alarm: "soft", group: "catalog" },
   { phase: "lite", lite: "mirai_catalog", alarm: "soft", group: "catalog" },
+  { phase: "lite", lite: "pixelverif_catalog", alarm: "soft", group: "catalog" },
   // notify dipecah dua (2026-10-09): tiap request hanya memikul sub-kerjaan ramping.
   { phase: "lite", lite: "notify_a", alarm: "soft", group: "notify" },
   { phase: "lite", lite: "notify_b", alarm: "soft", group: "notify" },

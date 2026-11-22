@@ -197,7 +197,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   const [detail, productRow] = await Promise.all([
     getProductDetail(productId),
     queryFirst(
-      `SELECT telegram_enabled, compare_price, badge, ${displaySoldCountSql("products")} AS sold_count FROM products WHERE id=? AND is_active=1`,
+      `SELECT telegram_enabled, pixelverif_family, compare_price, badge, ${displaySoldCountSql("products")} AS sold_count FROM products WHERE id=? AND is_active=1`,
       productId,
     ),
   ]);

@@ -50,6 +50,7 @@ export async function handleCommand(
   chatType: string,
   from?: { id: number; first_name: string; username?: string },
   photoFileId?: string,
+  messageId?: number,
 ) {
   const trimmed = text.trim();
   const cmd = trimmed.toLowerCase().split(/\s+/)[0]?.split("@")[0] ?? "";
@@ -356,7 +357,7 @@ export async function handleCommand(
   if (from && trimmed && !cmd.startsWith("/")) {
     if (await handlePendingWaInput(trimmed, chatId, from)) return;
     const { handleBuyerInput } = await import("./buyer-input");
-    if (await handleBuyerInput(trimmed, chatId, from)) return;
+    if (await handleBuyerInput(trimmed, chatId, from, messageId)) return;
     if (/^\d{1,3}$/.test(cmd)) {
       if (await handlePendingQtyInput(trimmed, chatId, from)) return;
     }
