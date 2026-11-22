@@ -6,10 +6,9 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 import { NextRequest, NextResponse } from "next/server";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { activeQrisProvider } from "@/lib/payments/qris";
-import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema, withoutPrivateBuyerData } from "@/lib/buyer-fields";
-import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
+import { queryAll, queryFirst, transitionPendingOrder } from "@/lib/db";
 import { createdCheckoutResponse, existingCheckoutResponse, paymentMethodProblem } from "@/lib/orders/checkout/response";
 import { decideEmailNeed, decideMinCap, findStalePriceItem } from "@/lib/orders/checkout/guards";
 import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
@@ -18,8 +17,6 @@ import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createActiveQrisInvoice, MAX_QRIS_REISSUES, type QrisInvoice } from "@/lib/payments/qris";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
-import { createDatabaseAccess } from "@/lib/db-access";
-import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
 import { readJsonBody } from "@/lib/http-body";
 import { cryptoRailEnabled, cryptoTickerOfMethodId, isCryptoTotalStillPayable, isFxSnapshotAcceptable } from "@/lib/payments/crypto-preflight";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
@@ -331,63 +328,29 @@ export async function POST(req: NextRequest) {
   const paymentId = pm.startsWith("bank:") ? pm.slice(5) : pm;
   const payment = quote.payment_methods.find((method) => method.id === paymentId);
 
-  // Resolve saved orders first; durable quote admission also dedupes retries
-  // that reach this point before the winning request has saved its order.
-  const guard = await consumeCheckoutSlot(
-    createDatabaseAccess(),
-    await checkoutSubjects({ ip: clientIp(req), wa, email: customer_email }),
-    quote.quote_id,
-  );
-  if (!guard.allowed) {
-    if (guard.reason === "unavailable") return NextResponse.json(
-      { error: "Checkout sementara tidak tersedia. Coba lagi dengan data yang sama." },
-      { status: 503, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
-    );
-    return NextResponse.json(
-      { error: "Terlalu banyak pesanan baru dari koneksi/nomor ini. Tunggu hingga 15 menit, lalu coba lagi. Pesanan yang sudah dibuat tetap bisa dilacak." },
-      { status: 429, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
-    );
-  }
-
-  // Revamp 2026-09-23: customer_name opsional dari web (form tanpa nama).
-  // Fallback DIBERSIHKAN (2026-09-23): prefix email mentah bukan nama —
-  // `budi123@…` dulu tersimpan apa adanya lalu merembes ke sapaan halaman
-  // pesanan, notifikasi Telegram admin, prefill tombol WA, pencarian admin,
-  // dan CSV. Nama yang diisi pembeli sendiri tidak pernah disentuh.
-  const fallbackName = customer_name?.trim()
-    ? customer_name.trim().slice(0, 80)
-    : deriveNameFromEmail(customer_email);
-  try {
-    await createOrderWithStock({
+  // Slot + atomic create (3B-5a): durable admission, fallback name, and the
+  // create error/reuse outcomes live in checkout/create.ts; the route keeps
+  // the saved-order response builder via callback and all invoice issuance.
+  const { createCheckoutOrder } = await import("@/lib/orders/checkout/create");
+  const createOutcome = await createCheckoutOrder(
+    {
       code,
       quoteId: quote.quote_id,
-      customerName: fallbackName,
-      customerWa: wa,
-      customerEmail: customer_email,
       items: quote.items,
       subtotal: quote.subtotal,
+      locale: quote.locale ?? "id",
+      wa,
+      customerEmail: customer_email,
+      customerName: customer_name,
       paymentMethod: pm,
       paymentAccount: isCryptoMethod ? "NOWPayments" : isGatewayMethod ? "Sekalipay" : (payment?.account_number ?? "QRIS"),
       proofUrl: proof_url,
-      locale: quote.locale ?? "id",
-    });
-  } catch (e: unknown) {
-    if (e instanceof StockReservationError) {
-      const winner = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
-      if (winner) return existingCheckoutResponse(winner, routeDeps());
-      return NextResponse.json({ error: e.message }, { status: 409 });
-    }
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("UNIQUE")) {
-      const existing = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
-      if (existing) {
-        return existingCheckoutResponse(existing, routeDeps());
-      }
-      return NextResponse.json({ error: "Kode pesanan bentrok, coba lagi." }, { status: 409 });
-    }
-    console.error("POST /api/orders insert failed:", msg);
-    return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
-  }
+      ip: clientIp(req),
+    },
+    { onExistingOrder: (winner) => existingCheckoutResponse(winner, routeDeps()) },
+  );
+  if (createOutcome.kind === "responded") return createOutcome.response;
+  const { fallbackName } = createOutcome;
 
   let qrisInvoice: QrisInvoice | null = null;
   let cryptoView: import("@/lib/payments/payment-view").NonQrisPaymentView | null = null;

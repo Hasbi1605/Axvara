@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3B-5a (kelas E): pindahkan slot checkout, fallback nama, dan blok `createOrderWithStock` (reuse pemenang stok/UNIQUE, log 500) dari route order ke `src/lib/orders/checkout/create.ts`; evaluasi akses tak-berbudget/subjek/slot, argumen create, status/copy/Retry-After, dan respons tersimpan tidak berubah, invoice tetap di route — `src/app/api/orders/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus + 2 retarget source lulus; TypeScript, ESLint terarah, `git diff --check` lulus)
+
 - 2026-11-22 — Roadmap B5/R2 (kelas B): receipt dan binder SK menolak invoice milik link lain dalam UPDATE yang sama; recovery GET-ref hanya memajukan link bila invoice masih cocok, tanpa menulis ulang invoice atau membuka POST ulang — `src/lib/sekalipay/order.ts`, `tests/characterization/wr-sk-matrix.test.ts` — (verifikasi: 3 repro merah; 195 tes fokus lulus termasuk D1/workerd, 22 expected-fail tersisa; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3A-5 (kelas E): pindahkan badan job `payments` cron lite ke `src/lib/cron/lite/jobs/payments.ts`; urutan Klik → NOWPayments (+late) → gateway → gateway basi → health Klik, cadangan 11/21 dtk, `canSpend` 6/6/4/1, mutasi `result`/`failedCore`, dan keputusan 503 langsung di route tidak berubah — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md`, `docs/agent-rules/platform-ops.md` — (verifikasi: 9 file fokus 286 lulus + 1 TODO; TypeScript, ESLint terarah, `git diff --check` lulus)

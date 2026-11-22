@@ -29,16 +29,26 @@ describe("R1-R3: nama pembeli web tidak lagi prefix email mentah", () => {
   });
 
   it("nama yang diisi pembeli sendiri tidak pernah ditimpa sanitizer", () => {
+    // 3B-5a: fallback name computation moved verbatim to checkout/create.ts;
+    // the route still calls createCheckoutOrder with customer_name.
+    const create = read("src/lib/orders/checkout/create.ts");
     const route = read("src/app/api/orders/route.ts");
     // customer_name dipakai apa adanya bila ada; sanitizer hanya untuk fallback.
-    expect(route).toMatch(/customer_name\?\.trim\(\)[\s\S]{0,120}deriveNameFromEmail\(customer_email\)/);
+    expect(create).toMatch(/customerName\?\.trim\(\)[\s\S]{0,120}deriveNameFromEmail\(customer_email\)/);
+    // The awaited call's argument object (not an unrelated contains):
+    // customer_name must flow into createCheckoutOrder itself.
+    expect(route).toMatch(/await createCheckoutOrder\(\s*\{[^}]*customerName: customer_name,/);
   });
 
   it("kedua jalur (API dan form checkout) memakai sanitizer yang sama", () => {
-    expect(read("src/app/api/orders/route.ts")).toContain("deriveNameFromEmail");
+    // 3B-5a: sanitizer call site moved to checkout/create.ts (route calls it).
+    expect(read("src/lib/orders/checkout/create.ts")).toContain("deriveNameFromEmail");
+    expect(read("src/app/api/orders/route.ts")).toContain("createCheckoutOrder");
     expect(read("src/app/(shop)/checkout/page.tsx")).toContain("deriveNameFromEmail");
     // Tidak boleh ada lagi pemakaian prefix email mentah sebagai nama.
-    for (const path of ["src/app/api/orders/route.ts", "src/app/(shop)/checkout/page.tsx"]) {
+    // 3B-5a-FIX: the moved fallback lives in checkout/create.ts, so the
+    // negative scan must include it alongside route + checkout page.
+    for (const path of ["src/app/api/orders/route.ts", "src/lib/orders/checkout/create.ts", "src/app/(shop)/checkout/page.tsx"]) {
       expect(read(path), path).not.toMatch(/split\("@"\)\[0\][\s\S]{0,40}slice\(0, 80\)/);
     }
   });

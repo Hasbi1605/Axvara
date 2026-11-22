@@ -86,6 +86,8 @@ describe("C-H1: harga divalidasi ulang antara quote dan pembuatan order", () => 
     // Token quote berlaku 1 jam (auth.ts), sementara sync WR menulis harga
     // tiap ~5 menit — snapshot subtotal bisa usang saat pembeli menekan bayar.
     expect(route).toContain("price_changed");
+    expect(route).toContain('error: "price_changed"');
+    expect(route).toContain("await createCheckoutOrder(");
     // Bulk foundation: guard atomik kini mengikat base + konfigurasi tier
     // aktif (bukan harga mentah saja).
     // 2026-11-08: query ikut JOIN products (kolom p_*) karena grosir hanya
@@ -96,8 +98,12 @@ describe("C-H1: harga divalidasi ulang antara quote dan pembuatan order", () => 
     expect(guards).toContain("current.price !== qi.price");
     expect(guards).toContain("findStalePriceItem");
     expect(route).toContain("findStalePriceItem");
-    // Guard harga wajib SEBELUM order dibuat.
-    expect(route.indexOf("price_changed")).toBeLessThan(route.indexOf("await createOrderWithStock("));
+    // Guard harga wajib SEBELUM order dibuat. 3B-5a: creation moved to
+    // checkout/create.ts (createOrderWithStock lives there); the route's
+    // price guard still precedes its createCheckoutOrder call.
+    const create = read("src/lib/orders/checkout/create.ts");
+    expect(create).toContain("await createOrderWithStock(");
+    expect(route.indexOf('error: "price_changed"')).toBeLessThan(route.indexOf("await createCheckoutOrder("));
   });
 
   it("checkout memuat harga terbaru, bukan sekadar melempar error mentah", () => {

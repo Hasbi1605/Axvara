@@ -2114,9 +2114,10 @@ axvara/
 │   ├── orders/                  # (sebagian) helper order bersama
 │   │   ├── status-flags.ts      # SQL flag kesiapan + re-query penyegar supplier, dipakai GET /api/orders dan POST /api/orders/lookup (3B-1)
 │   │   ├── detail-view.ts       # pembentuk body GET /api/orders dari baris pasca-refresh (3B-1)
-│   │   ├── checkout/response.ts # body POST reused/closed/created + wiring proof (3B-2; guard/pembayaran/createOrder tetap di route)
+│   │   ├── checkout/response.ts # body POST reused/closed/created + wiring proof (3B-2; guard/pembayaran di route, persistensi order di create.ts)
 │   │   ├── checkout/guards.ts   # komputasi guard murni (email wajib, min/max qty, price_changed) atas baris yang dibaca route; baca DB, urutan, early return tetap di route (3B-3)
-│   │   └── checkout/methods.ts  # preflight quote bertanda untuk crypto, gateway, QRIS (3B-4); slot, pembuatan order, dan invoice tetap di route
+│   │   ├── checkout/methods.ts  # preflight quote bertanda untuk crypto, gateway, QRIS (3B-4); slot/pembuatan order di create.ts, invoice tetap di route
+│   │   └── checkout/create.ts   # slot checkout + fallback nama + createOrderWithStock dan reuse pemenang stok/UNIQUE (3B-5a); invoice tetap di route (3B-5b)
 │   ├── suppliers/
 │   │   ├── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault, Mirai, StoreBat; TUNVN hanya predikat JS)
 │   │   └── purchase-state.ts    # WR/SK: backoff, eligibility, CAS klaim/send fence, requeue unsent, rank vendor dan CAS invoice/status (lease dibersihkan saat advance menang; replay/audit tetap per supplier)
