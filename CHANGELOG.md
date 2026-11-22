@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3C notify (kelas E): pindahkan badan fase notify operations ke `src/lib/cron/phases/notify.ts`; urutan QRIS/Telegram/invoice/reminder/WA/PIN dan gerbangnya tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 12 file fokus 244 lulus termasuk regresi admission QRIS; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3C fulfillment (kelas E): pindahkan badan fase fulfillment operations ke `src/lib/cron/phases/fulfillment.ts`; urutan stale/orphan/agregat/due, cap, dan gerbang budget tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 14 file fokus 217 lulus; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3C cleanup (kelas E): pindahkan badan fase cleanup operations ke `src/lib/cron/phases/cleanup.ts`; gerbang tunggu/headroom dan urutan mutasi tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 7 file fokus 95 lulus; TypeScript dan ESLint lulus)

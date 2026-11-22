@@ -121,7 +121,9 @@ describe("notifikasi penting retry idempoten via whatsapp_outbox", () => {
     expect(webhook).not.toContain("enqueueWhatsAppMessage");
     expect(webhook).toContain("notifyWhatsAppPaidAdmin");
     expect(webhook).not.toContain("Buyer notification is best-effort");
-    const cron = read("src/app/api/cron/operations/route.ts");
+    // 3C notify: phase body moved to phases/notify.ts.
+    const cron = read("src/lib/cron/phases/notify.ts");
+    expect(read("src/app/api/cron/operations/route.ts")).toContain("runNotifyPhase(ctx)");
     expect(cron).toContain("processDueWhatsAppOutbox");
     expect(cron).toContain("whatsapp_outbox_sent");
     const outbox = read("src/lib/whatsapp/outbox.ts");

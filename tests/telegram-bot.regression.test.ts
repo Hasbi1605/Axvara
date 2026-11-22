@@ -631,7 +631,9 @@ describe("Telegram order and payment flow wiring", () => {
     expect(paidAdminMigration).toContain("telegram_paid_admin_notified_at");
     expect(notifications).toContain("telegram_paid_notified_at IS NULL");
     expect(notifications).toContain("telegram_paid_admin_notified_at IS NULL");
-    expect(cron).toContain("retryPendingTelegramNotifications");
+    // 3C notify: retry call moved to phases/notify.ts; dispatch stays in route.
+    expect(read("src/lib/cron/phases/notify.ts")).toContain("retryPendingTelegramNotifications");
+    expect(cron).toContain("runNotifyPhase(ctx)");
   });
 });
 
@@ -951,7 +953,8 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(notifyJob).toContain("sendPendingOrderReminders(50, db, hasTime)");
     const route = read("src/app/api/cron/lite/route.ts");
     expect(route).toContain("@/lib/cron/lite/jobs/notify");
-    const cron = read("src/app/api/cron/operations/route.ts");
+    // 3C notify: phase body moved to phases/notify.ts.
+    const cron = read("src/lib/cron/phases/notify.ts");
     expect(cron).toContain("sendPendingOrderReminders");
     expect(cron).toContain("telegram_pending_reminders_sent");
   });

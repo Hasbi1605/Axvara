@@ -15,17 +15,16 @@ import { catalogSweepDue, CATALOG_SYNC_INTERVAL_MS } from "@/lib/cron/catalog-sw
 import { createOperationsContext, createOperationsResults } from "@/lib/cron/operations-context";
 import { initialSchedule, isStalePromotion, promoteStalePhase } from "@/lib/cron/scheduling";
 import { run as runCleanupPhase } from "@/lib/cron/phases/cleanup";
+import { run as runNotifyPhase } from "@/lib/cron/phases/notify";
 import { run as runFulfillmentPhase } from "@/lib/cron/phases/fulfillment";
 import { advanceCronPhase, nextPhase, phaseName, readCronPhase, writeCronHeartbeat, writeCronPhase, type CronPhase } from "@/lib/cron/phase-state";
 import { isExpiredIso } from "@/lib/expiry";
 
 import { sendMessage } from "@/lib/telegram/api";
 import { orderExpiredMessage } from "@/lib/telegram/messages";
-import { QRIS_EXPIRY_NOTICE_WHERE, sendQrisExpiryNotifications } from "@/lib/payments/qris-expiry-notifications";
-import { retryPendingTelegramNotifications, sendPendingOrderReminders, WEB_PAID_ADMIN_PENDING_WHERE } from "@/lib/telegram/order-notifications";
-import { retryInvoicePendingTelegramInvoices } from "@/lib/telegram/invoice-retry";
+import { QRIS_EXPIRY_NOTICE_WHERE } from "@/lib/payments/qris-expiry-notifications";
+import { WEB_PAID_ADMIN_PENDING_WHERE } from "@/lib/telegram/order-notifications";
 import { constantTimeEqual } from "@/lib/security";
-import { processDueWhatsAppOutbox } from "@/lib/whatsapp/outbox";
 
 export const runtime = "edge";
 
@@ -41,13 +40,6 @@ const QUERY_BUDGET = 300;
 // margin besar terhadap plafon itu; pekerjaan yang tidak kebagian waktu
 // menjadi `deferred` jujur dan dilanjutkan run berikutnya (5 menit lagi).
 const RUN_DEADLINE_MS = 45_000;
-// Ambang waktu minimum sebelum memulai satu unit kerja jaringan. Workers Paid:
-// 12 dtk -> 4 dtk; per-item `hasTime` tetap dijaga supaya batch berhenti rapi
-// sebelum deadline 45 dtk, bukan melewatkan seluruh fase.
-const TIME_TELEGRAM_BATCH = 4_000;
-// Satu kabar kedaluwarsa: Telegram timeout 10 dtk, email 8 dtk.
-const TIME_EXPIRY_NOTICE = 10_000;
-const TIME_WA_BATCH = 12_000;
 
 const TIME_WR_NETWORK = 14_000;
 const TIME_WR_LIGHT = 8_000;
@@ -65,11 +57,7 @@ const TIME_SK_LIGHT = 8_000;
 const TIME_WR_SWEEP_RESERVE = 8_000;
 const TIME_SINGLE_MESSAGE = 3_000;
 const EXPIRY_PER_RUN = 30;
-const FULFILLMENT_PER_RUN = 20;
-const WA_OUTBOX_PER_RUN = 4;
 const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
-const COST_PER_WA_ROW = 5;
-const COST_PER_WA_RECOVERY = 2;
 
 const COST_PER_WR_WORK = 8;
 // Sekalipay: biaya admission yang sama dengan WR per unit kerja fase.
@@ -557,105 +545,7 @@ export async function POST(request: NextRequest) {
       }
 
     };
-    const runNotify = async () => {
-      // Invoice-expired notice and terminal notice survive delivery failures.
-      const noticeCount = pendingQrisNotice + Number(results.expired_payments);
-      if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5) && hasTime(TIME_TELEGRAM_BATCH)) {
-        const notices = await sendQrisExpiryNotifications(15, database, { hasTime: () => hasTime(TIME_EXPIRY_NOTICE) });
-        results.qris_expiry_notifications = notices.sent;
-        if (noticeCount > Number(results.qris_expiry_notifications) && !deferredOut.includes("notify")) deferredOut.push("notify");
-      } else if (noticeCount > 0 && !deferredOut.includes("notify")) deferredOut.push("notify");
-      // === FASE NOTIFY: notifikasi TG + reminder + outbox WA ===
-      // RR3-09: retry notifikasi mencakup created + paid buyer + paid admin
-      // (hitung pendingNotify di atas = ketiganya). Daftar dibaca HANYA bila
-      // fase notify aktif DAN antrean jenis itu > 0 (RR3-01: tanpa guard ini,
-      // 3 list kosong × tiap run = 12 query baca yang mengusir job kirim).
-      // Biaya konservatif: 1 list + per order 4 (baca+validasi+kirim+tandai).
-      if (activePhases.has("notify") && pendingNotify > 0) {
-        // Workers Paid: the per-item budget check below is the real bound;
-        // do not pre-reject the whole batch by an assumed unit count when the
-        // queue size is unknown.
-        if (hasTime(TIME_TELEGRAM_BATCH)) {
-          const telegramNotifications = await retryPendingTelegramNotifications(FULFILLMENT_PER_RUN, {
-            created: pendingCreated > 0, paid: pendingPaid > 0, paidAdmin: pendingPaidAdmin > 0, paidAdminWeb: pendingPaidAdminWeb > 0,
-          }, database, hasTime);
-
-          results.telegram_order_notifications_retried = telegramNotifications.created;
-          results.telegram_paid_notifications_retried = telegramNotifications.paid;
-          results.telegram_paid_admin_notifications_retried = telegramNotifications.paidAdmin;
-          results.telegram_paid_admin_web_notifications_retried = telegramNotifications.paidAdminWeb;
-        } else {
-          deferredOut.push("notify");
-        }
-      } else if (pendingNotify > 0 && !activePhases.has("notify")) {
-        deferredOut.push("notify");
-      }
-
-      // RR3-05: sapu invoice Telegram yang fotonya belum sampai (marker
-      // telegram_invoice_sent_at IS NULL + ledger pending). Satu foto ulang
-      // per order, tanpa order/invoice/reservasi/stok kedua. Workers Paid:
-      // cap 12 -> 25; the per-order canSpend guard inside bounds the run.
-      if (activePhases.has("notify")) {
-        if (hasTime(TIME_TELEGRAM_BATCH)) {
-          try {
-            const invoiceSent = await retryInvoicePendingTelegramInvoices(25, database);
-
-            results.telegram_invoice_retried = invoiceSent;
-          } catch { /* cron berikutnya retry */ }
-        } else if (!deferredOut.includes("notify")) {
-          deferredOut.push("notify");
-        }
-      }
-
-      if (activePhases.has("notify")) {
-        if (hasTime(TIME_TELEGRAM_BATCH)) {
-          const reminders = await sendPendingOrderReminders(FULFILLMENT_PER_RUN, database);
-
-          results.telegram_pending_reminders_sent = reminders;
-        } else if (!deferredOut.includes("notify")) {
-          deferredOut.push("notify");
-        }
-      }
-
-      // 3c. Antrean WhatsApp idempoten: recovery lease + kirim. Fase notify;
-      // budget dihitung per baris aktual + biaya recovery mandiri (RR3-06).
-      // RR3-06: recovery sending basi dijadwalkan MANDIRI — gerbangnya adalah
-      // pendingWa > 0 ATAU pendingStaleWa > 0, bukan hanya pendingWa, sehingga
-      // antrean yang seluruhnya sending basi tetap dipulihkan via entrypoint
-      // cron (bukan hanya bila ada pesan pending/failed baru).
-      if (activePhases.has("notify") && waWorkPending > 0) {
-        const waUnits = Math.min(WA_OUTBOX_PER_RUN, Math.max(pendingWa, pendingStaleWa > 0 ? 1 : 0));
-        if (budget.fits(COST_PER_WA_RECOVERY + waUnits * COST_PER_WA_ROW) && hasTime(TIME_WA_BATCH)) {
-          try {
-            const waOutbox = await processDueWhatsAppOutbox(WA_OUTBOX_PER_RUN, database);
-
-            results.whatsapp_outbox_sent = waOutbox.sent;
-            results.whatsapp_outbox_dead = waOutbox.dead;
-            results.whatsapp_outbox_recovered = waOutbox.recovered ?? 0;
-            results.whatsapp_outbox_claim_errors = waOutbox.claimErrors ?? 0;
-            results.whatsapp_outbox_paused = waOutbox.paused ?? 0;
-          } catch { /* antrean bertahan; cron berikutnya retry */ }
-          const waLeft = pendingWa - (Number(results.whatsapp_outbox_sent) + Number(results.whatsapp_outbox_dead));
-          if ((waLeft > 0 || pendingStaleWa > Number(results.whatsapp_outbox_recovered)) && !deferredOut.includes("notify")) deferredOut.push("notify");
-        } else if (!deferredOut.includes("notify")) {
-          deferredOut.push("notify");
-        }
-      } else if (waWorkPending > 0 && !deferredOut.includes("notify")) {
-        deferredOut.push("notify");
-      }
-
-      // Sapu bounded antrean PIN checkout (maks 15, jeda 1 dtk antaremail) bila fase notify
-      // aktif dan budget/waktu tersisa; tanpa job/trigger/budget baru.
-      if (pendingPinEmail > 0 && activePhases.has("notify") && budget.fits(10) && hasTime(9_000)) {
-        try {
-          const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
-          const pin = await processCredentialAccessEmails(database, 15, undefined, { hasTime });
-          results.checkout_pin_emails_sent = pin.sent;
-          results.checkout_pin_emails_failed = pin.failed;
-        } catch { if (!deferredOut.includes("notify")) deferredOut.push("notify"); }
-      }
-
-    };
+    const runNotify = () => runNotifyPhase(ctx);
     const runFulfillment = () => runFulfillmentPhase(ctx);
     const runWarungRebahan = async () => {
       // === FASE WARUNG_REBAHAN: sync produk + order pending + saldo ===
