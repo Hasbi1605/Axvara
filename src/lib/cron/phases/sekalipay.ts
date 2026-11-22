@@ -1,6 +1,7 @@
 // Operations SK phase; supplier imports stay lazy at their original call sites.
 import { catalogSweepDue, CATALOG_SYNC_INTERVAL_MS } from "@/lib/cron/catalog-sweep";
 import type { OperationsContext } from "@/lib/cron/operations-context";
+import { supplierSaldoCheckDue } from "@/lib/cron/saldo-check";
 
 // Sekalipay (0049): ambang yang sama dengan WR — unit jaringan SK ikut
 // deadline 45 dtk + cadangan ekor yang sama agar tidak dipotong platform.
@@ -14,8 +15,6 @@ const TIME_SK_LIGHT = 8_000;
  * membuat sync terlihat "rusak di tengah jalan tanpa sebab".
  */
 const TIME_WR_SWEEP_RESERVE = 8_000;
-
-const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 
 // Sekalipay: biaya admission yang sama dengan WR per unit kerja fase.
 const COST_PER_SK_WORK = 8;
@@ -190,13 +189,7 @@ export async function run(ctx: OperationsContext): Promise<void> {
 
         // 4. Saldo check — tiap 10 menit (Paid plan).
         if (budget.fits(3) && hasTime(TIME_SK_LIGHT)) {
-          const lastCheck = await queryFirst(
-            `SELECT created_at FROM sk_saldo_log WHERE source='api_check'
-             ORDER BY created_at DESC LIMIT 1`,
-          ).catch(() => null);
-          const { parseExpiry } = await import("@/lib/expiry");
-          const lastTs = parseExpiry(lastCheck?.created_at);
-          if (lastTs == null || lastTs < Date.now() - WR_SK_BALANCE_CHECK_INTERVAL_MS) {
+          if (await supplierSaldoCheckDue(queryFirst, "sk")) {
             try {
               const saldo = await checkAndLogSkSaldo(database);
               results.sk_saldo_balance = saldo.balance;

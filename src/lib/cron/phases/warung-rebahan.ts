@@ -3,16 +3,15 @@
 //
 // BEFORE: `runWarungRebahan` lived inline in src/app/api/cron/operations/route.ts.
 // AFTER: `run(ctx)` owns the verbatim body; the route dispatch returns
-// this promise directly. Supplier/parseExpiry imports stay in-branch in
-// original order; shared saldo interval keeps route values for SK.
+// this promise directly. The supplier imports stay in-branch in original order.
 
 import { catalogSweepDue, CATALOG_SYNC_INTERVAL_MS } from "@/lib/cron/catalog-sweep";
 import type { OperationsContext } from "@/lib/cron/operations-context";
+import { supplierSaldoCheckDue } from "@/lib/cron/saldo-check";
 
 const TIME_WR_NETWORK = 14_000;
 const TIME_WR_LIGHT = 8_000;
 const TIME_WR_SWEEP_RESERVE = 8_000;
-const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 const COST_PER_WR_WORK = 8;
 const WR_CRON_CHUNK = 10;
 
@@ -363,13 +362,7 @@ export async function run(ctx: OperationsContext): Promise<void> {
 
         // 4. Saldo check — tiap 10 menit (Paid plan).
         if (budget.fits(3) && hasTime(TIME_WR_LIGHT)) {
-          const lastCheck = await queryFirst(
-            `SELECT created_at FROM wr_saldo_log WHERE source='api_check'
-             ORDER BY created_at DESC LIMIT 1`,
-          ).catch(() => null);
-          const { parseExpiry } = await import("@/lib/expiry");
-          const lastTs = parseExpiry(lastCheck?.created_at);
-          if (lastTs == null || lastTs < Date.now() - WR_SK_BALANCE_CHECK_INTERVAL_MS) {
+          if (await supplierSaldoCheckDue(queryFirst, "wr")) {
             try {
               const saldo = await checkAndLogSaldo(database);
               results.wr_saldo_balance = saldo.balance;

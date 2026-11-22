@@ -10,7 +10,8 @@
 // credential delivery, and the 10-minute saldo check (shared constant).
 
 import { QueryBudgetExceeded } from "@/lib/db-access";
-import { monitorRecovery, WR_SK_BALANCE_CHECK_INTERVAL_MS, type LiteContext } from "@/lib/cron/lite/context";
+import { monitorRecovery, type LiteContext } from "@/lib/cron/lite/context";
+import { supplierSaldoCheckDue } from "@/lib/cron/saldo-check";
 
 export async function run({ db, failedCore }: LiteContext): Promise<Record<string, unknown>> {
 
@@ -81,12 +82,7 @@ export async function run({ db, failedCore }: LiteContext): Promise<Record<strin
   // Paid plan: cek saldo WR maks tiap 10 menit (sebelumnya 60 menit hanya di cron/operations :00).
   if (db.canSpend(5)) {
     try {
-      const lastCheck = await db.queryFirst(
-        `SELECT created_at FROM wr_saldo_log WHERE source='api_check' ORDER BY created_at DESC LIMIT 1`,
-      ).catch(() => null);
-      const { parseExpiry } = await import("@/lib/expiry");
-      const lastTs = parseExpiry(lastCheck?.created_at);
-      if (lastTs == null || lastTs < Date.now() - WR_SK_BALANCE_CHECK_INTERVAL_MS) {
+      if (await supplierSaldoCheckDue(db.queryFirst, "wr")) {
         const { checkAndLogSaldo } = await import("@/lib/warung-rebahan/saldo");
         const saldo = await checkAndLogSaldo(db);
         out.wr_saldo_balance = saldo.balance;

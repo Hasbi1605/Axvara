@@ -1,5 +1,6 @@
 import { QueryBudgetExceeded } from "@/lib/db-access";
-import { monitorRecovery, WR_SK_BALANCE_CHECK_INTERVAL_MS, type LiteContext } from "@/lib/cron/lite/context";
+import { monitorRecovery, type LiteContext } from "@/lib/cron/lite/context";
+import { supplierSaldoCheckDue } from "@/lib/cron/saldo-check";
 
 export async function run({ db, failedCore }: LiteContext): Promise<Record<string, unknown>> {
   const { isSkEnabled } = await import("@/lib/sekalipay/client");
@@ -40,12 +41,7 @@ export async function run({ db, failedCore }: LiteContext): Promise<Record<strin
   // Paid plan: cek saldo SK maks tiap 10 menit (sebelumnya 60 menit hanya di cron/operations :00).
   if (db.canSpend(5)) {
     try {
-      const lastCheck = await db.queryFirst(
-        `SELECT created_at FROM sk_saldo_log WHERE source='api_check' ORDER BY created_at DESC LIMIT 1`,
-      ).catch(() => null);
-      const { parseExpiry } = await import("@/lib/expiry");
-      const lastTs = parseExpiry(lastCheck?.created_at);
-      if (lastTs == null || lastTs < Date.now() - WR_SK_BALANCE_CHECK_INTERVAL_MS) {
+      if (await supplierSaldoCheckDue(db.queryFirst, "sk")) {
         const { checkAndLogSkSaldo } = await import("@/lib/sekalipay/saldo");
         const saldo = await checkAndLogSkSaldo(db);
         out.sk_saldo_balance = saldo.balance;

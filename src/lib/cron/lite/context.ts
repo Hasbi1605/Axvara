@@ -3,9 +3,6 @@ import type { LiteJob } from "./jobs";
 
 type Db = DatabaseAccess;
 
-/** Shared WR/SK saldo-check cadence (10 minutes) for lite jobs. */
-export const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
-
 export type LiteContext = {
   job: LiteJob;
   db: Db;
