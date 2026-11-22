@@ -96,6 +96,12 @@ describe("QRIS provider routing", () => {
       expect(read(file)).toMatch(/createActiveQrisInvoice/);
       expect(read(file)).not.toMatch(/getPaymentProvider|KLIKQRIS/);
     }
+    // 3B-5b: web issuance moved to checkout/invoice.ts — it must own the
+    // awaited shared entry point (route only awaits issueCheckoutInvoice).
+    const webInvoice = read("src/lib/orders/checkout/invoice.ts");
+    expect(webInvoice).toContain("await createActiveQrisInvoice(");
+    expect(webInvoice).not.toMatch(/getPaymentProvider|KLIKQRIS/);
+    expect(read("src/app/api/orders/route.ts")).toContain("await issueCheckoutInvoice(");
     expect(fs.existsSync(path.join(process.cwd(), "src/lib/payments/klikqris.ts"))).toBe(true);
     expect(fs.existsSync(path.join(process.cwd(), "src/app/api/payments/klikqris/callback/route.ts"))).toBe(true);
   });

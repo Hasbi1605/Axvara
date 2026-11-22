@@ -2114,10 +2114,11 @@ axvara/
 │   ├── orders/                  # (sebagian) helper order bersama
 │   │   ├── status-flags.ts      # SQL flag kesiapan + re-query penyegar supplier, dipakai GET /api/orders dan POST /api/orders/lookup (3B-1)
 │   │   ├── detail-view.ts       # pembentuk body GET /api/orders dari baris pasca-refresh (3B-1)
-│   │   ├── checkout/response.ts # body POST reused/closed/created + wiring proof (3B-2; guard/pembayaran di route, persistensi order di create.ts)
+│   │   ├── checkout/response.ts # body POST reused/closed/created + wiring proof (3B-2; persistensi order di create.ts, invoice di invoice.ts)
 │   │   ├── checkout/guards.ts   # komputasi guard murni (email wajib, min/max qty, price_changed) atas baris yang dibaca route; baca DB, urutan, early return tetap di route (3B-3)
-│   │   ├── checkout/methods.ts  # preflight quote bertanda untuk crypto, gateway, QRIS (3B-4); slot/pembuatan order di create.ts, invoice tetap di route
-│   │   └── checkout/create.ts   # slot checkout + fallback nama + createOrderWithStock dan reuse pemenang stok/UNIQUE (3B-5a); invoice tetap di route (3B-5b)
+│   │   ├── checkout/methods.ts  # preflight quote bertanda untuk crypto, gateway, QRIS (3B-4); slot/pembuatan order di create.ts, invoice di invoice.ts
+│   │   ├── checkout/create.ts   # slot checkout + fallback nama + createOrderWithStock dan reuse pemenang stok/UNIQUE (3B-5a)
+│   │   └── checkout/invoice.ts  # penerbitan invoice QRIS/NOWPayments/gateway pasca-create + probe klaim dan pembatalan terjaga (3B-5b); analytics + respons 201 tetap di route
 │   ├── suppliers/
 │   │   ├── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault, Mirai, StoreBat; TUNVN hanya predikat JS)
 │   │   └── purchase-state.ts    # WR/SK: backoff, eligibility, CAS klaim/send fence, requeue unsent, rank vendor dan CAS invoice/status (lease dibersihkan saat advance menang; replay/audit tetap per supplier)
@@ -6349,7 +6350,7 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 - **Rumus** (`src/lib/payments/crypto-pricing.ts`, BigInt sen USD): `CRYPTO_SURCHARGE_BPS = 100` (proporsional 1%) + biaya tetap per ticker. `total = ceil((base + fixed) * 10000 / (10000 - bps))`; `surcharge = total - base`. `cryptoPricing(baseCents, ticker, bps?)` → `{baseCents, fixedCents, surchargeCents, totalCents, surchargeBps}`; `minIdrSubtotalForTotal(requiredTotalCents, ticker, fx)`. `cryptoSurchargeCents` dihapus.
 - **Tabel tetap** `CRYPTO_FIXED_FEE_CENTS = {usdtbsc:8, bnbbsc:8, eth:17}` (sen USD, termasuk cadangan payout), ticker lain `CRYPTO_DEFAULT_FIXED_FEE_CENTS = 20`; `cryptoFixedFeeCents(ticker)` case-insensitive, kosong/tak dikenal → 20.
 - **Bukti read-only 7 November 2026**: invoice USDT-BSC paid 2,26 → custody 2,18140899 (rugi 0,0786); estimasi BNB-BSC 0,90 → 0,86296 (0,037), ETH 1,13 → 0,9756 (0,154); fee payout USDT-BSC ≈0,0215. Angka BNB/ETH = estimasi dari titik sampel; koin lain 20c sampai dikalibrasi dashboard NOWPayments.
-- **Pemanggil ticker**: `src/app/api/orders/route.ts`, `src/lib/payments/nowpayments.ts`, `crypto-preflight.ts`, `src/lib/auth.ts`, `src/lib/pedia/payment-methods.ts`, `src/lib/telegram/handlers/payment-dispatch.ts`. Validasi fail-closed tetap: `surcharge_bps === CRYPTO_SURCHARGE_BPS` + base/surcharge/total dihitung ulang; token bps 150/200 ditolak.
+- **Pemanggil ticker**: `src/app/api/orders/route.ts` (preflight), `src/lib/orders/checkout/invoice.ts` (penerbitan invoice web), `src/lib/payments/nowpayments.ts`, `crypto-preflight.ts`, `src/lib/auth.ts`, `src/lib/pedia/payment-methods.ts`, `src/lib/telegram/handlers/payment-dispatch.ts`. Validasi fail-closed tetap: `surcharge_bps === CRYPTO_SURCHARGE_BPS` + base/surcharge/total dihitung ulang; token bps 150/200 ditolak.
 - **Tanpa migrasi**: kolom existing menyimpan `crypto_surcharge_bps = 100` dan `crypto_surcharge_usd_cents` = biaya penuh (proporsional + tetap); baris lama tetap dibaca/direkonsiliasi dari kolom tersimpan.
 - **Copy**: label generik "Biaya layanan crypto"/"Crypto service fee" (+ nominal), tanpa persentase; `bpsPercentText` dihapus. `cryptoCaption`/`cryptoServiceFeeRow`/`approxWithFee`/`totalWithFee` tidak lagi menerima parameter bps.
 - **Token ringkas**: blok `crypto` memuat `items[{ticker,total_cents}]` (total berbeda per koin) + field bersama; lihat §16.19.

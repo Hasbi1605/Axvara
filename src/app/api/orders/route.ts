@@ -8,13 +8,13 @@ import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { activeQrisProvider } from "@/lib/payments/qris";
 import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema, withoutPrivateBuyerData } from "@/lib/buyer-fields";
-import { queryAll, queryFirst, transitionPendingOrder } from "@/lib/db";
+import { queryAll, queryFirst } from "@/lib/db";
 import { createdCheckoutResponse, existingCheckoutResponse, paymentMethodProblem } from "@/lib/orders/checkout/response";
 import { decideEmailNeed, decideMinCap, findStalePriceItem } from "@/lib/orders/checkout/guards";
 import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
-import { createActiveQrisInvoice, MAX_QRIS_REISSUES, type QrisInvoice } from "@/lib/payments/qris";
+import { createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/qris";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
 import { readJsonBody } from "@/lib/http-body";
@@ -352,74 +352,33 @@ export async function POST(req: NextRequest) {
   if (createOutcome.kind === "responded") return createOutcome.response;
   const { fallbackName } = createOutcome;
 
-  let qrisInvoice: QrisInvoice | null = null;
-  let cryptoView: import("@/lib/payments/payment-view").NonQrisPaymentView | null = null;
-  let gatewayView: Awaited<ReturnType<typeof import("@/lib/payments/payment-view").buildSekalipayGatewayPaymentView>> = null;
-  if (pm === "qris") {
-    try {
-      qrisInvoice = await createActiveQrisInvoice(code, quote.subtotal);
-    } catch (error) {
-      console.error("QRIS invoice setup failed:", error instanceof Error ? error.message : "unknown");
-      if (error instanceof Error && error.message.startsWith("klikqris_")) {
-        const pending = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='klikqris' AND status IN ('initializing','pending')", code);
-        if (pending) return NextResponse.json({ error: "Tagihan sedang disiapkan. Tunggu sebentar lalu coba lagi dengan checkout yang sama.", code }, { status: 503 });
-      }
-      try {
-        await transitionPendingOrder(code, "dibatalkan", "qris_setup_failed", quote.items);
-      } catch { /* A concurrent terminal transition is safe. */ }
-      return NextResponse.json({ error: "QRIS dinamis sedang tidak tersedia. Coba lagi sebentar." }, { status: 503 });
-    }
-  } else if (isCryptoMethod) {
-    try {
-      const { createNowpaymentsInvoice } = await import("@/lib/payments/nowpayments");
-      const inv = await createNowpaymentsInvoice(code, Number(quote.subtotal), cryptoUsd!.payCurrency, {
-        payNetwork: cryptoUsd!.network,
-        priceCurrency: "usd",
-        feePayer: "merchant",
-        fixedRate: false,
-        expectedUsd: { ...cryptoUsd! },
-      });
-      const { buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
-      cryptoView = await buildNowpaymentsPaymentView(code).catch(() => null);
-      void inv;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "unknown";
-      console.error("NOWPayments invoice setup failed:", message);
-      const claimed = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='nowpayments' AND status IN ('initializing','pending')", code);
-      if (claimed || message === "nowpayments_network_ambiguous" || message === "nowpayments_finalize_failed_manual_review") {
-        // Ambiguous/mid-finalize: claim+stok dipertahankan (Telegram
-        // invoice.ts:322 pattern), 503 "check status" — JANGAN cancel.
-        // No repeat POST: retry quote SAMA memulihkan via GET known id.
-        return NextResponse.json({ error: paymentMethodProblem(quote.locale), error_code: "payment_method_unavailable", code }, { status: 503 });
-      }
-      if (message === "nowpayments_preflight_invalid" || message === "nowpayments_usd_snapshot_required"
-        || message.startsWith("nowpayments_")) {
-        try {
-          await transitionPendingOrder(code, "dibatalkan", `nowpayments_setup_failed:${message.slice(0, 60)}`, quote.items);
-        } catch { /* A concurrent terminal transition is safe. */ }
-        return NextResponse.json({ error: "Pembayaran crypto sedang tidak tersedia. Muat ulang checkout." }, { status: 503 });
-      }
-      try {
-        await transitionPendingOrder(code, "dibatalkan", "nowpayments_setup_failed", quote.items);
-      } catch { /* A concurrent terminal transition is safe. */ }
-      return NextResponse.json({ error: "Pembayaran crypto sedang tidak tersedia. Muat ulang checkout." }, { status: 503 });
-    }
-  } else if (isGatewayMethod && selected.gateway) {
-    try {
-      const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
-      await createSekalipayGatewayInvoice(code, quote.subtotal, selected.gateway.channel, { name: fallbackName, email: customer_email, phone: wa }, selected.gateway.estimated_fee);
-      gatewayView = await import("@/lib/payments/payment-view").then((m) => m.buildSekalipayGatewayPaymentView(code));
-    } catch {
-      const claimed = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='sekalipay_gateway'", code);
-      if (!claimed) {
-        await transitionPendingOrder(code, "dibatalkan", "gateway_setup_failed", quote.items).catch(() => {});
-        return NextResponse.json({ error: "Metode pembayaran tidak tersedia.", code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
-      }
-      return NextResponse.json({ error: paymentMethodProblem(quote.locale), error_code: "payment_method_unavailable", code,
-        buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
-        checkout_credential_grant: await createCheckoutCredentialGrant({ code, quote_id: quote.quote_id, buyer_access_version: 1, buyer_access_format: "pin6" }) }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
-    }
-  }
+  // Post-create invoice issuance (3B-5b): QRIS/crypto/gateway branches live
+  // in checkout/invoice.ts; analytics + created 201 stay below in the route.
+  const { issueCheckoutInvoice } = await import("@/lib/orders/checkout/invoice");
+  const invoiceOutcome = await issueCheckoutInvoice(
+    {
+      code,
+      paymentMethod: pm,
+      isCryptoMethod,
+      isGatewayMethod,
+      gateway: selected.gateway,
+      cryptoUsd,
+      subtotal: quote.subtotal,
+      items: quote.items,
+      locale: quote.locale,
+      quoteId: quote.quote_id,
+      fallbackName,
+      customerEmail: customer_email,
+      wa,
+    },
+    {
+      gatewayClaimedProofs: async ({ code: claimedCode, quoteId, locale }) => NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: claimedCode,
+        buyer_access_session: await createBuyerAccessSession({ code: claimedCode, buyer_access_version: 1, buyer_access_format: "pin6" }),
+        checkout_credential_grant: await createCheckoutCredentialGrant({ code: claimedCode, quote_id: quoteId, buyer_access_version: 1, buyer_access_format: "pin6" }) }, { status: 503, headers: { "Cache-Control": "private, no-store" } }),
+    },
+  );
+  if (invoiceOutcome.kind === "responded") return invoiceOutcome.response;
+  const { qrisInvoice, cryptoView, gatewayView } = invoiceOutcome;
 
   // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-09-25): order web
   // dinotif sekali saat LUNAS lewat notifyWebPaidAdmin (ensureFulfillmentForPaidOrder).
