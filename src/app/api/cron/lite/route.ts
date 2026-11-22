@@ -123,12 +123,9 @@ export async function POST(request: NextRequest) {
       await sampleWhatsAppGateway(db, deadline);
     }
     else if (job === "games_catalog") {
-      // docs/GAMES.md §12.5: katalog baru = Sekalipay Game; Digiflazz tidak lagi
-      // dipanggil untuk price-list. Throttle/no-op ada di dalam sync.
-      const { syncGamesSkCatalog } = await import("@/lib/games/sk-catalog-sync");
-      const synced = await syncGamesSkCatalog(db);
-      Object.assign(result, synced);
-      if ("ok" in synced && synced.ok === false) return NextResponse.json({ ...result, ok: false }, { status: 503 });
+      const { run } = await import("@/lib/cron/lite/jobs/games-catalog");
+      const { failed } = await run({ job, db, deadline, result, failedCore });
+      if (failed) return NextResponse.json({ ...result, ok: false }, { status: 503 });
     }
     else if (job === "games_orders") {
       // docs/GAMES.md §12.3: promosi lunas, dispatch supplier per item (SK baru,
