@@ -34,7 +34,7 @@ type QuoteIssue = {
   slug?: string;
   variant_id?: number;
   min_qty?: number;
-  type: "missing" | "inactive" | "out_of_stock" | "insufficient_stock" | "invalid_quantity" | "below_minimum" | "variant_required";
+  type: "missing" | "inactive" | "out_of_stock" | "insufficient_stock" | "invalid_quantity" | "below_minimum" | "variant_required" | "pixelverif_blocked";
   message: string;
 };
 
@@ -185,6 +185,13 @@ export async function POST(req: NextRequest) {
     let buyerFields;
     try { buyerFields = validateBuyerFields(fieldConfig, item.buyer_fields, item.qty); }
     catch (error) { issues.push({ product_id: productId, variant_id: item.variant_id, type: "invalid_quantity", message: (error as Error).message }); continue; }
+    if (buyerFields?.pv_email) {
+      const { isPixelverifEmailBlocked, PIXELVERIF_BLOCKED_EMAIL_MESSAGE } = await import("@/lib/pixelverif/blocklist");
+      if (await isPixelverifEmailBlocked(buyerFields.pv_email, Number((fieldConfig as Record<string, unknown>).pixelverif_validity) || 3)) {
+        issues.push({ product_id: productId, variant_id: item.variant_id, type: "pixelverif_blocked", message: PIXELVERIF_BLOCKED_EMAIL_MESSAGE });
+        continue;
+      }
+    }
     if (Number(row.is_active) === 0) {
       issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "inactive", message: `${row.name} sedang nonaktif.` });
       continue;

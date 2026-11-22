@@ -289,3 +289,44 @@ it("warns the buyer to delete a secret message manually when Telegram deletion i
   expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("hapus pesan tersebut secara manual") }));
   vi.mocked(deleteMessage).mockResolvedValue({ ok: true } as never);
 });
+
+it("rejects a Gmail blacklisted by ACTIVATION_ITEM_NOT_AVAILABLE at quote, order intake and Telegram (README)", async () => {
+  const { recordPixelverifEmailBlock, isPixelverifEmailBlocked, PIXELVERIF_BLOCKED_EMAIL_MESSAGE } = await import("@/lib/pixelverif/blocklist");
+  const { createDatabaseAccess } = await import("@/lib/db-access");
+  const { POST: quote } = await import("@/app/api/checkout/quote/route");
+  const { validateCheckoutInput } = await import("@/lib/orders/checkout/validate");
+  // Token issued before the block lands: order intake must still refuse.
+  const quoted = await quote(request("/api/checkout/quote", { items: [{ product_id: 1, variant_id: 1, qty: 1, buyer_fields: pvFields }] }));
+  const { quoteToken } = await quoted.json() as { quoteToken: string };
+
+  await recordPixelverifEmailBlock(createDatabaseAccess(fx.db), pvFields.pv_email, 3, "ACTIVATION_ITEM_NOT_AVAILABLE", "AXV-OLD");
+  const stored = fx.sql.prepare("SELECT * FROM pixelverif_blocked_emails").get() as Record<string, unknown>;
+  expect(JSON.stringify(stored)).not.toContain(pvFields.pv_email);
+  // Gmail ignores dots and +tags: the same account cannot slip through.
+  await expect(isPixelverifEmailBlocked("Buyer.Fix.ture+x@gmail.com", 3)).resolves.toBe(true);
+  await expect(isPixelverifEmailBlocked("other.buyer@gmail.com", 3)).resolves.toBe(false);
+  await expect(isPixelverifEmailBlocked(pvFields.pv_email, 12)).resolves.toBe(false);
+
+  const blockedQuote = await quote(request("/api/checkout/quote", { items: [{ product_id: 1, variant_id: 1, qty: 1, buyer_fields: pvFields }] }));
+  expect(blockedQuote.status).toBe(409);
+  const blockedBody = await blockedQuote.json() as { issues: { message: string }[]; quoteToken?: string };
+  expect(blockedBody.quoteToken).toBeUndefined();
+  expect(blockedBody.issues[0].message).toBe(PIXELVERIF_BLOCKED_EMAIL_MESSAGE);
+
+  const intake = await validateCheckoutInput({
+    customer_wa: "081234567890", customer_email: "buyer@example.test", payment_method: "qris", quote_token: quoteToken,
+    items: [{ product_id: 1, variant_id: 1, qty: 1, buyer_fields: pvFields }],
+  });
+  expect(intake.kind).toBe("responded");
+  if (intake.kind === "responded") {
+    expect(intake.response.status).toBe(409);
+    await expect(intake.response.json()).resolves.toEqual({ error: PIXELVERIF_BLOCKED_EMAIL_MESSAGE });
+  }
+
+  fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
+  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  await handleBuyerInput(pvFields.pv_email, user.id, user, 31);
+  expect(sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ text: expect.stringContaining(PIXELVERIF_BLOCKED_EMAIL_MESSAGE) }));
+  const pending = fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='800'").get() as Record<string, unknown>;
+  expect(pending.pending_action).toBe("pvinput:1:1:email");
+});

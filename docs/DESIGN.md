@@ -527,6 +527,11 @@ route fixture dihapus, bukan bukti login atau transaksi produksi.
 
 ## Progres produk otomatis (14 November 2026, implementasi lokal)
 
+Pembaruan 23 November 2026 (lokal): komponen yang sama juga dipakai untuk item
+Pixel Verification (urutan antrean supplier memakai baris "Urutan antrean: N"
+existing). Untuk item Pixel saja, footer "Made by order" memakai estimasi
+1–5 menit dan tautan admin setelah 15 menit; token visual tidak berubah.
+
 Halaman `/pesanan/[code]` memakai `AutomaticOrderProgress` untuk item Jaspay.
 Permukaan mengikuti Midnight storefront existing, border putih10%, teks utama
 putih90%, teks bantu putih70%, aksen Cyan #00E5FF, selesai emerald dan kendala

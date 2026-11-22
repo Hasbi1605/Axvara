@@ -319,6 +319,7 @@ function CheckoutInner() {
       insufficient_stock: stock ? `Stock remaining: ${stock[1]} (requested: ${stock[2]}).` : "Insufficient stock.",
       invalid_quantity: "Invalid quantity.", variant_required: "Choose a variant.",
       below_minimum: `Minimum purchase: ${issue.min_qty ?? "—"}.`,
+      pixelverif_blocked: "This Gmail was previously rejected by the supplier for this offer and can't be ordered again. Use another Gmail.",
     };
     return known[issue.type] ? `${name ? `${name}: ` : ""}${known[issue.type]}` : issue.message;
   };
@@ -820,7 +821,7 @@ function CheckoutInner() {
                   <div>
                     <label htmlFor="checkout-pv-totp" className="mb-1 block text-xs font-medium text-white/60">{en ? "2FA setup key (TOTP secret)" : "Kunci Setup 2FA (TOTP secret)"} *</label>
                     <input id="checkout-pv-totp" value={pvTotp} onChange={e => { setQuoteToken(null); setPvTotp(e.target.value); }} required maxLength={120} autoComplete="off" autoCapitalize="characters" spellCheck={false} aria-describedby="checkout-pv-hint" placeholder="JBSWY3DPEHPK3PXP" className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white focus:outline-none focus:border-[#00E5FF]/40" />
-                    <p id="checkout-pv-hint" className="mt-1.5 text-xs text-white/50">{en ? "The setup key from your authenticator (not the 6-digit code). Stored encrypted, used once for activation, then deleted. After activation completes, change your password and reset 2FA immediately." : "Kunci setup dari aplikasi authenticator (bukan kode 6 digit). Tersimpan terenkripsi, dipakai sekali untuk aktivasi, lalu dihapus. Setelah aktivasi selesai, segera ganti password dan reset 2FA Anda."}</p>
+                    <p id="checkout-pv-hint" className="mt-1.5 text-xs text-white/50">{en ? "The setup key from your authenticator (not the 6-digit code). Stored encrypted, used once for activation, then deleted." : "Kunci setup dari aplikasi authenticator (bukan kode 6 digit). Tersimpan terenkripsi, dipakai sekali untuk aktivasi, lalu dihapus."}</p>
                   </div>
                 </div>}
                 <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email *</label>

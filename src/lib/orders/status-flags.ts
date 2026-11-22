@@ -44,7 +44,7 @@ export const EMPTY_STATUS_FLAGS: StatusFlags = {
 /**
  * The one big `WITH lines …` readiness query. Verbatim move of the GET query
  * in src/app/api/orders/route.ts:758-807 (params: purchase-disabled flag,
- * items JSON ×2, then order code ×7). `.catch(() => null)` is preserved:
+ * items JSON ×2, then order code for every remaining placeholder). `.catch(() => null)` is preserved:
  * old D1 databases without the WR/SK tables (pre-0027/0049) resolve all
  * flags to false instead of 500.
  */
@@ -64,7 +64,8 @@ export async function readStatusFlags(
            FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
          )
           SELECT
-           EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND wr_variant_id LIKE 'jaspay:%') AS has_automatic_progress,
+           (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND wr_variant_id LIKE 'jaspay:%')
+            OR EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=?)) AS has_automatic_progress,
            (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
                     AND wr_account_details IS NOT NULL)
            OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
@@ -105,6 +106,7 @@ export async function readStatusFlags(
       code,
       code,
       code,
+      code,
     )
     .catch(() => null);
   return {
@@ -120,7 +122,7 @@ export async function readStatusFlags(
 /**
  * Compact lookup-side credentials/ownership/running read. Verbatim move of
  * the query in src/app/api/orders/lookup/route.ts:110-126 (params: order
- * code ×5, purchase-disabled flag, items JSON, order code ×2). Same
+ * code ×6, purchase-disabled flag, items JSON, order code ×3). Same
  * `.catch(() => null)` → all-false contract.
  */
 export async function readLookupFlags(
@@ -131,7 +133,8 @@ export async function readLookupFlags(
   const cred = await query
     .queryFirst(
       `SELECT
-        EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND wr_variant_id LIKE 'jaspay:%') AS has_automatic_progress,
+        (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND wr_variant_id LIKE 'jaspay:%')
+            OR EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=?)) AS has_automatic_progress,
         (EXISTS(SELECT 1 FROM wr_order_links
            WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
          OR EXISTS(SELECT 1 FROM fulfillment_items
@@ -145,6 +148,7 @@ export async function readLookupFlags(
         (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
          OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
          OR EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=? AND (status='processing' OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running`,
+      code,
       code,
       code,
       code,

@@ -2630,3 +2630,13 @@ WHEN OLD.pixelverif_flow_type IS NOT NEW.pixelverif_flow_type OR OLD.pixelverif_
     SELECT m.group_id,lower(hex(randomblob(16))),1 FROM product_group_members m WHERE m.product_id IN (OLD.product_id,NEW.product_id) GROUP BY m.group_id
     ON CONFLICT(group_id) DO UPDATE SET version=excluded.version,pending=1;
 END;
+
+-- 0156_pixelverif_blocked_emails
+CREATE TABLE IF NOT EXISTS pixelverif_blocked_emails (
+  email_hash TEXT NOT NULL,
+  validity INTEGER NOT NULL CHECK(validity > 0),
+  error_code TEXT NOT NULL,
+  order_code TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (email_hash, validity)
+);

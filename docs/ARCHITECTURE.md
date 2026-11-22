@@ -2,6 +2,9 @@
 
 ## Pixel Verification — dispatch sesuai panduan API supplier (lokal, belum dideploy)
 
+- Migrasi `0156_pixelverif_blocked_emails.sql` (+ blok akhir `drizzle/schema.sql`): tabel `pixelverif_blocked_emails(email_hash, validity, error_code, order_code, created_at)`, PK `(email_hash, validity)`, hanya hash. Helper `src/lib/pixelverif/blocklist.ts`; ditulis dispatcher saat `ACTIVATION_ITEM_NOT_AVAILABLE`, dibaca `api/checkout/quote`, `orders/checkout/validate.ts`, `telegram/handlers/buyer-input.ts`, `telegram/cart.ts`.
+- Progres pembeli: `has_automatic_progress` di `orders/status-flags.ts` juga benar bila ada `pixelverif_order_links`; `warung-rebahan/progress.ts` membaca link Pixel dari kolom tersimpan (`status`, `queue_position`, `receipt_json.status`), bukan body receipt. `AutomaticProgressItem.kind="pixelverif"` memilih estimasi 1–5 menit di `AutomaticOrderProgress`.
+
 - Rujukan kontrak: README `Likhonbd/Pixel-Xiaomi-Oppo-Oneplus-Device-Verificaton-API` (base `https://api.pixelverification.me`, header `X-API-Key`). Klien `src/lib/pixelverif/client.ts`, dispatcher `src/lib/pixelverif/orders.ts`, aturan area `docs/agent-rules/pixelverif.md`.
 - `X-Idempotency-Key`: UUID acak per link (`pixelverif_order_links.idempotency_key`), dipakai ulang hanya untuk POST ulang setelah kirim ambigu. `OTHER_ERROR` (retryable menurut panduan) memasang UUID baru, memindahkan ID order gagal ke `provider_order_code` (pemulihan `order-by-email` tidak pernah mengikatnya lagi) dan kembali `pending`; dibatasi `attempt_count` ≤ 3.
 - POST 401/402/403 pada kirim pertama tidak membuat order supplier: pagar kirim dikembalikan (`attempt_count=0`, `request_sent_at=NULL`) sehingga input tersegel tetap ada dan `PIXELVERIF_RETRYABLE_SQL` mengizinkan retry admin. Gerbang retry kini `attempt_count<3` + tanpa kiriman berjalan (`request_sent_at IS NULL`, tanpa provider id/receipt).

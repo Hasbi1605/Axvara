@@ -32,8 +32,7 @@ const PV_INTRO =
   "🔐 <b>Data akun Google untuk aktivasi</b>\n\n" +
   "Kirim <b>email Gmail</b> yang akan diaktivasi (contoh: nama@gmail.com).\n" +
   "Pesan berisi password/kunci 2FA akan <b>otomatis dihapus</b> setelah dibaca. " +
-  "Data tersimpan terenkripsi, dipakai sekali untuk aktivasi, lalu dihapus.\n" +
-  "Setelah aktivasi selesai, <b>segera ganti password & reset 2FA</b> Anda.\n\n" +
+  "Data tersimpan terenkripsi, dipakai sekali untuk aktivasi, lalu dihapus.\n\n" +
   "/batal untuk batal.";
 
 export async function requestBuyerInput(chatId:number,from:{ id:number },productId:number,variantId:number,qty:number):Promise<boolean> {
@@ -76,6 +75,11 @@ async function handlePixelverifInput(text:string,chatId:number,from:{ id:number 
   if (step === "email") {
     if (!/^[^\s@]+@gmail\.com$/i.test(value)) {
       await sendMessage({ chat_id:chatId,text:"Email tidak valid. Kirim alamat @gmail.com yang akan diaktivasi, atau /batal." });
+      return true;
+    }
+    const { isPixelverifEmailBlocked, PIXELVERIF_BLOCKED_EMAIL_MESSAGE } = await import("@/lib/pixelverif/blocklist");
+    if (await isPixelverifEmailBlocked(value, 3)) {
+      await sendMessage({ chat_id:chatId,text:`${PIXELVERIF_BLOCKED_EMAIL_MESSAGE} Kirim alamat @gmail.com lain, atau /batal.` });
       return true;
     }
     // Do NOT write the Gmail target into telegram_users.buyer_email: that is

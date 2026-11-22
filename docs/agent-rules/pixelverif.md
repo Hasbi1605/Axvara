@@ -1,5 +1,11 @@
 # Aturan agent — Pixel Verification (Google AI Pro 3 bulan)
 
+## Blacklist Gmail, antrean pembeli, teks ganti password — 23 November 2026 (lokal, belum dideploy)
+
+- Blacklist: kode `ACTIVATION_ITEM_NOT_AVAILABLE` (poll `failed` atau Full `activation_status=item_not_available`) mencatat SHA-256 Gmail ternormalisasi (huruf kecil, tanpa titik/`+tag` di local part) ke `pixelverif_blocked_emails` (migrasi `0156`, PK `email_hash`+`validity`) sebelum input dihapus. README: Gmail tidak boleh dikirim ulang untuk penawaran yang sama, validity lain boleh — jadi blok per validity, berlaku untuk Normal dan Full. Ditolak di quote web (issue `pixelverif_blocked`), validasi order web, langkah email Telegram dan ringkasan keranjang Telegram. Baca gagal = fail-open (supplier tetap refund). Tidak ada UI admin untuk membuka blok; hapus baris hanya atas instruksi owner.
+- Antrean pembeli: `readAutomaticProgress` menyertakan link Pixel (`kind:"pixelverif"`): belum ada order supplier → `preparing`, provider `pending` → `queued` + `queue_position` (null ditampilkan tanpa angka), `processing` → `running`, `completed` → `ready`, `needs_admin` → `needs_check`. Footer estimasi Pixel 1–5 menit, hubungi admin setelah 15 menit. Posisi diperbarui tiap tick cron (README: cache supplier ±60 dtk).
+- Teks "segera ganti password & reset 2FA" dihapus dari checkout web, intro Telegram, deskripsi produk dan langkah aktivasi atas instruksi owner. Jangan tambahkan lagi sampai owner bilang "tambahkan teks helper ganti pw". Produk yang sudah dipublikasikan ke D1 menyimpan salinan deskripsi lama sampai copy dipublikasikan ulang.
+
 ## Kontrak supplier — 23 November 2026 (lokal, belum dideploy)
 
 - Sumber kontrak: README GitHub `Likhonbd/Pixel-Xiaomi-Oppo-Oneplus-Device-Verificaton-API` (base `https://api.pixelverification.me`). Bila README berubah, bandingkan dulu dengan `src/lib/pixelverif/client.ts` + `orders.ts` dan test `tests/pixelverif-*`; jangan membaca/mengubah env produksi hanya untuk menyelaraskan dokumentasi.

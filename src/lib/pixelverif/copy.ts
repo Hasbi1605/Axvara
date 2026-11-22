@@ -14,7 +14,7 @@ export const PIXELVERIF_COPY = {
       "Normal vs Full:\n" +
       "• Link Redeem 3 Bulan (Normal): Anda menerima link https://one.google.com/ — buka link saat login ke Gmail yang didaftarkan.\n" +
       "• Aktivasi Langsung 3 Bulan (Full): Tim melakukan aktivasi langsung ke akun Anda; Anda menerima link + status aktivasi.\n\n" +
-      "Setelah sukses: segera ganti password & kunci authenticator Anda. Untuk Full, cek dan batalkan perpanjangan otomatis di one.google.com bila ada — perpanjangan otomatis belum terkonfirmasi (unconfirmed) dan mungkin menambah metode pembayaran.",
+      "Untuk Full: setelah sukses, cek dan batalkan perpanjangan otomatis di one.google.com bila ada — perpanjangan otomatis belum terkonfirmasi (unconfirmed) dan mungkin menambah metode pembayaran.",
     description_en: null as string | null,
     variants: {
       "PV-NORMAL-3": {
@@ -23,7 +23,7 @@ export const PIXELVERIF_COPY = {
           "Jenis: Link Redeem 3 Bulan (Normal) — Anda menerima link redeem Google AI Pro 3 bulan (https://one.google.com/). Buka link saat login ke Gmail yang didaftarkan.",
         admin_terms_en: null as string | null,
         admin_activation:
-          "1. Login ke Gmail yang didaftarkan.\n2. Buka link redeem yang diterima (https://one.google.com/...).\n3. Ikuti langkah aktivasi di halaman Google.\n4. Setelah sukses, ganti password & kunci authenticator Anda.",
+          "1. Login ke Gmail yang didaftarkan.\n2. Buka link redeem yang diterima (https://one.google.com/...).\n3. Ikuti langkah aktivasi di halaman Google.",
         admin_activation_en: null as string | null,
       },
       "PV-FULL-3": {
@@ -32,7 +32,7 @@ export const PIXELVERIF_COPY = {
           "Jenis: Aktivasi Langsung 3 Bulan (Full) — Tim melakukan aktivasi langsung ke akun Anda. Anda menerima link + status aktivasi. Full dapat menambah metode pembayaran; cek dan batalkan perpanjangan otomatis di one.google.com bila ada (auto-renew belum terkonfirmasi).",
         admin_terms_en: null as string | null,
         admin_activation:
-          "1. Tim melakukan aktivasi langsung ke Gmail yang didaftarkan.\n2. Anda menerima link + status aktivasi (activated / already_redeemed).\n3. Verifikasi di one.google.com bahwa Google AI Pro aktif.\n4. Segera ganti password & kunci authenticator; cek perpanjangan otomatis di one.google.com dan batalkan bila ada.",
+          "1. Tim melakukan aktivasi langsung ke Gmail yang didaftarkan.\n2. Anda menerima link + status aktivasi (activated / already_redeemed).\n3. Verifikasi di one.google.com bahwa Google AI Pro aktif.\n4. Cek perpanjangan otomatis di one.google.com dan batalkan bila ada.",
         admin_activation_en: null as string | null,
       },
     },

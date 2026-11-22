@@ -398,6 +398,11 @@ describe("Pixel Verification dispatch", () => {
     expect(item).toMatchObject({ delivered_ciphertext: null, status: "manual_required" });
     const { pixelverifBuyerErrorMessage } = await import("@/lib/pixelverif/copy");
     expect(pixelverifBuyerErrorMessage("ACTIVATION_ITEM_NOT_AVAILABLE")).toMatch(/Jangan kirim ulang Gmail yang sama/);
+    // README: blacklisted for this offer — the hash is recorded before the input purge.
+    const { isPixelverifEmailBlocked } = await import("@/lib/pixelverif/blocklist");
+    await expect(isPixelverifEmailBlocked(EMAIL, 3, (sql, ...p) => db.queryFirst(sql, ...p))).resolves.toBe(true);
+    const input = fx.sql.prepare("SELECT input_ciphertext FROM pixelverif_buyer_inputs WHERE order_code=?").get(ORDER_CODE) as Record<string, unknown>;
+    expect(input.input_ciphertext).toBeNull();
   });
 
   it("delivers a Full link with a fixed activation label, never the raw status", async () => {
@@ -499,5 +504,35 @@ describe("Pixel Verification dispatch", () => {
     await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
     const row = fx.sql.prepare("SELECT (julianday(next_attempt_at)-julianday('now'))*86400 AS wait FROM pixelverif_order_links WHERE order_code=?").get(ORDER_CODE) as { wait: number };
     expect(row.wait).toBeLessThanOrEqual(15);
+  });
+
+  it("exposes queue position, then running, then ready to the buyer progress reader (README queue_position)", async () => {
+    const { readAutomaticProgress } = await import("@/lib/warung-rebahan/progress");
+    const { readStatusFlags } = await import("@/lib/orders/status-flags");
+    pollBody = { success: true, order: { ...orderByEmail.order, status: "pending", queue_position: 3 } };
+    await seedPaidOrder();
+    const db = createDatabaseAccess(fx.db);
+    let progress = await readAutomaticProgress(ORDER_CODE, db);
+    expect(progress).toMatchObject([{ stage: "preparing", queuePosition: null, kind: "pixelverif", total: 1 }]);
+    await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
+    due();
+    await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
+    progress = await readAutomaticProgress(ORDER_CODE, db);
+    expect(progress).toMatchObject([{ label: "Pixel fixture — Pixel variant", stage: "queued", queuePosition: 3 }]);
+    const order = fx.sql.prepare("SELECT * FROM orders WHERE code=?").get(ORDER_CODE) as Record<string, unknown>;
+    await expect(readStatusFlags(ORDER_CODE, order as never, db)).resolves.toMatchObject({ hasAutomaticProgress: true });
+
+    pollBody = { success: true, order: { ...orderByEmail.order, status: "processing", queue_position: null, progress: { current_step: 4, total_steps: 8 } } };
+    due();
+    await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
+    progress = await readAutomaticProgress(ORDER_CODE, db);
+    expect(progress).toMatchObject([{ stage: "running", queuePosition: null }]);
+
+    pollBody = null;
+    due();
+    await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
+    progress = await readAutomaticProgress(ORDER_CODE, db);
+    expect(progress).toMatchObject([{ stage: "ready", ready: 1 }]);
+    expect(JSON.stringify(progress)).not.toContain("one.google.com");
   });
 });

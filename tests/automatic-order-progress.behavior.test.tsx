@@ -48,3 +48,10 @@ it("explains made-by-order ETA and admin escalation while the product is still b
   rerender(<AutomaticOrderProgress items={[{...item,stage:"queued"}]} locale="en" />);
   expect(screen.getByRole("link",{name:"Contact admin"})).toBeTruthy();
 });
+it("uses the Pixel Verification estimate (1–5 min, admin after 15 min) when only Pixel lines are working", () => {
+  render(<AutomaticOrderProgress items={[{...item,label:"Google AI Pro 3 Bulan — Link Redeem",kind:"pixelverif",queuePosition:2}]} />);
+  expect(screen.getByText("Urutan antrean: 2")).toBeTruthy();
+  expect(document.body.textContent).toContain("Estimasi 1–5 menit");
+  expect(document.body.textContent).toContain("Lebih dari 15 menit belum selesai?");
+  expect(document.body.textContent).not.toContain("15 menit–1 jam");
+});

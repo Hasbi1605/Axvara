@@ -9,6 +9,8 @@ export type AutomaticProgressItem = {
   total: number;
   queuePosition: number | null;
   updatedAt: string | null;
+  /** Supplier family; drives the time estimate shown to the buyer. Absent = Jaspay. */
+  kind?: "pixelverif";
 };
 
 const count = (value: unknown, maximum: number) =>
@@ -49,8 +51,45 @@ export async function persistJaspayProgress(
   return Number(applied.changes) > 0;
 }
 
+/**
+ * Pixel Verification lines (README "Queue Position"): provider `pending` →
+ * queued with the 1-based queue_position (null tolerated), `processing` →
+ * running, completed → ready, needs_admin → needs_check. Only stored,
+ * allowlisted columns are read — never the receipt body.
+ */
+async function readPixelverifProgress(code: string, db: Pick<DatabaseAccess, "queryAll">): Promise<AutomaticProgressItem[]> {
+  const rows = await db.queryAll(`SELECT l.status,l.queue_position,l.receipt_json,l.provider_order_id,l.updated_at,p.name,pv.label
+    FROM pixelverif_order_links l
+    LEFT JOIN product_variants pv ON pv.id=l.variant_id
+    LEFT JOIN products p ON p.id=l.product_id
+    WHERE l.order_code=? ORDER BY l.item_index LIMIT 20`, code).catch(() => []);
+  return rows.map(row => {
+    let providerStatus = "";
+    try { providerStatus = String((JSON.parse(String(row.receipt_json ?? "{}")) ?? {}).status ?? ""); } catch { /* No poll yet. */ }
+    const status = String(row.status);
+    const stage: AutomaticProgressItem["stage"] = status === "completed" ? "ready"
+      : status === "needs_admin" ? "needs_check"
+      : !row.provider_order_id ? "preparing"
+      : providerStatus === "processing" ? "running" : "queued";
+    const position = Number(row.queue_position);
+    return {
+      label: [row.name, row.label].filter(Boolean).join(" — ") || "Produk digital",
+      stage,
+      ready: stage === "ready" ? 1 : 0,
+      total: 1,
+      queuePosition: stage === "queued" && Number.isSafeInteger(position) && position > 0 && position < 1_000_000 ? position : null,
+      updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
+      kind: "pixelverif",
+    };
+  });
+}
+
 /** Safe for the existing authenticated/masked order status serializers. */
 export async function readAutomaticProgress(code: string, db: Pick<DatabaseAccess, "queryAll">): Promise<AutomaticProgressItem[]> {
+  return [...await readJaspayProgress(code, db), ...await readPixelverifProgress(code, db)];
+}
+
+async function readJaspayProgress(code: string, db: Pick<DatabaseAccess, "queryAll">): Promise<AutomaticProgressItem[]> {
   const rows = await db.queryAll(`SELECT w.status,w.quantity,w.last_error,w.jaspay_progress,
       p.name,pv.label FROM wr_order_links w
     LEFT JOIN product_variants pv ON pv.wr_variant_id=w.wr_variant_id

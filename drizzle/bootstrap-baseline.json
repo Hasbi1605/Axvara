@@ -1,7 +1,7 @@
 {
   "$comment": "Audit AU-G2-1 bootstrap ledger. Exact migration filenames already represented by drizzle/schema.sql as of schema_through. Consumed ONLY by scripts/d1-fresh-init.cjs; regenerate deliberately with --print-baseline after intentionally editing schema.sql or adding a migration.",
-  "schema_through": "0155_pixelverif_supplier.sql",
-  "schema_sha256": "5f661a08f35d6d5f916ef9e47bcaec94c94b46acbf98ba7257f27675f2c239f5",
+  "schema_through": "0156_pixelverif_blocked_emails.sql",
+  "schema_sha256": "c82f67653c507f2eb3961d57b7325377e147be22c68bb0ef30a0e9e9a8a421f4",
   "migrations": [
     "0002_editorial_agent.sql",
     "0003_checkout_integrity.sql",
@@ -156,6 +156,7 @@
     "0152_admin_paid_notice_unknown.sql",
     "0153_product_group_member_update_guard.sql",
     "0154_wr_final_settlement_markers.sql",
-    "0155_pixelverif_supplier.sql"
+    "0155_pixelverif_supplier.sql",
+    "0156_pixelverif_blocked_emails.sql"
   ]
 }

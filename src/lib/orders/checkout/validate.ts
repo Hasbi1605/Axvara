@@ -160,6 +160,14 @@ export async function validateCheckoutInput(data: unknown): Promise<ValidateOutc
     return { ...signed, buyer_fields: { ...rest, ...triple } } as AtomicOrderItem;
   });
   if (tripleMissing) return { kind: "responded", response: NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }) };
+  if (pixelTriples.size) {
+    const { isPixelverifEmailBlocked, PIXELVERIF_BLOCKED_EMAIL_MESSAGE } = await import("@/lib/pixelverif/blocklist");
+    for (const triple of pixelTriples.values()) {
+      if (await isPixelverifEmailBlocked(triple.pv_email, 3)) {
+        return { kind: "responded", response: NextResponse.json({ error: PIXELVERIF_BLOCKED_EMAIL_MESSAGE }, { status: 409 }) };
+      }
+    }
+  }
 
   return {
     kind: "valid",

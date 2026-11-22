@@ -28,7 +28,7 @@ export const PIXELVERIF_FAMILY: { key: PixelverifFamilyKey; name: string; slug: 
     "Normal vs Full:\n" +
     "• Link Redeem 3 Bulan (Normal): Anda menerima link https://one.google.com/ — buka link saat login ke Gmail yang didaftarkan.\n" +
     "• Aktivasi Langsung 3 Bulan (Full): Tim melakukan aktivasi langsung ke akun Anda; Anda menerima link + status aktivasi.\n\n" +
-    "Setelah sukses: segera ganti password & kunci authenticator Anda. Untuk Full, cek dan batalkan perpanjangan otomatis di one.google.com bila ada — perpanjangan otomatis belum terkonfirmasi (unconfirmed) dan mungkin menambah metode pembayaran.",
+    "Untuk Full: setelah sukses, cek dan batalkan perpanjangan otomatis di one.google.com bila ada — perpanjangan otomatis belum terkonfirmasi (unconfirmed) dan mungkin menambah metode pembayaran.",
   description_en: null,
 };
 

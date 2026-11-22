@@ -265,6 +265,10 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
       const stored = validateBuyerFields(row,JSON.parse(String(row.buyer_fields ?? "{}")),qty);
       // Sealed blob -> plaintext only in memory for checkout approval/sealing.
       fields = stored.pv_sealed_ciphertext ? await unsealPixelverifCartFields(stored) : stored;
+      if (fields.pv_email) {
+        const { isPixelverifEmailBlocked, PIXELVERIF_BLOCKED_EMAIL_MESSAGE } = await import("@/lib/pixelverif/blocklist");
+        if (await isPixelverifEmailBlocked(fields.pv_email, Number(row.pixelverif_validity) || 3)) issues.push(`${label}: ${PIXELVERIF_BLOCKED_EMAIL_MESSAGE} Hapus baris ini lalu ulangi dari katalog.`);
+      }
     }
     catch { issues.push(row.pixelverif_flow_type != null ? `${label}: data akun Google tidak terbaca. Hapus baris ini lalu ulangi dari katalog.` : `${label}: periksa jumlah dan Kode Invite Muse melalui chat pribadi.`); }
     if (!Number.isSafeInteger(qty) || qty < 1 || qty > TELEGRAM_MAX_QTY) {

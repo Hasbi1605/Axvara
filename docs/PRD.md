@@ -6,6 +6,9 @@
 - Sukses Normal: pembeli menerima link `https://one.google.com/...`. Sukses Full: link + keterangan aktivasi tetap (`activated` / `already_redeemed`). Aktivasi Full `item_not_available`/`failed`/`invalid`/`error` (dikembalikan kreditnya oleh supplier) tidak dikirim sebagai produk; order ke admin.
 - Gagal dengan kode `WRONG_PASSWORD`, `WRONG_2FA_CODE`, `WRONG_EMAIL`, `2FA_WARNING`, `PAYMENT_WARNING`, `CAPTCHA_DETECTED`, `ACTIVATION_ITEM_NOT_AVAILABLE`: kabar "pengiriman bermasalah" ke pembeli memuat petunjuk tetap berbahasa Indonesia per kode (bukan `user_message` mentah supplier). `OTHER_ERROR` dicoba ulang otomatis (maks 3 kirim).
 - Batas tunggu: Normal 10 menit, Full 15 menit sejak kirim pertama; lewat itu order ke admin, yang dapat cek ulang status (tanpa order baru).
+- Gmail yang ditolak supplier dengan `ACTIVATION_ITEM_NOT_AVAILABLE` tidak bisa dipesan ulang untuk penawaran 3 bulan (web dan Telegram), termasuk variasi titik/`+tag`; pembeli diminta memakai Gmail lain.
+- Halaman pesanan/lacak menampilkan progres Pixel: menyiapkan → menunggu giliran (dengan urutan antrean dari supplier bila ada) → membuat → siap; estimasi 1–5 menit, hubungi admin bila lebih dari 15 menit.
+- Teks saran "ganti password/reset 2FA setelah aktivasi" dihapus sementara atas instruksi owner (supplier tidak memintanya).
 - Histori/snapshot di bawah (PV-2a, PV-2b1) adalah keputusan tahap sebelumnya; blokir checkout PV-2b1 digantikan bagian ini di implementasi lokal.
 
 ## Katalog Pixel Verification — PV-2a (lokal, histori)

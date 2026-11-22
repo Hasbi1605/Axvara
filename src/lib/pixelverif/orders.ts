@@ -19,6 +19,7 @@ import {
 import { pixelverifEligibility, type PixelverifEligibility, type PixelverifInput } from "./purchase";
 import { purgePixelverifInput } from "./purge";
 import { PIXELVERIF_RETRYABLE_ERRORS } from "./retryable";
+import { PIXELVERIF_BLOCKING_ERRORS, recordPixelverifEmailBlock } from "./blocklist";
 import { safeRedeemLink } from "./admin";
 
 export { pixelverifEligibility, type PixelverifEligibility };
@@ -325,6 +326,18 @@ async function rearmAfterRetryableFailure(db: DatabaseAccess, link: Row): Promis
 }
 
 /**
+ * README: a Gmail failed with ACTIVATION_ITEM_NOT_AVAILABLE must not be
+ * resubmitted for the same offer. Record its hash BEFORE settle() purges the
+ * sealed input; checkout (web + Telegram) rejects it afterwards.
+ */
+async function blockEmailIfRequired(db: DatabaseAccess, link: Row, code: string): Promise<void> {
+  if (!PIXELVERIF_BLOCKING_ERRORS.has(code)) return;
+  const input = await loadBuyerInput(db, link).catch(() => null);
+  if (!input) return;
+  await recordPixelverifEmailBlock(db, input.pv_email, Number(link.validity), code, String(link.order_code)).catch(() => undefined);
+}
+
+/**
  * Interpret a GET /api/order/{id} (or replayed receipt) body.
  * Returns true when the response was terminally handled.
  */
@@ -378,6 +391,7 @@ async function interpretPoll(
   if (status === "failed") {
     const code = providerErrorCode(r.text) ?? "provider_failed";
     if (PIXELVERIF_AUTO_RETRY_CODES.has(code) && (await rearmAfterRetryableFailure(db, link))) return true;
+    await blockEmailIfRequired(db, link, code);
     await settle(db, link, "needs_admin", code);
     return true;
   }
@@ -396,6 +410,7 @@ async function interpretPoll(
     ? PIXELVERIF_FAILED_ACTIVATION[parsed.activation_status]
     : undefined;
   if (failedActivation) {
+    await blockEmailIfRequired(db, link, failedActivation);
     await settle(db, link, "needs_admin", failedActivation);
     return true;
   }
