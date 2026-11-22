@@ -1,5 +1,9 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## C1-PRE 22 Nov (lokal)
+
+- Marker internal `wr_final_settle_token` tidak masuk JSON daftar order admin WR, baik sebelum 0154 maupun saat kolom NULL/terisi. SQL tetap kompatibel dengan skema lama; penyamaran ciphertext dan penghilangan IV tetap. Rilis serializer ini harus aktif sebelum 0154 karena CI menerapkan D1 sebelum deploy Pages. Tidak ada perubahan skema atau aktivasi C2 di paket ini.
+
 ## B5/R2 22 Nov (lokal)
 
 - Di `src/lib/sekalipay/order.ts`, UPDATE receipt pembelian dan `bindSkInvoiceByRef` sama-sama menolak invoice yang sudah dimiliki link SK lain dalam statement yang sama. Replay pada link yang sama tetap sah selama tak ada pemilik lain.

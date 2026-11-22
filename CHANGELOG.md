@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — C1-PRE (lokal): pertahankan JSON daftar admin WR dengan mengecualikan marker settlement internal sebelum migrasi 0154, tanpa perubahan SQL/skema — `src/app/api/admin/warung/orders/route.ts` — (verifikasi: 30 tes fokus lulus; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3B-5a (kelas E): pindahkan slot checkout, fallback nama, dan blok `createOrderWithStock` (reuse pemenang stok/UNIQUE, log 500) dari route order ke `src/lib/orders/checkout/create.ts`; evaluasi akses tak-berbudget/subjek/slot, argumen create, status/copy/Retry-After, dan respons tersimpan tidak berubah, invoice tetap di route — `src/app/api/orders/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus + 2 retarget source lulus; TypeScript, ESLint terarah, `git diff --check` lulus)
 
 - 2026-11-22 — Roadmap B5/R2 (kelas B): receipt dan binder SK menolak invoice milik link lain dalam UPDATE yang sama; recovery GET-ref hanya memajukan link bila invoice masih cocok, tanpa menulis ulang invoice atau membuka POST ulang — `src/lib/sekalipay/order.ts`, `tests/characterization/wr-sk-matrix.test.ts` — (verifikasi: 3 repro merah; 195 tes fokus lulus termasuk D1/workerd, 22 expected-fail tersisa; TypeScript dan ESLint lulus)

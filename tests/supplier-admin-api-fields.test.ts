@@ -261,6 +261,42 @@ it("WR/SK markup exposes grouping metadata, limit<=500/offset slicing, stable or
   expect(skById.SV5).toMatchObject({ variant_status: "hidden_nocatalog" });
 });
 
+it("WR admin orders preserves its exact JSON before and after the settlement column exists", async () => {
+  // Keep the old-schema control runnable once the snapshot itself includes 0154.
+  if (fixture.sql.prepare("PRAGMA table_info(wr_order_links)").all().some(row => row.name === "wr_final_settle_token")) {
+    fixture.sql.exec("DROP INDEX IF EXISTS idx_wr_final_settle_pending; ALTER TABLE wr_order_links DROP COLUMN wr_final_settle_token");
+  }
+  fixture.sql.exec(`
+    INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status)
+    VALUES('AXV-WR-FIXTURE','Fixture','000','[]',100,'qris','lunas','paid');
+    INSERT INTO wr_order_links(order_code,wr_order_id,wr_variant_id,wr_cost,status,wr_account_details,wr_account_iv)
+    VALUES('AXV-WR-FIXTURE','RBHN-FIXTURE','WV-FIXTURE',75,'failed','fixture-ciphertext','fixture-iv');
+  `);
+  const read = async () => {
+    const response = await wrOrders(get("warung/orders?status=failed&q=RBHN-FIXTURE&page=1&per_page=1"));
+    expect(response.status).toBe(200);
+    const raw = await response.text();
+    const body = JSON.parse(raw);
+    expect(body).toMatchObject({ total: 1, page: 1, per_page: 1, orders: [
+      { order_code: "AXV-WR-FIXTURE", status: "failed", wr_account_details: "(encrypted)" },
+    ] });
+    expect(raw).not.toMatch(/"wr_account_iv"|fixture-ciphertext|fixture-iv/);
+    return { raw, body };
+  };
+  const before = await read();
+  expect(before.raw).not.toContain('"wr_final_settle_token"');
+  fixture.sql.exec("ALTER TABLE wr_order_links ADD COLUMN wr_final_settle_token TEXT DEFAULT NULL");
+  for (const token of [null, "fixture-nonnull-settle-token"]) {
+    if (token !== null) fixture.sql.prepare("UPDATE wr_order_links SET wr_final_settle_token=?").run(token);
+    expect(fixture.sql.prepare("SELECT wr_final_settle_token FROM wr_order_links").get()).toEqual({ wr_final_settle_token: token });
+    const after = await read();
+    expect.soft(after.body.orders[0]).not.toHaveProperty("wr_final_settle_token");
+    expect.soft(after.body).toEqual(before.body);
+    expect.soft(after.raw).toBe(before.raw); // Also preserves key order.
+    if (token !== null) expect.soft(after.raw).not.toContain(token);
+  }
+});
+
 it("WR/SK orders includes product and variant names while preserving existing contracts", async () => {
   fixture.sql.exec(`
     INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,sales_channel)

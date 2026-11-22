@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
   ).catch(() => []);
   // Jangan kirim ciphertext akun ke client admin list; detail diambil
   // eksplisit per order bila diperlukan.
-  const safe = rows.map((r) => ({ ...r, wr_account_details: r.wr_account_details ? "(encrypted)" : null, wr_account_iv: undefined }));
+  // ponytail: omit marker di serializer agar SQL tetap kompatibel sebelum 0154.
+  const safe = rows.map((r) => ({ ...r, wr_account_details: r.wr_account_details ? "(encrypted)" : null, wr_account_iv: undefined, wr_final_settle_token: undefined }));
   return NextResponse.json({ orders: safe, total, page, per_page: perPage });
 }

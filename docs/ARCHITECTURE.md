@@ -3317,6 +3317,7 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `GET/POST/DELETE /api/admin/warung/exclusions`, `GET/PUT /api/admin/warung/markup`.
   `GET/POST /api/admin/warung/credentials` DIHAPUS 13 November 2026; reveal kredensial buyer
   tetap lewat panel pesanan (`/api/orders/[code]/credentials`, sesi pembeli) dan eskalasi admin.
+- **C1-PRE (lokal):** serializer `GET /api/admin/warung/orders` tidak menyertakan `wr_final_settle_token` (kolom belum ada, NULL, atau terisi), tanpa mengubah SELECT, bentuk/urutan JSON lama, atau penyamaran kredensial. Rilis ini harus aktif sebelum migrasi 0154; CI normal menjalankan migrasi D1 sebelum deploy Pages. Paket ini tidak menambah DDL atau mengaktifkan C2.
 - **Storefront:** `WrCredentialsPanel.tsx` di halaman pesanan (lunas): verifikasi
   No. WA atau email checkout (email sejak 2026-09-25; order tanpa email tidak pernah cocok) →
   tampilkan detail akun + capability token (sessionStorage). Setelah checkout di tab yang sama
