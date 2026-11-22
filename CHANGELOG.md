@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3D-7 (kelas E): pindahkan mesin katalog Jaspay WR ke `src/lib/warung-rebahan/sync/jaspay-catalog.ts`; `sync/index.ts` menjadi barrel eager eksplisit dan `sync.ts` shim tipis, permukaan ekspor dan pemanggil tidak berubah — `src/lib/warung-rebahan/sync.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 36 file fokus 463 lulus termasuk Workerd Jaspay; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3A-7a (kelas E): pindahkan badan job `wr_orders` cron lite ke `src/lib/cron/lite/jobs/wr-orders.ts`; replay settlement C2 tetap pertama, konstanta interval saldo 10 menit kini bersama di `src/lib/cron/lite/context.ts`, badan SK tidak berubah — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 10 file fokus 375 lulus + 1 TODO; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3D-6 (kelas E): pindahkan orkestrasi sweep premium `syncProducts` ke `src/lib/warung-rebahan/sync/sweep.ts` (tiga stage privat fetch/loop/finalize); mesin Jaspay, urutan statement, cursor, dan permukaan ekspor tidak berubah — `src/lib/warung-rebahan/sync.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 36 file fokus 466 lulus termasuk Workerd Jaspay dan regresi cursor resume; TypeScript dan ESLint lulus)

@@ -310,7 +310,7 @@ describe("sync WR tidak pernah menyentuh kolom admin", () => {
     expect(Number(wr.wr_price)).toBe(25000);
     // 3D-3: product writes moved to sync/product.ts; admin-owned copy
     // columns must stay out of both files.
-    expect(fs.readFileSync("src/lib/warung-rebahan/sync.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/product.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/variant.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/prefetch.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/state.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/zeroing.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/sweep.ts", "utf8")).not.toMatch(/admin_terms|admin_activation|admin_copy_fingerprint/);
+    expect(fs.readFileSync("src/lib/warung-rebahan/sync.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/product.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/variant.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/prefetch.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/state.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/zeroing.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/sweep.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/jaspay-catalog.ts", "utf8")).not.toMatch(/admin_terms|admin_activation|admin_copy_fingerprint/);
   });
 });
 
