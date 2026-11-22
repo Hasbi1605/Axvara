@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3A-8b (kelas E): pindahkan badan job `jaspay_catalog` cron lite ke `src/lib/cron/lite/jobs/jaspay-catalog.ts`; cap 10, predikat error, drain, dan respons 503 tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus 119 lulus + 1 TODO; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3A-8a (kelas E): pindahkan empat cabang katalog supplier cron lite ke `src/lib/cron/lite/jobs/catalog.ts` (aliran publish gerbang FX bersama); respons 503 dan penanda tetap di route — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 9 file fokus 168 lulus + 1 TODO; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3A-7b (kelas E): pindahkan badan job `sk_orders` cron lite ke `src/lib/cron/lite/jobs/sk-orders.ts`; urutan recovery, dispatch antrean sebelum probe yatim, dan cek saldo 10 menit tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 9 file fokus, 371 lulus + 1 TODO; TypeScript dan ESLint lulus)

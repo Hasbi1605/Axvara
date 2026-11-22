@@ -44,13 +44,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { constantTimeEqual } from "@/lib/security";
 import { createBudgetedDatabase, QueryBudgetExceeded } from "@/lib/db-access";
-import { drainDirtyGroupsIfBudget, saveServiceHealth, type LiteContext } from "@/lib/cron/lite/context";
+import { saveServiceHealth, type LiteContext } from "@/lib/cron/lite/context";
 import { LITE_JOBS, type LiteJob } from "@/lib/cron/lite/jobs";
 
 export const runtime = "edge";
-
-/** Plafon produk Jaspay per tick; budget 400 menjadi batas pengaman. */
-const JASPAY_PRODUCTS_PER_TICK = 10;
 
 export async function POST(request: NextRequest) {
   const deadline = Date.now() + 45_000;
@@ -106,13 +103,11 @@ export async function POST(request: NextRequest) {
       if (outcome === "publish_failed") return NextResponse.json(result, { status: 503 });
     }
     else if (job === "jaspay_catalog") {
-      const { syncJaspayCatalog } = await import("@/lib/warung-rebahan/sync");
-      const synced = await syncJaspayCatalog(db, undefined, { maxProducts: JASPAY_PRODUCTS_PER_TICK });
-      Object.assign(result, synced);
-      if (synced.errors.length && !synced.errors.includes("warung_rebahan_disabled")) {
+      const { run } = await import("@/lib/cron/lite/jobs/jaspay-catalog");
+      const { failed } = await run({ job, db, deadline, result, failedCore });
+      if (failed) {
         return NextResponse.json({ ...result, ok: false }, { status: 503 });
       }
-      if (!synced.errors.length) await drainDirtyGroupsIfBudget(db, result);
     }
     else if (job === "pedia_orders") {
       const { run } = await import("@/lib/cron/lite/jobs/pedia");
