@@ -1,5 +1,11 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — FX-21e: dokumentasikan settlement, pemulihan notice, dan triase marker C2 lokal — `docs/agent-rules/supplier-wr-sk.md`, `docs/ARCHITECTURE.md`, `docs/PRD.md` — (verifikasi: pemeriksaan diff lokal)
+- 2026-11-22 — FX-21d: perluas tiga guard katalog WR ke barrel dan semua leaf sync — `tests/` — (verifikasi: tes guard katalog lokal)
+- 2026-11-22 — FX-21c: retry notice gagal WR hanya setelah penolakan Resend yang pasti, dengan backoff — `src/lib/notify-buyer.ts`, `src/lib/warung-rebahan/forward-sender.ts` — (verifikasi: 12 kasus fokus lulus)
+- 2026-11-22 — FX-21b: alihkan notice C2 secara durable bila bukti awal sah tergantikan — `src/lib/warung-rebahan/final-settlement.ts`, `src/lib/warung-rebahan/deliver.ts` — (verifikasi: 222 tes matriks/budget lokal lulus termasuk Workerd)
+- 2026-11-22 — FX-21a: samakan perlakuan invoice WR kosong dan NULL tanpa membuka retry invoice terikat — `src/lib/warung-rebahan/order.ts`, `src/lib/warung-rebahan/final-settlement.ts`, Admin Retry WR — (verifikasi: 14 kasus fokus lulus)
+
 - 2026-11-22 — Roadmap closeout: perbarui status §10/§11 (B4–C2, 3A–3E, helper lintas-file; F1–F7 ditunda, F8 menunggu supplier ke-6) tanpa klaim push/deploy/build final — `issue/2026-11-21-refactor-roadmap.md` — (verifikasi: cakupan diff dan `git diff --check` lulus; docs-only)
 
 - 2026-11-22 — Roadmap 3H-4 (kelas E): satukan pemuatan drain pasangan khusus cron; mode, pagar, dan kebijakan gagal tetap milik pemanggil — `src/lib/cron/supplier-pairs.ts`, cron Lite dan Operations SK — (verifikasi: 134 tes fokus di 5 file lulus, 1 TODO lama)

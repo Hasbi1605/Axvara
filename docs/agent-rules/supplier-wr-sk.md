@@ -1,5 +1,17 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## FX-21 22 Nov (lokal)
+
+- WR Premium/Jaspay: `wr_order_id` NULL dan `''` sama-sama berarti belum punya invoice pada penanganan kegagalan, bukti C2, dan kedua CAS Admin Retry. Invoice nonkosong tetap memagari retry; hasil pembelian ambigu tetap menyimpan bukti kirim dan hanya mengikuti recovery supplier yang sudah disetujui.
+- Marker order menyimpan saksi per link (ID, ID item bila terikat, generasi, pembeda sebab Void). Jika semua bukti C2 jelas tergantikan oleh hasil Retry, serah terima, atau Void admin, CAS menerbitkan generasi handback baru setelah tak ada sibling aktif atau notice `sending`. Generasi itu tetap memegang kewajiban notice biasa dari status item terkini sampai ledger mengakui hasil; restart tidak membeli ulang atau mengirim notice yang sudah diakui. Marker format lama hanya memakai bukti asli yang masih dapat divalidasi.
+- Penolakan Resend eksplisit (429 atau pasangan status/kode penolakan terdokumentasi) dapat dicoba ulang lewat klaim ketat setelah jeda 1/5/15 menit (plafon 15 menit). Timeout, 5xx, 2xx tanpa ID, dan ACK yang terputus tetap `sending`. Guard test kepemilikan field katalog memeriksa barrel serta seluruh `sync/*.ts`.
+
+**Triase marker C2 (admin/operator):**
+
+1. Baca `final_settlement.pending/reasons` di hasil Lite `wr_orders`, atau `wr_final_settlement.pending/reasons` di hasil Operations WR. Ini hitungan per tick, bukan daftar order; `0` pada satu tick tidak membuktikan antrean kosong karena cursor bergilir dan sibling aktif belum dipilih.
+2. Untuk `conflict`, `ineligible`, `race`, atau `notice_pending` yang berulang, identifikasi kode order dan ID link lewat pembacaan D1 yang diotorisasi: cari marker non-NULL pada `wr_order_links` / `orders`. Catat ID, waktu pertama terlihat, generasi, status dan alasan (bukan kredensial); cek ulang satu putaran cursor. Eskalasi pada operator jika tetap tertahan setelah satu putaran penuh atau sebelum rollback; jangan gunakan `updated_at` sebagai umur pasti marker setelah ada update lain.
+3. Cocokkan pembayaran, gate supplier, invoice eksak, hubungan item/link kedua arah, duplikasi dan jejak serah terima/Void. Jika pilihan admin yang sah tersedia, selesaikan item melalui serah terima atau prosedur refund yang berlaku, dengan catatan audit. Bila binding atau eligibility tidak dapat dibuktikan, tahan marker dan eskalasi untuk resolusi per order yang disetujui; jangan paksa Retry melewati pagar. Untuk `sending`, periksa bukti provider/DM sebelum memutuskan tindak lanjut manual; umur row saja bukan bukti gagal. **Jangan edit marker diam-diam, reset marker/ledger massal, atau melakukan repurchase otomatis.**
+
 ## C1 / 0154 dan C1-PRE 22 Nov (lokal)
 
 - Serializer C1-PRE (`ea8a58c4`) menyembunyikan `wr_final_settle_token` dari JSON daftar order admin WR, tanpa mengubah penyamaran ciphertext/IV atau SQL. Deploy dan verifikasi serializer aktif **sebelum** 0154; jangan satukan rilis karena CI normal memigrasikan D1 sebelum deploy Pages.
