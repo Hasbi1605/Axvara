@@ -14,7 +14,7 @@ export async function alertSupplierAdminOnce(db: DatabaseAccess, code: string, k
   return true;
 }
 
-export async function escalateSupplierManual(db: DatabaseAccess, code: string, supplier: "tunvn" | "aivault" | "storebat" | "mirai" | "pixelverif", id: unknown) {
+export async function escalateSupplierManual(db: DatabaseAccess, code: string, supplier: "tunvn" | "aivault" | "storebat" | "mirai" | "pixelverif", id: unknown, buyerReason?: string) {
   const manual = `EXISTS(SELECT 1 FROM fulfillment_items fi JOIN ${supplier}_order_links l ON l.id=fi.${supplier}_link_id
     WHERE fi.order_code=? AND l.id=? AND l.status='needs_admin' AND fi.status='manual_required'
       AND fi.last_error='supplier_needs_admin')`;
@@ -35,5 +35,5 @@ export async function escalateSupplierManual(db: DatabaseAccess, code: string, s
   await alertSupplierAdminOnce(db, code, `supplier-manual:${code}`,
     `⚠️ <b>Pesanan supplier perlu ditangani manual</b> <code>${esc(code)}</code>\nCek antrean ${supplier.toUpperCase()} #${esc(String(id))} sebelum beli ulang atau refund.`).catch(() => false);
   const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
-  await notifyBuyerDeliveryFailed(code, db).catch(() => false);
+  await notifyBuyerDeliveryFailed(code, db, undefined, buyerReason).catch(() => false);
 }

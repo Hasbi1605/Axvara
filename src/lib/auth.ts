@@ -8,7 +8,7 @@ import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payme
 
 export type CheckoutQuoteItem = {
   buyer_field_key?: "muse_invite_code" | null;
-  buyer_fields?: { muse_invite_code?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
+  buyer_fields?: { muse_invite_code?: string; pv_fingerprint?: string; pv_email_masked?: string };
   max_qty?: number | null;
   product_id: number;
   variant_id?: number;
@@ -423,9 +423,11 @@ const quoteItemSchema = z.object({
   buyer_field_key: z.literal("muse_invite_code").nullable().optional(),
   buyer_fields: z.object({
     muse_invite_code: z.string().regex(/^[A-Za-z0-9]{6}$/).optional(),
-    pv_email: z.string().trim().max(254).optional(),
-    pv_password: z.string().max(200).optional(),
-    pv_totp_secret: z.string().trim().max(120).optional(),
+    // Pixel: the signed token carries ONLY a SHA-256 fingerprint + masked
+    // email. Raw credentials travel solely in the order-create request body
+    // and are fingerprint-checked against this token; never readable here.
+    pv_fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    pv_email_masked: z.string().trim().max(254).optional(),
   }).strict().optional(),
   max_qty: z.number().int().min(1).max(100).nullable().optional(),
   base_price: z.number().int().safe().nonnegative().optional(), applied_tier_min_qty: z.number().int().safe().min(2).optional(),

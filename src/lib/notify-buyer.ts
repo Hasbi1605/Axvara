@@ -479,17 +479,21 @@ export async function notifyBuyerDeliveryFailed(
   orderCode: string,
   database: DatabaseAccess = createDatabaseAccess(),
   failureGuard?: DeliveryFailureGuard,
+  /** Fixed, code-mapped guidance (never supplier free text). */
+  reason?: string,
 ): Promise<boolean> {
   const send = sendToBuyer(orderCode, {
     subject: `Pengiriman pesanan ${orderCode} bermasalah`,
     body: `⚠️ <b>Pengiriman produk bermasalah</b>\nOrder: <code>${orderCode}</code>\n\n`
       + "Pembayaranmu sudah kami terima, tetapi produk gagal dikirim otomatis. "
-      + "Admin sudah mendapat notifikasi dan akan menyerahkannya manual.",
+      + "Admin sudah mendapat notifikasi dan akan menyerahkannya manual."
+      + (reason ? `\n\n${escapeHtml(reason)}` : ""),
     email: {
       title: "Pengiriman Tertunda",
       subtitle: "Pembayaranmu aman dan sudah kami terima.",
       paragraphs: [
         `Pembayaran untuk pesanan ${orderCode} sudah kami terima, tetapi produk gagal dikirim otomatis.`,
+        ...(reason ? [reason] : []),
         "Admin sudah mendapat notifikasi dan akan mengirimkannya manual. Bila belum ada kabar, hubungi admin lewat tombol di bawah.",
       ],
     },

@@ -1,10 +1,19 @@
 # ARCHITECTURE.md — AXVARA
 
-## Katalog Pixel Verification — PV-2a (lokal)
+## Pixel Verification — dispatch sesuai panduan API supplier (lokal, belum dideploy)
+
+- Rujukan kontrak: README `Likhonbd/Pixel-Xiaomi-Oppo-Oneplus-Device-Verificaton-API` (base `https://api.pixelverification.me`, header `X-API-Key`). Klien `src/lib/pixelverif/client.ts`, dispatcher `src/lib/pixelverif/orders.ts`, aturan area `docs/agent-rules/pixelverif.md`.
+- `X-Idempotency-Key`: UUID acak per link (`pixelverif_order_links.idempotency_key`), dipakai ulang hanya untuk POST ulang setelah kirim ambigu. `OTHER_ERROR` (retryable menurut panduan) memasang UUID baru, memindahkan ID order gagal ke `provider_order_code` (pemulihan `order-by-email` tidak pernah mengikatnya lagi) dan kembali `pending`; dibatasi `attempt_count` ≤ 3.
+- POST 401/402/403 pada kirim pertama tidak membuat order supplier: pagar kirim dikembalikan (`attempt_count=0`, `request_sent_at=NULL`) sehingga input tersegel tetap ada dan `PIXELVERIF_RETRYABLE_SQL` mengizinkan retry admin. Gerbang retry kini `attempt_count<3` + tanpa kiriman berjalan (`request_sent_at IS NULL`, tanpa provider id/receipt).
+- Polling: kode error dibaca dari `order.error.code`; interval `processing` 5 dtk / `pending` 10 dtk (dibatasi tick cron), tanpa backoff POST. Timeout klien Normal 10 menit / Full 15 menit sejak kirim pertama → `needs_admin` `poll_timeout`; admin Retry pada status itu hanya re-poll (`PIXELVERIF_REPOLL_SQL`, tanpa POST).
+- Full: `activation_status` `item_not_available` → `needs_admin` `ACTIVATION_ITEM_NOT_AVAILABLE`; `failed`/`invalid`/`error` → `ACTIVATION_FAILED`; tidak ada delivery. `activated`/`already_redeemed` dikirim sebagai link + label tetap.
+- Eskalasi: `escalateSupplierManual(..., buyerReason)` → `notifyBuyerDeliveryFailed(..., reason)` menambahkan teks tetap dari `pixelverifBuyerErrorMessage` (`src/lib/pixelverif/copy.ts`); teks supplier tidak diteruskan.
+
+## Katalog Pixel Verification — PV-2a (lokal, histori)
 
 - Migrasi `0155_pixelverif_supplier.sql` menambah tabel dan identitas Pixel Verification; blok akhir `drizzle/schema.sql` memakai DDL yang sama, termasuk indeks keluarga unik. CHECK `product_variants.buyer_field_key` dari migrasi 0115 tetap khusus Muse; varian Pixel menyimpan `NULL`.
 - Proyeksi harga menjaga override harga dan markup admin dengan CAS; bila edit admin mendahului proyeksi, sinkron berikutnya mencoba lagi. Tanpa override, harga mentah dibulatkan ke enam desimal sebelum dibulatkan ke atas ke kelipatan Rp100.
-- **Checkout PV-2b1 (lokal, belum dideploy):** keluarga `pixelverif_family` atau varian dengan `pixelverif_flow_type` tidak bisa memperoleh quote atau dibuat menjadi order di D1, sekalipun aktif. Tidak ada formulir, penyimpanan baru, atau pengiriman password/kunci 2FA. Telegram tidak menawarkan varian Pixel. Cleanup existing mengosongkan ciphertext/IV untuk maksimal 50 baris lama yang kedaluwarsa, dibatalkan, atau belum dibayar setelah batas waktu dalam satu statement idempoten, tanpa mengubah ledger pesanan.
+- **Checkout PV-2b1 (snapshot 22 November 2026, digantikan oleh checkout berkredensial lokal):** keluarga Pixel sempat tidak bisa memperoleh quote/order.
 
 ## Eskalasi order dan recovery cron — FX-11 (lokal)
 

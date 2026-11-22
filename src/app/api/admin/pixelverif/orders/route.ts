@@ -6,8 +6,8 @@ import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { readJsonBody } from "@/lib/http-body";
 import { serializeAdminOrderBuyer } from "@/lib/orders/admin-buyer";
 import { isResolvedManuallyFlag, resolvedManuallySql } from "@/lib/supplier/resolved-manually";
-import { formatSafePixelverifRevealReceipt, sanitizePixelverifReceiptSummary } from "@/lib/pixelverif/admin";
-import { PIXELVERIF_RETRYABLE_SQL, retryPixelverifOrder } from "@/lib/pixelverif/orders";
+import { formatSafePixelverifRevealReceipt, sanitizePixelverifReceiptSummary, safeActivationStatus } from "@/lib/pixelverif/admin";
+import { PIXELVERIF_REPOLL_SQL, PIXELVERIF_RETRYABLE_SQL, retryPixelverifOrder } from "@/lib/pixelverif/orders";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
            request_sent_at, last_error, last_error_code, activation_status, queue_position, progress_step,
            completed_at, created_at, updated_at, receipt_json,
            CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
-           CASE WHEN ${PIXELVERIF_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry
+           CASE WHEN (${PIXELVERIF_RETRYABLE_SQL}) OR (${PIXELVERIF_REPOLL_SQL}) THEN 1 ELSE 0 END AS can_retry
          FROM pixelverif_order_links
          ORDER BY id DESC
          LIMIT 100
@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
     const items = rows.map((row) => ({
       ...row,
       receipt_json: sanitizePixelverifReceiptSummary(row.receipt_json),
+      activation_status: safeActivationStatus(row.activation_status),
       ...serializeAdminOrderBuyer(row),
       resolved_manually: isResolvedManuallyFlag(row.resolved_manually),
     }));

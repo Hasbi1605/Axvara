@@ -21,7 +21,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
     const summary = await getCartSummary(ownerUserId);
     if (!summary.lines.length || summary.issues.length) return { ok: false, reason: "cart_changed" };
     if (summary.subtotal !== state.idrSubtotal) return { ok: false, reason: "subtotal_changed" };
-    const tag = await checkoutApprovalTag(summary.lines.map((l) => ({ productId: l.productId, variantId: l.variantId, qty: l.qty, price: l.price, buyerFields: l.buyerFields, pixelverifInput: l.pixelverifInput })));
+    const tag = await checkoutApprovalTag(summary.lines.map((l) => ({ productId: l.productId, variantId: l.variantId, qty: l.qty, price: l.price, buyerFieldKey: l.buyerFieldKey, maxQty: l.maxQty, buyerFields: l.buyerFields, pixelverifInput: l.pixelverifInput })));
     if (tag !== state.tag) return { ok: false, reason: "tag_changed" };
     return {
       ok: true,
@@ -50,6 +50,10 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
   const effective = resolved.price;
   if (!Number.isSafeInteger(effective) || effective <= 0) return { ok: false, reason: "price_unavailable" };
   if (effective * source.qty !== state.idrSubtotal) return { ok: false, reason: "subtotal_changed" };
+  // Must mirror the single-path tag creator (callback.ts qty approval), which
+  // hashes product/variant/qty/price only. buyer_field_key and Pixel variants
+  // never reach the single path (requestBuyerInput intercepts them), so a
+  // Pixel variant here deliberately fails closed via pixelverifInput.
   const tag = await checkoutApprovalTag([{ productId: source.productId, variantId: source.variantId, qty: source.qty, price: effective, pixelverifInput: variant.pixelverif_input }]);
   if (tag !== state.tag) return { ok: false, reason: "tag_changed" };
   const product = await queryFirst(`SELECT name FROM products WHERE id=?`, source.productId).catch(() => null);

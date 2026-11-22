@@ -1,9 +1,17 @@
 # PRD — AXVARA
 
-## Katalog Pixel Verification — PV-2a (lokal)
+## Pixel Verification — checkout dan dispatch sesuai panduan API (lokal, belum dideploy)
+
+- Pembeli Google AI Pro 3 Bulan (Link Redeem = `normal`, Aktivasi Langsung = `full`; validity 3 saja, paket 12 bulan berstatus NOT AVAILABLE di panduan supplier) mengirim Gmail, password dan kunci setup 2FA (Base32, bukan kode 6 digit) di web atau Telegram. Kredensial disegel AES-GCM, hanya dikirim ke supplier, lalu dihapus setelah order selesai/gagal final.
+- Sukses Normal: pembeli menerima link `https://one.google.com/...`. Sukses Full: link + keterangan aktivasi tetap (`activated` / `already_redeemed`). Aktivasi Full `item_not_available`/`failed`/`invalid`/`error` (dikembalikan kreditnya oleh supplier) tidak dikirim sebagai produk; order ke admin.
+- Gagal dengan kode `WRONG_PASSWORD`, `WRONG_2FA_CODE`, `WRONG_EMAIL`, `2FA_WARNING`, `PAYMENT_WARNING`, `CAPTCHA_DETECTED`, `ACTIVATION_ITEM_NOT_AVAILABLE`: kabar "pengiriman bermasalah" ke pembeli memuat petunjuk tetap berbahasa Indonesia per kode (bukan `user_message` mentah supplier). `OTHER_ERROR` dicoba ulang otomatis (maks 3 kirim).
+- Batas tunggu: Normal 10 menit, Full 15 menit sejak kirim pertama; lewat itu order ke admin, yang dapat cek ulang status (tanpa order baru).
+- Histori/snapshot di bawah (PV-2a, PV-2b1) adalah keputusan tahap sebelumnya; blokir checkout PV-2b1 digantikan bagian ini di implementasi lokal.
+
+## Katalog Pixel Verification — PV-2a (lokal, histori)
 
 - Google AI Pro 3 Bulan memiliki dua varian, Link Redeem dan Aktivasi Langsung. Publikasi katalog membuat produk dan varian dalam keadaan nonaktif, khusus web (tidak ditawarkan di Telegram), dengan batas satu unit per varian. Tahap ini belum mengaktifkan checkout Pixel.
-- **PV-2b1 (lokal, belum dideploy):** pesanan ditolak di web dan Telegram; toko tidak meminta password Google atau kunci setup 2FA. Pembelian memerlukan alur baru yang tidak meminta kredensial tersebut, misalnya pembeli menukarkan kode resmi sendiri di Google.
+- **PV-2b1 (snapshot 22 November 2026, digantikan):** pesanan ditolak di web dan Telegram; toko tidak meminta password Google atau kunci setup 2FA.
 
 ## Penanganan manual setelah lunas — FX-11 (lokal)
 

@@ -392,15 +392,30 @@ export async function POST(req: NextRequest) {
       : issues.some((issue) => issue.type === "below_minimum") ? "below_min"
       : issues.length || !paymentMethods.length ? "method_unavailable" : "ok" }, req);
 
+  // Pixel credentials NEVER leave this handler in readable form: the signed
+  // token and both responses carry only a SHA-256 fingerprint + masked email.
+  // Raw values arrive again in the order-create body and are fingerprint-
+  // checked there before sealing. Other buyer fields keep their echo contract.
+  const { computeFingerprint } = await import("@/lib/fulfillment/crypto");
+  const { maskPixelverifEmail } = await import("@/lib/pixelverif/purchase");
+  const publicQuotedItems = await Promise.all(quotedItems.map(async (item) => {
+    if (!item.buyer_fields?.pv_password && !item.buyer_fields?.pv_totp_secret) return item;
+    const pv = item.buyer_fields;
+    const fingerprint = await computeFingerprint(`${(pv.pv_email ?? "").trim().toLowerCase()}\n${pv.pv_password ?? ""}\n${(pv.pv_totp_secret ?? "").replace(/[\s-]/g, "").toUpperCase()}`);
+    const { pv_email: _e, pv_password: _p, pv_totp_secret: _t, ...safeFields } = pv;
+    const { buyer_fields: _omit, ...rest } = item;
+    return { ...rest, buyer_fields: { ...safeFields, pv_fingerprint: fingerprint, pv_email_masked: maskPixelverifEmail(pv.pv_email ?? "") } };
+  }));
+
   if (issues.length > 0) {
-    return NextResponse.json({ ok: false, issues, items: quotedItems, subtotal, paymentMethods }, { status: 409 });
+    return NextResponse.json({ ok: false, issues, items: publicQuotedItems, subtotal, paymentMethods }, { status: 409 });
   }
   if (paymentMethods.length === 0) {
     return NextResponse.json({ error: "Metode pembayaran sedang tidak tersedia." }, { status: 503 });
   }
 
   const signed = await createCheckoutQuoteToken({
-    items: quotedItems.map(({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty, buyer_field_key, buyer_fields, max_qty }) => ({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty, buyer_field_key, buyer_fields, max_qty })),
+    items: publicQuotedItems.map(({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty, buyer_field_key, buyer_fields, max_qty }) => ({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty, buyer_field_key, buyer_fields, max_qty })),
     subtotal,
     payment_methods: paymentMethods.map((method) => ({
       id: method.id,
@@ -430,9 +445,6 @@ export async function POST(req: NextRequest) {
     locale,
   });
 
-  // Credentials stay only in the signed quote token + order-create request.
-  // Never echo password/TOTP back in the (cacheable-by-client) quote response.
-  const publicQuotedItems = quotedItems.map(({ buyer_fields: _buyerFields, ...rest }) => rest);
   return NextResponse.json({
     ok: true,
     items: publicQuotedItems,

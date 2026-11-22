@@ -18,6 +18,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema } from "@/lib/buyer-fields";
+import type { AtomicOrderItem } from "@/lib/db/types";
 import { queryAll } from "@/lib/db";
 import { aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken, type CheckoutQuotePayload } from "@/lib/auth";
@@ -62,6 +63,13 @@ export type ValidatedCheckout = {
   payment_method: string;
   proof_url: string | null;
   quote: CheckoutQuotePayload;
+  /**
+   * Items for the atomic order create ONLY: the signed quote items, with each
+   * Pixel line's buyer_fields replaced by the fingerprint-verified request
+   * triple (sealed inside createOrderWithStock). Never pass these to invoices,
+   * responses, logs, or analytics — use quote.items there.
+   */
+  orderItems: AtomicOrderItem[];
   cryptoTicker: string | null;
   isCryptoMethod: boolean;
   isGatewayMethod: boolean;
@@ -118,21 +126,45 @@ export async function validateCheckoutInput(data: unknown): Promise<ValidateOutc
   if (!sameItems) {
     return { kind: "responded", response: NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 }) };
   }
+  const pixelTriples = new Map<string, { pv_email: string; pv_password: string; pv_totp_secret: string }>();
   try {
     assertSameBuyerCode(items);
+    const { computeFingerprint } = await import("@/lib/fulfillment/crypto");
+    const { parsePixelverifInput } = await import("@/lib/pixelverif/purchase");
     for (const item of canonicalItems) {
       const signed = quote.items.find(q => q.product_id === item.product_id && q.variant_id === item.variant_id);
       if ((signed?.buyer_fields?.muse_invite_code ?? "") !== (item.buyer_fields?.muse_invite_code ?? "")) throw new Error("changed");
-      if ((signed?.buyer_fields?.pv_email ?? "").trim().toLowerCase() !== (item.buyer_fields?.pv_email ?? "").trim().toLowerCase()) throw new Error("changed");
-      if ((signed?.buyer_fields?.pv_password ?? "") !== (item.buyer_fields?.pv_password ?? "")) throw new Error("changed");
-      if ((signed?.buyer_fields?.pv_totp_secret ?? "").replace(/[\s-]/g, "").toUpperCase() !== (item.buyer_fields?.pv_totp_secret ?? "").replace(/[\s-]/g, "").toUpperCase()) throw new Error("changed");
+      // Pixel: token holds only a fingerprint. Recompute from the request
+      // body triple; any drift (or a missing triple) fails closed.
+      const signedFingerprint = signed?.buyer_fields?.pv_fingerprint ?? "";
+      if (signedFingerprint) {
+        const bodyFingerprint = item.buyer_fields?.pv_email && item.buyer_fields?.pv_password && item.buyer_fields?.pv_totp_secret
+          ? await computeFingerprint(`${item.buyer_fields.pv_email.trim().toLowerCase()}\n${item.buyer_fields.pv_password}\n${item.buyer_fields.pv_totp_secret.replace(/[\s-]/g, "").toUpperCase()}`)
+          : "";
+        if (bodyFingerprint !== signedFingerprint) throw new Error("changed");
+        pixelTriples.set(`${item.product_id}:${item.variant_id ?? 0}`, parsePixelverifInput({
+          pv_email: item.buyer_fields?.pv_email, pv_password: item.buyer_fields?.pv_password, pv_totp_secret: item.buyer_fields?.pv_totp_secret,
+        }));
+      } else if (item.buyer_fields?.pv_email || item.buyer_fields?.pv_password || item.buyer_fields?.pv_totp_secret) {
+        throw new Error("changed");
+      }
     }
   } catch { return { kind: "responded", response: NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }) }; }
+
+  let tripleMissing = false;
+  const orderItems: AtomicOrderItem[] = quote.items.map((signed) => {
+    if (!signed.buyer_fields?.pv_fingerprint) return signed as AtomicOrderItem;
+    const triple = pixelTriples.get(`${signed.product_id}:${signed.variant_id ?? 0}`);
+    if (!triple) { tripleMissing = true; return signed as AtomicOrderItem; }
+    const { pv_fingerprint: _fp, pv_email_masked: _masked, ...rest } = signed.buyer_fields;
+    return { ...signed, buyer_fields: { ...rest, ...triple } } as AtomicOrderItem;
+  });
+  if (tripleMissing) return { kind: "responded", response: NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }) };
 
   return {
     kind: "valid",
     value: {
-      customer_name, customer_wa, customer_email, items, payment_method, proof_url, quote,
+      customer_name, customer_wa, customer_email, items, payment_method, proof_url, quote, orderItems,
       cryptoTicker, isCryptoMethod, isGatewayMethod,
     },
   };

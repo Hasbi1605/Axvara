@@ -48,6 +48,40 @@ export type PixelverifAdminOrder = {
   can_retry: number;
 };
 
+const KNOWN_ACTIVATION_STATUSES = new Set(["activated", "already_redeemed", "item_not_available", "failed", "invalid", "error"]);
+
+/** Only the provider's known activation vocabulary may surface to admin/buyer. */
+export function safeActivationStatus(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return KNOWN_ACTIVATION_STATUSES.has(normalized) ? normalized : null;
+}
+
+const KNOWN_ORDER_STATUSES = new Set(["pending", "processing", "success", "failed"]);
+const LINK_STATUSES = new Set(["pending", "claimed", "processing", "completed", "needs_admin"]);
+
+/** Provider order status from the documented lifecycle only (README: pending→processing→success|failed). */
+export function safeOrderStatus(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return KNOWN_ORDER_STATUSES.has(normalized) ? normalized : null;
+}
+
+/** Redeem link must be an https URL; anything else is never surfaced. */
+export function safeRedeemLink(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeQueuePosition(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < 1_000_000 ? value : null;
+}
+
 export function sanitizePixelverifReceiptSummary(raw: unknown): string | null {
   if (typeof raw !== "string" || !raw.trim()) return null;
   try {
@@ -55,10 +89,11 @@ export function sanitizePixelverifReceiptSummary(raw: unknown): string | null {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     const rec = parsed as Record<string, unknown>;
     const out: Record<string, unknown> = {
-      status: typeof rec.status === "string" ? rec.status : null,
+      status: safeOrderStatus(rec.status),
     };
     if (typeof rec.link === "string") out.link_present = true;
-    if (typeof rec.activation_status === "string") out.activation_status = rec.activation_status;
+    const activation = safeActivationStatus(rec.activation_status);
+    if (activation) out.activation_status = activation;
     return JSON.stringify(out);
   } catch {
     return null;
@@ -76,10 +111,10 @@ export function formatSafePixelverifRevealReceipt(rawText: string, link: Record<
         provider_order_id: String(link.provider_order_id ?? order.order_id ?? ""),
         flow_type: String(link.flow_type ?? order.flow_type ?? ""),
         validity: Number(link.validity ?? order.validity ?? 3),
-        status: typeof order.status === "string" ? order.status : String(link.status ?? ""),
-        link: typeof (order.result as Record<string, unknown> | undefined)?.link === "string" ? (order.result as Record<string, unknown>).link : null,
-        activation_status: typeof order.activation_status === "string" ? order.activation_status : (link.activation_status ?? null),
-        queue_position: (order.queue_position as number | null) ?? (link.queue_position as number | null) ?? null,
+        status: safeOrderStatus(order.status) ?? (LINK_STATUSES.has(String(link.status)) ? String(link.status) : null),
+        link: safeRedeemLink((order.result as Record<string, unknown> | undefined)?.link),
+        activation_status: safeActivationStatus(order.activation_status) ?? safeActivationStatus(link.activation_status),
+        queue_position: safeQueuePosition(order.queue_position) ?? safeQueuePosition(link.queue_position),
       });
     }
   } catch {

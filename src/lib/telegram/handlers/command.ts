@@ -69,6 +69,8 @@ export async function handleCommand(
     const prefs = from ? await readTgPreferences(String(from.id)) : { locale: null };
     const locale = prefs.locale ?? "id";
     if (from) {
+      const { clearPixelverifStash } = await import("./buyer-input");
+      clearPixelverifStash(String(from.id));
       await clearPayq1DraftForCancel(from);
       await clearPendingAction(from);
     } else {

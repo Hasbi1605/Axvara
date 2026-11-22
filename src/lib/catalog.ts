@@ -93,6 +93,8 @@ export type VariantSummary = {
   buyer_field_key?: "muse_invite_code" | null;
   /** Pixel Verification variant: checkout collects Gmail credentials (see pixelverif/purchase). */
   pixelverif_input?: true;
+  /** Server-side flow identity ('normal'|'full'); buyer-fields validation keys off this. */
+  pixelverif_flow_type?: string | null;
   /** Legacy guard kept for stale clients; new code uses pixelverif_input. */
   pixelverif_ordering_blocked?: true;
   automatic_delivery?: boolean;
@@ -238,7 +240,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
   const variants = await queryAll(
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
-            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.tunvn_buff_quantity_b, pv.tunvn_source_product_id, pv.aivault_service_id,p.aivault_family,pv.storebat_product_id,p.storebat_family,pv.mirai_package_code,p.mirai_family,p.slug AS product_slug, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.tunvn_buff_quantity_b, pv.tunvn_source_product_id, pv.aivault_service_id,p.aivault_family,pv.storebat_product_id,p.storebat_family,pv.mirai_package_code,p.mirai_family,pv.pixelverif_flow_type,p.slug AS product_slug, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
             p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
             p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,
@@ -637,7 +639,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),
     max_qty: row.max_qty == null ? null : Number(row.max_qty),
     buyer_field_key: row.buyer_field_key === "muse_invite_code" ? "muse_invite_code" : null,
-    ...(row.pixelverif_flow_type != null ? { pixelverif_input: true as const } : {}),
+    ...(row.pixelverif_flow_type != null ? { pixelverif_input: true as const, pixelverif_flow_type: String(row.pixelverif_flow_type) } : {}),
     ...(hasAutomaticSupplierDelivery(row) ? { automatic_delivery:true } : {}),
     manual_cost: Math.max(0, Math.floor(Number(row.manual_cost ?? 0) || 0)),
     fulfillment_mode: String(row.fulfillment_mode || "manual"),

@@ -28,6 +28,7 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 | AIVault Hub (katalog, harga USD, dispatch/polling, admin) | `docs/agent-rules/aivault.md` |
 | StoreBat / VenteBot (katalog USD, pemulihan order, Muse Buff, admin) | `docs/agent-rules/storebat.md` |
 | MiraiAPI (paket token, harga USDT, kode redeem, admin) | `docs/agent-rules/mirai.md` |
+| Pixel Verification (Google AI Pro 3 bulan, kredensial Gmail buyer, dispatch/polling, admin) | `docs/agent-rules/pixelverif.md` |
 | Temp mail publik, Email Worker, domain penerima dan D1 inbox terpisah | `docs/agent-rules/temp-mail.md` + `temp-mail/README.md` |
 
 Games S1 lokal (9 November 2026): host routing opsional `GAMES_HOST` default

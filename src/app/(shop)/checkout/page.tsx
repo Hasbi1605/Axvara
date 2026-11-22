@@ -27,7 +27,7 @@ import { translateProductName } from "@/lib/i18n/product-name";
 import { checkoutMessage } from "@/lib/i18n/checkout-copy";
 
 
-type QuotedItem = { buyer_fields?: { muse_invite_code?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string }; product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
+type QuotedItem = { buyer_fields?: { muse_invite_code?: string; pv_fingerprint?: string; pv_email_masked?: string }; product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
 type QuoteIssue = { product_id?: number; slug?: string; variant_id?: number; min_qty?: number; type: string; message: string };
 type PriceChange = { product_id: number; variant_id?: number; name: string; previous_price: number; current_price: number; message: string; tier?: boolean };
 
@@ -345,7 +345,7 @@ function CheckoutInner() {
 
   // Fetch quote whenever product identity, quantity, or snapshot price changes.
   useEffect(() => {
-    if (items.length === 0 || directLoading || quoteRequestItems.some(item => item.buyer_fields?.muse_invite_code && !/^[A-Za-z0-9]{6}$/.test(item.buyer_fields.muse_invite_code)) || (needsPixelverif && !pvValid)) {
+    if (items.length === 0 || directLoading || (needsMuseCode && !/^[A-Za-z0-9]{6}$/.test(museCode.trim())) || (needsPixelverif && !pvValid)) {
       quoteRequestId.current += 1;
       setQuoteLoading(false);
       setQuoteToken(null);
@@ -543,11 +543,18 @@ function CheckoutInner() {
     const payMethod = selectedOption.id;
     // Nama dihapus dari form (revamp 2026-09-23 ala Sekalipay): fallback
     // dari prefix email agar kolom DB NOT NULL + notif admin tetap bernama.
+    // Pixel credentials come from local form state only (quote response and
+    // token carry just a fingerprint); Muse code keeps the quoted echo.
     const payloadItems = quotedItems.map((item) => ({
       product_id: item.product_id,
       variant_id: item.variant_id,
       qty: item.qty,
-      ...(item.buyer_fields ? { buyer_fields: item.buyer_fields } : {}),
+      ...(item.buyer_fields?.muse_invite_code || item.buyer_fields?.pv_fingerprint ? {
+        buyer_fields: {
+          ...(item.buyer_fields?.muse_invite_code ? { muse_invite_code: item.buyer_fields.muse_invite_code } : {}),
+          ...(item.buyer_fields?.pv_fingerprint ? { pv_email: pvEmail.trim(), pv_password: pvPassword, pv_totp_secret: pvTotp.trim() } : {}),
+        },
+      } : {}),
     }));
     let redirected = false;
     try {

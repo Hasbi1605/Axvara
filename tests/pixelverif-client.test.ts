@@ -114,6 +114,31 @@ describe("Pixel Verification client contracts", () => {
     expect(parsePixelverifOrder(orderB)?.activation_status).toBe("already_redeemed");
   });
 
+  it("keeps only the known activation vocabulary; echoed free text never survives (Sol-11)", async () => {
+    const base = { order_id: "ord-3", email: "c@gmail.com", status: "success", flow_type: "normal", validity: 3, credit_cost: 1 };
+    expect(parsePixelverifOrder({ success: true, order: { ...base, activation_status: " Activated " } })?.activation_status).toBe("activated");
+    expect(parsePixelverifOrder({ success: true, order: { ...base, activation_status: "<b>pwd: hunter2</b>" } })?.activation_status).toBeNull();
+    expect(parsePixelverifOrder({ success: true, order: { ...base, result: { activation_status: "call +1 555 0100" } } })?.activation_status).toBeNull();
+    const { safeActivationStatus, sanitizePixelverifReceiptSummary } = await import("@/lib/pixelverif/admin");
+    expect(safeActivationStatus("ERROR")).toBe("error");
+    expect(safeActivationStatus("anything else")).toBeNull();
+    // Legacy stored receipts (pre-allowlist) are sanitized on the admin read path too.
+    const summary = JSON.parse(String(sanitizePixelverifReceiptSummary(JSON.stringify({ status: "success", activation_status: "leaked text" }))));
+    expect(summary.activation_status).toBeUndefined();
+  });
+
+  it("reveal and delivery accept only documented statuses, https redeem links and integer queue positions (Sol re-review #1)", async () => {
+    const { formatSafePixelverifRevealReceipt, safeRedeemLink, sanitizePixelverifReceiptSummary } = await import("@/lib/pixelverif/admin");
+    expect(safeRedeemLink("https://one.google.com/partner-eft-onboard/X")).toBe("https://one.google.com/partner-eft-onboard/X");
+    for (const bad of ["javascript:alert(1)", "http://one.google.com/x", "pwd hunter2", 42]) expect(safeRedeemLink(bad)).toBeNull();
+    const reveal = JSON.parse(formatSafePixelverifRevealReceipt(JSON.stringify({ order: {
+      order_id: "o1", status: "echo: hunter2", result: { link: "data:text/html,hunter2" }, queue_position: "hunter2",
+    } }), { order_code: "AXV-1", status: "processing", flow_type: "normal", validity: 3 }));
+    expect(JSON.stringify(reveal)).not.toContain("hunter2");
+    expect(reveal).toMatchObject({ status: "processing", link: null, queue_position: null });
+    expect(JSON.parse(String(sanitizePixelverifReceiptSummary(JSON.stringify({ status: "hunter2" })))).status).toBeNull();
+  });
+
   it("createPixelverifOrder sends X-Idempotency-Key and POST body without logging", async () => {
     vi.stubEnv("PIXELVERIF_ENABLED", "true");
     vi.stubEnv("PIXELVERIF_SYNC_ENABLED", "true");

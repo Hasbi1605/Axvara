@@ -18,6 +18,8 @@ import {
 } from "./client";
 import { pixelverifEligibility, type PixelverifEligibility, type PixelverifInput } from "./purchase";
 import { purgePixelverifInput } from "./purge";
+import { PIXELVERIF_RETRYABLE_ERRORS } from "./retryable";
+import { safeRedeemLink } from "./admin";
 
 export { pixelverifEligibility, type PixelverifEligibility };
 
@@ -58,14 +60,62 @@ export function eligiblePixelverifLine(value: unknown): Row | null {
     : null;
 }
 
-export const PIXELVERIF_RETRYABLE_SQL = `status='needs_admin' AND attempt_count=0 AND request_sent_at IS NULL AND provider_order_id IS NULL
+export { PIXELVERIF_RETRYABLE_ERRORS };
+
+/**
+ * Parse a timestamp to epoch ms. The provider sends epoch milliseconds
+ * (seconds tolerated); naive "YYYY-MM-DD HH:MM[:SS]" strings are UTC — never
+ * host-local, which would shift the recovery window by the host timezone.
+ */
+function parseUtcTimestamp(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) && value > 0 ? (value < 1e11 ? value * 1000 : value) : NaN;
+  if (typeof value !== "string" || !value.trim()) return NaN;
+  const raw = value.trim();
+  const naive = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(raw);
+  return Date.parse(naive ? `${raw.replace(" ", "T")}Z` : raw);
+}
+
+/**
+ * Client-side poll timeout from the provider guide: 10 minutes for Normal,
+ * 15 minutes for Full, measured from this link's first send. Past it the link
+ * goes to admin, who may re-poll once (PIXELVERIF_REPOLL_SQL).
+ */
+export const PIXELVERIF_POLL_TIMEOUT_MS = { normal: 10 * 60_000, full: 15 * 60_000 } as const;
+/** Provider polling cadence (README: pending 8–10 s, processing 4–5 s); cron ticks bound it in practice. */
+export const PIXELVERIF_POLL_DELAY_SECONDS = { pending: 10, processing: 5 } as const;
+function pollBudgetExceeded(link: Row): boolean {
+  const sentMs = parseUtcTimestamp(link.request_sent_at);
+  const budget = link.flow_type === "full" ? PIXELVERIF_POLL_TIMEOUT_MS.full : PIXELVERIF_POLL_TIMEOUT_MS.normal;
+  return Number.isFinite(sentMs) && Date.now() - sentMs > budget;
+}
+
+/** Provider codes the guide marks retryable ("Order is refunded; safe to retry"). */
+const PIXELVERIF_AUTO_RETRY_CODES = new Set(["OTHER_ERROR"]);
+/** Full-mode activation outcomes the provider refunds (README "activation_status"). */
+const PIXELVERIF_FAILED_ACTIVATION: Record<string, string> = {
+  item_not_available: "ACTIVATION_ITEM_NOT_AVAILABLE",
+  failed: "ACTIVATION_FAILED",
+  invalid: "ACTIVATION_FAILED",
+  error: "ACTIVATION_FAILED",
+};
+const PIXELVERIF_ACTIVATION_LABEL: Record<string, string> = {
+  activated: "Aktivasi: Google AI Pro sudah aktif di akun Anda.",
+  already_redeemed: "Aktivasi: penawaran ini sudah pernah ditukarkan di akun Anda.",
+};
+
+export const PIXELVERIF_RETRYABLE_SQL = `status='needs_admin' AND attempt_count<3 AND request_sent_at IS NULL AND provider_order_id IS NULL
   AND receipt_ciphertext IS NULL AND receipt_iv IS NULL AND completed_at IS NULL
-  AND last_error IN ('service_unavailable','insufficient_credits','credits_unavailable','price_increased','preflight_unavailable')
+  AND last_error IN (${[...PIXELVERIF_RETRYABLE_ERRORS].map((code) => `'${code}'`).join(",")})
   AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
   AND EXISTS(SELECT 1 FROM orders o WHERE o.code=pixelverif_order_links.order_code AND ${PAID_ORDER_SQL_ALIASED})
   AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.pixelverif_link_id=pixelverif_order_links.id AND f.order_code=pixelverif_order_links.order_code AND f.item_index=pixelverif_order_links.item_index
     AND f.status IN ('queued','retry','failed','manual_required') AND f.fulfillment_mode='manual' AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL
     AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.aivault_link_id IS NULL AND f.storebat_link_id IS NULL AND f.mirai_link_id IS NULL AND f.inventory_id IS NULL)`;
+
+/** Admin may re-poll a provider order that only exceeded the client-side poll timeout. */
+export const PIXELVERIF_REPOLL_SQL = `status='needs_admin' AND last_error='poll_timeout' AND provider_order_id IS NOT NULL AND completed_at IS NULL
+  AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
+  AND EXISTS(SELECT 1 FROM orders o WHERE o.code=pixelverif_order_links.order_code AND ${PAID_ORDER_SQL_ALIASED})`;
 
 export async function createPixelverifOrderLinks(
   code: string,
@@ -77,7 +127,8 @@ export async function createPixelverifOrderLinks(
   const rows = lines(order).flatMap((item, index) => {
     const e = eligiblePixelverifLine(item);
     return e
-      ? [{ index, variant: item.variant_id, product: item.product_id, flow: e.flow_type, validity: 3, cost: e.cost_usd, key: `${code}-${index}` }]
+      // README: X-Idempotency-Key is a UUID per order; reused only for retries of the same send.
+      ? [{ index, variant: item.variant_id, product: item.product_id, flow: e.flow_type, validity: 3, cost: e.cost_usd, key: crypto.randomUUID() }]
       : [];
   });
   if (!rows.length) return 0;
@@ -105,11 +156,13 @@ async function settle(
   error: string | null,
   delaySeconds?: number | null,
 ) {
-  const backoffSec = Math.max(60, Number(link.attempt_count) * 120);
+  // Polling a known provider order follows the provider cadence; POST retries back off.
+  const polling = status === "processing" && link.provider_order_id != null;
+  const backoffSec = polling ? 0 : Math.max(60, Number(link.attempt_count) * 120);
   const pendingDelaySec =
     delaySeconds != null && Number.isFinite(delaySeconds) && delaySeconds > 0
       ? Math.max(backoffSec, Math.ceil(delaySeconds))
-      : backoffSec;
+      : polling ? 30 : backoffSec;
   const offsetExpr = status === "pending" || status === "processing" ? `+${pendingDelaySec} seconds` : "+60 seconds";
   const result = await db.execRun(
     `UPDATE pixelverif_order_links
@@ -126,9 +179,18 @@ async function settle(
     link.lease_owner,
   );
   if (!result.changes) return;
-  // Buyer credentials are single-purpose: once the link reaches a terminal
-  // state (completed or needs_admin), the sealed input must not linger.
-  if (status === "completed" || status === "needs_admin") {
+  // Buyer credentials are single-purpose, BUT a pre-send retryable failure
+  // (insufficient credits, price increase, provider unavailable) must keep
+  // the sealed input: PIXELVERIF_RETRYABLE_SQL only admits links with no send
+  // in flight (request_sent_at NULL: never sent, or the last send was
+  // definitively rejected/refunded), and that retry needs the input. Purge on
+  // completion, on any post-send needs_admin, and on non-retryable errors.
+  const keepForRetry = status === "needs_admin"
+    && Number(link.attempt_count) < 3
+    && link.request_sent_at == null
+    && link.provider_order_id == null
+    && error != null && PIXELVERIF_RETRYABLE_ERRORS.has(error);
+  if ((status === "completed" || status === "needs_admin") && !keepForRetry) {
     await purgePixelverifInput(db, String(link.order_code), Number(link.item_index)).catch(() => undefined);
   }
   if (status === "needs_admin") {
@@ -141,7 +203,8 @@ async function settle(
       link.id,
     );
     const { escalateSupplierManual } = await import("@/lib/fulfillment/supplier-escalation");
-    await escalateSupplierManual(db, String(link.order_code), "pixelverif", link.id);
+    const { pixelverifBuyerErrorMessage } = await import("./copy");
+    await escalateSupplierManual(db, String(link.order_code), "pixelverif", link.id, pixelverifBuyerErrorMessage(error));
   }
 }
 
@@ -152,6 +215,13 @@ async function deferRetry(
   fromPost = false,
 ) {
   const exhausted = Number(link.attempt_count) >= 3;
+  if (!fromPost && link.provider_order_id) {
+    // Poll path (provider order exists, never POST again): stay 'processing'
+    // and escalate once polling has failed for longer than the poll budget.
+    const timedOut = pollBudgetExceeded(link);
+    await settle(db, link, timedOut ? "needs_admin" : "processing", timedOut ? "poll_timeout" : "poll_deferred", retryAfterSeconds);
+    return;
+  }
   if (fromPost) {
     await settle(
       db,
@@ -201,8 +271,57 @@ function parseJson(text: string): unknown {
 function providerErrorCode(text: string): string | null {
   const j = parseJson(text);
   if (!record(j)) return null;
-  if (record(j.error) && typeof j.error.code === "string" && /^[A-Z0-9_]{1,64}$/.test(j.error.code)) return j.error.code;
+  // README: poll bodies nest the failure at order.error.code; tolerate top-level error.code.
+  const err = record(j.order) && record(j.order.error) ? j.order.error : record(j.error) ? j.error : null;
+  if (err && typeof err.code === "string" && /^[A-Z0-9_]{1,64}$/.test(err.code)) return err.code;
   return null;
+}
+
+/**
+ * A POST answered 401/402/403 created no provider order (README: auth and
+ * credit checks reject before queueing). When this was the link's only send,
+ * undo the send fence so the admin retry gate (PIXELVERIF_RETRYABLE_SQL) and
+ * the sealed input stay available. Later sends keep the ambiguity guard.
+ */
+async function revertRejectedFirstSend(db: DatabaseAccess, link: Row): Promise<boolean> {
+  if (Number(link.attempt_count) !== 1 || link.provider_order_id != null) return false;
+  const r = await db.execRun(
+    `UPDATE pixelverif_order_links
+     SET attempt_count=0, request_sent_at=NULL, receipt_ciphertext=NULL, receipt_iv=NULL, receipt_http_status=NULL, updated_at=datetime('now')
+     WHERE id=? AND lease_owner=? AND attempt_count=1 AND provider_order_id IS NULL AND status!='completed'`,
+    link.id,
+    link.lease_owner,
+  );
+  if (!r.changes) return false;
+  link.attempt_count = 0;
+  link.request_sent_at = null;
+  return true;
+}
+
+/**
+ * README: OTHER_ERROR is refunded and safe to retry. The same
+ * X-Idempotency-Key would replay the failed order, so the next POST gets a
+ * fresh UUID. The failed provider id is kept in provider_order_code so email
+ * recovery never re-binds it. Bounded by attempt_count (max 3 sends).
+ */
+async function rearmAfterRetryableFailure(db: DatabaseAccess, link: Row): Promise<boolean> {
+  if (Number(link.attempt_count) >= 3 || !link.provider_order_id) return false;
+  const r = await db.execRun(
+    `UPDATE pixelverif_order_links
+     SET status='pending', provider_order_code=provider_order_id, provider_order_id=NULL, idempotency_key=?,
+         request_sent_at=NULL, receipt_ciphertext=NULL, receipt_iv=NULL, receipt_http_status=NULL,
+         last_error='provider_retry', lease_owner=NULL, lease_expires_at=NULL,
+         next_attempt_at=datetime('now','+60 seconds'), updated_at=datetime('now')
+     WHERE id=? AND lease_owner=? AND provider_order_id=? AND status!='completed' AND attempt_count<3
+       AND EXISTS(SELECT 1 FROM pixelverif_buyer_inputs WHERE order_code=? AND item_index=? AND purged_at IS NULL AND input_ciphertext IS NOT NULL)`,
+    crypto.randomUUID(),
+    link.id,
+    link.lease_owner,
+    link.provider_order_id,
+    link.order_code,
+    link.item_index,
+  );
+  return Number(r.changes ?? 0) > 0;
 }
 
 /**
@@ -250,25 +369,40 @@ async function interpretPoll(
   );
 
   if (status === "pending" || status === "processing") {
-    await settle(db, link, "processing", null, status === "pending" ? 30 : 20);
+    // A provider order stuck nonterminal past the poll budget goes to admin
+    // (buyer already paid); polling never runs unbounded.
+    if (pollBudgetExceeded(link)) await settle(db, link, "needs_admin", "poll_timeout");
+    else await settle(db, link, "processing", null, status === "pending" ? PIXELVERIF_POLL_DELAY_SECONDS.pending : PIXELVERIF_POLL_DELAY_SECONDS.processing);
     return true;
   }
   if (status === "failed") {
-    await settle(db, link, "needs_admin", providerErrorCode(r.text) ?? "provider_failed");
+    const code = providerErrorCode(r.text) ?? "provider_failed";
+    if (PIXELVERIF_AUTO_RETRY_CODES.has(code) && (await rearmAfterRetryableFailure(db, link))) return true;
+    await settle(db, link, "needs_admin", code);
     return true;
   }
   if (status !== "success") {
     await settle(db, link, "needs_admin", "provider_failed");
     return true;
   }
-  const redeemLink = typeof parsed.result?.link === "string" ? parsed.result.link.trim() : "";
+  // Only an https redeem URL may reach the buyer; anything else goes to admin.
+  const redeemLink = safeRedeemLink(parsed.result?.link) ?? "";
   if (!redeemLink) {
     await settle(db, link, "needs_admin", "incomplete_receipt");
     return true;
   }
-  const deliveredText = link.flow_type === "full" && parsed.activation_status
-    ? `${redeemLink}\nStatus aktivasi: ${parsed.activation_status}`
-    : redeemLink;
+  // Full mode: a refunded activation outcome is a failure, never a delivery.
+  const failedActivation = link.flow_type === "full" && parsed.activation_status
+    ? PIXELVERIF_FAILED_ACTIVATION[parsed.activation_status]
+    : undefined;
+  if (failedActivation) {
+    await settle(db, link, "needs_admin", failedActivation);
+    return true;
+  }
+  const activationLabel = link.flow_type === "full" && parsed.activation_status
+    ? PIXELVERIF_ACTIVATION_LABEL[parsed.activation_status]
+    : undefined;
+  const deliveredText = activationLabel ? `${redeemLink}\n${activationLabel}` : redeemLink;
   const secret = await encryptSecret(deliveredText);
   const saved = await db.execRun(
     `UPDATE fulfillment_items
@@ -310,8 +444,14 @@ async function interpretCreate(
     await settle(db, link, "needs_admin", providerErrorCode(r.text) ?? "provider_rejected");
     return true;
   }
-  if (r.status === 402) {
-    await settle(db, link, "needs_admin", "insufficient_credits");
+  if (r.status === 402 || r.status === 401 || r.status === 403) {
+    const reverted = await revertRejectedFirstSend(db, link);
+    await settle(
+      db,
+      link,
+      "needs_admin",
+      r.status === 402 ? "insufficient_credits" : reverted ? "service_unavailable" : `http_${r.status}`,
+    );
     return true;
   }
   if (r.status < 200 || r.status >= 300) {
@@ -345,7 +485,7 @@ async function interpretCreate(
     return true;
   }
   link.provider_order_id = providerOrderId;
-  await settle(db, link, "processing", null, 20);
+  await settle(db, link, "processing", null, PIXELVERIF_POLL_DELAY_SECONDS.pending);
   return true;
 }
 
@@ -456,10 +596,17 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
         status: Number(link.receipt_http_status),
         text: await decryptSecret(String(link.receipt_ciphertext), String(link.receipt_iv)),
       };
-      const handled = link.provider_order_id
-        ? await interpretPoll(db, link, stored)
-        : await interpretCreate(db, link, { ...stored, retryAfterSeconds: null });
-      if (handled) return { claimed: true, rateLimited: false };
+      if (link.provider_order_id) {
+        // Replay may only FINISH work: a cached nonterminal poll body must
+        // never suppress a fresh GET, or the link polls itself forever.
+        const cached = parsePixelverifOrder(parseJson(stored.text));
+        const cachedStatus = cached?.status.toLowerCase() ?? "";
+        if (cachedStatus === "success" || cachedStatus === "failed") {
+          if (await interpretPoll(db, link, stored)) return { claimed: true, rateLimited: false };
+        }
+      } else if (await interpretCreate(db, link, { ...stored, retryAfterSeconds: null })) {
+        return { claimed: true, rateLimited: false };
+      }
     }
 
     await encryptSecret("pixelverif-encryption-preflight");
@@ -498,14 +645,36 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
         if (lookup.status === 429) rateLimited = true;
         if (lookup.status === 200) {
           const found = parsePixelverifOrder(parseJson(lookup.text));
-          if (found && found.flow_type === link.flow_type && found.validity === Number(link.validity)) {
+          // Bind recovery to THIS send: same buyer email, same flow/validity,
+          // and the provider order must not predate this link's first send
+          // (2-minute clock-skew tolerance). An older order for the same
+          // Gmail belongs to an earlier purchase and must never be attached.
+          // Fail closed: an unreadable timestamp is NOT bound; the re-POST
+          // below reuses the same X-Idempotency-Key, which the provider
+          // answers with the existing order without charging again.
+          const sentMs = parseUtcTimestamp(link.request_sent_at);
+          const createdMs = parseUtcTimestamp(found?.created_at);
+          const boundToThisSend = Boolean(found)
+            // Never re-bind the provider order an OTHER_ERROR retry already gave up on.
+            && found!.order_id !== link.provider_order_code
+            && found!.flow_type === link.flow_type
+            && found!.validity === Number(link.validity)
+            && found!.email.trim().toLowerCase() === input.pv_email.trim().toLowerCase()
+            && Number.isFinite(createdMs) && Number.isFinite(sentMs) && createdMs >= sentMs - 120_000;
+          if (found && boundToThisSend) {
             const boundProvider = await db.execRun(
               `UPDATE pixelverif_order_links SET provider_order_id=?, provider_order_code=?, updated_at=datetime('now')
-               WHERE id=? AND lease_owner=? AND status!='completed' AND provider_order_id IS NULL`,
+               WHERE id=? AND lease_owner=? AND status!='completed' AND provider_order_id IS NULL
+                 AND NOT EXISTS(SELECT 1 FROM pixelverif_order_links other WHERE other.provider_order_id=? AND other.id!=?)`,
               found.order_id,
               found.order_id,
               link.id,
               link.lease_owner,
+              // A provider order already owned by another link (an earlier
+              // purchase for the same Gmail) is never re-attached; this link
+              // falls through to the same-key re-POST instead.
+              found.order_id,
+              link.id,
             );
             if (boundProvider.changes) {
               link.provider_order_id = found.order_id;
@@ -572,8 +741,10 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       return { claimed: true, rateLimited: false };
     }
 
-    if (!link.request_sent_at) {
-      // No prior send: input must still be sealed and unpurged.
+    {
+      // EVERY POST (first send or re-POST after an ambiguous attempt) runs
+      // the sealed-input, live-price, and balance preflight. Skipping it on
+      // re-POST would let a stale price/balance state charge the provider.
       const inputRow = await db.queryFirst(
         "SELECT purged_at, input_ciphertext FROM pixelverif_buyer_inputs WHERE order_code=? AND item_index=?",
         link.order_code,
@@ -701,7 +872,16 @@ export async function retryPixelverifOrder(db: DatabaseAccess, id: number): Prom
      WHERE id=? AND ${PIXELVERIF_RETRYABLE_SQL}`,
     id,
   );
-  if (!r.changes) return false;
+  if (!r.changes) {
+    // Re-poll only (never re-POST): one fresh GET; still nonterminal → back to admin.
+    const repoll = await db.execRun(
+      `UPDATE pixelverif_order_links
+       SET status='processing', last_error=NULL, next_attempt_at=datetime('now'), lease_owner=NULL, lease_expires_at=NULL
+       WHERE id=? AND ${PIXELVERIF_REPOLL_SQL}`,
+      id,
+    );
+    if (!repoll.changes) return false;
+  }
   await processLink(db, id);
   return true;
 }

@@ -6,6 +6,28 @@ import { deleteMessage, sendMessage } from "@/lib/telegram/api";
 import { minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import { setPendingActionUnlessCreating } from "./shared";
 
+/**
+ * Delete a message that carried a password/2FA key. Bounded retry (no sleep in
+ * Workers); deleteMessage resolves {ok:false} on API errors instead of
+ * throwing. If deletion is still unconfirmed, tell the buyer to delete it
+ * manually instead of implying it is gone. The flow continues: the chat is the
+ * buyer's own private chat with the bot (owner decision 2026-11-22).
+ */
+async function deleteSecretMessage(chatId: number, messageId: number): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await deleteMessage(chatId, messageId).catch(() => null);
+    if (result?.ok) return true;
+  }
+  await sendMessage({ chat_id: chatId, text: "⚠️ Pesan berisi password/kunci 2FA belum berhasil dihapus otomatis. Mohon hapus pesan tersebut secara manual dari chat ini." }).catch(() => undefined);
+  return false;
+}
+
+/** Drop in-memory Pixel credential stashes (cancel / flow restart). */
+export function clearPixelverifStash(userId: string): void {
+  pvSecretStash.delete(userId);
+  pvEmailStash.delete(userId);
+}
+
 const PV_INTRO =
   "🔐 <b>Data akun Google untuk aktivasi</b>\n\n" +
   "Kirim <b>email Gmail</b> yang akan diaktivasi (contoh: nama@gmail.com).\n" +
@@ -15,6 +37,7 @@ const PV_INTRO =
   "/batal untuk batal.";
 
 export async function requestBuyerInput(chatId:number,from:{ id:number },productId:number,variantId:number,qty:number):Promise<boolean> {
+  sweepExpiredPixelverifStashes();
   const variant = await getActiveVariant(variantId);
   if (variant?.pixelverif_input) {
     if (chatId !== from.id) return true;
@@ -55,7 +78,11 @@ async function handlePixelverifInput(text:string,chatId:number,from:{ id:number 
       await sendMessage({ chat_id:chatId,text:"Email tidak valid. Kirim alamat @gmail.com yang akan diaktivasi, atau /batal." });
       return true;
     }
-    const stored = await execRun("UPDATE telegram_users SET buyer_email=?, pending_action=?, updated_at=datetime('now') WHERE user_id=? AND pending_action=?",value.toLowerCase(),`pvinput:${productId}:${variantId}:password`,String(from.id),user!.pending_action);
+    // Do NOT write the Gmail target into telegram_users.buyer_email: that is
+    // the shared checkout-contact column and may change mid-flow. Bind it to
+    // this flow's stash; the TOTP step below reads ONLY this stash.
+    pvEmailStash.set(String(from.id), { email: value.toLowerCase(), variantId, expiresAt: Date.now() + 10 * 60_000 });
+    const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND pending_action=?",`pvinput:${productId}:${variantId}:password`,String(from.id),user!.pending_action);
     if (!stored.changes) return true;
     await sendMessage({ chat_id:chatId,text:"Sekarang kirim <b>password Gmail</b> tersebut. Pesan Anda akan dihapus setelah dibaca.",parse_mode:"HTML",reply_markup:{ force_reply:true,input_field_placeholder:"Password Gmail" } });
     return true;
@@ -63,24 +90,15 @@ async function handlePixelverifInput(text:string,chatId:number,from:{ id:number 
 
   if (step === "password") {
     if (!value || value.length > 200) {
+      if (messageId) await deleteSecretMessage(chatId, messageId);
       await sendMessage({ chat_id:chatId,text:"Password tidak valid. Kirim ulang password Gmail, atau /batal." });
       return true;
     }
-    // No durable plaintext staging exists for secrets: the password is held
-    // only in this invocation. Move straight to the TOTP step by asking the
-    // buyer to send both in the next message? No — instead we re-ask using a
-    // combined final step: keep password in pending_action is forbidden, so
-    // ask TOTP now and combine via a second read of this message is impossible.
-    // Therefore: store step marker and request TOTP; password must be resent
-    // together with TOTP confirmation. Simpler and safe: ask for TOTP next,
-    // and stash the password ONLY in memory of this request is lost — so we
-    // instead advance and, at the totp step, require the buyer to confirm by
-    // re-sending password+TOTP is poor UX. Chosen approach: pending_action
-    // carries an opaque step only; secrets are never written to DB.
-    // We keep the password in a module-level WeakRef-free map keyed by user
-    // with a 10-minute TTL (single isolate, best-effort).
+    // Secrets never touch durable storage: pending_action carries only an
+    // opaque step marker. The password itself lives solely in the in-memory
+    // stash below (10-minute TTL, one variant; see map declaration).
     pvSecretStash.set(String(from.id), { password: value, variantId, expiresAt: Date.now() + 10 * 60_000 });
-    if (messageId) await deleteMessage(chatId, messageId).catch(() => {});
+    if (messageId) await deleteSecretMessage(chatId, messageId);
     const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND pending_action=?",`pvinput:${productId}:${variantId}:totp`,String(from.id),user!.pending_action);
     if (!stored.changes) return true;
     await sendMessage({ chat_id:chatId,text:"Terakhir, kirim <b>kunci setup 2FA</b> (TOTP secret dari aplikasi authenticator, bukan kode 6 digit). Pesan Anda akan dihapus setelah dibaca.",parse_mode:"HTML",reply_markup:{ force_reply:true,input_field_placeholder:"Kunci setup 2FA" } });
@@ -90,20 +108,27 @@ async function handlePixelverifInput(text:string,chatId:number,from:{ id:number 
   // step === "totp"
   const stash = pvSecretStash.get(String(from.id));
   pvSecretStash.delete(String(from.id));
-  if (messageId) await deleteMessage(chatId, messageId).catch(() => {});
+  if (messageId) await deleteSecretMessage(chatId, messageId);
   if (!stash || stash.variantId !== variantId || stash.expiresAt < Date.now()) {
     await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=?",String(from.id),user!.pending_action).catch(() => {});
     await sendMessage({ chat_id:chatId,text:"Sesi input kedaluwarsa. Silakan ulangi dari katalog.",reply_markup:minimalMenuKeyboard() });
     return true;
   }
-  const buyer = await queryFirst("SELECT buyer_email FROM telegram_users WHERE user_id=?",String(from.id));
+  const emailStash = pvEmailStash.get(String(from.id));
+  pvEmailStash.delete(String(from.id));
+  if (!emailStash || emailStash.variantId !== variantId || emailStash.expiresAt < Date.now()) {
+    await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=?",String(from.id),user!.pending_action).catch(() => {});
+    await sendMessage({ chat_id:chatId,text:"Sesi input kedaluwarsa. Silakan ulangi dari katalog.",reply_markup:minimalMenuKeyboard() });
+    return true;
+  }
   let fields;
   try {
-    fields = parsePixelverifInput({ pv_email: String(buyer?.buyer_email ?? ""), pv_password: stash.password, pv_totp_secret: value });
+    fields = parsePixelverifInput({ pv_email: emailStash.email, pv_password: stash.password, pv_totp_secret: value });
   } catch (error) {
     await sendMessage({ chat_id:chatId,text:`${(error as Error).message} Kirim ulang kunci setup 2FA, atau /batal.` });
-    // Restore stash so the buyer can retry the TOTP step only.
+    // Restore both stashes so the buyer can retry the TOTP step only.
     pvSecretStash.set(String(from.id), stash);
+    pvEmailStash.set(String(from.id), emailStash);
     return true;
   }
   const claim = await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=?",String(from.id),user!.pending_action);
@@ -115,10 +140,19 @@ async function handlePixelverifInput(text:string,chatId:number,from:{ id:number 
   return true;
 }
 
-// Password lives in memory only (never DB/logs), max 10 minutes, one variant.
+// Password + target Gmail live in memory only (never DB/logs), max 10 minutes,
+// one variant. deleteMessage is best-effort (a rejected deletion must not block
+// the flow), but the stash TTL is enforced by sweeps — never left past expiry.
 const pvSecretStash = new Map<string, { password: string; variantId: number; expiresAt: number }>();
+const pvEmailStash = new Map<string, { email: string; variantId: number; expiresAt: number }>();
+
+function sweepExpiredPixelverifStashes(now = Date.now()): void {
+  for (const [userId, stash] of pvSecretStash) if (stash.expiresAt < now) pvSecretStash.delete(userId);
+  for (const [userId, stash] of pvEmailStash) if (stash.expiresAt < now) pvEmailStash.delete(userId);
+}
 
 export async function handleBuyerInput(text:string,chatId:number,from:{ id:number;first_name:string;username?:string },messageId?:number):Promise<boolean> {
+  sweepExpiredPixelverifStashes();
   if (await handlePixelverifInput(text, chatId, from, messageId)) return true;
   if (chatId !== from.id) return false;
   const user = await queryFirst("SELECT pending_action FROM telegram_users WHERE user_id=?",String(from.id));

@@ -39,7 +39,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     if (owners.length !== productIds.length) throw new StockReservationError();
     const minutes = owners.some(row => isManualProductForBulk(bulkOwnerFromProductRow(row))) ? 15 : supplierMinutes;
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
-    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,pv.buyer_field_key,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,pv.storebat_product_id,p.storebat_family,pv.storebat_cost_usd,pv.storebat_fx_idr_per_usd,pv.mirai_package_code,p.mirai_family,pv.mirai_cost_usdt,pv.mirai_fx_idr_per_usdt,pv.pixelverif_flow_type,pv.pixelverif_validity,pv.pixelverif_cost_usd,p.pixelverif_fx_idr_per_usd,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
+    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,pv.buyer_field_key,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,pv.storebat_product_id,p.storebat_family,pv.storebat_cost_usd,pv.storebat_fx_idr_per_usd,pv.mirai_package_code,p.mirai_family,pv.mirai_cost_usdt,pv.mirai_fx_idr_per_usdt,pv.pixelverif_flow_type,pv.pixelverif_validity,pv.pixelverif_cost_usd,pv.pixelverif_fx_idr_per_usd,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
         p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
         p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed
       FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
@@ -264,23 +264,27 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
       guardIds.push(verifyGuardId);
     }
     // Pixel credentials never enter orders.items plaintext: seal each eligible
-    // line into pixelverif_buyer_inputs inside the same atomic batch.
-    const { computeFingerprint, encryptSecret } = await import("@/lib/fulfillment/crypto");
-    const { maskPixelverifEmail, parsePixelverifInput } = await import("@/lib/pixelverif/purchase");
-    for (const [index, item] of orderItems.entries()) {
-      const row = item.variant_id ? bulkById.get(item.variant_id) : undefined;
-      if (!row?.pixelverif_flow_type || input.adminPaymentTest) continue;
-      const inputPv = parsePixelverifInput(item.buyer_fields);
-      const sealed = await encryptSecret(JSON.stringify(inputPv));
-      const fingerprint = await computeFingerprint(`${inputPv.pv_email}\n${inputPv.pv_password}\n${inputPv.pv_totp_secret}`);
-      statements.push(
-        d1.prepare(
-          `INSERT INTO pixelverif_buyer_inputs(order_code,item_index,input_ciphertext,input_iv,email_masked,fingerprint) VALUES(?,?,?,?,?,?)`,
-        ).bind(input.code, index, sealed.ciphertext, sealed.iv, maskPixelverifEmail(inputPv.pv_email), fingerprint),
-      );
-      const pub = orderItems[index] as unknown as Record<string, unknown>;
-      delete pub.buyer_fields;
-      pub.pixelverif_fingerprint = fingerprint;
+    // line first (so the order INSERT below serializes credential-free items),
+    // but queue the input INSERTs after the order INSERT to satisfy the FK.
+    const pixelInputStatements: D1Statement[] = [];
+    {
+      const { computeFingerprint, encryptSecret } = await import("@/lib/fulfillment/crypto");
+      const { maskPixelverifEmail, parsePixelverifInput } = await import("@/lib/pixelverif/purchase");
+      for (const [index, item] of orderItems.entries()) {
+        const row = item.variant_id ? bulkById.get(item.variant_id) : undefined;
+        if (!row?.pixelverif_flow_type || input.adminPaymentTest) continue;
+        const inputPv = parsePixelverifInput(item.buyer_fields);
+        const sealed = await encryptSecret(JSON.stringify(inputPv));
+        const fingerprint = await computeFingerprint(`${inputPv.pv_email}\n${inputPv.pv_password}\n${inputPv.pv_totp_secret}`);
+        pixelInputStatements.push(
+          d1.prepare(
+            `INSERT INTO pixelverif_buyer_inputs(order_code,item_index,input_ciphertext,input_iv,email_masked,fingerprint) VALUES(?,?,?,?,?,?)`,
+          ).bind(input.code, index, sealed.ciphertext, sealed.iv, maskPixelverifEmail(inputPv.pv_email), fingerprint),
+        );
+        const pub = orderItems[index] as unknown as Record<string, unknown>;
+        delete pub.buyer_fields;
+        pub.pixelverif_fingerprint = fingerprint;
+      }
     }
     statements.push(
       d1.prepare(
@@ -302,6 +306,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         input.adminPaymentTest ? 1 : 0,
       ),
     );
+    statements.push(...pixelInputStatements);
     guardIds.forEach((guardId) => {
       statements.push(d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId));
     });

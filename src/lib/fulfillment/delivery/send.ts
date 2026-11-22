@@ -21,6 +21,7 @@ import { eligibleStorebatLine } from "@/lib/storebat/orders";
 import { eligibleMiraiLine } from "@/lib/mirai/orders";
 import { eligibleAivaultLine } from "@/lib/aivault/orders";
 import { eligibleTunvnLine } from "@/lib/tunvn/orders";
+import { eligiblePixelverifLine } from "@/lib/pixelverif/orders";
 import { CredentialSendDeferred, sendFencedCredential } from "./send-fence";
 
 /**
@@ -275,6 +276,12 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   } else {
     try { if (eligibleMiraiLine(JSON.parse(String(order.items ?? "[]"))[Number(itemRow.item_index)] ?? {})) return false; } catch { /* manifest validation below */ }
   }
+  if (itemRow.pixelverif_link_id != null) {
+    const link = await database.queryFirst("SELECT status FROM pixelverif_order_links WHERE id=? AND order_code=? AND item_index=?", itemRow.pixelverif_link_id, orderCode, itemRow.item_index);
+    if (link?.status !== "completed") return false;
+  } else {
+    try { if (eligiblePixelverifLine(JSON.parse(String(order.items ?? "[]"))[Number(itemRow.item_index)] ?? {})) return false; } catch { /* manifest validation below */ }
+  }
   let tunvnKind: unknown;
   if (itemRow.tunvn_link_id != null) {
     const link=await database.queryFirst("SELECT status,kind FROM tunvn_order_links WHERE id=? AND order_code=? AND item_index=?",itemRow.tunvn_link_id,orderCode,itemRow.item_index);
@@ -286,7 +293,7 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   const lease = await claimItemLease(itemRow, database, parent);
   if ("skip" in lease) return lease.skip;
   const { item, leaseFence } = lease;
-  if (item.tunvn_link_id != null || item.aivault_link_id != null || item.storebat_link_id != null || item.mirai_link_id != null) {
+  if (item.tunvn_link_id != null || item.aivault_link_id != null || item.storebat_link_id != null || item.mirai_link_id != null || item.pixelverif_link_id != null) {
     try {
       if (item.delivered_ciphertext && item.delivered_iv) {
         const plaintext=await decryptSecret(String(item.delivered_ciphertext),String(item.delivered_iv));

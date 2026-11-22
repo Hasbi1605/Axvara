@@ -38,3 +38,23 @@ export const PIXELVERIF_COPY = {
     },
   },
 } as const;
+
+/**
+ * Fixed buyer guidance per provider error code (README "Error Codes"). The
+ * provider's own user_message is never forwarded verbatim (it may echo buyer
+ * data); only these fixed texts reach the buyer. Unknown codes → null (generic notice).
+ */
+const PIXELVERIF_BUYER_ERROR_MESSAGES: Record<string, string> = {
+  WRONG_PASSWORD: "Password Gmail yang dikirim salah. Periksa kembali password lalu hubungi admin dengan kode pesanan.",
+  WRONG_2FA_CODE: "Kunci setup 2FA (TOTP secret) tidak valid. Pastikan yang dikirim adalah kunci setup authenticator, bukan kode 6 digit.",
+  WRONG_EMAIL: "Alamat Gmail tidak valid. Periksa kembali alamat Gmail lalu hubungi admin dengan kode pesanan.",
+  "2FA_WARNING": "Verifikasi 2 langkah di akun belum diatur dengan benar. Aktifkan 2FA dengan aplikasi authenticator, lalu hubungi admin.",
+  PAYMENT_WARNING: "Ada masalah payment profile Google di akun ini. Tutup payment profile lama di payments.google.com, lalu hubungi admin.",
+  CAPTCHA_DETECTED: "Google meminta captcha untuk akun ini. Login manual sekali ke Gmail tersebut, lalu hubungi admin.",
+  ACTIVATION_ITEM_NOT_AVAILABLE: "Akun Gmail ini tidak memenuhi syarat untuk penawaran ini. Jangan kirim ulang Gmail yang sama untuk produk ini; hubungi admin dengan kode pesanan.",
+  ACTIVATION_FAILED: "Aktivasi otomatis di akun Anda gagal. Admin akan menindaklanjuti; hubungi admin dengan kode pesanan.",
+};
+
+export function pixelverifBuyerErrorMessage(code: string | null | undefined): string | undefined {
+  return code ? PIXELVERIF_BUYER_ERROR_MESSAGES[code] : undefined;
+}

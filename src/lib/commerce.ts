@@ -476,7 +476,9 @@ async function reserveChannelOrder(
   }
 
   // Pixel credentials never enter orders.items plaintext: seal each eligible
-  // line into pixelverif_buyer_inputs inside the same atomic batch.
+  // line first (so the order INSERT below serializes credential-free items),
+  // but queue the input INSERTs after the order INSERT to satisfy the FK.
+  const pixelInputStatements: D1Statement[] = [];
   {
     const { computeFingerprint, encryptSecret } = await import("@/lib/fulfillment/crypto");
     const { maskPixelverifEmail, parsePixelverifInput } = await import("@/lib/pixelverif/purchase");
@@ -486,7 +488,7 @@ async function reserveChannelOrder(
       const inputPv = parsePixelverifInput(item.buyer_fields);
       const sealed = await encryptSecret(JSON.stringify(inputPv));
       const fingerprint = await computeFingerprint(`${inputPv.pv_email}\n${inputPv.pv_password}\n${inputPv.pv_totp_secret}`);
-      statements.push(
+      pixelInputStatements.push(
         d1.prepare(
           `INSERT INTO pixelverif_buyer_inputs(order_code,item_index,input_ciphertext,input_iv,email_masked,fingerprint) VALUES(?,?,?,?,?,?)`,
         ).bind(input.orderCode, index, sealed.ciphertext, sealed.iv, maskPixelverifEmail(inputPv.pv_email), fingerprint),
@@ -542,6 +544,7 @@ async function reserveChannelOrder(
       orderLocale,
     ),
   );
+  statements.push(...pixelInputStatements);
 
   for (const guardId of guardIds) {
     statements.push(d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId));

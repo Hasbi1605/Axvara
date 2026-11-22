@@ -85,11 +85,12 @@ export type PixelverifOrderResult = {
   flow_type: string;
   validity: number;
   credit_cost: number;
-  created_at?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
+  /** Provider sends epoch milliseconds (README); ISO strings tolerated. */
+  created_at?: string | number | null;
+  started_at?: string | number | null;
+  completed_at?: string | number | null;
   result?: { link?: string | null; link_type?: string | null; retries_used?: number | null } | null;
-  error?: { code?: string | null; message?: string | null; step?: string | null; user_message?: string | null } | null;
+  error?: { code?: string | null; message?: string | null; step?: number | string | null; user_message?: string | null } | null;
   progress?: { current_step?: number | null; total_steps?: number | null; step_label?: string | null; status?: string | null } | null;
   credit_refunded?: boolean | null;
   activation_status?: string | null;
@@ -230,12 +231,17 @@ export function parsePixelverifOrder(v: unknown): PixelverifOrderResult | null {
   const validity = numeric(o.validity);
   const credit_cost = numeric(o.credit_cost);
   if (!order_id || !email || !status || !flow_type || validity === null || credit_cost === null) return null;
-  // activation_status may be at order.activation_status or order.result.activation_status
+  // activation_status may be at order.activation_status or order.result.activation_status.
+  // Only the provider's known vocabulary is kept: arbitrary echoed text must
+  // never reach buyer delivery, receipts, or admin reveal verbatim.
+  const KNOWN_ACTIVATION = new Set(["activated", "already_redeemed", "item_not_available", "failed", "invalid", "error"]);
   let activation_status: string | null = null;
-  if (typeof o.activation_status === "string" && o.activation_status.trim()) activation_status = o.activation_status.trim();
-  else if (record(o.result) && typeof o.result.activation_status === "string" && o.result.activation_status.trim()) {
-    activation_status = String(o.result.activation_status).trim();
-  }
+  const rawActivation = typeof o.activation_status === "string" && o.activation_status.trim()
+    ? o.activation_status.trim().toLowerCase()
+    : record(o.result) && typeof o.result.activation_status === "string" && o.result.activation_status.trim()
+      ? String(o.result.activation_status).trim().toLowerCase()
+      : null;
+  if (rawActivation && KNOWN_ACTIVATION.has(rawActivation)) activation_status = rawActivation;
   return {
     order_id,
     email,
@@ -244,9 +250,9 @@ export function parsePixelverifOrder(v: unknown): PixelverifOrderResult | null {
     flow_type,
     validity,
     credit_cost,
-    created_at: typeof o.created_at === "string" ? o.created_at : null,
-    started_at: typeof o.started_at === "string" ? o.started_at : null,
-    completed_at: typeof o.completed_at === "string" ? o.completed_at : null,
+    created_at: typeof o.created_at === "string" || (typeof o.created_at === "number" && Number.isFinite(o.created_at)) ? o.created_at : null,
+    started_at: typeof o.started_at === "string" || (typeof o.started_at === "number" && Number.isFinite(o.started_at)) ? o.started_at : null,
+    completed_at: typeof o.completed_at === "string" || (typeof o.completed_at === "number" && Number.isFinite(o.completed_at)) ? o.completed_at : null,
     result: record(o.result) ? (o.result as PixelverifOrderResult["result"]) : null,
     error: record(o.error) ? (o.error as PixelverifOrderResult["error"]) : null,
     progress: record(o.progress) ? (o.progress as PixelverifOrderResult["progress"]) : null,

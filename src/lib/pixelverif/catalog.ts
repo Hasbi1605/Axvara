@@ -132,12 +132,10 @@ export async function projectPixelverifCatalog(db: DatabaseAccess, fx: number) {
     json,
   );
 
-  // Telegram sells this family too (owner decision 2026-11-22): credentials
-  // are collected in private chat, deleted after read, sealed encrypted.
-  await db.execRun(
-    `UPDATE products SET telegram_enabled=1 WHERE pixelverif_family=?`,
-    familyKey,
-  );
+  // Telegram sells this family too (owner decision 2026-11-22): the product
+  // insert is born telegram_enabled=1. Deliberately NO force-update here:
+  // an admin may switch the Telegram channel off and sync must respect it
+  // (other suppliers never override an admin channel toggle either).
 
   // CAS the admin price and markup read above. If an admin edits either, the next sync retries.
   const updVarRes = await db.execRun(

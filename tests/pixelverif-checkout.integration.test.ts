@@ -7,9 +7,13 @@ import { addToCart, getCartSummary, setCartLineQty } from "@/lib/telegram/cart";
 import { handleCommand } from "@/lib/telegram/handlers/command";
 import { handleCartAdd } from "@/lib/telegram/handlers/cart";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
-import { safeEditOrSend, sendMessage } from "@/lib/telegram/api";
+import { deleteMessage, safeEditOrSend, sendMessage } from "@/lib/telegram/api";
+import { handleBuyerInput } from "@/lib/telegram/handlers/buyer-input";
+import { resolveCurrentPayq1Lines } from "@/lib/telegram/handlers/payment-lines";
+import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
+import type { Payq1State } from "@/lib/telegram/payment-quote";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
-import { createD1Fixture } from "./helpers/d1-fixture";
+import { createD1Fixture, stubFulfillmentKey } from "./helpers/d1-fixture";
 
 vi.mock("@/lib/telegram/api", () => ({
   sendMessage: vi.fn(async () => ({ ok: true })),
@@ -30,6 +34,7 @@ const request = (path: string, body: unknown) => new NextRequest(`https://axvara
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 });
 beforeEach(() => {
+  stubFulfillmentKey();
   fx = createD1Fixture();
   vi.clearAllMocks();
   clearRateLimitBucketsForTest();
@@ -40,8 +45,8 @@ beforeEach(() => {
   })) vi.stubEnv(key, value);
   fx.sql.exec(`INSERT INTO products(id,name,slug,price,stock,is_active,telegram_enabled,pixelverif_family)
     VALUES(1,'Pixel fixture','pixel-fixture',21500,2,1,0,'google_ai_pro_3m');
-    INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,pixelverif_flow_type,pixelverif_validity,pixelverif_cost_usd,pixelverif_fx_idr_per_usd,max_qty)
-    VALUES(1,1,'PV-NORMAL-3','Pixel variant',21500,2,1,'normal',3,1,16000,1);
+    INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,pixelverif_flow_type,pixelverif_validity,pixelverif_cost_usd,max_qty)
+    VALUES(1,1,'PV-NORMAL-3','Pixel variant',21500,2,1,'normal',3,1,1);
     INSERT INTO telegram_users(user_id,chat_id,locale) VALUES('800','800','id');`);
 });
 afterEach(() => { fx.close(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -63,7 +68,52 @@ it("issues a quote only with complete Pixel credentials and never reflects them"
   expect(text).not.toContain(pvFields.pv_totp_secret);
   const body = JSON.parse(text) as { quoteToken?: string; items: Record<string, unknown>[] };
   expect(body.quoteToken).toBeTruthy();
-  expect(body.items[0]).not.toHaveProperty("buyer_fields");
+  // The HS256 payload is only signed, not encrypted: prove no credential is
+  // readable from the token itself, only a fingerprint + masked email.
+  const payload = JSON.parse(Buffer.from(body.quoteToken!.split(".")[1], "base64url").toString("utf8")) as { items: Record<string, unknown>[] };
+  const signedFields = JSON.stringify(payload.items[0].buyer_fields ?? {});
+  expect(signedFields).not.toContain(pvFields.pv_password);
+  expect(signedFields).not.toContain(pvFields.pv_totp_secret);
+  expect(signedFields).not.toContain(pvFields.pv_email);
+  expect(signedFields).toContain("pv_fingerprint");
+  expect(JSON.stringify(body.items[0])).not.toContain("pv_password");
+  expect(JSON.stringify(body.items[0])).not.toContain("pv_totp_secret");
+});
+
+it("accepts the quoted credential fingerprint at order validation and rejects drift", async () => {
+  const { POST: quote } = await import("@/app/api/checkout/quote/route");
+  const { validateCheckoutInput } = await import("@/lib/orders/checkout/validate");
+  const quoted = await quote(request("/api/checkout/quote", {
+    items: [{ product_id: 1, variant_id: 1, qty: 1, buyer_fields: pvFields }],
+  }));
+  expect(quoted.status).toBe(200);
+  const { quoteToken } = await quoted.json() as { quoteToken: string };
+  const base = {
+    customer_wa: "081234567890", customer_email: "buyer@example.test",
+    payment_method: "qris", quote_token: quoteToken,
+  };
+  const ok = await validateCheckoutInput({
+    ...base,
+    items: [{ product_id: 1, variant_id: 1, qty: 1, buyer_fields: pvFields }],
+  });
+  expect(ok.kind).toBe("valid");
+  if (ok.kind === "valid") {
+    // Only the atomic-create items carry the verified triple; the signed quote never does.
+    expect(ok.value.orderItems[0].buyer_fields).toEqual(pvFields);
+    expect(JSON.stringify(ok.value.quote.items)).not.toContain(pvFields.pv_password);
+  }
+  // Drifted credential against the same token must fail closed (Sol-1 regression).
+  const drifted = await validateCheckoutInput({
+    ...base,
+    items: [{ product_id: 1, variant_id: 1, qty: 1, buyer_fields: { ...pvFields, pv_password: "fixture-password-other" } }],
+  });
+  expect(drifted.kind).toBe("responded");
+  if (drifted.kind === "responded") expect(drifted.response.status).toBe(409);
+  const missing = await validateCheckoutInput({
+    ...base,
+    items: [{ product_id: 1, variant_id: 1, qty: 1 }],
+  });
+  expect(missing.kind).toBe("responded");
 });
 
 it("rejects incomplete reserved secret fields at quote and order intake, without reflecting values", async () => {
@@ -122,16 +172,120 @@ it("offers Pixel in Telegram catalog and requires the private credential flow be
   expect(await readTelegramCatalog()).toHaveLength(1);
   await handleCommand("/start prd_1", user.id, "private", user);
   expect(safeEditOrSend).toHaveBeenCalled();
-  expect(await addToCart(String(user.id), 1, 1, 1)).toEqual({ ok: false, reason: "invalid_quantity" });
+  expect(await addToCart(String(user.id), 1, 1, 1)).toEqual({ ok: false, reason: "pixelverif_unavailable" });
   await handleCartAdd(user.id, 0, 1, 1, 1, user);
   expect(sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({
     text: expect.stringContaining("Data akun Google untuk aktivasi"),
   }));
-  fx.sql.exec(`INSERT INTO telegram_carts(user_id,product_id,variant_id,qty,buyer_fields)
-    VALUES('800',1,1,1,'${JSON.stringify(pvFields)}')`);
+  // Cart persistence must hold ONLY the sealed blob, never the plaintext triple.
+  const { sealPixelverifCartFields } = await import("@/lib/buyer-fields");
+  const sealed = await sealPixelverifCartFields({ ...pvFields });
+  const storedJson = JSON.stringify(sealed);
+  expect(storedJson).not.toContain(pvFields.pv_password);
+  expect(storedJson).not.toContain(pvFields.pv_totp_secret);
+  fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty,buyer_fields) VALUES('800',1,1,1,?)").run(storedJson);
+  const rawRow = fx.sql.prepare("SELECT buyer_fields FROM telegram_carts WHERE user_id='800'").get() as { buyer_fields: string };
+  expect(rawRow.buyer_fields).not.toContain(pvFields.pv_password);
+  expect(rawRow.buyer_fields).not.toContain(pvFields.pv_totp_secret);
   expect(await setCartLineQty(String(user.id), 1, 1)).toBe(true);
   const summary = await getCartSummary(String(user.id));
   expect(summary.lines).toHaveLength(1);
   expect(summary.lines[0]).toMatchObject({ productId: 1, variantId: 1, pixelverifInput: true });
+  // In-memory line carries the unsealed triple for checkout sealing only.
+  expect(summary.lines[0].buyerFields).toEqual(pvFields);
   expect(summary.issues).toEqual([]);
+});
+
+const payq1 = (source: Payq1State["source"], idrSubtotal: number, tag: string) =>
+  ({ v: 1, nonce: "n", exp: Date.now() + 60_000, tag, locale: "id", idrSubtotal, source, methods: [], sel: null, contact: { email: null, phone: null }, st: "quoted" }) as Payq1State;
+
+it("runs the real 3-step Telegram flow into a sealed cart line whose approval tag survives re-resolution (Sol-3/4/5)", async () => {
+  fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
+  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  await handleBuyerInput(pvFields.pv_email, user.id, user, 11);
+  await handleBuyerInput(pvFields.pv_password, user.id, user, 12);
+  await handleBuyerInput("jbsw y3dp ehpk 3pxp", user.id, user, 13);
+  // Password and TOTP messages are deleted after reading.
+  expect(deleteMessage).toHaveBeenCalledWith(user.id, 12);
+  expect(deleteMessage).toHaveBeenCalledWith(user.id, 13);
+
+  const raw = fx.sql.prepare("SELECT buyer_fields FROM telegram_carts WHERE user_id='800'").get() as { buyer_fields: string } | undefined;
+  expect(raw).toBeTruthy();
+  for (const secret of Object.values(pvFields)) expect(raw!.buyer_fields).not.toContain(secret);
+  expect(JSON.parse(raw!.buyer_fields)).toMatchObject({ pv_email_masked: "bu***@gmail.com", pv_sealed_ciphertext: expect.any(String), pv_sealed_iv: expect.any(String) });
+  // The shared checkout-contact column is never overwritten with the target Gmail.
+  const tgUser = fx.sql.prepare("SELECT buyer_email,pending_action FROM telegram_users WHERE user_id='800'").get() as Record<string, unknown>;
+  expect(tgUser.buyer_email ?? null).toBeNull();
+  expect(tgUser.pending_action ?? null).toBeNull();
+
+  const summary = await getCartSummary(String(user.id));
+  expect(summary.issues).toEqual([]);
+  expect(summary.lines[0].buyerFields).toEqual(pvFields);
+  // Tag as created by the cart approval UI (handlers/cart.ts) must match the payq1 re-resolution.
+  const tag = await checkoutApprovalTag(summary.lines);
+  await expect(resolveCurrentPayq1Lines(String(user.id), payq1({ kind: "cart" }, 21500, tag))).resolves.toMatchObject({ ok: true });
+});
+
+it("/batal drops the in-memory credential stash so a late TOTP never reaches the cart", async () => {
+  fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
+  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  await handleBuyerInput(pvFields.pv_email, user.id, user, 21);
+  await handleBuyerInput(pvFields.pv_password, user.id, user, 22);
+  await handleCommand("/batal", user.id, "private", user);
+  fx.sql.exec("UPDATE telegram_users SET pending_action='pvinput:1:1:totp' WHERE user_id='800'");
+  await handleBuyerInput(pvFields.pv_totp_secret, user.id, user, 23);
+  expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_carts").get()?.n).toBe(0);
+  expect(sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ text: expect.stringContaining("Sesi input kedaluwarsa") }));
+});
+
+it("keeps the single-path payq1 tag identical to its creator for a max_qty variant (no tag_changed regression)", async () => {
+  fx.sql.exec(`INSERT INTO products(id,name,slug,price,stock,is_active,telegram_enabled) VALUES(2,'Plain fixture','plain-fixture',10000,5,1,1);
+    INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,max_qty) VALUES(2,2,'PLAIN-1','Plain variant',10000,5,1,5);`);
+  // Creator: handlers/callback.ts qty approval hashes product/variant/qty/price only.
+  const tag = await checkoutApprovalTag([{ productId: 2, variantId: 2, qty: 1, price: 10000 }]);
+  await expect(resolveCurrentPayq1Lines("800", payq1({ kind: "single", productId: 2, variantId: 2, qty: 1 }, 10000, tag))).resolves.toMatchObject({ ok: true });
+});
+
+it("creates a web Pixel order end-to-end through POST /api/orders with the fingerprint-only token (Sol re-review #1)", async () => {
+  const { POST: quote } = await import("@/app/api/checkout/quote/route");
+  const { POST: order } = await import("@/app/api/orders/route");
+  const quoted = await quote(request("/api/checkout/quote", { items: [{ product_id: 1, variant_id: 1, qty: 1, buyer_fields: pvFields }] }));
+  expect(quoted.status).toBe(200);
+  const { quoteToken } = await quoted.json() as { quoteToken: string };
+  // Re-sign the same signed items with the QRIS rail (the fixture quote has no active QRIS provider).
+  const signedItems = (JSON.parse(Buffer.from(quoteToken.split(".")[1], "base64url").toString("utf8")) as { items: Parameters<typeof createCheckoutQuoteToken>[0]["items"] }).items;
+  expect(JSON.stringify(signedItems)).not.toContain(pvFields.pv_password);
+  const { token } = await createCheckoutQuoteToken({ items: signedItems, subtotal: item.price, payment_methods: [{ id: "qris", account_number: "-" }] });
+  const response = await order(request("/api/orders", {
+    items: [{ product_id: 1, variant_id: 1, qty: 1, buyer_fields: pvFields }],
+    quote_token: token, payment_method: "qris", customer_wa: "081234567890", customer_email: "buyer@example.test",
+  }));
+  const text = await response.text();
+  for (const secret of [pvFields.pv_password, pvFields.pv_totp_secret]) expect(text).not.toContain(secret);
+  const row = fx.sql.prepare("SELECT code,items FROM orders").get() as { code: string; items: string } | undefined;
+  expect(row, `order not created (HTTP ${response.status})`).toBeTruthy();
+  for (const secret of Object.values(pvFields)) expect(row!.items).not.toContain(secret);
+  const sealed = fx.sql.prepare("SELECT input_ciphertext,input_iv FROM pixelverif_buyer_inputs WHERE order_code=?").get(row!.code) as { input_ciphertext: string; input_iv: string };
+  await expect(decryptSecret(sealed.input_ciphertext, sealed.input_iv)).resolves.toBe(JSON.stringify(pvFields));
+});
+
+it("marks Pixel variants on the product detail and public catalog payload so the credential form renders (Sol re-review #2)", async () => {
+  const { getProductDetail } = await import("@/lib/catalog");
+  expect((await getProductDetail("pixel-fixture"))?.variants[0]).toMatchObject({ pixelverif_input: true });
+  const { GET } = await import("@/app/api/catalog/route");
+  const body = await (await GET(new Request("https://axvara.test/api/catalog?slug=pixel-fixture"))).json() as { product: { variants: Record<string, unknown>[] } };
+  expect(body.product.variants[0].pixelverif_input).toBe(true);
+  // Server-only flow identity never reaches the public payload.
+  expect(body.product.variants[0]).not.toHaveProperty("pixelverif_flow_type");
+});
+
+it("warns the buyer to delete a secret message manually when Telegram deletion is not confirmed (Sol re-review #3)", async () => {
+  fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
+  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  await handleBuyerInput(pvFields.pv_email, user.id, user, 31);
+  vi.mocked(deleteMessage).mockResolvedValue({ ok: false, description: "Too Many Requests" } as never);
+  await handleBuyerInput(pvFields.pv_password, user.id, user, 32);
+  expect(vi.mocked(deleteMessage).mock.calls.filter(([, id]) => id === 32)).toHaveLength(2);
+  expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("hapus pesan tersebut secara manual") }));
+  vi.mocked(deleteMessage).mockResolvedValue({ ok: true } as never);
 });

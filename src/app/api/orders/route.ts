@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
   const { validateCheckoutInput } = await import("@/lib/orders/checkout/validate");
   const validated = await validateCheckoutInput(body.data);
   if (validated.kind === "responded") return validated.response;
-  const { customer_name, customer_wa, customer_email, payment_method, proof_url, quote, cryptoTicker, isCryptoMethod, isGatewayMethod } = validated.value;
+  const { customer_name, customer_wa, customer_email, payment_method, proof_url, quote, orderItems, cryptoTicker, isCryptoMethod, isGatewayMethod } = validated.value;
 
   const previous = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
   if (previous) return existingCheckoutResponse(previous, routeDeps());
@@ -258,7 +258,9 @@ export async function POST(req: NextRequest) {
     {
       code,
       quoteId: quote.quote_id,
-      items: quote.items,
+      // Pixel lines carry the fingerprint-verified credential triple here
+      // only; it is sealed inside the atomic create and never reaches invoices.
+      items: orderItems,
       subtotal: quote.subtotal,
       locale: quote.locale ?? "id",
       wa,

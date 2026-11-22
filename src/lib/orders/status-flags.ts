@@ -57,7 +57,7 @@ export async function readStatusFlags(
     .queryFirst(
       `WITH lines AS (
             SELECT CAST(json_extract(je.value,'$.variant_id') AS INTEGER) AS variant_id,
-                   (((json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.storebat_eligibility.version')=1 AND json_extract(je.value,'$.storebat_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.mirai_eligibility.version')=1 AND json_extract(je.value,'$.mirai_eligibility.cost_usdt')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
+                   (((json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.storebat_eligibility.version')=1 AND json_extract(je.value,'$.storebat_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.mirai_eligibility.version')=1 AND json_extract(je.value,'$.mirai_eligibility.cost_usdt')>0) OR (json_extract(je.value,'$.pixelverif_eligibility.version')=1 AND json_extract(je.value,'$.pixelverif_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
                     AND json_extract(je.value,'$.tunvn_eligibility.kind') IN ('account','buff')
                     AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0))
                     AND ?=0) AS automatic
@@ -73,7 +73,8 @@ export async function readStatusFlags(
              OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)
              OR EXISTS(SELECT 1 FROM lines WHERE automatic=1)) AS supplier_owned,
            (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
-            OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running,
+            OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
+            OR EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=? AND (status='processing' OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running,
           EXISTS(SELECT 1 FROM lines l
                  JOIN product_variants pv ON pv.id = l.variant_id
                  LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
@@ -96,6 +97,7 @@ export async function readStatusFlags(
       Number(row.supplier_purchase_disabled ?? 0),
       String(row.items ?? "[]"),
       String(row.items ?? "[]"),
+      code,
       code,
       code,
       code,
@@ -137,11 +139,12 @@ export async function readLookupFlags(
         (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
           OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)
           OR (?=0 AND EXISTS(SELECT 1 FROM json_each(?) je
-            WHERE (json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.storebat_eligibility.version')=1 AND json_extract(je.value,'$.storebat_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.mirai_eligibility.version')=1 AND json_extract(je.value,'$.mirai_eligibility.cost_usdt')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
+            WHERE (json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.storebat_eligibility.version')=1 AND json_extract(je.value,'$.storebat_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.mirai_eligibility.version')=1 AND json_extract(je.value,'$.mirai_eligibility.cost_usdt')>0) OR (json_extract(je.value,'$.pixelverif_eligibility.version')=1 AND json_extract(je.value,'$.pixelverif_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
               AND json_extract(je.value,'$.tunvn_eligibility.kind') IN ('account','buff')
               AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0)))) AS supplier_owned,
         (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
-         OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running`,
+         OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
+         OR EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=? AND (status='processing' OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running`,
       code,
       code,
       code,
@@ -149,6 +152,7 @@ export async function readLookupFlags(
       code,
       Number(row.supplier_purchase_disabled ?? 0),
       String(row.items ?? "[]"),
+      code,
       code,
       code,
     )
@@ -195,8 +199,10 @@ export async function maybeRefreshStatusFlags(
                   (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
                    OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered' AND delivered_ciphertext IS NOT NULL)) AS creds,
                   (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
-                   OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS running
+                   OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
+                   OR EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=? AND (status='processing' OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS running
            FROM orders WHERE code=?`,
+          code,
           code,
           code,
           code,

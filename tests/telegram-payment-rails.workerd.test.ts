@@ -44,6 +44,9 @@ const SETUP_STATEMENTS = [
   "CREATE TABLE operation_guards (operation_id TEXT PRIMARY KEY, valid INTEGER CHECK(valid=1))",
   "ALTER TABLE products ADD COLUMN pixelverif_family TEXT",
   "ALTER TABLE product_variants ADD COLUMN pixelverif_flow_type TEXT",
+  "ALTER TABLE product_variants ADD COLUMN pixelverif_validity INTEGER",
+  "ALTER TABLE product_variants ADD COLUMN pixelverif_cost_usd REAL",
+  "ALTER TABLE product_variants ADD COLUMN pixelverif_fx_idr_per_usd REAL",
   "CREATE TABLE fulfillment_inventory (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER, variant_id INTEGER, status TEXT, order_code TEXT, secret_ciphertext TEXT, secret_iv TEXT, secret_fingerprint TEXT, reserved_at TEXT, sort_order INTEGER)",
   // payment_transactions: REAL DDL from drizzle/schema.sql (loaded below), not hand-copied.
   "CREATE TABLE fulfillment_jobs (order_code TEXT UNIQUE, variant_id INTEGER, inventory_id INTEGER, sales_channel TEXT, status TEXT, attempt_count INTEGER, next_attempt_at TEXT)",

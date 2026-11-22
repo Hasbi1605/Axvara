@@ -8,7 +8,7 @@ import { execRun, queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { effectiveVariantStock, formatVariantLabel, getActiveVariant, type VariantSummary } from "@/lib/catalog";
 import { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct } from "@/lib/bulk-pricing";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
-import { assertSameBuyerCode, validateBuyerFields, type BuyerFields } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, sealPixelverifCartFields, unsealPixelverifCartFields, validateBuyerFields, type BuyerFields } from "@/lib/buyer-fields";
 import { TELEGRAM_MAX_QTY } from "./keyboards";
 
 export type CartLine = {
@@ -65,6 +65,11 @@ export async function addToCart(
   if (!Number.isSafeInteger(rawQty) || rawQty < 1 || rawQty > TELEGRAM_MAX_QTY) return { ok: false, reason: "invalid_quantity" };
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return { ok: false, reason: "invalid_variant" };
+  // Pixel variants require the private 3-step credential flow first; a bare
+  // add (stale button / direct call) must never create a credential-less line.
+  if (variant.pixelverif_input && !(buyerFields?.pv_email && buyerFields?.pv_password && buyerFields?.pv_totp_secret)) {
+    return { ok: false, reason: "pixelverif_unavailable" };
+  }
   const stock = effectiveVariantStock(variant);
   if (stock === 0) return { ok: false, reason: "out_of_stock" };
 
@@ -90,6 +95,8 @@ export async function addToCart(
   let normalizedFields: BuyerFields;
   try {
     normalizedFields = validateBuyerFields(variant,buyerFields,nextQty);
+    // Pixel credentials persist ONLY as an AES-GCM sealed blob (never plaintext).
+    if (normalizedFields.pv_password) normalizedFields = await sealPixelverifCartFields(normalizedFields);
     const others = await queryAll("SELECT buyer_fields FROM telegram_carts WHERE user_id=?",userId);
     assertSameBuyerCode([...others.map(row => ({ buyer_fields:JSON.parse(String(row.buyer_fields ?? "{}")) as BuyerFields })),{ buyer_fields:buyerFields }]);
   } catch { return { ok:false,reason:"invalid_quantity" }; }
@@ -254,8 +261,12 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     const minQty = Math.max(1, Number(row.v_min_qty ?? 1) || 1);
     const qty = Number(row.qty);
     let fields: BuyerFields = {};
-    try { fields = validateBuyerFields(row,JSON.parse(String(row.buyer_fields ?? "{}")),qty); }
-    catch { issues.push(`${label}: periksa jumlah dan Kode Invite Muse melalui chat pribadi.`); }
+    try {
+      const stored = validateBuyerFields(row,JSON.parse(String(row.buyer_fields ?? "{}")),qty);
+      // Sealed blob -> plaintext only in memory for checkout approval/sealing.
+      fields = stored.pv_sealed_ciphertext ? await unsealPixelverifCartFields(stored) : stored;
+    }
+    catch { issues.push(row.pixelverif_flow_type != null ? `${label}: data akun Google tidak terbaca. Hapus baris ini lalu ulangi dari katalog.` : `${label}: periksa jumlah dan Kode Invite Muse melalui chat pribadi.`); }
     if (!Number.isSafeInteger(qty) || qty < 1 || qty > TELEGRAM_MAX_QTY) {
       issues.push(`${label}: jumlah tidak valid. Pilih jumlah bulat 1 sampai ${TELEGRAM_MAX_QTY}.`);
     }
