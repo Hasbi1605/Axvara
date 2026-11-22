@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3C warung_rebahan (kelas E): pindahkan badan fase WR operations ke `src/lib/cron/phases/warung-rebahan.ts`; urutan replay/dispatch/sweep/Jaspay/kirim/saldo tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 11 file fokus 287 lulus; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3C expiry (kelas E): pindahkan badan fase expiry operations ke `src/lib/cron/phases/expiry.ts`; SQL multiline, gerbang, cap, dan akuntansi deferred tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 12 file fokus 174 lulus; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3C notify (kelas E): pindahkan badan fase notify operations ke `src/lib/cron/phases/notify.ts`; urutan QRIS/Telegram/invoice/reminder/WA/PIN dan gerbangnya tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 12 file fokus 244 lulus termasuk regresi admission QRIS; TypeScript dan ESLint lulus)

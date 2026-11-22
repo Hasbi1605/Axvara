@@ -169,7 +169,10 @@ describe("WR sync — sweep wajib berhenti sebelum invocation dibunuh platform",
   });
 
   it("cron melanjutkan sweep yang belum tuntas tanpa menunggu interval 30 menit", () => {
-    const cron = readFileSync("src/app/api/cron/operations/route.ts", "utf8");
+    // 3C warung_rebahan: WR body moved to phases/warung-rebahan.ts; SK
+    // remains inline in the route (checked separately below).
+    const cron = readFileSync("src/lib/cron/phases/warung-rebahan.ts", "utf8");
+    expect(readFileSync("src/app/api/cron/operations/route.ts", "utf8")).toContain("runWarungRebahanPhase(ctx)");
     const sweep = readFileSync("src/lib/cron/catalog-sweep.ts", "utf8");
     // Saat D1 lambat, sweep berhenti karena WAKTU dengan errors kosong →
     // tercatat 'success'. Tanpa jalur resume, gerbang interval membacanya
@@ -181,10 +184,21 @@ describe("WR sync — sweep wajib berhenti sebelum invocation dibunuh platform",
     expect(cron).toMatch(/resumeNow\s*\|\|\s*await catalogSweepDue\(/);
     expect(cron).toMatch(/Number\(cursorRow\?\.value \?\? 0\) > 0/);
     expect(sweep).toContain("lastLogTs < now - CATALOG_SYNC_INTERVAL_MS");
+    // SK coverage stays explicit on its own inline slice (no cross-phase
+    // concatenation): isolate runSekalipay up to the phases table.
+    const routeSource = readFileSync("src/app/api/cron/operations/route.ts", "utf8");
+    const skBody = routeSource.slice(
+      routeSource.indexOf("const runSekalipay = async () => {"),
+      routeSource.indexOf("const phases ="),
+    );
+    expect(skBody).toContain("products_cursor");
+    expect(skBody).toMatch(/resumeNow\s*\|\|\s*await catalogSweepDue\("sk_sync_state",/);
+    expect(skBody).toMatch(/Number\(cursorRow\?\.value \?\? 0\) > 0/);
+    expect(skBody).toContain("timeBudgetMs: Math.max(0, timeLeftMs() - TIME_WR_SWEEP_RESERVE)");
   });
 
   it("cron mengoper sisa deadline ke sweep, bukan membiarkannya tanpa batas", () => {
-    const cron = readFileSync("src/app/api/cron/operations/route.ts", "utf8");
+    const cron = readFileSync("src/lib/cron/phases/warung-rebahan.ts", "utf8");
     // Sweep harus menerima anggaran waktu yang diturunkan dari deadline run,
     // dengan cadangan untuk ekor yang menulis log + penanda fase.
     expect(cron).toContain("timeBudgetMs");
