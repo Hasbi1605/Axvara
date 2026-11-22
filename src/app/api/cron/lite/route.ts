@@ -49,8 +49,6 @@ import { LITE_JOBS, type LiteJob } from "@/lib/cron/lite/jobs";
 
 export const runtime = "edge";
 
-const FULFILLMENT_PER_RUN = 20;
-const FULFILLMENT_ITEMS_PER_JOB = 10;
 const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 /** Plafon produk Jaspay per tick; budget 400 menjadi batas pengaman. */
 const JASPAY_PRODUCTS_PER_TICK = 10;
@@ -84,7 +82,10 @@ export async function POST(request: NextRequest) {
       const { run } = await import("@/lib/cron/lite/jobs/expiry");
       Object.assign(result, await run({ job, db, deadline, result, failedCore }));
     }
-    else if (job === "fulfillment") Object.assign(result, await runFulfillment(db, deadline));
+    else if (job === "fulfillment") {
+      const { run } = await import("@/lib/cron/lite/jobs/fulfillment");
+      Object.assign(result, await run({ job, db, deadline, result, failedCore }));
+    }
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db, failedCore));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db, failedCore));
     else if (job === "tunvn_orders" || job === "aivault_orders" || job === "storebat_orders" || job === "mirai_orders") {
@@ -272,26 +273,6 @@ async function sampleWhatsAppGateway(db: Db, deadline: number) {
     }).catch(() => "false");
     await saveServiceHealth(db, WA_GATEWAY_HEALTH_KEY, sample);
   } catch { console.warn("[cron-health] whatsapp_sample_failed"); }
-}
-
-async function runFulfillment(db: Db, deadline: number) {
-  if (process.env.AUTO_FULFILLMENT_ENABLED !== "true") return { skipped: "auto_fulfillment_disabled" };
-  const { getDueJobs, processJobItems, releaseStaleJobs } = await import("@/lib/fulfillment/deliver");
-  const released = await releaseStaleJobs(db).catch(() => 0);
-  const jobs = await getDueJobs(FULFILLMENT_PER_RUN, db);
-  let processed = 0;
-  for (const job of jobs) {
-    if (Date.now() >= deadline) break;
-    const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, String(job.order_code));
-    if (!order) continue;
-    try {
-      const unit = await processJobItems(Number(job.id), order, {}, FULFILLMENT_ITEMS_PER_JOB, () => Date.now() < deadline, db);
-      if (unit.done || unit.attempted > 0) processed++;
-    } catch (error) {
-      if (error instanceof QueryBudgetExceeded) throw error;
-    }
-  }
-  return { stale_locks_released: released, due_jobs_processed: processed };
 }
 
 async function runWrOrders(db: Db, failedCore: string[]) {
