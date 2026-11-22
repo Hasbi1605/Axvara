@@ -2108,7 +2108,8 @@ axvara/
 │   │   ├── phases/fulfillment.ts # fase fulfillment operations: stale release, orphan, agregat, due jobs (3C fulfillment)
 │   │   ├── phases/notify.ts    # fase notify operations: QRIS, Telegram, invoice retry, reminder, WA, PIN (3C notify)
 │   │   ├── phases/expiry.ts    # fase expiry operations: stale-init, expired, stranded, manual-WA (3C expiry)
-│   │   └── phases/warung-rebahan.ts # fase WR operations: replay settlement, dispatch, sweep, Jaspay, kirim, saldo (3C warung_rebahan)
+│   │   ├── phases/warung-rebahan.ts # fase WR operations: replay settlement, dispatch, sweep, Jaspay, kirim, saldo (3C warung_rebahan)
+│   │   └── phases/sekalipay.ts # fase SK operations: recovery, dispatch, sweep, rekonsiliasi, kirim, saldo, pasangan (3C sekalipay)
 │   ├── cron/lite/
 │   │   ├── jobs.ts             # daftar job dan tipe LiteJob, tanpa impor
 │   │   ├── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis
