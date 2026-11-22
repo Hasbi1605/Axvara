@@ -14,6 +14,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded } from "@/lib/db-access";
 import { catalogSweepDue, CATALOG_SYNC_INTERVAL_MS } from "@/lib/cron/catalog-sweep";
 import { createOperationsContext, createOperationsResults } from "@/lib/cron/operations-context";
 import { initialSchedule, isStalePromotion, promoteStalePhase } from "@/lib/cron/scheduling";
+import { run as runCleanupPhase } from "@/lib/cron/phases/cleanup";
 import { advanceCronPhase, nextPhase, phaseName, readCronPhase, writeCronHeartbeat, writeCronPhase, type CronPhase } from "@/lib/cron/phase-state";
 import { isExpiredIso } from "@/lib/expiry";
 import {
@@ -72,7 +73,6 @@ const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 const COST_PER_WA_ROW = 5;
 const COST_PER_WA_RECOVERY = 2;
 const COST_PER_STALE_RELEASE = 2;
-const COST_PER_CLEANUP = 10;
 const COST_PER_WR_WORK = 8;
 // Sekalipay: biaya admission yang sama dengan WR per unit kerja fase.
 const COST_PER_SK_WORK = 8;
@@ -1075,24 +1075,8 @@ export async function POST(request: NextRequest) {
         if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
       }
     };
-    const runCleanup = async () => {
-      // === FASE CLEANUP: ringan, jalan tiap run bila budget sisa ===
-      // RR3-01: JANGAN paksakan cleanup tiap run — 4 query kosong tiap run =
-      // setengah item kirim. Cleanup jalan bila (a) tidak ada pekerjaan
-      // fulfillment/notify yang menunggu, ATAU (b) budget tersisa longgar
-      // (sisa ≥ 10 setelah cadangan ekor). Deferred cleanup adalah normal,
-      // bukan kegagalan.
-      const fulfilOrNotifyWaiting = pendingJobs > 0 || pendingNotify > 0 || waWorkPending > 0 || pendingExpiryAny > 0;
-      if (!fulfilOrNotifyWaiting && budget.fits(COST_PER_CLEANUP)) {
-        const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");
-        const cleaned = await runMaintenanceCleanup(database);
-        results.whatsapp_rows_cleaned = cleaned.whatsapp_rows_cleaned;
-        if ("cleanup_skipped" in cleaned) results.cleanup_skipped = cleaned.cleanup_skipped;
-      } else if (!deferredOut.includes("cleanup")) {
-        deferredOut.push("cleanup");
-      }
+    const runCleanup = () => runCleanupPhase(ctx);
 
-    };
     const runSekalipay = async () => {
       // === FASE SEKALIPAY: sync produk + order pending + saldo ===
       // Cermin fase WR dengan scope lebih kecil (fase 1: katalog premium +

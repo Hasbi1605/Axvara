@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3C cleanup (kelas E): pindahkan badan fase cleanup operations ke `src/lib/cron/phases/cleanup.ts`; gerbang tunggu/headroom dan urutan mutasi tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 7 file fokus 95 lulus; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3C scheduling (kelas E): ekstrak kebijakan penjadwalan fase operations (seleksi awal, 3 slot, perlindungan fulfillment, promosi basi WR/SK) ke `src/lib/cron/scheduling.ts`; probe async dan eksekusi tetap di route — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus 83 lulus; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3A-8e (kelas E): pindahkan badan job `tg_webhook` cron lite ke `src/lib/cron/lite/jobs/tg-webhook.ts`; urutan impor, simpan kesehatan, pemilihan error, dan respons 503 tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus 201 lulus + 1 TODO; TypeScript dan ESLint lulus)
