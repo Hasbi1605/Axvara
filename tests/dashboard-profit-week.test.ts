@@ -105,7 +105,7 @@ describe("modal manual 0058 milik admin", () => {
     expect(ownership.slice(fieldsStart, fieldsEnd)).not.toContain("manual_cost");
     // 3D-4: variant writes moved to sync/variant.ts; manual_cost must
     // stay out of the moved leaf too.
-    expect(read("src/lib/warung-rebahan/sync.ts") + "\n" + read("src/lib/warung-rebahan/sync/variant.ts")).not.toContain("manual_cost");
+    expect(read("src/lib/warung-rebahan/sync.ts") + "\n" + read("src/lib/warung-rebahan/sync/variant.ts") + "\n" + read("src/lib/warung-rebahan/sync/prefetch.ts") + "\n" + read("src/lib/warung-rebahan/sync/state.ts") + "\n" + read("src/lib/warung-rebahan/sync/zeroing.ts")).not.toContain("manual_cost");
     expect(read("src/lib/sekalipay/sync.ts")).not.toContain("manual_cost");
   });
 

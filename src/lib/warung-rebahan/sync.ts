@@ -23,7 +23,6 @@ import { JASPAY_LEGACY_PRODUCTS } from "./new-sales";
 import {
   COST_PER_WR_PRODUCT_SYNC,
   COST_PER_WR_VARIANT_SYNC,
-  PREFETCH_PARAM_CHUNK,
   WR_SYNC_CATALOG_BUDGET_EXTRA,
   WR_SYNC_CHECKPOINT_EVERY,
   WR_SYNC_PRODUCTS_PER_RUN,
@@ -40,12 +39,17 @@ import {
 } from "./sync/pricing";
 import { planLinkedProductWrites, upsertWrProduct } from "./sync/product";
 import type { JaspaySyncResult, Row, SqlWrite, SyncOptions, SyncResult, VariantOutcome } from "./sync/types";
-import { chunked, placeholders, runWrites } from "./sync/writes";
+import { runWrites } from "./sync/writes";
 
 export { upsertWrProduct } from "./sync/product";
 import { insertNewVariant, planExistingVariantWrites, planParentAggregateWrite, refreshParentAggregates } from "./sync/variant";
 
 export { refreshParentAggregates, upsertWrVariant } from "./sync/variant";
+import { prefetchProductRows, prefetchVariantRows } from "./sync/prefetch";
+import { logSync, readSyncState, validateCatalogResponse, writeSyncState } from "./sync/state";
+import { refreshAllParentAggregates, zeroMissingVariants, zeroVariantsByIds } from "./sync/zeroing";
+
+export { readSyncState, validateCatalogResponse, zeroMissingVariants, zeroVariantsByIds };
 
 export {
   COST_PER_WR_PRODUCT_SYNC,
@@ -59,179 +63,6 @@ export {
 export type { JaspaySyncResult, SyncOptions, SyncResult, VariantOutcome } from "./sync/types";
 
 export { calculateSellPrice, generateProductSlug, parseWrDuration, parseWrWarranty, mapWrCategory, isExcluded };
-
-/**
- * Ambil SEMUA baris `wr_variants` yang dibutuhkan sweep ini dalam beberapa
- * query `IN (...)`, bukan satu SELECT per varian.
- *
- * Ini separuh penghematan round-trip: sweep lama menembak 1 SELECT per varian
- * (87 round-trip untuk katalog penuh) hanya untuk membaca harga/stok/markup
- * lama sebagai pembanding. Dipotong per 50 id karena D1 menolak query dengan
- * lebih dari 100 bound parameter.
- */
-async function prefetchVariantRows(
-  wrVariantIds: string[],
-  db: DatabaseAccess,
-): Promise<Map<string, Row>> {
-  const map = new Map<string, Row>();
-  if (!wrVariantIds.length) return map;
-  for (const chunk of chunked(wrVariantIds, PREFETCH_PARAM_CHUNK)) {
-    const rows = await db
-      .queryAll(
-        // Kolom PERSIS sama dengan SELECT per-varian yang digantikan — jangan
-        // tambah kolom. `wr_product_name` sengaja TIDAK diambil (tidak ada
-        // pemakai di planner; kelas kini murni dari delivery_mode API).
-        `SELECT id, wr_variant_id, wr_variant_name, wr_price, wr_stock, markup_percent,
-                markup_fixed, axvara_variant_id, axvara_sell_price
-         FROM wr_variants WHERE wr_variant_id IN (${placeholders(chunk.length)})`,
-        ...chunk,
-      )
-      .catch(() => [] as Row[]);
-    for (const row of rows) {
-      const id = String(row.wr_variant_id || "");
-      if (id) map.set(id, row);
-    }
-  }
-  return map;
-}
-
-/**
- * Ambil baris registri produk + verifikasi tautan katalognya sekaligus.
- *
- * Menggantikan 2 SELECT berurutan per produk (`wr_products` lalu guard link
- * yatim di `products`). `catalog_id` hanya terisi bila tautannya benar-benar
- * masih hidup — syarat yang sama dengan guard lama
- * (`id=? AND source='warung_rebahan' AND wr_product_id=?`), sehingga tautan
- * yatim tetap jatuh ke jalur pembuatan pasangan baru.
- */
-async function prefetchProductRows(
-  wrProductIds: string[],
-  db: DatabaseAccess,
-): Promise<Map<string, { linked: number; catalogAlive: boolean }>> {
-  const map = new Map<string, { linked: number; catalogAlive: boolean }>();
-  if (!wrProductIds.length) return map;
-  for (const chunk of chunked(wrProductIds, PREFETCH_PARAM_CHUNK)) {
-    const rows = await db
-      .queryAll(
-        `SELECT wp.wr_product_id, wp.axvara_product_id, wp.is_excluded, p.id AS catalog_id
-         FROM wr_products wp
-         LEFT JOIN products p
-           ON p.id = wp.axvara_product_id
-          AND p.source = 'warung_rebahan'
-          AND p.wr_product_id = wp.wr_product_id
-         WHERE wp.wr_product_id IN (${placeholders(chunk.length)})`,
-        ...chunk,
-      )
-      .catch(() => [] as Row[]);
-    for (const row of rows) {
-      const id = String(row.wr_product_id || "");
-      if (!id) continue;
-      map.set(id, {
-        linked: row.axvara_product_id != null ? Number(row.axvara_product_id) : 0,
-        catalogAlive: row.catalog_id != null,
-      });
-    }
-  }
-  return map;
-}
-
-/**
- * Varian WR yang hilang dari respons API: set stock=0 (bukan delete).
- * WR bisa hide/unhide sementara; sync berikutnya memulihkan otomatis.
- *
- * WR3: baris `jaspay:%` TIDAK PERNAH disentuh sweep premium (sync Jaspay
- * punya seen-set sendiri). Filter eksplisit agar feed premium yang tak
- * membawa Jaspay tidak me-nol-kan katalog Jaspay.
- */
-export async function zeroMissingVariants(
-  seenVariantIds: Set<string>,
-  db: DatabaseAccess,
-): Promise<number> {
-  const { queryAll, execRun } = db;
-  const rows = await queryAll(
-    // Hanya baris yang masih punya stok (registry atau katalog) — yang sudah
-    // 0 tidak ditulis ulang tiap sweep (hemat tulis D1 + durasi potongan).
-    `SELECT w.wr_variant_id, w.axvara_variant_id FROM wr_variants w
-     LEFT JOIN product_variants pv ON pv.id = w.axvara_variant_id
-     WHERE w.is_active=1 AND w.wr_variant_id NOT LIKE 'jaspay:%'
-       AND (w.wr_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
-  ).catch(() => [] as Row[]);
-  let zeroed = 0;
-  for (const row of rows) {
-    const id = String(row.wr_variant_id || "");
-    if (!id || seenVariantIds.has(id)) continue;
-    await execRun(
-      `UPDATE wr_variants SET wr_stock=0, last_synced_at=?, updated_at=?
-       WHERE wr_variant_id=?`,
-      new Date().toISOString(),
-      new Date().toISOString(),
-      id,
-    );
-    const axvaraVariantId =
-      row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
-    if (axvaraVariantId > 0) {
-      await execRun(
-        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
-        axvaraVariantId,
-      ).catch(() => ({ changes: 0 }));
-    }
-    zeroed++;
-  }
-  return zeroed;
-}
-
-/** Baca state sync durable (cursor/generation). Aman bila tabel belum ada. */
-export async function readSyncState(
-  db: DatabaseAccess,
-): Promise<{ cursor: number; generation: string; snapshotComplete: boolean }> {
-  const out = { cursor: 0, generation: "", snapshotComplete: false };
-  try {
-    const rows = await db.queryAll(`SELECT key, value FROM wr_sync_state`);
-    for (const row of rows) {
-      const key = String(row.key || "");
-      if (key === "products_cursor") out.cursor = Math.max(0, Number(row.value || 0));
-      else if (key === "products_generation") out.generation = String(row.value || "");
-      else if (key === "products_snapshot_complete") out.snapshotComplete = String(row.value) === "1";
-    }
-  } catch {
-    /* DB pre-0029: mulai dari awal */
-  }
-  return out;
-}
-
-async function writeSyncState(db: DatabaseAccess, key: string, value: string): Promise<void> {
-  try {
-    await db.execRun(
-      `INSERT INTO wr_sync_state (key, value, updated_at) VALUES (?,?,datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')
-       WHERE wr_sync_state.value IS NOT excluded.value`,
-      key,
-      value,
-    );
-  } catch {
-    /* DB pre-0029: cursor best-effort */
-  }
-}
-
-/**
- * Validasi respons katalog upstream (P0-4): tolak data mencurigakan SEBELUM
- * menyentuh stok lokal.
- * - bukan array / null / object → malformed (jangan zero apa pun).
- * - array kosong padahal generasi sebelumnya punya produk → suspicious
- *   (upstream error / akun kena suspend) — JANGAN zero seluruh katalog.
- * Mengembalikan { ok, reason } — reason null bila aman diproses.
- */
-export function validateCatalogResponse(
-  products: unknown,
-  previousGeneration: string,
-  previousCount: number,
-): { ok: boolean; reason: string | null } {
-  if (!Array.isArray(products)) return { ok: false, reason: "catalog_malformed_not_array" };
-  if (products.length === 0 && previousCount > 0) {
-    return { ok: false, reason: "catalog_suspicious_empty" };
-  }
-  return { ok: true, reason: null };
-}
 
 export async function syncProducts(
   database?: DatabaseAccess,
@@ -546,86 +377,6 @@ export async function syncProducts(
   return result;
 }
 
-/**
- * Nol-kan varian WR tertentu (mode diff: dihapus upstream). Hanya baris yang
- * masih berstok; agregat induk produk terdampak disegarkan.
- *
- * WR3: ID `jaspay:%` diabaikan di sini (milik sync Jaspay); ID premium di
- * sync Jaspay diabaikan di sana. Tidak ada zero lintas-famili.
- */
-export async function zeroVariantsByIds(ids: string[], db: DatabaseAccess): Promise<number> {
-  const unique = [...new Set(ids.map(String).filter((id) => id.length > 0 && !id.startsWith("jaspay:")))].slice(0, 200);
-  if (!unique.length) return 0;
-  const rows: Row[] = [];
-  for (const part of chunked(unique, PREFETCH_PARAM_CHUNK)) {
-    const chunkRows = await db.queryAll(
-      `SELECT w.wr_variant_id, w.axvara_variant_id, pv.product_id FROM wr_variants w
-       LEFT JOIN product_variants pv ON pv.id = w.axvara_variant_id
-       WHERE w.is_active=1 AND w.wr_variant_id IN (${placeholders(part.length)})
-         AND (w.wr_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
-      ...part,
-    );
-    rows.push(...chunkRows);
-  }
-  const now = new Date().toISOString();
-  const parents = new Set<number>();
-  for (const row of rows) {
-    await db.execRun(
-      `UPDATE wr_variants SET wr_stock=0, last_synced_at=?, updated_at=? WHERE wr_variant_id=?`,
-      now, now, String(row.wr_variant_id),
-    );
-    const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
-    if (vid > 0) {
-      await db.execRun(
-        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
-        vid,
-      );
-    }
-    if (row.product_id != null) parents.add(Number(row.product_id));
-  }
-  for (const productId of parents) {
-    if (productId > 0) await refreshParentAggregates(productId, db).catch(() => undefined);
-  }
-  return rows.length;
-}
-
-/** Refresh agregat semua produk WR (dipanggil setelah zero-missing). */
-async function refreshAllParentAggregates(db: DatabaseAccess): Promise<void> {
-  const rows = await db
-    .queryAll(`SELECT DISTINCT product_id FROM product_variants WHERE wr_auto_managed=1`)
-    .catch(() => [] as Row[]);
-  for (const row of rows) {
-    const productId = Number(row.product_id || 0);
-    if (productId > 0 && db.canSpend(2)) {
-      await refreshParentAggregates(productId, db);
-    }
-  }
-}
-
-async function logSync(
-  result: SyncResult & { status: "success" | "partial" | "failed" },
-  db: DatabaseAccess,
-  trigger: "manual" | "cron" = "manual",
-): Promise<void> {
-  await db.execRun(
-    `INSERT INTO wr_sync_log
-      (sync_type, status, products_total, products_synced, products_excluded,
-        products_new, variants_synced, stock_changes, price_changes,
-        error_message, duration_ms, trigger)
-      VALUES ('products',?,?,?,?,?,?,?,?,?,?,?)`,
-    result.status,
-    result.total,
-    result.synced,
-    result.excluded,
-    result.newProducts,
-    result.variantsSynced,
-    result.stockChanges,
-    result.priceChanges,
-    result.errors.length ? result.errors.slice(0, 5).join(" | ").slice(0, 1000) : null,
-    result.durationMs,
-    trigger,
-  );
-}
 
 // ── WR3: sync katalog Jaspay milik Pages (terpisah dari sweep premium) ──
 //

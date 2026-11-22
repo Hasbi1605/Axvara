@@ -51,7 +51,7 @@ describe("badge asal supplier (nama bersih storefront)", () => {
       sk: fs.readFileSync("src/lib/sekalipay/sync.ts", "utf8"),
       // 3D-3: product writes moved to sync/product.ts; the guard covers
       // both files so the moved UPDATE products stays checked.
-      wr: fs.readFileSync("src/lib/warung-rebahan/sync.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/product.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/variant.ts", "utf8"),
+      wr: fs.readFileSync("src/lib/warung-rebahan/sync.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/product.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/variant.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/prefetch.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/state.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/zeroing.ts", "utf8"),
     }));
     // Sync SK: tidak ada UPDATE products SET name.
     expect(src.sk).not.toMatch(/UPDATE products SET name/);
