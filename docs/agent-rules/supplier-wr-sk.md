@@ -1,5 +1,9 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Markup SK compare-and-set — 22 Nov 2026 (lokal → publikasi via CI)
+
+- Sweep SK tidak boleh menulis `sk_products.markup_percent/markup_fixed`; markup milik admin. Registry dan `product_variants.price` hasil sweep hanya ditulis bila markup di DB masih sama dengan yang dibaca sweep (lost update 7 varian 22 Nov). Jangan hapus guard ini; regresi `tests/sekalipay/sk-sync-markup-race.test.ts`.
+
 ## FX-21 22 Nov (lokal)
 
 - **FX-21g — C2/H4 sudah diimplementasikan lokal, default OFF.** Hanya `WR_FINAL_SETTLEMENT_ENABLED=true` (string persis `"true"`) mengaktifkan marker baru dan floor final 26. Biarkan env tidak diset di Pages; uji ON hanya di lingkungan lokal sampai hardening ditinjau ulang. Saat OFF, floor tetap 6: kegagalan definitif terakhir membuat link gagal, mengabari admin, menandai order `lunas` gagal, dan memanggil notice pembeli langsung tanpa marker baru. Replay dan pagar marker untuk Retry, claim/send, dan ledger tetap aktif; tanpa marker replay hanya memakai 4 statement (dua scan dan dua reset cursor kondisional), tanpa POST supplier.

@@ -4,6 +4,7 @@ import {
   calculateCrc16,
   constantTimeEqual,
   QRIS_MAX_UNIQUE_CODE,
+  qrisMaxUniqueCode,
   makeDynamicQris,
   parseQrisWebhook,
 } from "@/lib/payments/qris";
@@ -47,15 +48,22 @@ describe("static merchant dynamic QRIS", () => {
     const inflated = inflateSync(png.slice(41, 41 + idatLength));
     expect(inflated.byteLength).toBe(width * (width + 1));
   });
-  it("keeps the unique code within 1-299 so buyers never pay above +300", async () => {
-    expect(QRIS_MAX_UNIQUE_CODE).toBe(299);
+  it("tiers the GoPay unique code by order size (owner 22 Nov 2026)", async () => {
+    // <Rp10rb tetap maks +299 (keputusan 6 Sep 2026: jangan memberatkan order kecil).
+    expect(qrisMaxUniqueCode(1)).toBe(299);
+    expect(qrisMaxUniqueCode(9_999)).toBe(299);
+    expect(qrisMaxUniqueCode(10_000)).toBe(499);
+    expect(qrisMaxUniqueCode(49_999)).toBe(499);
+    expect(qrisMaxUniqueCode(50_000)).toBe(999);
+    expect(qrisMaxUniqueCode(5_000_000)).toBe(999);
+    expect(QRIS_MAX_UNIQUE_CODE).toBe(999);
     const fs = await import("node:fs");
     const qris = fs.readFileSync("src/lib/payments/qris.ts", "utf8");
-    expect(qris).toContain("QRIS_MAX_UNIQUE_CODE");
-    expect(qris).toContain("bytes[0] % QRIS_MAX_UNIQUE_CODE");
+    expect(qris).toContain("bytes[0] % maxCode");
     expect(qris).toContain("MAX_AMOUNT - QRIS_MAX_UNIQUE_CODE");
-    expect(qris).not.toContain("% 499");
-    expect(qris).not.toContain("MAX_AMOUNT - 499");
+    // Alokasi baru dan reissue sama-sama memakai batas bertingkat.
+    expect(qris.match(/const maxCode = qrisMaxUniqueCode\(requestedAmount\)/g)).toHaveLength(2);
+    expect(qris).not.toContain("length: QRIS_MAX_UNIQUE_CODE");
   });
 });
 

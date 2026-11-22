@@ -20,7 +20,22 @@ export const QRIS_EXPIRY_MINUTES = 15;
 export const QRIS_ORDER_WINDOW_MINUTES = 15;
 /** Satu invoice asli dan maksimal satu QR pengganti. */
 export const MAX_QRIS_REISSUES = 1;
-export const QRIS_MAX_UNIQUE_CODE = 299;
+/** Batas atas mutlak kode unik GoPay (dipakai validasi nominal maksimum). */
+export const QRIS_MAX_UNIQUE_CODE = 999;
+/**
+ * Kode unik GoPay bertingkat (keputusan owner 22 Nov 2026, menutup MDR QRIS):
+ * order kecil tetap maks +Rp299 agar tidak terasa memberatkan (keputusan
+ * 6 Sep 2026); Rp10rb–<Rp50rb maks +Rp499; >=Rp50rb maks +Rp999.
+ * KlikQRIS menentukan kode uniknya sendiri dan tidak terpengaruh.
+ */
+export const QRIS_UNIQUE_CODE_TIERS = [
+  { below: 10_000, max: 299 },
+  { below: 50_000, max: 499 },
+] as const;
+export function qrisMaxUniqueCode(requestedAmount: number): number {
+  for (const tier of QRIS_UNIQUE_CODE_TIERS) if (requestedAmount < tier.below) return tier.max;
+  return QRIS_MAX_UNIQUE_CODE;
+}
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 999_999_999;
 
@@ -190,10 +205,10 @@ function lastUsedByAmount(rows: Record<string, unknown>[]): Map<number, number> 
   return map;
 }
 
-function randomUniqueCode(): number {
+function randomUniqueCode(maxCode: number): number {
   const bytes = new Uint16Array(1);
   crypto.getRandomValues(bytes);
-  return 1 + (bytes[0] % QRIS_MAX_UNIQUE_CODE);
+  return 1 + (bytes[0] % maxCode);
 }
 
 function publicQrisUrl(orderCode: string): string {
@@ -305,6 +320,7 @@ export async function createGopayQrisInvoice(orderCode: string, requestedAmount:
   const orderDeadline = parseDbTimeUtc(order?.expires_at);
   const expiresAt = new Date(Math.min(Date.now() + QRIS_EXPIRY_MINUTES * 60_000, Number.isFinite(orderDeadline) ? orderDeadline : Infinity)).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
+  const maxCode = qrisMaxUniqueCode(requestedAmount);
   // Least-recently-used: nominal yang belum pernah dipakai dahulu, lalu yang
   // terakhir dipakai paling lama. Nominal di luar DANA_AMOUNT_REUSE_WINDOW_HOURS
   // aman dicocokkan otomatis; hanya bila seluruh pool terpakai dalam jendela
@@ -313,11 +329,11 @@ export async function createGopayQrisInvoice(orderCode: string, requestedAmount:
     `SELECT payable_amount, MAX(julianday(COALESCE(expires_at,issued_at))) AS last_used_jd
      FROM payment_invoice_history WHERE provider=? AND payable_amount BETWEEN ? AND ?
      GROUP BY payable_amount`,
-    provider, requestedAmount + 1, requestedAmount + QRIS_MAX_UNIQUE_CODE,
+    provider, requestedAmount + 1, requestedAmount + maxCode,
   );
   const lastUsed = lastUsedByAmount(history);
-  const start = randomUniqueCode();
-  const codes = Array.from({ length: QRIS_MAX_UNIQUE_CODE }, (_, i) => 1 + ((start - 1 + i) % QRIS_MAX_UNIQUE_CODE))
+  const start = randomUniqueCode(maxCode);
+  const codes = Array.from({ length: maxCode }, (_, i) => 1 + ((start - 1 + i) % maxCode))
     .sort((a, b) => (lastUsed.get(requestedAmount + a) ?? 0) - (lastUsed.get(requestedAmount + b) ?? 0));
 
   for (let attempt = 0; attempt < 40; attempt++) {
@@ -461,20 +477,21 @@ export async function reissueGopayQrisInvoice(orderCode: string): Promise<QrisRe
   )).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
 
+  const maxCode = qrisMaxUniqueCode(requestedAmount);
   // Hindari nominal yang pernah dipakai order LAIN supaya webhook tidak
   // menolaknya sebagai `amount_reused_requires_review`, dan hindari nominal
   // yang baru saja dipakai order ini sendiri.
   const history = await queryAll(
     `SELECT payable_amount, order_code, julianday(COALESCE(expires_at,issued_at)) AS last_used_jd FROM payment_invoice_history
      WHERE provider=? AND payable_amount BETWEEN ? AND ?`,
-    detectedProvider, requestedAmount + 1, requestedAmount + QRIS_MAX_UNIQUE_CODE,
+    detectedProvider, requestedAmount + 1, requestedAmount + maxCode,
   );
   const lastUsed = lastUsedByAmount(history);
   const usedByOrder = new Set(history.filter((h) => h.order_code === orderCode).map((h) => Number(h.payable_amount)));
-  const start = randomUniqueCode();
+  const start = randomUniqueCode(maxCode);
   const codes = Array.from(
-    { length: QRIS_MAX_UNIQUE_CODE },
-    (_, index) => 1 + ((start - 1 + index) % QRIS_MAX_UNIQUE_CODE),
+    { length: maxCode },
+    (_, index) => 1 + ((start - 1 + index) % maxCode),
   )
     .filter((code) => requestedAmount + code !== previousAmount && !usedByOrder.has(requestedAmount + code))
     .sort((a, b) => (lastUsed.get(requestedAmount + a) ?? 0) - (lastUsed.get(requestedAmount + b) ?? 0));

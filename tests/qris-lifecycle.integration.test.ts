@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { gopaySettlement } from "./helpers/qris-fixture";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { calculateCrc16, createGopayQrisInvoice, reissueGopayQrisInvoice } from "@/lib/payments/qris";
+import { calculateCrc16, createGopayQrisInvoice, qrisMaxUniqueCode, reissueGopayQrisInvoice } from "@/lib/payments/qris";
 
 vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => ({ email: "fixture@example.test" })) }));
 let fixture: ReturnType<typeof createD1Fixture>;
@@ -206,7 +206,7 @@ describe("existing invoices during payment maintenance", () => {
   });
 });
 
-describe("QRIS amount reuse window (finite 299 pool, 2026-11-14)", () => {
+describe("QRIS amount reuse window (finite tiered pool, 2026-11-14; tiers 2026-11-22)", () => {
   function stubGopay() {
     vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
     const source = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
@@ -235,7 +235,10 @@ describe("QRIS amount reuse window (finite 299 pool, 2026-11-14)", () => {
   });
   it("allocates the least-recently-used amount once the pool is exhausted, and that payment auto-settles", async () => {
     stubGopay();
-    for (let code = 1; code <= 299; code++) {
+    // Rp10.000 masuk tier 499 sejak 22 Nov 2026; habiskan seluruh pool tier itu.
+    const pool = qrisMaxUniqueCode(10000);
+    expect(pool).toBe(499);
+    for (let code = 1; code <= pool; code++) {
       oldUse("gopay", `USED-${code}`, 10000 + code, code === 7 ? 72 : code === 9 ? 30 : 1);
     }
     chooseCode(42);

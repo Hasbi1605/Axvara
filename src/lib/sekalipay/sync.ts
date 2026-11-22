@@ -202,9 +202,13 @@ function planSkRegistryWrite(
         sk_validation=?,
         axvara_product_id=COALESCE(sk_products.axvara_product_id, ?),
         axvara_variant_id=COALESCE(sk_products.axvara_variant_id, ?),
-        markup_percent=?, markup_fixed=?, axvara_sell_price=?,
+        axvara_sell_price=?,
         last_synced_at=?, updated_at=?
       WHERE sk_variant_id=?
+        -- Compare-and-set markup: sweep tidak pernah menulis markup (milik
+        -- admin). Bila admin mengubah markup setelah sweep membaca baris ini,
+        -- harga hasil markup basi dilewati; sweep berikutnya menghitung ulang.
+        AND markup_percent IS ? AND markup_fixed IS ?
         AND (sk_product_id IS NOT ? OR sk_product_name IS NOT ?
              OR sk_category IS NOT ? OR sk_variant_name IS NOT ?
              OR sk_price IS NOT ? OR sk_stock IS NOT ?
@@ -213,7 +217,7 @@ function planSkRegistryWrite(
              OR sk_status IS NOT ? OR sk_required_fields IS NOT ?
              OR sk_validation IS NOT ?
              OR axvara_sell_price IS NOT ?)`,
-    params: [...params, now, skVariantId, ...params.slice(0, 13), sellPrice],
+    params: [...params.slice(0, 15), sellPrice, now, now, skVariantId, markupPercent, markupFixed, ...params.slice(0, 13), sellPrice],
   };
 }
 
@@ -269,7 +273,15 @@ function planSkCatalogRefreshWrite(
   stock: number,
   label: string,
   previousSupplierName: string | null = null,
+  markupGuard: { skVariantId: string; percent: number; fixed: number } | null = null,
 ): SkSqlWrite[] {
+  // Harga jual dihitung dari markup yang dibaca sweep. Bila admin mengubah
+  // markup di antara baca dan tulis, jangan timpa harga baru dengan harga basi.
+  const guardSql = markupGuard
+    ? ` AND NOT EXISTS(SELECT 1 FROM sk_products mg WHERE mg.sk_variant_id=?
+          AND (mg.markup_percent IS NOT ? OR mg.markup_fixed IS NOT ?))`
+    : "";
+  const guardParams = markupGuard ? [markupGuard.skVariantId, markupGuard.percent, markupGuard.fixed] : [];
   return [
     {
       // compare_price milik admin (ownership WR/SK): jangan tulis — tapi harga
@@ -286,7 +298,7 @@ function planSkCatalogRefreshWrite(
                 compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END,
                 updated_at=datetime('now')
             WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL)
-              AND id=?
+              AND id=?${guardSql}
               AND (price IS NOT ? OR stock IS NOT ?
                    OR ((label IS NULL OR label='' OR label IS ?) AND label IS NOT ?)
                    OR (compare_price IS NOT NULL AND compare_price <= ?))`,
@@ -297,6 +309,7 @@ function planSkCatalogRefreshWrite(
         label,
         sellPrice,
         axvaraVariantId,
+        ...guardParams,
         sellPrice,
         stock,
         previousSupplierName,
@@ -960,6 +973,9 @@ export async function syncSkProducts(
         pendingSkWrites.push(...planSkCatalogRefreshWrite(
           axvaraVariantId, axvaraProductId, effectiveSellPrice,
           Number(variant.stock), variant.name, previousSupplierName,
+          regExisting
+            ? { skVariantId: String(variant.id), percent: effectiveMarkupPercent, fixed: effectiveMarkupFixed }
+            : null,
         ));
         if (regExisting) {
           if (Number(regExisting.sk_price ?? -1) !== Number(variant.price) ||

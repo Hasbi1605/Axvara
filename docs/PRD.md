@@ -2375,8 +2375,8 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 - Harga, stok, dan rekening dikunci dalam quote server bertanda tangan selama 60 menit; retry quote yang sama tidak membuat order ganda
 - Stok direservasi ketika order Pending dibuat dan dikembalikan jika Dibatalkan/Kadaluarsa
 - QRIS dirender per order, bisa di-download, dan tidak tersedia setelah invoice kedaluwarsa
-- Kode unik 1–299 membuat nominal aktif tidak ambigu; unique partial index D1 mencegah dua invoice DANA aktif dengan total sama
-- Nominal yang pernah dipakai order lain hanya memaksa rekonsiliasi manual bila pemakaian itu berakhir < 24 jam sebelum invoice baru terbit; allocator memilih nominal least-recently-used agar produk laris tidak kehabisan pool 299 (perbaikan 14 November 2026, implementasi lokal → publikasi via CI)
+- Kode unik membuat nominal aktif tidak ambigu; unique partial index D1 mencegah dua invoice aktif dengan total sama. Kode unik GoPay bertingkat menurut subtotal (keputusan owner 22 November 2026 untuk menutup MDR QRIS ±0,8%; implementasi lokal → publikasi via CI): < Rp10.000 tetap 1–299 (keputusan 6 September 2026 agar order kecil tidak terasa memberatkan), Rp10.000–49.999 1–499, ≥ Rp50.000 1–999. KlikQRIS memakai kode unik dari provider dan tidak terpengaruh
+- Nominal yang pernah dipakai order lain hanya memaksa rekonsiliasi manual bila pemakaian itu berakhir < 24 jam sebelum invoice baru terbit; allocator memilih nominal least-recently-used agar produk laris tidak kehabisan pool kode unik (perbaikan 14 November 2026, implementasi lokal → publikasi via CI)
 - Instruksi pembayaran memisahkan QRIS otomatis dari transfer manual agar bukti tidak diwajibkan pada QRIS
 
 ### 5.3 Keamanan Payment

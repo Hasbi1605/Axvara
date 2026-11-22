@@ -2506,7 +2506,7 @@ mengubah `games_products`/enabled. Harga jual baru dihitung sinkron berikutnya (
 [Client] Konfirmasi perubahan harga → QRIS auto-select (E-Wallet/Bank maintenance 2026-09-17: tampil disabled + badge di WEB, dihilangkan di WA/TELE)
    ↓ POST /api/orders { customer (nama opsional fallback prefix email, email SELALU wajib), item IDs/qty, payment_method, proof_url, quote_token }
 [Server] Verifikasi signature+expiry+isi item → tolak non-QRIS 503 → D1 batch guard+decrement+INSERT order
-   ├─ QRIS: alokasikan kode unik 1–299 → EMVCo dynamic payload + ledger 15 menit
+   ├─ QRIS: alokasikan kode unik GoPay bertingkat `qrisMaxUniqueCode` (1–299 <Rp10rb, 1–499 <Rp50rb, 1–999 ≥Rp50rb; 22 Nov 2026) → EMVCo dynamic payload + ledger 15 menit
    │    ↓ client: layar "Pesanan dibuat · Membuka halaman pembayaran" sampai /pesanan tampil
    │      (keranjang dikosongkan di balik layar ini; `qris` respons create disimpan di salinan lokal)
    │    ↓ /pesanan/[code] menampilkan QR dari salinan lokal segar (≤10 mnt, ada `qris`) lalu
@@ -3741,6 +3741,15 @@ agent CMS, curl, dan tab admin lama tidak terikat aturan UI.
 | WR (read-only di admin) | `description` (bawaan WR), harga & stok master, harga varian, stok varian, durasi, garansi, S&K varian (`terms`) + cara aktivasi (`delivery_terms`, read-only dari `wr_variants`) |
 | Admin | `name`, `slug`, `label` varian (dipertahankan lintas sync WR/SK bila berbeda dari nama supplier sebelumnya), foto/`images`, `badge`, kategori, `sort_order`, `is_active`, `admin_description_override`, S&K + cara aktivasi versi admin per varian (`product_variants.admin_terms`/`admin_activation`/`admin_copy_fingerprint`, migrasi 0041; varian WR tetap hanya lewat `PUT /api/admin/variant-copy`, stok sendiri juga lewat batch Simpan Produk), **harga coret (`compare_price`)** — milik admin agar katalog WR bisa pasang diskon/badge seperti produk manual (2026-09-17); insiden Alight/Viu 2026-10-06: harga jual baru yang menyamai/melampaui coret lama DITOLAK CHECK `compare_price > price` sehingga UPDATE katalog gagal (markup panel 200 OK tapi storefront macet — `.catch` menelan error D1, registry berubah, `product_variants.price` tetap). Kini SETIAP tulis harga (PUT/bulk markup WR+SK + sweep sync WR+SK) me-NULL-kan coret yang tak lagi membentuk diskon valid (`CASE WHEN compare_price <= harga_baru THEN NULL`) — coret basi hilang, coret valid dipertahankan. Sync TETAP tidak menulis coret baru (hanya NULL-kan yang basi agar harga otoritatif tembus); input Harga Coret di modal edit selalu terbuka (label "✎ bisa diedit") |
 | Panel WR | markup (`wr_variants.markup_percent/markup_fixed`) |
+
+**Revisi 22 November 2026 (markup SK compare-and-set, implementasi lokal → publikasi via CI):**
+Sweep SK (`planSkRegistryWrite`) tidak lagi menulis `sk_products.markup_percent/markup_fixed`
+(milik admin) dan hanya menulis registry bila markup di DB masih sama dengan yang dibaca sweep;
+`planSkCatalogRefreshWrite` melewati update `product_variants.price` bila markup registry sudah
+berubah. Sebelumnya sweep yang membaca markup lalu commit setelah admin menyimpan markup baru
+mengembalikan markup dan harga lama secara permanen (terlihat pada 7 varian saat kenaikan harga
+massal 22 Nov). Baris yang dilewati dihitung ulang sweep berikutnya. Regresi:
+`tests/sekalipay/sk-sync-markup-race.test.ts`.
 
 **Revisi lokal 18 November 2026 (kepemilikan nama, slug, label varian & modal WR/SK):**
 `name` dan `slug` dihapus dari `WR_OWNED_PRODUCT_FIELDS` (sync WR hanya mengisi keduanya saat `INSERT`), dan `label` dihapus dari `WR_OWNED_VARIANT_FIELDS`. Semua jalur sync WR (`planExistingVariantWrites`, `syncJaspayCatalog`) dan SK (`planSkCatalogRefreshWrite`) hanya memperbarui `product_variants.label` bila masih `NULL`/kosong atau sama dengan nama supplier sebelumnya (`wr_variants.wr_variant_name` / `sk_products.sk_variant_name` pra-batch) sehingga rename admin bertahan lintas sweep tanpa kolom skema baru dan sweep no-op tetap 0 tulis `product_variants`. `GET /api/products/:id` (dan `GET /api/admin/variants`) mengekspos `supplier_cost: number | null` dan `supplier_cost_source: "WR" | "SK" | null` via `LEFT JOIN wr_variants`/`sk_products` (presedensi WR → SK seperti `cost-snapshot.ts`); `PUT /api/products/:id` dan `POST`/`PUT /api/admin/variants` mengabaikan `manual_cost` masuk untuk varian yang tertaut `wr_variant_id`/`sk_variant_id` (mempertahankan nilai tersimpan tanpa error; `PUT /api/admin/variants` juga hanya memproses key yang benar-benar ada di body agar default Zod `.partial()` tidak menimpa kolom varian).

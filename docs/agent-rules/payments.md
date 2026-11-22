@@ -4,6 +4,11 @@ Preflight metode Market di `src/lib/orders/checkout/methods.ts` berjalan setelah
 
 - **Foto QRIS Telegram (FX-3b, lokal):** `qrenew:` mengambil klaim foto yang sama dengan checkout, Refresh dan cron setelah ledger QR pengganti sukses diperbarui. Jika klaim aktif atau foto sudah ditandai terkirim, jangan kirim foto lagi. Penolakan pasti melepas stempel klaim; hasil ambigu tetap memakai `settleAmbiguousInvoiceSend`.
 
+## Kode unik GoPay bertingkat — 22 November 2026 (lokal → publikasi via CI)
+
+- Keputusan owner: kode unik GoPay menutup MDR QRIS (±0,8%). `qrisMaxUniqueCode(requestedAmount)` di `src/lib/payments/qris.ts`: < Rp10.000 tetap maks 299 (keputusan 6 Sep 2026, jangan memberatkan order kecil), Rp10.000–49.999 maks 499, ≥ Rp50.000 maks 999. Alokasi baru dan reissue wajib memakai batas yang sama; `QRIS_MAX_UNIQUE_CODE` (999) hanya batas atas mutlak untuk validasi nominal.
+- KlikQRIS menentukan kode unik sendiri (`total_amount` provider); jangan tambahkan kode lokal kedua. Jangan menaikkan tier < Rp10.000 tanpa keputusan owner baru.
+
 ## FX-18 — Pensiun DANA QRIS AXVARA (21 November 2026, lokal)
 
 - `QRIS_ACTIVE_PROVIDER` hanya menerima `gopay` atau `klikqris`; kosong, `dana` lama, atau salah menutup QRIS baru tanpa fallback. Hanya invoice GoPay dapat di-reissue. Webhook Android dan env `DANA_STATIC_QRIS`, `DANA_WEBHOOK_SECRET`, `DANA_QRIS_ENABLED` tidak dipakai lagi. E-wallet Sekalipay `DANA_REALTIME` tetap berlabel DANA, dengan logo/urutan yang sama.
