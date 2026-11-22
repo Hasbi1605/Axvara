@@ -6,7 +6,7 @@ export const WR_LINK_SETTLE_FLOOR = 4;
 export const WR_AGGREGATE_FLOOR = 14;
 export const WR_FINAL_FLOOR = 8 + WR_LINK_SETTLE_FLOOR + WR_AGGREGATE_FLOOR;
 
-const liveLink = `l.status='failed' AND l.wr_order_id IS NULL AND l.request_sent_at IS NULL`;
+const liveLink = `l.status='failed' AND COALESCE(l.wr_order_id,'')='' AND l.request_sent_at IS NULL`;
 const manual = `(i.status='manual_required' OR COALESCE(i.last_error,'') LIKE 'manual_handover:%' OR i.delivered_message_id IS 'manual')`;
 const unbound = `l.fulfillment_item_id IS NULL AND NOT EXISTS (SELECT 1 FROM fulfillment_items r WHERE r.wr_link_id=l.id)`;
 // Freeze whether fallback was ever admissible: a bound/conflicting link must

@@ -27,7 +27,7 @@ import { syncJaspayCatalog } from "@/lib/warung-rebahan/sync";
 import { zeroMissingVariants, zeroVariantsByIds, syncProducts } from "@/lib/warung-rebahan/sync";
 import { buyerDeliveryBadge, buyerDeliveryEtaJaspay, buyerDeliveryKind } from "@/lib/catalog";
 import { jaspayEtaForBuyer, jaspayLabelForBuyer } from "@/lib/warung-rebahan/delivery-class";
-import { seedWrCatalog, seedWrFulfillmentItem, seedWrOrder, setupWrFixture } from "./helpers";
+import { seedWrCatalog, seedWrOrder, setupWrFixture } from "./helpers";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -166,7 +166,7 @@ describe("WR3 dispatch: no wrong-family fallback + ref stability", () => {
     }
   });
 
-  it("dispatch menolak fail-closed bila cap missing + qty melebihi cap", async () => {
+  it.each([null, ""])("dispatch menolak fail-closed bila cap missing dengan invoice %j", async wrOrderId => {
     const fx = await setupWrFixture();
     try {
       seedJaspayMirror(fx, { maxQty: null });
@@ -178,6 +178,7 @@ describe("WR3 dispatch: no wrong-family fallback + ref stability", () => {
       stubJaspayFetch(() => { calls++; return { success: true, message: "ok", data: {} }; });
       const db = createDatabaseAccess(fx.db);
       await createWrOrderLink("AXV-20261102-JSP001", [{ product_id: 10, variant_id: 10, qty: 2 }], db);
+      fx.sql.prepare("UPDATE wr_order_links SET wr_order_id=?").run(wrOrderId);
       await processWrPendingOrders(db);
       const link = fx.sql.prepare("SELECT status, last_error FROM wr_order_links").get() as { status: string; last_error: string };
       expect(link.status).toBe("failed");

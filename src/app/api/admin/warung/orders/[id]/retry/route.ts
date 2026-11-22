@@ -48,11 +48,12 @@ export async function POST(
   // handover manual. Yang DITOLAK tetap: dibatalkan admin, atau WR sudah
   // pernah menerima order (beli ulang = dobel bayar).
   const exhausted = Number(link.attempt_count || 0) >= Number(link.max_attempts || 3);
+  const noInvoice = (link.wr_order_id ?? "") === "";
   const preSendFailure = status === "failed"
-    && !link.request_sent_at && !link.wr_order_id
+    && !link.request_sent_at && noInvoice
     && !String(link.last_error || "").startsWith("cancelled_by_admin");
   if (status === "failed" && !preSendFailure) {
-    return NextResponse.json({ error: "not_retryable", status, reason: link.wr_order_id ? "already_ordered_at_wr" : "cancelled_or_sent" }, { status: 409 });
+    return NextResponse.json({ error: "not_retryable", status, reason: noInvoice ? "cancelled_or_sent" : "already_ordered_at_wr" }, { status: 409 });
   }
   if (exhausted && !preSendFailure) {
     return NextResponse.json({ error: "max_attempts_reached" }, { status: 409 });
@@ -72,18 +73,18 @@ export async function POST(
   // anggota RETRYABLE, jadi ditolak 409.
   //
   // PENGECUALIAN 2026-10-10 (preSendFailure): link `failed` yang WR belum
-  // pernah terima (request_sent_at NULL + wr_order_id NULL) tidak bisa lewat
+  // pernah terima (request_sent_at NULL + wr_order_id NULL atau '') tidak bisa lewat
   // CAS berbasis attempt (attempt sudah max) — langsung RESET ke `retry`
   // dengan kuota baru. Aman dari amplifikasi ke WR: baris tanpa wr_order_id
   // berarti WR belum pernah menerima order (saldo belum terpotong), dan
   // pen penulisan tetap CAS atas (status, attempt_count) + pagar kedua
-  // request_sent_at/wr_order_id NULL di WHERE.
+  // request_sent_at NULL dan tanpa invoice di WHERE.
   if (preSendFailure) {
     const revived = await execRun(
       `UPDATE wr_order_links SET status='retry', next_attempt_at=datetime('now'),
          last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
          request_sent_at=NULL, attempt_count=0, updated_at=datetime('now')
-       WHERE id=? AND status='failed' AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL
+       WHERE id=? AND status='failed' AND attempt_count=? AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
          AND wr_final_settle_token IS NULL
          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code
            AND ${PURCHASE_PAID_SQL_ALIASED})`,
@@ -102,7 +103,7 @@ export async function POST(
     `UPDATE wr_order_links SET status='retry', next_attempt_at=datetime('now'),
        last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
        request_sent_at=NULL, attempt_count=?, updated_at=datetime('now')
-     WHERE id=? AND status=? AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL
+     WHERE id=? AND status=? AND attempt_count=? AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
        AND wr_final_settle_token IS NULL
        AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code
          AND ${PURCHASE_PAID_SQL_ALIASED})`,

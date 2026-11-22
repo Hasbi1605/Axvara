@@ -545,7 +545,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
   // WR3 Jaspay: keluarga `jaspay:` TIDAK PERNAH lewat POST premium.
   // Salah famili = order salah produk + invoice tak terkorelasi.
   if (isJaspayVariantId(String(link.wr_variant_id || ""))) {
-    return processOneJaspayLink(id, link, db, claim.owner, onMarketZeroed);
+    return processOneJaspayLink(id, link, db, claim.owner, attempt, onMarketZeroed);
   }
   let receivedOrder = false;
   try {
@@ -633,19 +633,19 @@ async function processOneJaspayLink(
   link: Row,
   db: DatabaseAccess,
   owner: string,
+  attempt: number,
   onMarketZeroed?: () => void,
 ): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
   const { execRun } = db;
-  const attempt = Number(link.attempt_count || 0);
   const variantId = String(link.wr_variant_id || "");
   const decoded = decodeJaspayVariantId(variantId);
   if (!decoded) {
     await execRun(
       `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
          lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now')
-       WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+       WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
       "jaspay_malformed_variant_id",
-      id,
+      id, owner, attempt,
     );
     return "failed";
   }
@@ -663,9 +663,9 @@ async function processOneJaspayLink(
       await execRun(
         `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
            lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now')
-         WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+         WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
         "jaspay_max_quantity_missing",
-        id,
+        id, owner, attempt,
       );
       return "failed";
     }
@@ -673,9 +673,9 @@ async function processOneJaspayLink(
       await execRun(
         `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
            lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now')
-         WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+         WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
         `jaspay_max_quantity_exceeded:${qty}>${max}`,
-        id,
+        id, owner, attempt,
       );
       return "failed";
     }
@@ -683,10 +683,10 @@ async function processOneJaspayLink(
     await execRun(
       `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
          lease_owner=NULL, lease_expires_at=NULL, next_attempt_at=?, updated_at=datetime('now')
-       WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+       WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
       "jaspay_cap_check_db_error",
-      nextPurchaseAttemptIso(attempt + 1, WR_RETRY_DELAYS_MINUTES),
-      id,
+      nextPurchaseAttemptIso(attempt, WR_RETRY_DELAYS_MINUTES),
+      id, owner, attempt,
     );
     return "retried";
   }
@@ -739,7 +739,7 @@ async function processOneJaspayLink(
     }
     return "succeeded";
   } catch (error) {
-    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt + 1, db, owner, onMarketZeroed);
+    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt, db, owner, onMarketZeroed);
   }
 }
 
@@ -891,14 +891,14 @@ async function handleJaspayOrderError(
       `UPDATE wr_order_links SET status='submitted',
          last_error=?, lease_owner=NULL, lease_expires_at=NULL,
          next_attempt_at=datetime('now','+${WR_SUBMITTED_STALE_MINUTES} minutes'),
-         updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+         updated_at=datetime('now') WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
       `ambiguous_timeout: ${message}`,
-      id,
+      id, owner, attempt,
     );
     return "retried";
   }
   if (error instanceof WrInsufficientBalanceError) {
-    return handleInsufficientBalance(id, link, message, db);
+    return handleInsufficientBalance(id, link, message, db, owner, attempt);
   }
   if (error instanceof WrOutOfStockError) {
     // Jaspay: availability upstream mati => mirror stok 0 (jujur, bukan
@@ -928,10 +928,10 @@ async function handleJaspayOrderError(
   await execRun(
     `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
        lease_owner=NULL, lease_expires_at=NULL,
-       next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+       next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
     message,
     nextPurchaseAttemptIso(attempt, WR_RETRY_DELAYS_MINUTES),
-    id,
+    id, owner, attempt,
   );
   return "retried";
 }
@@ -957,14 +957,14 @@ async function handleOrderError(
       `UPDATE wr_order_links SET status='submitted',
          last_error=?, lease_owner=NULL, lease_expires_at=NULL,
          next_attempt_at=datetime('now','+${WR_SUBMITTED_STALE_MINUTES} minutes'),
-          updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+          updated_at=datetime('now') WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
       `ambiguous_timeout: ${message}`,
-      id,
+      id, owner, attempt,
     );
     return "retried";
   }
   if (error instanceof WrInsufficientBalanceError) {
-    return handleInsufficientBalance(id, link, message, db);
+    return handleInsufficientBalance(id, link, message, db, owner, attempt);
   }
   if (error instanceof WrOutOfStockError) {
     // Gagal pre-kirim yang pasti (vendor menolak sebelum membuat order):
@@ -994,10 +994,10 @@ async function handleOrderError(
   await execRun(
     `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
        lease_owner=NULL, lease_expires_at=NULL,
-        next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+        next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
     message,
     nextPurchaseAttemptIso(attempt, WR_RETRY_DELAYS_MINUTES),
-    id,
+    id, owner, attempt,
   );
   return "retried";
 }
@@ -1017,7 +1017,7 @@ async function finishWrFailure(db: DatabaseAccess, link: Row, owner: string, att
   const token = definitive ? crypto.randomUUID() : null;
   const failed = await db.execRun(`UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
     lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now'), wr_final_settle_token=${WR_FINAL_MARKER_SQL}
-    WHERE id=? AND status='claimed' AND wr_order_id IS NULL AND lease_owner=? AND attempt_count=?
+    WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?
     AND request_sent_at IS NOT NULL AND wr_final_settle_token IS NULL`, message, token, Number(link.h4_unbound), id, owner, attempt);
   if (!Number(failed.changes)) return "retried";
   await notifyAdmin(`⚠️ <b>Order ${label} gagal</b> <code>${code}</code>\n${escapeHtml(message)}`);
@@ -1043,6 +1043,8 @@ async function handleInsufficientBalance(
   link: Row,
   message: string,
   db: DatabaseAccess,
+  owner: string,
+  attempt: number,
 ): Promise<"blocked"> {
   const { execRun } = db;
   const blocked = await execRun(
@@ -1050,9 +1052,9 @@ async function handleInsufficientBalance(
        last_error=?, request_sent_at=NULL, lease_owner=NULL, lease_expires_at=NULL,
        attempt_count=attempt_count-1,
        next_attempt_at=datetime('now','+60 minutes'), updated_at=datetime('now')
-      WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+      WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?`,
     `saldo_wr_habis: ${message}`,
-    id,
+    id, owner, attempt,
   );
   if (!Number(blocked.changes ?? 0)) return "blocked";
   await notifyAdmin(

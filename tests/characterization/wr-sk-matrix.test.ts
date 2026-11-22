@@ -500,6 +500,41 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
   };
   const notices = (f: ReturnType<typeof setup>) => f.fx.sql.prepare("SELECT status FROM buyer_notice_log WHERE order_code=?").all(f.code);
 
+  it.each(["final", "interrupted final", "stock", "balance", "ambiguous", "admin failed", "admin retry"] as const)("FX-21a legacy blank invoice: %s", async phase => {
+    const f = prepareH4();
+    f.set("wr_order_id=''");
+    if (phase === "admin failed" || phase === "admin retry") {
+      const failed = phase === "admin failed";
+      f.set(failed ? "status='failed',attempt_count=max_attempts" : "status='retry',attempt_count=1");
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+      const http = wire();
+      expect((await retry("premium")).status).toBe(200);
+      expect(f.row()).toMatchObject({ status: "retry", attempt_count: failed ? 0 : 1, wr_order_id: "", request_sent_at: null });
+      expect(http.calls).toEqual([]);
+      return;
+    }
+    const final = phase === "final" || phase === "interrupted final";
+    if (!final) f.set("attempt_count=0");
+    if (phase === "interrupted final") f.fx.control.fail = sql => sql.includes("UPDATE fulfillment_items AS i");
+    const http = wire({ [f.buy]: () => {
+      if (phase === "ambiguous") throw new Error("fixture connection reset after send");
+      if (phase === "balance") return Response.json({ success: false, message: "INSUFFICIENT_BALANCE" }, { status: 402 });
+      return wrReject(true);
+    } });
+    if (phase === "interrupted final") {
+      await expect(f.process(f.db, due)).rejects.toThrow("Injected database interruption");
+      expect(f.row().wr_final_settle_token).toEqual(expect.any(String));
+      f.fx.control.fail = null;
+      await replayWrFinalSettlement(createDatabaseAccess(f.fx.db));
+    } else expect(await f.process(f.db, due)).toMatchObject(final ? { failed: 1 } : phase === "balance" ? { blocked: 1 } : { retried: 1 });
+    expect(await f.process(f.db, due)).toMatchObject({ processed: 0 });
+    expect(f.row()).toMatchObject({ wr_order_id: "", status: final ? "failed" : phase === "stock" ? "retry" : phase === "balance" ? "blocked_balance" : "submitted",
+      request_sent_at: phase === "ambiguous" ? expect.any(String) : null, lease_owner: null, wr_final_settle_token: null });
+    expect(f.items()).toEqual([final ? "failed" : "queued"]);
+    expect(f.order()).toMatchObject({ fulfillment_status: final ? "failed" : "queued", wr_aggregate_refresh_token: null });
+    expect(http.calls).toEqual(final || phase === "balance" ? [f.buy, "POST /emails"] : [f.buy]);
+  });
+
   it("keeps mixed cart active until sibling completes; sends one notice and never buys twice", async () => {
     const f = prepareH4(true);
     const http = wire({ [f.buy]: () => wrReject(true) });
