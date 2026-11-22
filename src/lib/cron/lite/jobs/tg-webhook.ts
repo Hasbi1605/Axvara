@@ -8,7 +8,7 @@
 // marker. Import order (webhook-guard, then service-health), the single
 // guard call, health admission, and error selection are preserved.
 
-import { saveServiceHealth, type LiteContext } from "@/lib/cron/lite/context";
+import type { LiteContext } from "@/lib/cron/lite/context";
 
 export type TgWebhookOutcome =
   | { kind: "done" }
@@ -17,7 +17,7 @@ export type TgWebhookOutcome =
 export async function run(ctx: LiteContext): Promise<TgWebhookOutcome> {
   const { db, result } = ctx;
   const { guardTelegramWebhook } = await import("@/lib/telegram/webhook-guard");
-  const { TG_WEBHOOK_HEALTH_KEY } = await import("@/lib/service-health");
+  const { TG_WEBHOOK_HEALTH_KEY, saveServiceHealth } = await import("@/lib/service-health");
   const guard = await guardTelegramWebhook(db);
   Object.assign(result, guard);
   // A successful reinstall is not proof of recovery. Let the next

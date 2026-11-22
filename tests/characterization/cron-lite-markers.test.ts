@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/cron/lite/route";
 import { QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
-import { WA_GATEWAY_HEALTH_KEY } from "@/lib/service-health";
+import { KLIKQRIS_POLL_HEALTH_KEY, TG_WEBHOOK_HEALTH_KEY, WA_GATEWAY_HEALTH_KEY } from "@/lib/service-health";
 import { createD1Fixture } from "../helpers/d1-fixture";
 
 const mocks = vi.hoisted(() => ({
@@ -95,6 +95,34 @@ async function run(job: string) {
 }
 
 describe("T4 lite completion marker", () => {
+  it("stores KlikQRIS and Telegram samples independently of their completion markers", async () => {
+    mocks.klik.mockResolvedValue({ payments_checked: 2, payments_failed: 1 });
+    mocks.tgWebhook.mockResolvedValue({ status: "mismatch", pending_update_count: 7 });
+    expect((await run("payments")).status).toBe(503);
+    expect((await run("tg_webhook")).status).toBe(503);
+    expect(setting(KLIKQRIS_POLL_HEALTH_KEY)?.value).toBe("1");
+    expect(setting(TG_WEBHOOK_HEALTH_KEY)?.value).toBe('{"error":"mismatch","pending":7}');
+  });
+
+  it.each([new Error("fixture write failure"), new QueryBudgetExceeded()])("logs and swallows a health write failure: %s", async error => {
+    mocks.tgWebhook.mockResolvedValue({ status: "healthy", pending_update_count: 0 });
+    prime(TG_WEBHOOK_HEALTH_KEY);
+    const prepare = fx.db.prepare;
+    fx.db.prepare = sql => {
+      if (sql.includes("ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at")) throw error;
+      return prepare(sql);
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await run("tg_webhook")).toMatchObject({ status: 200, body: { status: "healthy" } });
+      expect(setting(TG_WEBHOOK_HEALTH_KEY)).toEqual(beforeFailure);
+      expect(warn).toHaveBeenCalledExactlyOnceWith("[cron-health] sample_write_failed", TG_WEBHOOK_HEALTH_KEY);
+      expect(setting(marker("tg_webhook"))?.value).toBeTruthy();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it.each([
     ["payments", "nowpayments", mocks.now], ["payments", "sekalipay_gateway", mocks.gateway], ["payments", "sekalipay_gateway_stale", mocks.staleGateway],
     ["wr_orders", "stale_claims", mocks.wr], ["wr_orders", "blocked_balance", mocks.wrBlocked], ["wr_orders", "missing_links", mocks.wrMissing],

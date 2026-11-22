@@ -44,7 +44,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { constantTimeEqual } from "@/lib/security";
 import { createBudgetedDatabase, QueryBudgetExceeded } from "@/lib/db-access";
-import { saveServiceHealth, type LiteContext } from "@/lib/cron/lite/context";
+import type { LiteContext } from "@/lib/cron/lite/context";
 import { LITE_JOBS, type LiteJob } from "@/lib/cron/lite/jobs";
 
 export const runtime = "edge";
@@ -166,7 +166,7 @@ type Db = LiteContext["db"];
 async function sampleWhatsAppGateway(db: Db, deadline: number) {
   const url = process.env.WHATSAPP_GATEWAY_URL?.trim().replace(/\/+$/, "");
   if (process.env.WHATSAPP_ENABLED !== "true" || !url || !db.canSpend(2) || Date.now() + 4_000 > deadline) return;
-  const { WA_GATEWAY_HEALTH_KEY } = await import("@/lib/service-health");
+  const { WA_GATEWAY_HEALTH_KEY, saveServiceHealth } = await import("@/lib/service-health");
   try {
     if (await db.queryFirst(`SELECT 1 FROM store_settings WHERE key=? AND updated_at > datetime('now','-5 minutes')`, WA_GATEWAY_HEALTH_KEY)) return;
     if (Date.now() + 4_000 > deadline) return;

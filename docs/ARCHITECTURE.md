@@ -4568,6 +4568,8 @@ reconcile `/transactions` Premium mengecualikan `jaspay:%`, dan refresh order
 memakai status Jaspay per invoice.
 
 ### 16.7 Health anti-false-alarm + kelas pengiriman WR (2026-09-16)
+
+`src/lib/service-health.ts` juga memiliki writer sampel best-effort ke `store_settings` untuk KlikQRIS, webhook Telegram, dan gateway WA. Pemanggil Lite tetap memuatnya lazily; sampler WA tetap di route. Gagal tulis (termasuk kehabisan budget D1) hanya mencatat warning dan tidak mengubah hasil job.
 - Query health `tgQueue`/`fulfillmentQueue`/`oldestDue` JOIN orders dan hanya
   menghitung order lunas+paid. Sebelumnya 7 `failed` order final menyeret
   Telegram ke `degraded` padahal bot sehat (webhook 0 pending, no error).

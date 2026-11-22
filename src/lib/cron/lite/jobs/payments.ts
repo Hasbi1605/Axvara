@@ -16,7 +16,7 @@
 // branch did; `ctx.deadline` drives the same `Date.now()` admission math.
 
 import { QueryBudgetExceeded } from "@/lib/db-access";
-import { saveServiceHealth, type LiteContext } from "@/lib/cron/lite/context";
+import type { LiteContext } from "@/lib/cron/lite/context";
 
 export type PaymentsOutcome = { paymentsFailed: boolean };
 
@@ -82,7 +82,7 @@ export async function run(ctx: LiteContext): Promise<PaymentsOutcome> {
     }
   }
   if (klik.payments_checked > 0 && db.canSpend(1) && Date.now() + 1_000 <= deadline) {
-    const { KLIKQRIS_POLL_HEALTH_KEY } = await import("@/lib/service-health");
+    const { KLIKQRIS_POLL_HEALTH_KEY, saveServiceHealth } = await import("@/lib/service-health");
     await saveServiceHealth(db, KLIKQRIS_POLL_HEALTH_KEY, String(klik.payments_failed));
   }
   return { paymentsFailed: Number(result.payments_failed) > 0 || failedCore.length > 0 };

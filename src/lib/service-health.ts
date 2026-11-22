@@ -9,14 +9,25 @@
 // - degraded: ada bukti masalah (kegagalan kirim, antrean menua, error webhook).
 // - unknown: env belum lengkap sehingga tidak bisa dinilai.
 //
-// Semua fungsi murni atas data DB/env agar gampang di-unit-test; route hanya
-// mengambil baris dan memanggilnya.
+// Pembaca/evaluator murni atas data DB/env; penulisan sampel cron best-effort.
+
+import type { DatabaseAccess } from "@/lib/db-access";
 
 export type ServiceLevel = "configured" | "healthy" | "degraded" | "unknown";
 
 export const TG_WEBHOOK_HEALTH_KEY = "tg_webhook_health";
 export const WA_GATEWAY_HEALTH_KEY = "wa_gateway_health";
 export const KLIKQRIS_POLL_HEALTH_KEY = "klikqris_health_poll_failed";
+
+export async function saveServiceHealth(db: DatabaseAccess, key: string, value: string) {
+  try {
+    await db.execRun(`INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, key, value);
+  } catch {
+    // A failed sample write must not change payment/notification handling.
+    console.warn("[cron-health] sample_write_failed", key);
+  }
+}
 
 // GoPay and KlikQRIS already share the event ledger; unrelated IPNs and
 // supplier events do not measure the QRIS rails.
