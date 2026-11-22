@@ -395,7 +395,7 @@ lebih jauh adalah perubahan kelas B.
 
 **2C: H4, kelas B.** D1 disetujui owner 21 Nov. Lampiran MAP-3 §4.
 - **Floor:** floor admission khusus percobaan terakhir WR dibuktikan dengan pengukuran.
-  Angka 24 adalah hipotesis, bukan konstanta yang sudah disetujui.
+  C2 lokal: 26 setelah SELECT due (8 prefix, 4 settlement link/ACK, 14 agregat/notice/ACK); replay maksimum 22 termasuk scan/cursor dua lane. Angka 24 lama adalah hipotesis.
   - Hitung prefix fresh/inline, stock/non-stock, dan tail notifikasi/replay.
   - Admit sebelum klaim/fence/HTTP, tanpa menaikkan budget global dan tanpa mengubah
     admission SK maupun WR non-final.
@@ -556,7 +556,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | B4b (lease WR) | B | lokal `eba74b42` | Advance otoritatif dan completion baru Premium/Jaspay saja; expected-fail 29→25. |
 | B5 (R2) | B | lokal (patch; belum dipublikasikan) | Kepemilikan invoice SK dijaga atomik pada receipt dan binder; advance recovery tidak menulis ulang invoice. Expected-fail 25→22; 2C tetap terpisah. |
 | C1 (H4 migrasi) | B | lokal (patch 0154; belum diterapkan) | Marker-only; deploy dan verifikasi serializer C1-PRE `ea8a58c4` sebelum migrasi; tanpa backfill atau aktivasi C2. |
-| C2 (H4 aktivasi) | B | belum | D1 disetujui |
+| C2 (H4 aktivasi) | B | kandidat lokal | Pagar link/agregat terpisah, replay tanpa POST; review dan rilis belum diverifikasi. |
 | 3A | E | 3A-1, 3A-2a promo, 3A-2b cleanup, 3A-3 notify, 3A-4a supplier kecil, 3A-4b Pedia, 3A-5 payments lokal | Modul job baru tidak menambah import runtime selain yang sudah dimuat route; expiry, fulfillment, WR/SK dan katalog masih inline |
 | 3B | E | 3B-1..3B-6 lokal (GET flags/detail-view; respons POST; guard; metode; slot+create; invoice; validasi) | 3B-6: validasi pra-reuse di `checkout/validate.ts` |
 | 3C | E | 3C-1, 3C-2 lokal (phase-state, catalog-sweep, OperationsContext beku) | Wonder APPROVE; berikutnya satu fase per commit |

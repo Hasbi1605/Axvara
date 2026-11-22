@@ -2216,6 +2216,8 @@ Untuk pesanan Warung Rebahan yang tertahan karena saldo supplier, pembeli web me
 
 ### 2.2 Functional — Admin
 
+**C2/H4 (kandidat lokal, belum dirilis; FR-S17/FR-S26):** penolakan definitif pada percobaan terakhir WR Premium/Jaspay hanya menggagalkan item yang dimiliki link. Pesanan dan kabar gagal menunggu item lain tuntas; pemulihan tidak mengulang pembelian. Admin Retry menunggu settlement link, bukan pekerjaan agregat/notice. Bila hasil kirim tidak diketahui, sistem tidak otomatis mengirim ulang.
+
 | ID | Requirement |
 |----|-------------|
 | FR-A1 | Admin login terpisah di `/admin` (email + password, rate-limited) |

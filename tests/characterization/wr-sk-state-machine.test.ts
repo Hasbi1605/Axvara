@@ -118,7 +118,7 @@ describe.each(["WR", "SK"] as const)("%s purchase queue", supplier => {
       db.queryAll = async (...args) => {
         const rows = await query(...args);
         db.queryAll = query;
-        expect(rows).toEqual([before]);
+        expect(rows).toEqual([supplier === "WR" ? { ...before, h4_unbound: 1 } : before]);
         if (++observed === 2) release();
         await bothRead;
         return rows;
@@ -203,12 +203,13 @@ describe.each(["WR", "SK"] as const)("%s purchase queue", supplier => {
 describe("WR Premium purchase and admin retry", () => {
   it("exhausts a last definitive WR stock rejection without another automatic purchase", async () => {
     const { p, db, fx, row, set } = await setup("WR");
-    set("attempt_count=max_attempts-1");
+    set("attempt_count=max_attempts-1, fulfillment_item_id=1");
     const http = supplierFetch("WR", () => Response.json({ success: false, message: "OUT_OF_STOCK" }, { status: 409 }));
     expect(await p.process(db, due())).toMatchObject({ failed: 1 });
     expect(row()).toMatchObject({ status: "failed", attempt_count: 3, request_sent_at: null, wr_order_id: null,
       lease_owner: null, lease_expires_at: null });
     expect(fx.sql.prepare("SELECT fulfillment_status FROM orders").get()?.fulfillment_status).toBe("failed");
+    expect(fx.sql.prepare("SELECT status FROM fulfillment_items").get()?.status).toBe("failed");
     expect(await p.process(db, due())).toMatchObject({ processed: 0 });
     expect(http.buys()).toBe(1);
   });
@@ -375,7 +376,7 @@ describe.each(["premium", "jaspay"] as const)("WR %s transport and receipt", fam
     expect(http.calls).toEqual([`POST ${endpoint}`]);
   });
 
-  it.todo("BUG? WR purchase exhaustion must wait for queued siblings before marking the order failed or emailing (deferred FX-20: needs statement budget for item+aggregate on final attempt)", async () => {
+  it("WR purchase exhaustion waits for queued siblings before failing the order or emailing", async () => {
     const { fx, db, row, set } = await setupFamily();
     set("attempt_count=max_attempts-1, fulfillment_item_id=1");
     fx.sql.exec(`UPDATE fulfillment_items SET wr_link_id=1;

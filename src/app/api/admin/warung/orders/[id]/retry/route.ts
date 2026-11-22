@@ -27,12 +27,13 @@ export async function POST(
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
   const link = await queryFirst(
-    `SELECT l.id, l.status, l.attempt_count, l.max_attempts, l.request_sent_at, l.wr_order_id, l.last_error,
+    `SELECT l.id, l.status, l.attempt_count, l.max_attempts, l.request_sent_at, l.wr_order_id, l.last_error, l.wr_final_settle_token,
        o.status AS order_status, o.payment_status, o.supplier_purchase_disabled
      FROM wr_order_links l JOIN orders o ON o.code=l.order_code WHERE l.id=?`,
     linkId,
   );
   if (!link) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (link.wr_final_settle_token != null) return NextResponse.json({ error: "final_settlement_pending" }, { status: 409 });
   const status = String(link.status || "");
   if (!(WR_LINK_STATUSES as readonly string[]).includes(status)) {
     return NextResponse.json({ error: "unknown_status", status }, { status: 500 });
@@ -83,6 +84,7 @@ export async function POST(
          last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
          request_sent_at=NULL, attempt_count=0, updated_at=datetime('now')
        WHERE id=? AND status='failed' AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL
+         AND wr_final_settle_token IS NULL
          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code
            AND ${PURCHASE_PAID_SQL_ALIASED})`,
       linkId,
@@ -101,6 +103,7 @@ export async function POST(
        last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
        request_sent_at=NULL, attempt_count=?, updated_at=datetime('now')
      WHERE id=? AND status=? AND attempt_count=? AND request_sent_at IS NULL AND wr_order_id IS NULL
+       AND wr_final_settle_token IS NULL
        AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code
          AND ${PURCHASE_PAID_SQL_ALIASED})`,
     preSendFailure ? 0 : Number(link.attempt_count || 0),

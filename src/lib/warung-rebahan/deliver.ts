@@ -24,6 +24,7 @@ import { casAdvanceBoundInvoice, supplierVendorStatusRank } from "@/lib/supplier
 import { decodeJaspayVariantId, isJaspayVariantId } from "./jaspay";
 import { persistJaspayProgress } from "./progress";
 import type { JaspayOrderResult } from "./client";
+import type { DeliveryFailureGuard } from "@/lib/notify-buyer";
 export type WrOrderLinkRow = {
   id: number;
   order_code: string;
@@ -901,22 +902,36 @@ async function settleWrFulfillmentItem(
  * menghidupkan ulang delivery terminal: delivered/manual_required/failed
  * tidak pernah dibuka kembali di sini.
  */
+type StrictAggregate = { guard: DeliveryFailureGuard; legacySql: string };
+type StrictAggregateOutcome = "changed" | "already_valid" | "active" | "protected" | "race" | "sql_error";
+
+export function refreshOrderAggregate(orderCode: string, database?: DatabaseAccess): Promise<string>;
+export function refreshOrderAggregate(orderCode: string, database: DatabaseAccess, strict: StrictAggregate): Promise<StrictAggregateOutcome>;
 export async function refreshOrderAggregate(
   orderCode: string,
   database?: DatabaseAccess,
+  strict?: StrictAggregate,
 ): Promise<string> {
-  const db = database ?? createDatabaseAccess();
+  try {
+    return await applyOrderAggregate(orderCode, database ?? createDatabaseAccess(), strict);
+  } catch (error) {
+    if (!strict) throw error;
+    return "sql_error";
+  }
+}
+
+async function applyOrderAggregate(orderCode: string, db: DatabaseAccess, strict?: StrictAggregate) {
   const { queryAll, queryFirst, execRun } = db;
-  const rows = await queryAll(`SELECT status FROM fulfillment_items WHERE order_code=?`, orderCode).catch(
-    () => [],
-  );
-  if (!rows.length) return "";
+  const read = queryAll(`SELECT status FROM fulfillment_items WHERE order_code=?`, orderCode);
+  const rows = strict ? await read : await read.catch(() => []);
+  if (!rows.length && !strict) return "";
   const statuses = rows.map((r) => String(r.status || ""));
   const allDelivered = statuses.every((s) => s === "delivered");
   const allSettled = statuses.every((s) => s === "delivered" || s === "manual_required");
   const anyFailed = statuses.some((s) => s === "failed");
   const anyActive = statuses.some((s) => ["queued", "sending", "retry"].includes(s));
   let aggregate: string | null = null;
+  if (strict && anyActive) return "active";
   if (allDelivered) aggregate = "delivered";
   else if (allSettled) aggregate = "manual_required";
   else if (anyFailed && !anyActive) aggregate = "failed";
@@ -926,6 +941,18 @@ export async function refreshOrderAggregate(
     );
     const cur = String(current?.fulfillment_status || "queued");
     aggregate = ["delivered", "manual_required", "failed"].includes(cur) ? null : cur === "sending" ? "sending" : "queued";
+  }
+  if (strict) {
+    const { sql, params } = strict.guard;
+    const current = await queryFirst(`SELECT fulfillment_status, (${sql}) AS eligible, (${strict.legacySql}) AS legacy
+      FROM orders o WHERE code=?`, ...params, orderCode);
+    const cur = String(current?.fulfillment_status ?? "");
+    if (cur === "delivered" || cur === "manual_required") return "protected";
+    if (!Number(current?.eligible) || (aggregate !== "failed" && !Number(current?.legacy))) return "race";
+    if (cur === "failed") return "already_valid";
+    const changed = await execRun(`UPDATE orders AS o SET fulfillment_status='failed', updated_at=datetime('now')
+      WHERE code=? AND fulfillment_status=? AND (${sql})`, orderCode, cur, ...params);
+    return Number(changed.changes) ? "changed" : "race";
   }
   if (!aggregate) return "";
   // Fence: jangan buka terminal yang sudah benar (reconciler generik aman).

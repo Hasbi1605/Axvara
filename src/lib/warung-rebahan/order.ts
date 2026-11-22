@@ -30,15 +30,13 @@
 
 import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import {
-  claimFreshPurchase,
-  claimStalePurchase,
-  fencePurchaseSend,
   isPaidForSupplierPurchase,
   nextPurchaseAttemptIso,
   PURCHASE_PAID_SQL,
   PURCHASE_PAID_SQL_ALIASED,
   requeueUnsentStalePurchases,
 } from "@/lib/suppliers/purchase-state";
+import { settleWrFinalLink, settleWrFinalAggregate, WR_FINAL_FLOOR, WR_FINAL_MARKER_SQL } from "./final-settlement";
 import {
   createOrder,
   fetchTransactions,
@@ -64,6 +62,7 @@ export type OrderItemLike = {
 };
 
 export type ProcessResult = {
+  finalDeferred?: boolean;
   processed: number;
   succeeded: number;
   retried: number;
@@ -364,7 +363,8 @@ export async function processWrPendingOrders(
   }
   const due = await db
     .queryAll(
-      `SELECT l.* FROM wr_order_links l
+      `SELECT l.*, (l.fulfillment_item_id IS NULL AND NOT EXISTS (SELECT 1 FROM fulfillment_items f WHERE f.wr_link_id=l.id)) AS h4_unbound
+       FROM wr_order_links l
        LEFT JOIN wr_variants wv ON wv.wr_variant_id = l.wr_variant_id
        WHERE l.status IN ('pending','retry')
          AND l.attempt_count < l.max_attempts
@@ -399,7 +399,11 @@ export async function processWrPendingOrders(
   let marketZeroed = false;
   const onMarketZeroed = () => { marketZeroed = true; };
   for (const link of due) {
-    if (!db.canSpend(6)) break;
+    const final = Number(link.attempt_count) + 1 >= Number(link.max_attempts);
+    if (!db.canSpend(final ? WR_FINAL_FLOOR : 6)) {
+      if (final) result.finalDeferred = true;
+      break;
+    }
     result.processed++;
     const outcome = await processOneLink(link, db, getTransactions, onMarketZeroed);
     if (outcome === "succeeded") result.succeeded++;
@@ -490,10 +494,21 @@ async function claimLink(
   const leaseOwner = `cron-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
   const leaseUntil = new Date(Date.now() + WR_CLAIM_LEASE_SECONDS * 1000).toISOString();
   // Jalur 1: klaim fresh (belum ada yang pegang).
-  const fresh = await claimFreshPurchase(db, "wr", id, attempt, leaseOwner, leaseUntil);
+  const common = `AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
+    AND max_attempts=? AND wr_final_settle_token IS NULL
+    AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})`;
+  const fresh = await db.execRun(`UPDATE wr_order_links SET status='claimed', attempt_count=?,
+    lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'), updated_at=datetime('now')
+    WHERE id=? AND status IN ('pending','retry') AND attempt_count=? AND attempt_count < max_attempts
+    AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now')) ${common}`,
+  attempt, leaseOwner, leaseUntil, id, attempt - 1, Number(link.max_attempts)).catch(() => ({ changes: 0 }));
   if (Number(fresh.changes ?? 0) > 0) return { outcome: "claimed", owner: leaseOwner };
   // Jalur 2: ambil alih lease basi — HANYA bila request belum keluar.
-  const stale = await claimStalePurchase(db, "wr", id, attempt, leaseOwner, leaseUntil);
+  const stale = await db.execRun(`UPDATE wr_order_links SET status='claimed',
+    lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'), updated_at=datetime('now')
+    WHERE id=? AND status='claimed' AND attempt_count=?
+    AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now')) ${common}`,
+  leaseOwner, leaseUntil, id, attempt, Number(link.max_attempts)).catch(() => ({ changes: 0 }));
   if (Number(stale.changes ?? 0) > 0) return { outcome: "claimed", owner: leaseOwner };
   // Selain itu: ambigu (sudah terkirim / diklaim worker sehat) atau kalah race.
   const current = await db
@@ -518,12 +533,19 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
     return "retried";
   }
   // Persist before POST; a timeout must retain this evidence, never repurchase.
-  const sent = await fencePurchaseSend(db, "wr", id, claim.owner);
+  const sent = await execRun(`UPDATE wr_order_links SET request_sent_at=datetime('now'), updated_at=datetime('now')
+    WHERE id=? AND status='claimed' AND lease_owner=? AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
+    AND datetime(lease_expires_at) > datetime('now') AND attempt_count=? AND max_attempts=? AND wr_final_settle_token IS NULL
+    AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND ${PURCHASE_PAID_SQL_ALIASED})
+    AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+      WHERE fi.order_code=wr_order_links.order_code AND (fi.wr_link_id=wr_order_links.id OR fi.id=wr_order_links.fulfillment_item_id OR pv.wr_variant_id=wr_order_links.wr_variant_id)
+      AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
+  id, claim.owner, attempt, Number(link.max_attempts));
   if (!Number(sent.changes ?? 0)) return "retried";
   // WR3 Jaspay: keluarga `jaspay:` TIDAK PERNAH lewat POST premium.
   // Salah famili = order salah produk + invoice tak terkorelasi.
   if (isJaspayVariantId(String(link.wr_variant_id || ""))) {
-    return processOneJaspayLink(id, link, db, onMarketZeroed);
+    return processOneJaspayLink(id, link, db, claim.owner, onMarketZeroed);
   }
   let receivedOrder = false;
   try {
@@ -591,7 +613,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
       .catch(() => undefined);
     return "succeeded";
   } catch (error) {
-    return handleOrderError(id, link, receivedOrder ? new Error("network_receipt_persist_failed") : error, attempt, db, onMarketZeroed);
+    return handleOrderError(id, link, receivedOrder ? new Error("network_receipt_persist_failed") : error, attempt, db, claim.owner, onMarketZeroed);
   }
 }
 
@@ -610,6 +632,7 @@ async function processOneJaspayLink(
   id: number,
   link: Row,
   db: DatabaseAccess,
+  owner: string,
   onMarketZeroed?: () => void,
 ): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
   const { execRun } = db;
@@ -716,7 +739,7 @@ async function processOneJaspayLink(
     }
     return "succeeded";
   } catch (error) {
-    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt + 1, db, onMarketZeroed);
+    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt + 1, db, owner, onMarketZeroed);
   }
 }
 
@@ -852,6 +875,7 @@ async function handleJaspayOrderError(
   error: unknown,
   attempt: number,
   db: DatabaseAccess,
+  owner: string,
   onMarketZeroed?: () => void,
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
@@ -899,24 +923,7 @@ async function handleJaspayOrderError(
     }
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
-    const failed = await execRun(
-      `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
-         lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
-      message,
-      id,
-    );
-    if (!Number(failed.changes ?? 0)) return "retried";
-    await notifyAdmin(`⚠️ <b>Order Jaspay gagal</b> <code>${String(link.order_code)}</code>\n${escapeHtml(message)}`);
-    await execRun(
-      `UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now')
-       WHERE code=? AND status='lunas'`,
-      String(link.order_code),
-    ).catch(() => undefined);
-    try {
-      const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
-      await notifyBuyerDeliveryFailed(String(link.order_code), db);
-    } catch { /* kabar pembeli best-effort */ }
-    return "failed";
+    return finishWrFailure(db, link, owner, attempt, message, "Jaspay", isDefinitiveWrRejection(error));
   }
   await execRun(
     `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
@@ -935,6 +942,7 @@ async function handleOrderError(
   error: unknown,
   attempt: number,
   db: DatabaseAccess,
+  owner: string,
   onMarketZeroed?: () => void,
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
@@ -981,29 +989,7 @@ async function handleOrderError(
     }
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
-    const failed = await execRun(
-      `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
-          lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
-      message,
-      id,
-    );
-    if (!Number(failed.changes ?? 0)) return "retried";
-    await notifyAdmin(
-      `⚠️ <b>Order WR gagal</b> <code>${String(link.order_code)}</code>\n${escapeHtml(message)}`,
-    );
-    // Tandai order Axvara agar admin tahu perlu penanganan manual.
-    await execRun(
-      `UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now')
-       WHERE code=? AND status='lunas'`,
-      String(link.order_code),
-    ).catch(() => undefined);
-    // Pembeli juga dikabari (audit ronde 4, T-H1): jalur ini menulis
-    // `failed` langsung tanpa lewat refreshOrderAggregate.
-    try {
-      const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
-      await notifyBuyerDeliveryFailed(String(link.order_code), db);
-    } catch { /* kabar pembeli best-effort */ }
-    return "failed";
+    return finishWrFailure(db, link, owner, attempt, message, "WR", isDefinitiveWrRejection(error));
   }
   await execRun(
     `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
@@ -1014,6 +1000,36 @@ async function handleOrderError(
     id,
   );
   return "retried";
+}
+
+function isDefinitiveWrRejection(error: unknown) {
+  if (!(error instanceof WrApiError) || [401, 403].includes(error.status)) return false;
+  if (error.status >= 400 && error.status < 500) return true;
+  return error.status >= 200 && error.status < 300
+    && (error.responseBody as { success?: unknown } | null)?.success === false;
+}
+
+// Finality is the max_attempts snapshot checked atomically at claim and send.
+// Editing the limit after the send must not promote an under-budget POST.
+async function finishWrFailure(db: DatabaseAccess, link: Row, owner: string, attempt: number, message: string, label: string, definitive: boolean): Promise<"failed" | "retried"> {
+  const id = Number(link.id);
+  const code = String(link.order_code);
+  const token = definitive ? crypto.randomUUID() : null;
+  const failed = await db.execRun(`UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
+    lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now'), wr_final_settle_token=${WR_FINAL_MARKER_SQL}
+    WHERE id=? AND status='claimed' AND wr_order_id IS NULL AND lease_owner=? AND attempt_count=?
+    AND request_sent_at IS NOT NULL AND wr_final_settle_token IS NULL`, message, token, Number(link.h4_unbound), id, owner, attempt);
+  if (!Number(failed.changes)) return "retried";
+  await notifyAdmin(`⚠️ <b>Order ${label} gagal</b> <code>${code}</code>\n${escapeHtml(message)}`);
+  if (token) {
+    const handoff = await settleWrFinalLink(db, { id, token, code });
+    if (typeof handoff !== "string") await settleWrFinalAggregate(db, code, handoff.orderToken);
+  } else {
+    await db.execRun(`UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now') WHERE code=? AND status='lunas'`, code).catch(() => undefined);
+    const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+    await notifyBuyerDeliveryFailed(code, db);
+  }
+  return "failed";
 }
 
 /**

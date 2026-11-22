@@ -105,10 +105,24 @@ describe("B1 DITOLAK: klaim retry tetap tanpa penaikan counter & tanpa debounce"
     expect(route).not.toContain("attempt_count=attempt_count+1");
     const worker = read("src/lib/warung-rebahan/order.ts");
     expect(worker).toContain("attempt_count=attempt_count-1");
-    // B2: klaim fresh WR dipindah ke helper bersama; worker tetap memanggilnya
-    // dan SQL klaim (penaikan counter milik worker) kini ada di purchase-state.
-    expect(worker).toContain('claimFreshPurchase(db, "wr"');
-    const claim = read("src/lib/suppliers/purchase-state.ts");
-    expect(claim).toMatch(/status='claimed', attempt_count=\?/);
+    // C2: klaim WR mengecek snapshot max_attempts dan marker pada CAS sendiri.
+    const claim = worker.replace(/\/\*[\s\S]*?\*\//g, "").match(/^async function claimLink\([\s\S]*?^\}/m)?.[0] ?? "";
+    expect(claim).toMatch(/^\s*const attempt = Number\(link\.attempt_count \|\| 0\) \+ 1;$/m);
+    expect(claim).toMatch(/^\s*const common = `[^`]*\bAND max_attempts=\? AND wr_final_settle_token IS NULL\b[^`]*`;/m);
+    expect(claim).toMatch(
+      /^\s*const fresh = await db\.execRun\(`UPDATE wr_order_links SET status='claimed', attempt_count=\?,[^`]*\bWHERE id=\? AND status IN \('pending','retry'\) AND attempt_count=\? AND attempt_count < max_attempts[^`]*\$\{common\}`,\s*attempt, leaseOwner, leaseUntil, id, attempt - 1, Number\(link\.max_attempts\)\)/m,
+    );
+    expect(claim).toMatch(/^\s*if \(Number\(fresh\.changes \?\? 0\) > 0\) return \{ outcome: "claimed", owner: leaseOwner \};$/m);
+    const stale = claim.match(
+      /^\s*const stale = await db\.execRun\(`UPDATE wr_order_links SET ([^`]+?)\bWHERE id=\? AND status='claimed' AND attempt_count=\?[^`]*\$\{common\}`,\s*leaseOwner, leaseUntil, id, attempt, Number\(link\.max_attempts\)\)/m,
+    );
+    expect(stale).not.toBeNull();
+    expect(stale?.[1]).not.toMatch(/\battempt_count\b/);
+
+    // SK masih menaikkan counter via helper klaim fresh bersama.
+    const sk = read("src/lib/sekalipay/order.ts");
+    expect(sk).toMatch(/^\s*const fresh = await claimFreshPurchase\(db, "sk", id, attempt, leaseOwner, leaseUntil\);$/m);
+    const skHelper = read("src/lib/suppliers/purchase-state.ts").match(/^export function claimFreshPurchase\([\s\S]*?^\}/m)?.[0];
+    expect(skHelper).toMatch(/return db\.execRun\(\s*`UPDATE \$\{table\} SET status='claimed', attempt_count=\?/);
   });
 });

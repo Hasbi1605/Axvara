@@ -160,10 +160,11 @@ const cases: {
       VALUES('wr','fixture',5000,'FIXTURE-INVOICE','processing',datetime('now','-5 minutes'));`);
   }, expected: {
     ok: true, ...SKELETON, wr_sync_skipped: "part_orders", wr_orders_processed: 4, wr_orders_succeeded: 3, wr_saldo_balance: 1500, wr_saldo_low: true,
-    phase: "warung_rebahan", part: "orders", wr_orphan_links_healed: 1, wr_orders_blocked: 1,
+    phase: "warung_rebahan", part: "orders", wr_final_settlement: { deferred: 0, pending: 0, reasons: {}, settled: 0 },
+    wr_orphan_links_healed: 1, wr_orders_blocked: 1,
     wr_orders_reconciled: 6, wr_orders_reconciled_fresh: 1, wr_links_repaired: 2, wr_jaspay_exact_ref: 1, wr_jaspay_polled: 2,
     wr_orders_aging_alerted: 3, wr_credentials_requeued: 2, wr_deliveries_processed: 3,
-    wr_deliveries_delivered: 2, wr_deliveries_lease_recovered: 1, query_budget_used: 8, ...TAIL,
+    wr_deliveries_delivered: 2, wr_deliveries_lease_recovered: 1, query_budget_used: 12, ...TAIL,
     deferred: ["warung_rebahan"], note: "partial_run_more_pending",
   }, verify: () => expect(mocks.wrSync).not.toHaveBeenCalled() },
   { name: "WR continued sweep reports resume, Jaspay and bounded errors", query: "?phase=warung_rebahan&part=sync&continue=1", seed: () => {
@@ -248,7 +249,7 @@ it.each(cases)("T4 operations golden: $name", async ({ query, expected, status =
   verify?.();
 });
 
-it("T4 goldens cover all 33 skeleton and 39 assigned results keys, plus response envelope keys", () => {
+it("T4 goldens cover all 33 skeleton and 40 assigned results keys, plus response envelope keys", () => {
   const keys = new Set(cases.flatMap(({ expected }) => Object.keys(expected)));
   expect(Object.keys(SKELETON)).toHaveLength(33);
   // `ok`, `note`, `error` are response envelope fields, not results writes.
@@ -258,9 +259,9 @@ it("T4 goldens cover all 33 skeleton and 39 assigned results keys, plus response
     "qris_expiry_notifications", "query_budget_limit", "query_budget_note", "query_budget_used", "run_deadline_ms", "run_duration_ms",
     "sk_credential_emails_sent", "sk_orders_reconciled", "sk_orders_reconciled_fresh", "sk_orphan_links_healed", "sk_sync_errors",
     "telegram_paid_admin_web_notifications_retried", "wr_credentials_requeued", "wr_deliveries_delivered", "wr_deliveries_lease_recovered",
-    "wr_deliveries_processed", "wr_jaspay_exact_ref", "wr_jaspay_polled", "wr_jaspay_rejected", "wr_jaspay_synced", "wr_links_repaired",
+    "wr_deliveries_processed", "wr_final_settlement", "wr_jaspay_exact_ref", "wr_jaspay_polled", "wr_jaspay_rejected", "wr_jaspay_synced", "wr_links_repaired",
     "wr_orders_aging_alerted", "wr_orders_blocked", "wr_orders_reconciled", "wr_orders_reconciled_fresh", "wr_orphan_links_healed",
     "wr_sync_errors", "wr_sync_resume", "wr_sync_stale_alerted",
   ]);
-  expect(keys.size).toBe(72 + 3);
+  expect(keys.size).toBe(73 + 3);
 });

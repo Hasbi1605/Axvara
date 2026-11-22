@@ -16,7 +16,7 @@ import { parseOrderItems } from "@/lib/fulfillment/delivery/manifest";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 
 /** Email tujuan salinan, atau null bila pesanan ini tidak berhak menerimanya. */
-export async function telegramEmailCopyTarget(orderCode: string, database: DatabaseAccess): Promise<string | null> {
+export async function telegramEmailCopyTarget(orderCode: string, database: DatabaseAccess, strict = false): Promise<string | null> {
   try {
     const order = await database.queryFirst(
       `SELECT sales_channel, COALESCE(order_kind,'apps') AS order_kind, customer_email, items FROM orders WHERE code=?`,
@@ -64,7 +64,8 @@ export async function telegramEmailCopyTarget(orderCode: string, database: Datab
       if (rows.some(row => needsEmailForVariant({ requireEmail: Number(row.require_email ?? 0) }))) return email;
     }
     return null;
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return null;
   }
 }

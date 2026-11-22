@@ -414,6 +414,8 @@ async function runWrOrders(db: Db, failedCore: string[]) {
   const order = await import("@/lib/warung-rebahan/order");
   const out: Record<string, unknown> = {};
   const recover = monitorRecovery(db, "wr_orders", out, failedCore);
+  const { replayWrFinalSettlement } = await import("@/lib/warung-rebahan/final-settlement");
+  out.final_settlement = await recover("final_settlement", () => replayWrFinalSettlement(db), null);
   await recover("stale_claims", () => order.recoverStaleClaims(db), 0);
   await recover("blocked_balance", () => order.reconcileBlockedBalance(db, { reportLookupFailure: true }), 0);
   if (process.env.WARUNG_REBAHAN_AUTO_ORDER_ENABLED === "true") {
@@ -441,6 +443,7 @@ async function runWrOrders(db: Db, failedCore: string[]) {
       out.processed = processed.processed;
       out.succeeded = processed.succeeded;
       if (processed.blocked) out.blocked = processed.blocked;
+      if (processed.finalDeferred) out.final_dispatch_deferred = true;
     }
     // Penjamin status segar bersama (2026-10-13): tarik status vendor untuk
     // link yang masih berjalan (berbagi jatah dengan job sk_orders) agar WR

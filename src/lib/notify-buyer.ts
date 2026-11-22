@@ -112,33 +112,62 @@ function siteUrl(): string {
 
 /** true = pemanggil ini berhak mengirim; false = sudah terkirim / sedang dikirim worker lain. */
 export async function claimNotice(database: DatabaseAccess, key: string, orderCode: string, channel: "email" | "telegram"): Promise<boolean> {
+  const failure = key === `${channel}:delivery-failed:${orderCode}`;
   try {
     const result = await database.execRun(
       `INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status)
-       VALUES (?, ?, ?, 'sending')
+       ${failure ? `SELECT ?,o.code,?,'sending' FROM orders o WHERE o.code=? AND o.wr_aggregate_refresh_token IS NULL
+         AND NOT EXISTS (SELECT 1 FROM wr_order_links l WHERE l.order_code=o.code AND l.wr_final_settle_token IS NOT NULL)` : `VALUES (?, ?, ?, 'sending')`}
        ON CONFLICT(idempotency_key) DO UPDATE SET status='sending', error=NULL, updated_at=datetime('now')
-       WHERE buyer_notice_log.status='failed'
+       WHERE ${failure ? `buyer_notice_log.access_lease IS NULL AND (` : ""}(buyer_notice_log.status='failed'
           OR (buyer_notice_log.status='sending'
-              AND julianday(buyer_notice_log.updated_at) < julianday('now','-10 minutes'))`,
-      key, orderCode, channel,
+              AND julianday(buyer_notice_log.updated_at) < julianday('now','-10 minutes')))${failure ? ")" : ""}`,
+      key, ...(failure ? [channel, orderCode] : [orderCode, channel]),
     );
     return Number(result.changes ?? 0) > 0;
   } catch {
-    // Ledger tak terbaca: lebih baik kabar berisiko ganda daripada hilang.
-    return true;
+    // Preserve best-effort for unrelated keys. Failure notices share a key
+    // with H4; a broken ledger cannot authorize a second claimant.
+    return !failure;
   }
 }
 
 export async function settleNotice(database: DatabaseAccess, key: string, ok: boolean, providerId?: string, error?: string) {
   await database.execRun(
-    `UPDATE buyer_notice_log SET status=?, provider_id=?, error=?, updated_at=datetime('now') WHERE idempotency_key=?`,
+    `UPDATE buyer_notice_log SET status=?, provider_id=?, error=?, updated_at=datetime('now') WHERE idempotency_key=?
+      ${/^(email|telegram):delivery-failed:/.test(key) ? "AND access_lease IS NULL" : ""}`,
     ok ? "sent" : "failed", providerId ?? null, ok ? null : String(error || "send_failed").slice(0, 300), key,
   ).catch(() => undefined);
 }
 
-async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: string, notice: Notice, locale: Locale = "id"): Promise<boolean> {
+// Trusted SQL from the WR settlement module, with `o` bound to this order.
+export type DeliveryFailureGuard = { sql: string; params: readonly unknown[] };
+
+async function claimStrictFailureNotice(db: DatabaseAccess, key: string, code: string, channel: "email" | "telegram", guard: DeliveryFailureGuard) {
+  const lease = crypto.randomUUID();
+  const claim = await db.execRun(`INSERT INTO buyer_notice_log (idempotency_key,order_code,channel,status,access_lease)
+    SELECT ?,o.code,?,'sending',? FROM orders o WHERE o.code=? AND (${guard.sql})
+    ON CONFLICT(idempotency_key) DO UPDATE SET status='sending',error=NULL,access_lease=excluded.access_lease,updated_at=datetime('now')
+    WHERE buyer_notice_log.status='failed' AND buyer_notice_log.order_code=excluded.order_code AND buyer_notice_log.channel=excluded.channel`,
+  key, channel, lease, code, ...guard.params);
+  if (Number(claim.changes ?? 0) > 0) return { lease, sent: false };
+  const row = await db.queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=? AND order_code=? AND channel=?`, key, code, channel);
+  return { lease: null, sent: row?.status === "sent" };
+}
+
+async function settleStrictFailureNotice(db: DatabaseAccess, key: string, lease: string, ok: boolean, definitive: boolean, providerId?: string, error?: string) {
+  // Unknown transport outcome or crash after send: keep sending, no automatic duplicate.
+  if (!ok && !definitive) return false;
+  const written = await db.execRun(`UPDATE buyer_notice_log SET status=?,provider_id=?,error=?,access_lease=NULL,updated_at=datetime('now')
+    WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
+  ok ? "sent" : "failed", providerId ?? null, ok ? null : String(error || "send_failed").slice(0, 300), key, lease);
+  return ok && Number(written.changes ?? 0) === 1;
+}
+
+async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: string, notice: Notice, locale: Locale = "id", guard?: DeliveryFailureGuard): Promise<boolean> {
   const key = `email:${notice.refKey}`;
-  if (!(await claimNotice(database, key, orderCode, "email"))) return true;
+  const claim = guard ? await claimStrictFailureNotice(database, key, orderCode, "email", guard) : null;
+  if (claim ? !claim.lease : !(await claimNotice(database, key, orderCode, "email"))) return claim?.sent ?? true;
   const orderUrl = `${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`;
   let result: { ok: boolean; providerId?: string; error?: string };
   try {
@@ -160,6 +189,8 @@ async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: 
   } catch (error) {
     result = { ok: false, error: error instanceof Error ? error.message : "resend_failed" };
   }
+  if (claim?.lease) return settleStrictFailureNotice(database, key, claim.lease, result.ok && Boolean(result.providerId),
+    result.error === "forward_email_not_configured", result.providerId, result.error);
   await settleNotice(database, key, result.ok, result.providerId, result.error);
   return result.ok;
 }
@@ -167,16 +198,19 @@ async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: 
 /** DM Telegram pribadi pembeli (kanal otoritatif order Telegram). */
 async function sendTelegramNotice(
   orderCode: string, notice: Notice, order: Record<string, unknown>, database: DatabaseAccess, chatText: string,
+  guard?: DeliveryFailureGuard,
 ): Promise<boolean> {
   const { queryFirst } = database;
   // HANYA chat pribadi terverifikasi — tidak pernah ke id grup (issue #5).
   const buyerId = String(order.telegram_user_id || "");
-  if (!buyerId) return false;
-  const row = await queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId).catch(() => null);
+  if (!buyerId) return Boolean(guard);
+  const read = queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId);
+  const row = guard ? await read : await read.catch(() => null);
   const chatId = String(row?.chat_id || "");
-  if (!chatId || Number(chatId) <= 0) return false;
+  if (!chatId || Number(chatId) <= 0) return Boolean(guard);
   const key = `telegram:${notice.refKey}`;
-  if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
+  const claim = guard ? await claimStrictFailureNotice(database, key, orderCode, "telegram", guard) : null;
+  if (claim ? !claim.lease : !(await claimNotice(database, key, orderCode, "telegram"))) return claim?.sent ?? true;
   if (notice.chatMessages) {
     try {
       const { sendTelegramCredentialParts } = await import("@/lib/telegram/credential-delivery");
@@ -190,7 +224,13 @@ async function sendTelegramNotice(
   }
   const { sendMessage } = await import("@/lib/telegram/api");
   const sent = await sendMessage({ chat_id: chatId, text: chatText, parse_mode: "HTML" })
-    .catch(() => ({ ok: false, description: "telegram_send_failed" }));
+    .catch(() => ({ ok: false, description: "telegram_send_failed", error_code: undefined }));
+  if (claim?.lease) {
+    const { classifyTelegramSend } = await import("@/lib/telegram/send-outcome");
+    const outcome = classifyTelegramSend(sent);
+    return settleStrictFailureNotice(database, key, claim.lease, outcome.kind === "sent",
+      outcome.kind !== "ambiguous", outcome.kind === "sent" ? String(outcome.messageId) : undefined, sent?.description);
+  }
   await settleNotice(database, key, Boolean(sent?.ok), undefined, sent?.description);
   return Boolean(sent?.ok);
 }
@@ -201,13 +241,14 @@ async function sendTelegramNotice(
  * memengaruhi hasil DM Telegram. Idempoten lewat kunci `email:<refKey>`.
  * Mengembalikan true hanya bila email berhak dikirim DAN terkirim.
  */
-async function sendTelegramEmailCopy(orderCode: string, notice: Notice, database: DatabaseAccess, locale: Locale = "id"): Promise<boolean> {
+async function sendTelegramEmailCopy(orderCode: string, notice: Notice, database: DatabaseAccess, locale: Locale = "id", guard?: DeliveryFailureGuard): Promise<boolean> {
   try {
     const { telegramEmailCopyTarget } = await import("@/lib/telegram/email-copy");
-    const email = await telegramEmailCopyTarget(orderCode, database);
-    if (!email) return false;
-    return await sendEmailNotice(database, orderCode, email, notice, locale);
-  } catch {
+    const email = await telegramEmailCopyTarget(orderCode, database, Boolean(guard));
+    if (!email) return Boolean(guard);
+    return await sendEmailNotice(database, orderCode, email, notice, locale, guard);
+  } catch (error) {
+    if (guard) throw error;
     return false;
   }
 }
@@ -221,14 +262,16 @@ export async function sendToBuyer(
   orderCode: string,
   notice: Notice,
   database: DatabaseAccess,
-  options: { emailOnly?: boolean } = {},
+  options: { emailOnly?: boolean; failureGuard?: DeliveryFailureGuard } = {},
 ): Promise<boolean> {
   const { queryFirst } = database;
-  const order = await queryFirst(
+  const guard = options.failureGuard;
+  const read = queryFirst(
     `SELECT code, sales_channel, customer_wa, customer_email, telegram_user_id, locale
-     FROM orders WHERE code=?`,
-    orderCode,
-  ).catch(() => null);
+     FROM orders o WHERE code=?${guard ? ` AND (${guard.sql})` : ""}`,
+    orderCode, ...(guard?.params ?? []),
+  );
+  const order = guard ? await read : await read.catch(() => null);
   if (!order) return false;
   const locale: Locale = String(order.locale ?? "id") === "en" ? "en" : "id";
 
@@ -237,17 +280,17 @@ export async function sendToBuyer(
 
   if (channel === "telegram") {
     if (options.emailOnly) return await sendTelegramEmailCopy(orderCode, notice, database, locale);
-    const delivered = await sendTelegramNotice(orderCode, notice, order, database, chatText);
+    const delivered = await sendTelegramNotice(orderCode, notice, order, database, chatText, guard);
     // Salinan email dicoba apa pun hasil DM; nilai kembalian tetap hasil DM.
-    await sendTelegramEmailCopy(orderCode, notice, database, locale);
-    return delivered;
+    const copy = await sendTelegramEmailCopy(orderCode, notice, database, locale, guard);
+    return guard ? delivered && copy : delivered;
   }
 
   if (channel === "web") {
     const email = String(order.customer_email || "").trim();
-    if (email) return await sendEmailNotice(database, orderCode, email, notice, locale);
+    if (email) return await sendEmailNotice(database, orderCode, email, notice, locale, guard);
   }
-  return false;
+  return Boolean(guard);
 }
 
 /** Accepted supplier work only; never replay processing mail for terminal/manual orders. */
@@ -432,8 +475,9 @@ export async function notifyBuyerProofPendingHook(
 export async function notifyBuyerDeliveryFailed(
   orderCode: string,
   database: DatabaseAccess = createDatabaseAccess(),
+  failureGuard?: DeliveryFailureGuard,
 ): Promise<boolean> {
-  return await sendToBuyer(orderCode, {
+  const send = sendToBuyer(orderCode, {
     subject: `Pengiriman pesanan ${orderCode} bermasalah`,
     body: `⚠️ <b>Pengiriman produk bermasalah</b>\nOrder: <code>${orderCode}</code>\n\n`
       + "Pembayaranmu sudah kami terima, tetapi produk gagal dikirim otomatis. "
@@ -448,7 +492,8 @@ export async function notifyBuyerDeliveryFailed(
     },
     chatCta: "Balas pesan ini bila belum ada kabar.",
     refKey: `delivery-failed:${orderCode}`,
-  }, database).catch(() => false);
+  }, database, { failureGuard });
+  return failureGuard ? await send : await send.catch(() => false);
 }
 
 /**

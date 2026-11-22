@@ -1,10 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { QueryBudgetExceeded } from "@/lib/db-access";
+import { replayWrFinalSettlement, WR_FINAL_FLOOR } from "@/lib/warung-rebahan/final-settlement";
 import { settleExhaustedSkRetries } from "@/lib/sekalipay/order";
 import { reconcileJaspayAmbiguous, reconcileStuckWrOrders } from "@/lib/warung-rebahan/order";
 import { afterRead, cleanupFixtures, due, families, setup, skPreflight, skReject, wire, wrReject } from "./wr-sk-harness-ext";
 
 cleanupFixtures();
+
+const telegramReply = { "POST /botfixture/sendMessage": () => Response.json({ ok: true, result: { message_id: 1 } }) };
+function finalNoticeFixture(f: ReturnType<typeof setup>) {
+  f.bind();
+  f.fx.sql.exec("UPDATE orders SET customer_email='buyer@fixture.test'");
+  vi.stubEnv("RESEND_API_KEY", "fixture");
+  vi.stubEnv("FORWARD_FROM_EMAIL", "sender@fixture.test");
+  if (f.buy === "POST /api/v1/order") {
+    f.fx.sql.exec("UPDATE wr_variants SET wr_type='Invite'");
+    return [f.buy, "POST /emails"];
+  }
+  vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture");
+  f.sibling();
+  f.fx.sql.exec(`UPDATE orders SET sales_channel='telegram',telegram_user_id='22',items='[]';
+    INSERT INTO telegram_users(user_id,chat_id) VALUES('22','22');
+    INSERT INTO products(id,name,slug,price,stock,require_email) VALUES(2,'Email','email-fixture',10000,1,1);
+    UPDATE fulfillment_items SET status='delivered',product_id=2,variant_id=NULL WHERE item_index=1`);
+  return [f.buy, "POST /botfixture/sendMessage", "POST /emails"];
+}
 
 describe("T1 statement deltas (one due SELECT, no orphan probe; two reserved tail slots)", () => {
   it.each([
@@ -48,38 +68,104 @@ describe("T1 statement deltas (one due SELECT, no orphan probe; two reserved tai
     it.each([[false, false], [true, false], [false, true], [true, true]])("stock=%s inline=%s", async (stock, inline) => {
       const f = setup(family);
       const b = f.budget();
+      const calls = finalNoticeFixture(f);
+      const trace: string[] = [];
+      f.fx.control.fail = sql => { trace.push(sql); return false; };
       f.set("attempt_count=max_attempts-1");
       if (inline) afterRead(b.access, "queryAll", () => { f.set("status='claimed', attempt_count=max_attempts, lease_owner='peer', lease_expires_at=datetime('now','-2 minutes')"); });
       let atPost = 0;
-      const h = wire({ [f.buy]: () => { atPost = b.used; return wrReject(stock); } });
+      const h = wire({ [f.buy]: () => { atPost = b.used; return wrReject(stock); }, ...telegramReply });
       expect(await f.process(b.access, due)).toMatchObject({ processed: 1, failed: 1 });
       expect(f.row()).toMatchObject({ status: "failed", request_sent_at: null, attempt_count: 3 });
-      expect(h.calls).toEqual([f.buy]);
-      expect(atPost).toBe(1 + (family === "premium" ? 3 : 4) + Number(inline));
+      expect(h.calls).toEqual(calls);
+      expect(f.items()[0]).toBe("failed");
+      expect(f.order()).toMatchObject({ fulfillment_status: "failed", wr_aggregate_refresh_token: null });
+      expect(atPost).toBe(5 + Number(inline));
       // Stock paths add two item/catalog writes and one revision tail after the loop.
       const revisionTail = Number(stock);
-      expect(b.used - atPost - revisionTail).toBe(stock ? 5 : 3);
+      expect(b.used - atPost - revisionTail).toBe(1 + 2 * Number(stock) + 4 + (family === "premium" ? 7 : 14));
       expect(f.fx.control.queries).toBe(b.used);
+      if (process.env.C2_TRACE) console.log("C2_TRACE", JSON.stringify({ family, stock, inline, used: b.used, atPost, revisionTail, trace: trace.map(sql => sql.replace(/\s+/g, " ").trim()) }));
     });
   });
 
-  it("WR final stock branch fits its body but skips the revision tail at the exact cap", async () => {
-    const f = setup("premium");
+  it.each([-1, 0, 1])("WR worst final stock dispatch at floor%+i preserves FIFO and optional revision", async offset => {
+    const f = setup("jaspay");
+    const calls = finalNoticeFixture(f);
     f.set("attempt_count=max_attempts-1");
-    const b = f.budget(11); // 1 scan + 3 pre-POST + 5 post-POST + 2 reserved; no revision slot
-    const http = wire({ [f.buy]: () => wrReject(true) });
-    expect(await f.process(b.access, due)).toMatchObject({ failed: 1 });
-    expect(b.used).toBe(9);
-    expect(f.fx.control.queries).toBe(9);
+    f.fx.sql.exec(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status)
+      SELECT 'fifo-next',customer_name,customer_wa,'[]',subtotal,payment_method,status,payment_status FROM orders;
+      INSERT INTO wr_order_links(id,order_code,wr_variant_id,quantity,wr_cost,status)
+      VALUES(2,'fifo-next','jaspay:PROD:PACK',1,5000,'pending')`);
+    const b = f.budget(WR_FINAL_FLOOR + 3 + offset);
+    const before = f.row();
+    const http = wire({ [f.buy]: () => wrReject(true), ...telegramReply });
+    const inline = (access: typeof b.access) => afterRead(access, "queryAll", () => { f.set("status='claimed', attempt_count=max_attempts, lease_owner='peer', lease_expires_at=datetime('now','-2 minutes')"); });
+    if (offset >= 0) inline(b.access);
+    expect(await f.process(b.access, { ...due, limit: 2 })).toMatchObject(offset < 0 ? { processed: 0, finalDeferred: true } : { processed: 1, failed: 1 });
+    expect(f.fx.sql.prepare("SELECT status,attempt_count FROM wr_order_links WHERE id=2").get()).toEqual({ status: "pending", attempt_count: 0 });
+    if (offset < 0) {
+      expect(b.used).toBe(1);
+      expect(f.row()).toEqual(before);
+      expect(http.calls).toEqual([]);
+      const next = f.budget(WR_FINAL_FLOOR + 3);
+      inline(next.access);
+      expect(await f.process(next.access, due)).toMatchObject({ failed: 1 });
+      expect(next.used).toBe(WR_FINAL_FLOOR + 1);
+      expect(http.calls).toEqual(calls);
+      return;
+    }
+    expect(b.used).toBe(WR_FINAL_FLOOR + 1 + offset);
+    expect(f.fx.control.queries).toBe(b.used);
     expect(b.remaining).toBe(0);
-    expect(http.calls).toEqual([f.buy]);
+    expect(http.calls).toEqual(calls);
     for (const remaining of [1, 0]) {
       if (remaining === 1) b.beginTail();
       await b.access.queryFirst("SELECT 1");
       expect(b.remaining).toBe(remaining);
     }
     await expect(b.access.queryFirst("SELECT 1")).rejects.toBeInstanceOf(QueryBudgetExceeded);
-    expect(b.used).toBe(11);
+    expect(b.used).toBe(WR_FINAL_FLOOR + 3 + offset);
+  });
+
+  it.each([-1, 0, 1])("WR aggregate replay at floor%+i includes both lanes, cursor and reserve", async offset => {
+    const f = setup("jaspay");
+    const calls = finalNoticeFixture(f);
+    f.set("attempt_count=max_attempts-1");
+    f.fx.control.fail = sql => sql.includes("UPDATE orders AS o SET fulfillment_status='failed'");
+    const http = wire({ [f.buy]: () => wrReject(false), ...telegramReply });
+    expect(await f.process(f.db, due)).toMatchObject({ failed: 1 });
+    expect(f.row().wr_final_settle_token).toBeNull();
+    const trace: string[] = [];
+    f.fx.control.fail = sql => { trace.push(sql); return false; };
+    const b = f.budget(4 + 14 + 2 + offset);
+    const result = await replayWrFinalSettlement(b.access);
+    expect(result).toMatchObject(offset < 0 ? { deferred: 1, settled: 0 } : { deferred: 0, settled: 1 });
+    expect(http.calls).toEqual(offset < 0 ? [f.buy] : calls);
+    expect(b.used).toBe(offset < 0 ? 3 : 18);
+    if (process.env.C2_TRACE) console.log("C2_TRACE", JSON.stringify({ replay: offset, used: b.used, trace: trace.map(sql => sql.replace(/\s+/g, " ").trim()) }));
+  });
+
+  it.each([-1, 0, 1])("WR combined replay at full-body floor%+i never buys again or uses tail", async offset => {
+    const f = setup("jaspay");
+    const calls = finalNoticeFixture(f);
+    f.set("attempt_count=max_attempts-1");
+    const http = wire({ [f.buy]: () => wrReject(false), ...telegramReply });
+    f.fx.control.fail = sql => sql.includes("UPDATE orders SET wr_aggregate_refresh_token=");
+    await expect(f.process(f.db, due)).rejects.toThrow("Injected database interruption");
+    expect(f.items()[0]).toBe("failed");
+    const trace: string[] = [];
+    f.fx.control.fail = sql => { trace.push(sql); return false; };
+    const b = f.budget(24 + offset);
+    expect(await replayWrFinalSettlement(b.access)).toMatchObject(offset < 0 ? { deferred: 1, settled: 1 } : { deferred: 0, settled: 2 });
+    expect(b.used).toBe(offset < 0 ? 7 : 22);
+    expect(http.calls).toEqual(offset < 0 ? [f.buy] : calls);
+    expect(f.row().wr_final_settle_token).toBeNull();
+    expect(f.order().wr_aggregate_refresh_token).toEqual(offset < 0 ? expect.any(String) : null);
+    const remaining = b.remaining;
+    b.beginTail();
+    expect(b.remaining - remaining).toBe(2);
+    if (process.env.C2_TRACE) console.log("C2_TRACE", JSON.stringify({ combinedReplay: offset, used: b.used, trace: trace.map(sql => sql.replace(/\s+/g, " ").trim()) }));
   });
 
   it.each([false, true])("SK final proof at exactly 14 usable after scan; inline=%s", async inline => {

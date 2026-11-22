@@ -803,6 +803,15 @@ export async function POST(request: NextRequest) {
         if (results.wr_sync_skipped == null) results.wr_sync_skipped = "phase_inactive";
         return;
       }
+      if (!syncOnly) {
+        try {
+          const { replayWrFinalSettlement } = await import("@/lib/warung-rebahan/final-settlement");
+          results.wr_final_settlement = await replayWrFinalSettlement(database);
+        } catch {
+          results.wr_final_settlement_error = true;
+          if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+        }
+      }
       if (!budget.fits(COST_PER_WR_WORK)) {
         if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
         return;
@@ -847,6 +856,7 @@ export async function POST(request: NextRequest) {
             results.wr_orders_processed = processed.processed;
             results.wr_orders_succeeded = processed.succeeded;
             results.wr_orders_blocked = processed.blocked;
+            if (processed.finalDeferred) results.wr_final_dispatch_deferred = true;
             results.wr_orders_reconciled = (processed.reconciled ?? 0) + Number(results.wr_orders_reconciled ?? 0);
             if (processed.processed > processed.succeeded && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
           } catch { if (!deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan"); }

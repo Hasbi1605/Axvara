@@ -5,6 +5,8 @@ import { POST as retrySk } from "@/app/api/admin/sekalipay/orders/[id]/retry/rou
 import { POST as wrTick } from "@/app/api/cron/lite/route";
 import { POST as skWebhook } from "@/app/api/webhook/sekalipay/route";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { notifyBuyerDeliveryFailed } from "@/lib/notify-buyer";
+import { replayWrFinalSettlement, settleWrFinalAggregate, settleWrFinalLink } from "@/lib/warung-rebahan/final-settlement";
 import { parseExpiry } from "@/lib/expiry";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { computeSkSignature } from "@/lib/sekalipay/client";
@@ -483,18 +485,22 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
     f.set("attempt_count=max_attempts-1");
     if (mixed) f.sibling();
     f.fx.sql.exec("UPDATE orders SET customer_email='buyer@fixture.test'");
+    f.fx.sql.exec("INSERT INTO wr_saldo_log(balance,source) VALUES (100000,'api_check')");
     vi.stubEnv("RESEND_API_KEY", "fixture");
     vi.stubEnv("FORWARD_FROM_EMAIL", "sender@fixture.test");
     vi.stubEnv("CRON_SECRET", "fixture-cron");
     return f;
   }
 
-  const tick = () => wrTick(new NextRequest("https://fixture.test/api/cron/lite?job=wr_orders", {
-    method: "POST", headers: { authorization: "Bearer fixture-cron" },
-  }));
+  const tick = () => {
+    vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+    return wrTick(new NextRequest("https://fixture.test/api/cron/lite?job=wr_orders", {
+      method: "POST", headers: { authorization: "Bearer fixture-cron" },
+    }));
+  };
   const notices = (f: ReturnType<typeof setup>) => f.fx.sql.prepare("SELECT status FROM buyer_notice_log WHERE order_code=?").all(f.code);
 
-  it.fails("keeps mixed cart active until sibling completes; sends one notice and never buys twice", async () => {
+  it("keeps mixed cart active until sibling completes; sends one notice and never buys twice", async () => {
     const f = prepareH4(true);
     const http = wire({ [f.buy]: () => wrReject(true) });
     expect(await f.process(f.db, due)).toMatchObject({ failed: 1 });
@@ -508,7 +514,7 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
     });
   });
 
-  it.fails("defers below the measured admission boundary and settles one item at the first admitted budget", async () => {
+  it("defers below the measured admission boundary and settles one item at the first admitted budget", async () => {
     const f = prepareH4();
     const http = wire({ [f.buy]: () => wrReject(false) });
     const before = f.row();
@@ -528,11 +534,21 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
       .toEqual({ previous: admitted - 1, floorMinusOne: admitted - 1, items: ["failed"], order: "failed", calls: [f.buy, "POST /emails"] });
   });
 
-  it.fails.each(["item", "aggregate", "post-aggregate"] as const)("replays interrupted %s write from the next WR recovery tick without POST", async phase => {
+  it.each(["link", "item", "handoff", "aggregate", "post-aggregate", "legacy-post-aggregate"] as const)("replays interrupted %s write from the next WR recovery tick without POST", async phase => {
     const f = prepareH4();
     const http = wire({ [f.buy]: () => wrReject(false) });
-    // Reject an actual D1 state transition, not selected SQL text. Base intentionally cannot resume it.
-    if (phase === "post-aggregate") {
+    const legacy = phase === "legacy-post-aggregate";
+    if (legacy) {
+      f.set("fulfillment_item_id=NULL");
+      f.fx.sql.exec("DELETE FROM fulfillment_items");
+    }
+    if (phase === "link") {
+      f.fx.control.afterRun = async () => { if (f.row().wr_final_settle_token) throw new Error("fixture link interruption"); };
+    } else if (phase === "handoff") {
+      f.fx.sql.exec(`CREATE TRIGGER interrupt_h4 BEFORE UPDATE OF wr_final_settle_token ON wr_order_links
+        WHEN OLD.wr_final_settle_token IS NOT NULL AND NEW.wr_final_settle_token IS NULL
+        BEGIN SELECT RAISE(ABORT,'fixture handoff interruption'); END;`);
+    } else if (phase === "post-aggregate" || legacy) {
       // On aggregate commit, simulate loss of the rest of this invocation's D1 access.
       f.fx.control.fail = () => f.order().fulfillment_status === "failed";
     } else f.fx.sql.exec(phase === "item" ? `CREATE TRIGGER interrupt_h4 BEFORE UPDATE OF status ON fulfillment_items
@@ -544,24 +560,31 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
     }
     expect(f.row().status).toBe("failed");
     const interrupted = { items: f.items(), order: f.order().fulfillment_status, calls: [...http.calls] };
+    if (phase === "handoff") {
+      expect(f.row().wr_final_settle_token).toEqual(expect.any(String));
+      expect(f.order().wr_aggregate_refresh_token).toBeNull();
+    }
     f.fx.control.fail = null;
+    f.fx.control.afterRun = null;
     f.fx.sql.exec("DROP TRIGGER IF EXISTS interrupt_h4");
     await tick();
     await tick();
     expect({ interrupted, recovered: { items: f.items(), order: f.order().fulfillment_status, calls: http.calls } }).toEqual({
-      interrupted: { items: [phase === "item" ? "queued" : "failed"], order: phase === "post-aggregate" ? "failed" : "queued", calls: [f.buy] },
-      recovered: { items: ["failed"], order: "failed", calls: [f.buy, "POST /emails"] },
+      interrupted: { items: legacy ? [] : [phase === "item" || phase === "link" ? "queued" : "failed"], order: phase === "post-aggregate" || legacy ? "failed" : "queued", calls: [f.buy] },
+      recovered: { items: legacy ? [] : ["failed"], order: "failed", calls: [f.buy, "POST /emails"] },
     });
   });
 
-  it.fails.each(["delivered", "sending", "manual", "conflict", "unpaid"] as const)("does not use unbound fallback when the bound item becomes %s in flight", async branch => {
+  it.each(["delivered", "sending", "manual-error", "manual-message", "conflict", "unpaid", "disabled"] as const)("does not use unbound fallback when the bound item becomes %s in flight", async branch => {
     const f = prepareH4();
     const http = wire({ [f.buy]: () => {
       if (branch === "unpaid") f.fx.sql.exec("UPDATE orders SET payment_status='pending'");
+      else if (branch === "disabled") f.fx.sql.exec("UPDATE orders SET supplier_purchase_disabled=1");
       else if (branch === "conflict") {
         f.fx.sql.prepare("INSERT INTO wr_order_links(id,order_code,wr_variant_id,wr_cost,status) VALUES(2,?,'other',5000,'processing')").run(f.code);
         f.fx.sql.exec("UPDATE fulfillment_items SET wr_link_id=2 WHERE id=1");
-      } else if (branch === "manual") f.fx.sql.exec("UPDATE fulfillment_items SET last_error='manual_handover:fixture',delivered_message_id='manual' WHERE id=1");
+      } else if (branch === "manual-error") f.fx.sql.exec("UPDATE fulfillment_items SET last_error='manual_handover:fixture' WHERE id=1");
+      else if (branch === "manual-message") f.fx.sql.exec("UPDATE fulfillment_items SET delivered_message_id='manual' WHERE id=1");
       else f.fx.sql.prepare("UPDATE fulfillment_items SET status=? WHERE id=1").run(branch);
       return wrReject(false);
     } });
@@ -572,7 +595,7 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
     });
   });
 
-  it.fails("settles the reverse-only bound item after catalog mapping churn", async () => {
+  it("settles the reverse-only bound item after catalog mapping churn", async () => {
     const f = prepareH4();
     f.set("fulfillment_item_id=NULL");
     f.fx.sql.exec("UPDATE product_variants SET wr_variant_id=NULL");
@@ -591,5 +614,157 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
     expect(f.items()).toEqual([]);
     expect(f.order().fulfillment_status).toBe("failed");
     expect(http.calls).toEqual([f.buy, "POST /emails"]);
+  });
+
+  it.each(["claim", "send", "response"] as const)("cannot promote a low-budget attempt to final during %s", async phase => {
+    const f = prepareH4();
+    f.set("max_attempts=4,attempt_count=2");
+    const b = f.budget(9);
+    if (phase === "claim") afterRead(b.access, "queryAll", () => { f.set("max_attempts=3"); });
+    if (phase === "send") f.fx.control.afterRun = async () => {
+      if (f.row().status === "claimed") { f.fx.control.afterRun = null; f.set("max_attempts=3"); }
+    };
+    const http = wire({ [f.buy]: () => { f.set("max_attempts=3"); return wrReject(false); } });
+    expect(await f.process(b.access, due)).toMatchObject({ retried: 1, failed: 0 });
+    expect(f.row().wr_final_settle_token).toBeNull();
+    expect(f.items()).toEqual(["queued"]);
+    expect(http.calls).toEqual(phase === "response" ? [f.buy] : []);
+  });
+
+  it("keeps an interrupted send unknown even when a legacy caller and replay try again", async () => {
+    const f = prepareH4();
+    const http = wire({ [f.buy]: () => wrReject(false), "POST /emails": () => {
+      f.fx.control.fail = sql => sql.includes("UPDATE buyer_notice_log");
+      return Response.json({ id: "accepted-fixture" });
+    } });
+    await expect(f.process(f.db, due)).rejects.toThrow("Injected database interruption");
+    f.fx.control.fail = null;
+    f.fx.sql.exec("UPDATE buyer_notice_log SET updated_at=datetime('now','-1 day')");
+    await notifyBuyerDeliveryFailed(f.code, f.db);
+    await tick();
+    await tick();
+    expect(f.order().wr_aggregate_refresh_token).toEqual(expect.any(String));
+    expect(notices(f)).toEqual([{ status: "sending" }]);
+    expect(http.calls).toEqual([f.buy, "POST /emails"]);
+  });
+
+  it.each(["api envelope", "balance", "config", "ambiguous"] as const)("writes H4 proof only for definitive final rejection: %s", async phase => {
+    const f = prepareH4();
+    if (phase === "api envelope") f.fx.control.fail = sql => sql.includes("AS eligible") && sql.includes("SELECT i.id");
+    const http = wire({ [f.buy]: () => phase === "api envelope" ? Response.json({ success: false, message: "INVALID_VARIANT" })
+      : Response.json({ success: false, message: phase === "balance" ? "INSUFFICIENT_BALANCE" : "fixture failure" },
+        { status: phase === "balance" ? 402 : phase === "config" ? 401 : 503 }) });
+    if (phase === "api envelope") await expect(f.process(f.db, due)).rejects.toThrow("Injected database interruption");
+    else await f.process(f.db, due);
+    expect(f.row().wr_final_settle_token).toEqual(phase === "api envelope" ? expect.any(String) : null);
+    expect(f.items()).toEqual(["queued"]);
+    expect(http.calls.filter(call => call === f.buy)).toEqual([f.buy]);
+  });
+});
+
+describe("H4 settlement generations and retry", () => {
+  it("runs the final admin notice only for the first winning writer, not recovery", async () => {
+    const f = setup("premium");
+    f.bind();
+    f.set("attempt_count=max_attempts-1");
+    vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture");
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "22");
+    const admin = "POST /botfixture/sendMessage";
+    const http = wire({ [f.buy]: () => wrReject(false), [admin]: () => Response.json({ ok: true, result: { message_id: 1 } }) });
+    f.fx.control.fail = sql => sql.includes("UPDATE fulfillment_items AS i");
+    await expect(f.process(f.db, due)).rejects.toThrow("Injected database interruption");
+    f.fx.control.fail = null;
+    expect(await replayWrFinalSettlement(f.db)).toMatchObject({ settled: 2 });
+    expect(await f.process(f.db, due)).toMatchObject({ processed: 0 });
+    expect(http.calls).toEqual([f.buy, admin]);
+  });
+
+  it.each(["cross-order", "duplicate reverse", "forward competitor", "lost binding", "generic failed"] as const)("retains marker without fallback for %s", async branch => {
+    const f = setup("premium");
+    f.bind();
+    f.set("attempt_count=max_attempts-1");
+    const http = wire({ [f.buy]: () => {
+      if (branch === "cross-order") {
+        seedWrOrder(f.fx, "other-order");
+        f.fx.sql.exec("UPDATE fulfillment_items SET order_code='other-order'");
+      } else if (branch === "duplicate reverse") {
+        f.sibling();
+        f.fx.sql.exec("UPDATE fulfillment_items SET wr_link_id=1");
+      } else if (branch === "forward competitor") {
+        f.fx.sql.prepare(`INSERT INTO wr_order_links(order_code,wr_variant_id,wr_cost,status,fulfillment_item_id)
+          VALUES(?,'other',5000,'failed',1)`).run(f.code);
+      } else if (branch === "lost binding") {
+        f.set("fulfillment_item_id=NULL");
+        f.fx.sql.exec("UPDATE fulfillment_items SET wr_link_id=NULL");
+      } else f.fx.sql.exec("UPDATE fulfillment_items SET status='failed',last_error='unrelated'");
+      return wrReject(false);
+    } });
+    expect(await f.process(f.db, due)).toMatchObject({ failed: 1 });
+    expect(await replayWrFinalSettlement(f.db)).toMatchObject({ pending: 1 });
+    expect(f.row().wr_final_settle_token).toEqual(expect.any(String));
+    expect(f.order()).toMatchObject({ fulfillment_status: "queued", wr_aggregate_refresh_token: null });
+    expect(http.calls).toEqual([f.buy]);
+  });
+
+  it("orders past an active aggregate and rotates past a conflicting link", async () => {
+    const f = setup("premium");
+    const marked = crypto.randomUUID();
+    f.set(`status='failed',wr_final_settle_token='${marked}:b'`);
+    f.fx.sql.exec(`UPDATE orders SET wr_aggregate_refresh_token='${crypto.randomUUID()}';`);
+    seedWrOrder(f.fx, "zzz-healthy");
+    f.fx.sql.prepare(`INSERT INTO wr_order_links(id,order_code,wr_variant_id,wr_cost,status,wr_final_settle_token)
+      VALUES(2,'zzz-healthy','other',5000,'failed',?)`).run(`${crypto.randomUUID()}:u`);
+    const http = wire();
+    expect(await replayWrFinalSettlement(f.db)).toMatchObject({ pending: 1, settled: 0, reasons: { conflict: 1 } });
+    expect(await replayWrFinalSettlement(f.db)).toMatchObject({ pending: 0, settled: 2 });
+    expect(f.row().wr_final_settle_token).toBe(`${marked}:b`);
+    expect(f.fx.sql.prepare("SELECT fulfillment_status,wr_aggregate_refresh_token FROM orders WHERE code='zzz-healthy'").get())
+      .toEqual({ fulfillment_status: "failed", wr_aggregate_refresh_token: null });
+    expect(http.calls).toEqual([]);
+  });
+
+  it.each(["read", "failed CAS", "retry CAS", "order only"] as const)("Admin Retry fences only link marker: %s", async phase => {
+    const f = setup("premium");
+    const marker = `${crypto.randomUUID()}:b`;
+    f.set(`status='${phase === "retry CAS" ? "retry" : "failed"}',attempt_count=1`);
+    vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+    if (phase === "read") f.set(`wr_final_settle_token='${marker}'`);
+    if (phase.endsWith("CAS")) f.fx.control.beforeRun = async sql => {
+      if (sql.includes("UPDATE wr_order_links SET status='retry'")) f.set(`wr_final_settle_token='${marker}'`);
+    };
+    if (phase === "order only") f.fx.sql.exec(`UPDATE orders SET wr_aggregate_refresh_token='${crypto.randomUUID()}'`);
+    const http = wire();
+    const response = await retry("premium");
+    expect(response.status).toBe(phase === "order only" ? 200 : 409);
+    expect(f.row().wr_final_settle_token).toBe(phase === "order only" ? null : marker);
+    expect(http.calls).toEqual([]);
+  });
+
+  it("replays two same-order handoffs without allowing stale ACK; preserves work through Retry", async () => {
+    const f = setup("premium");
+    f.bind();
+    f.sibling();
+    const a = crypto.randomUUID(), b = crypto.randomUUID();
+    f.set(`status='failed',wr_final_settle_token='${a}:b'`);
+    f.fx.sql.prepare(`INSERT INTO wr_order_links(id,order_code,wr_variant_id,wr_cost,status,fulfillment_item_id,wr_final_settle_token)
+      VALUES(2,?,'other',5000,'failed',2,?)`).run(f.code, `${b}:b`);
+    const work = (id: number, token: string) => settleWrFinalLink(f.db, { id, token, code: f.code });
+    const generations = await Promise.all([work(1, a), work(2, b)]);
+    const live = String(f.order().wr_aggregate_refresh_token);
+    const tokens = generations.map(g => typeof g === "string" ? g : g.orderToken);
+    expect(tokens).toContain(live);
+    expect(new Set(tokens).size).toBe(2);
+    expect(await settleWrFinalAggregate(f.db, f.code, tokens.find(t => t !== live)!)).toBe("race");
+    expect(f.order().wr_aggregate_refresh_token).toBe(live);
+    vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+    expect((await retry("premium")).status).toBe(200);
+    expect(f.order().wr_aggregate_refresh_token).toBe(live);
+    expect(await replayWrFinalSettlement(f.db)).toMatchObject({ settled: 0 });
+    f.set("status='completed',wr_order_id='NEW'");
+    f.fx.sql.exec("UPDATE fulfillment_items SET status='delivered',last_error=NULL WHERE id=1");
+    expect(await replayWrFinalSettlement(f.db)).toMatchObject({ settled: 1 });
+    expect(f.order().fulfillment_status).toBe("failed");
+    expect(f.order().wr_aggregate_refresh_token).toBeNull();
   });
 });

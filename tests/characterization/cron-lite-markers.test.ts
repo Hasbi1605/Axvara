@@ -114,7 +114,7 @@ describe("T4 lite completion marker", () => {
 
   it("WR queue lookup failure is monitored rather than advancing the marker", async () => {
     fx.sql.exec("DROP TABLE wr_order_links");
-    expect(await run("wr_orders")).toMatchObject({ status: 503, body: { ok: false, failed_subjobs: ["due_lookup"] } });
+    expect(await run("wr_orders")).toMatchObject({ status: 503, body: { ok: false, failed_subjobs: ["final_settlement", "due_lookup"] } });
     expect(mocks.wrStuck).toHaveBeenCalledOnce();
     expect(setting(marker("wr_orders"))).toBeUndefined();
   });

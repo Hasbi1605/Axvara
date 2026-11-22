@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — C2/H4 (kandidat lokal): kegagalan definitif terakhir WR Premium/Jaspay menyelesaikan item yang dimiliki, menunggu sibling sebelum notice, dan dapat dipulihkan tanpa POST ulang; Admin Retry memagari marker link saja — `src/lib/warung-rebahan/final-settlement.ts`, cron lite/operations — (verifikasi: lihat `C2-takeover-evidence.md` untuk hasil SQLite, Workerd D1, dan anggaran)
+
 - 2026-11-22 — Roadmap 3D-4 (kelas E): pindahkan planner/tulis varian WR dan agregat induk (`planExistingVariantWrites`, `upsertWrVariant`, `insertNewVariant`, `planParentAggregateWrite`, `refreshParentAggregates`) dari `sync.ts` ke `src/lib/warung-rebahan/sync/variant.ts`; SQL/bind/guard kuota dan permukaan ekspor barrel tidak berubah — `src/lib/warung-rebahan/sync.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 9 file fokus 119 lulus termasuk Workerd Jaspay; TypeScript dan ESLint terarah lulus)
 
 - 2026-11-22 — Roadmap 3D-3 (kelas E): pindahkan `planLinkedProductWrites`, `upsertWrProduct`, dan `createAxvaraCatalogForWr` dari `sync.ts` WR ke `src/lib/warung-rebahan/sync/product.ts`; SQL/bind/cabang/batch dan permukaan ekspor barrel tidak berubah — `src/lib/warung-rebahan/sync.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 8 file fokus 108 lulus termasuk Workerd Jaspay; TypeScript dan ESLint terarah lulus)
