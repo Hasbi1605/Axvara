@@ -133,20 +133,9 @@ export async function POST(request: NextRequest) {
       if (failed) return NextResponse.json({ ...result, ok: false }, { status: 503 });
     }
     else if (job === "tg_webhook") {
-      const { guardTelegramWebhook } = await import("@/lib/telegram/webhook-guard");
-      const { TG_WEBHOOK_HEALTH_KEY } = await import("@/lib/service-health");
-      const guard = await guardTelegramWebhook(db);
-      Object.assign(result, guard);
-      // A successful reinstall is not proof of recovery. Let the next
-      // getWebhookInfo confirm the URL/backlog before resetting the soft alarm.
-      const failed = guard.status !== "skipped" && guard.status !== "healthy" && guard.status !== "recovered";
-      if (guard.status !== "skipped" && db.canSpend(1)) {
-        await saveServiceHealth(db, TG_WEBHOOK_HEALTH_KEY, JSON.stringify({
-          error: failed ? guard.status : null,
-          pending: guard.pending_update_count ?? null,
-        }));
-      }
-      if (failed) return NextResponse.json({ ...result, ok: false, error: guard.error || guard.status }, { status: 503 });
+      const { run } = await import("@/lib/cron/lite/jobs/tg-webhook");
+      const outcome = await run({ job, db, deadline, result, failedCore });
+      if (outcome.kind === "failed") return NextResponse.json({ ...result, ok: false, error: outcome.error }, { status: 503 });
     }
     else {
       const { run } = await import("@/lib/cron/lite/jobs/promo");

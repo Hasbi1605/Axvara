@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3A-8e (kelas E): pindahkan badan job `tg_webhook` cron lite ke `src/lib/cron/lite/jobs/tg-webhook.ts`; urutan impor, simpan kesehatan, pemilihan error, dan respons 503 tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus 201 lulus + 1 TODO; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3A-8d (kelas E): pindahkan badan job `games_orders` cron lite ke `src/lib/cron/lite/jobs/games-orders.ts`; argumen dispatch, kondisi error, dan respons 503 tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus 215 lulus + 1 TODO; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3A-8c (kelas E): pindahkan badan job `games_catalog` cron lite ke `src/lib/cron/lite/jobs/games-catalog.ts`; predikat `ok === false`, tanpa drain, dan respons 503 tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus 127 lulus + 1 TODO; TypeScript dan ESLint lulus)
