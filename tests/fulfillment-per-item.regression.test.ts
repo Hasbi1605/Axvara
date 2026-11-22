@@ -139,7 +139,8 @@ describe("penerima kanal eksplisit per item", () => {
   });
 
   it("cron backfill baris item untuk job pra-migrasi sebelum proses due jobs", async () => {
-    const cron = read("src/app/api/cron/operations/route.ts");
+    // 3C fulfillment: phase body moved to phases/fulfillment.ts.
+    const cron = read("src/lib/cron/phases/fulfillment.ts");
     const deliver = readDelivery();
     expect(cron).toContain("processJobItems(Number(job.id)");
     // The single processor materializes missing lines before claiming the job.

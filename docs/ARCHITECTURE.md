@@ -2104,7 +2104,8 @@ axvara/
 │   │   ├── catalog-sweep.ts    # gerbang waktu sweep WR/SK 14/60 mnt + freshness diff 10 mnt (3C-1)
 │   │   ├── operations-context.ts # kontrak OperationsContext beku untuk 6 fase + skeleton hasil berurutan; hasTime memakai wall clock route (3C-2)
 │   │   ├── scheduling.ts       # kebijakan penjadwalan murni operations: seleksi awal, 3 slot, perlindungan fulfillment, promosi basi WR/SK (3C scheduling)
-│   │   └── phases/cleanup.ts   # fase cleanup operations: gerbang tunggu/headroom 10 + maintenance cleanup (3C cleanup)
+│   │   ├── phases/cleanup.ts   # fase cleanup operations: gerbang tunggu/headroom 10 + maintenance cleanup (3C cleanup)
+│   │   └── phases/fulfillment.ts # fase fulfillment operations: stale release, orphan, agregat, due jobs (3C fulfillment)
 │   ├── cron/lite/
 │   │   ├── jobs.ts             # daftar job dan tipe LiteJob, tanpa impor
 │   │   ├── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis

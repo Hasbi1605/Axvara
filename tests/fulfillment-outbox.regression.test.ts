@@ -56,7 +56,10 @@ describe("idempotent recovery without double delivery", () => {
     // and delivery share the bounded due-job processor.
     // (processJobItems per-item). Estimasi lama COST_PER_ORPHAN_ORDER sudah
     // tidak dipakai di route.
-    const cron = read("src/app/api/cron/operations/route.ts");
+    // 3C fulfillment: phase body moved to phases/fulfillment.ts; the
+    // route still dispatches it via runFulfillmentPhase.
+    const cron = read("src/lib/cron/phases/fulfillment.ts");
+    expect(read("src/app/api/cron/operations/route.ts")).toContain("runFulfillmentPhase(ctx)");
     expect(cron).toContain("fulfillment_orphans_healed");
     expect(cron).toContain("reconcileOrphanLight(String(orphan.code), database)");
     expect(cron).toContain("COST_PER_ORPHAN_LIGHT");

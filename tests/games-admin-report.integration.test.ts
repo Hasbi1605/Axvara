@@ -180,7 +180,8 @@ it("Market fulfillment and handover leave Games rows inert, including stale jobs
 });
 
 it("operations cron's bounded orphan query cannot spend slots on Games", () => {
-  const source = fs.readFileSync("src/app/api/cron/operations/route.ts", "utf8");
+  // 3C fulfillment: orphan query moved to phases/fulfillment.ts.
+  const source = fs.readFileSync("src/lib/cron/phases/fulfillment.ts", "utf8");
   const sql = source.match(/`(SELECT o\.code FROM orders o LEFT JOIN fulfillment_jobs fj ON fj\.order_code=o\.code[\s\S]*?ORDER BY o\.created_at ASC LIMIT \?)`/)?.[1];
   expect(sql).toBeTruthy();
   expect(fx.sql.prepare(sql!).all(1)).toEqual([]);
