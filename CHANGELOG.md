@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3D-6 (kelas E): pindahkan orkestrasi sweep premium `syncProducts` ke `src/lib/warung-rebahan/sync/sweep.ts` (tiga stage privat fetch/loop/finalize); mesin Jaspay, urutan statement, cursor, dan permukaan ekspor tidak berubah — `src/lib/warung-rebahan/sync.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 36 file fokus 466 lulus termasuk Workerd Jaspay dan regresi cursor resume; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3A-6b (kelas E): pindahkan badan job `fulfillment` cron lite ke `src/lib/cron/lite/jobs/fulfillment.ts`; batas 20 job/10 item, deadline, SQL, penanganan error, dan respons tetap — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus, 108 lulus + 1 TODO; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3A-6a (kelas E): pindahkan badan job `expiry` cron lite ke `src/lib/cron/lite/jobs/expiry.ts`; SQL/bind, sapuan ledger yatim tanpa restock, stale-initializing, transisi gateway/Games, dan hasil JSON tidak berubah — `src/app/api/cron/lite/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus 116 lulus + 1 TODO; TypeScript dan ESLint lulus)

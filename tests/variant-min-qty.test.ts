@@ -61,7 +61,7 @@ describe("variant min_qty — migrasi & schema", () => {
     expect(fieldsBlock.slice(0, blockEnd)).not.toContain("min_qty");
     // 3D-3: product step moved to sync/product.ts; min_qty must stay out
     // of both the engine and the moved product writes.
-    const sync = read("src/lib/warung-rebahan/sync.ts") + "\n" + read("src/lib/warung-rebahan/sync/product.ts") + "\n" + read("src/lib/warung-rebahan/sync/variant.ts") + "\n" + read("src/lib/warung-rebahan/sync/prefetch.ts") + "\n" + read("src/lib/warung-rebahan/sync/state.ts") + "\n" + read("src/lib/warung-rebahan/sync/zeroing.ts");
+    const sync = read("src/lib/warung-rebahan/sync.ts") + "\n" + read("src/lib/warung-rebahan/sync/product.ts") + "\n" + read("src/lib/warung-rebahan/sync/variant.ts") + "\n" + read("src/lib/warung-rebahan/sync/prefetch.ts") + "\n" + read("src/lib/warung-rebahan/sync/state.ts") + "\n" + read("src/lib/warung-rebahan/sync/zeroing.ts") + "\n" + read("src/lib/warung-rebahan/sync/sweep.ts");
     expect(sync).not.toContain("min_qty");
   });
 });

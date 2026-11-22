@@ -52,6 +52,21 @@ describe("T6 WR sync stages", () => {
     expect([stock("var-000"), stock("var-004")]).toEqual([7, 0]);
   });
 
+  it("preserves a nonzero resumed cursor when admission yields before the first product", async () => {
+    const products = catalog(5);
+    expect(await run(products)).toMatchObject({ synced: 5, snapshotComplete: true, errors: [] });
+    expect(await run(products, { maxProducts: 2 })).toMatchObject({ synced: 2, snapshotComplete: false, budgetYielded: true });
+    expect(state("products_cursor")).toBe("2");
+    // Deny only the product-admission check (canSpend(cost+4)); state
+    // writes still run so the finalize tail persists the resumed cursor.
+    const db = createDatabaseAccess(fx.db);
+    const realCanSpend = db.canSpend.bind(db);
+    const guarded = { ...db, canSpend: (n: number) => (n > 10 ? false : realCanSpend(n)) };
+    const yielded = await syncProducts(guarded as typeof db, async () => products, {});
+    expect(yielded).toMatchObject({ synced: 0, budgetYielded: true, snapshotComplete: false, errors: [] });
+    expect(state("products_cursor")).toBe("2");
+  });
+
   it("prefetches existing product and variant rows across >50 IDs in a diff without remapping or dropping the second chunk", async () => {
     const products = catalog(53);
     const diff = () => ({ applyOnly: { products, removedVariantIds: [] } });
