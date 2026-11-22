@@ -685,6 +685,32 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
     expect(http.calls).toEqual([f.buy, "POST /emails"]);
   });
 
+  it.each([429, 422, 503, 409, 200, "timeout"] as const)("FX-21c strict Resend outcome %s", async status => {
+    const f = prepareH4();
+    const retryable = status === 429 || status === 422;
+    let emailAttempts = 0;
+    const http = wire({ [f.buy]: () => wrReject(false), "POST /emails": () => {
+      if (++emailAttempts > 1) return Response.json({ id: "fixture-accepted" });
+      if (status === "timeout") throw new DOMException("timed out", "AbortError");
+      const name = status === 429 ? "rate_limit_exceeded" : status === 422 ? "invalid_attachment"
+        : status === 409 ? "concurrent_idempotent_requests" : "application_error";
+      return Response.json({ name, message: "fixture response" }, { status });
+    } });
+    expect(await f.process(f.db, due)).toMatchObject({ failed: 1 });
+    const ledger = () => f.fx.sql.prepare("SELECT status,access_retry_at,access_attempts FROM buyer_notice_log").get();
+    expect(ledger()).toMatchObject(retryable ? { status: "failed", access_retry_at: expect.any(String), access_attempts: 1 }
+      : { status: "sending", access_retry_at: null });
+    await replayWrFinalSettlement(f.db);
+    expect(http.calls).toEqual([f.buy, "POST /emails"]);
+    f.fx.sql.exec("UPDATE buyer_notice_log SET updated_at=datetime('now','-1 day'), access_retry_at=datetime('now','-1 second')");
+    await replayWrFinalSettlement(f.db); // cursor wraps
+    await replayWrFinalSettlement(f.db);
+    await replayWrFinalSettlement(f.db);
+    expect(ledger()?.status).toBe(retryable ? "sent" : "sending");
+    expect(f.order().wr_aggregate_refresh_token).toEqual(retryable ? null : expect.any(String));
+    expect(http.calls).toEqual(retryable ? [f.buy, "POST /emails", "POST /emails"] : [f.buy, "POST /emails"]);
+  });
+
   it.each(["api envelope", "balance", "config", "ambiguous"] as const)("writes H4 proof only for definitive final rejection: %s", async phase => {
     const f = prepareH4();
     if (phase === "api envelope") f.fx.control.fail = sql => sql.includes("AS eligible") && sql.includes("SELECT i.id");

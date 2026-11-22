@@ -43,7 +43,7 @@ it("sends processing once on accepted Buff202, before completion, with no privat
   expect(await notifyBuyerTunvnProcessing(code,linkId(),createDatabaseAccess(fixture.db))).toBe(false);
 });
 it("retries a failed processing mail on the next status poll, not the purchase",async()=>{
-  mail.mockResolvedValueOnce({ok:false,error:"fixture-unavailable"});await tick();
+  mail.mockResolvedValueOnce({kind:"unknown",ok:false,error:"fixture-unavailable"});await tick();
   expect(fixture.sql.prepare("SELECT status FROM buyer_notice_log").get()!.status).toBe("failed");
   due();await tick();expect(mail).toHaveBeenCalledTimes(2);
   expect(fixture.sql.prepare("SELECT status FROM buyer_notice_log").get()!.status).toBe("sent");

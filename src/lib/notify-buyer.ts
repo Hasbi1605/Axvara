@@ -147,18 +147,21 @@ async function claimStrictFailureNotice(db: DatabaseAccess, key: string, code: s
   const lease = crypto.randomUUID();
   const claim = await db.execRun(`INSERT INTO buyer_notice_log (idempotency_key,order_code,channel,status,access_lease)
     SELECT ?,o.code,?,'sending',? FROM orders o WHERE o.code=? AND (${guard.sql})
-    ON CONFLICT(idempotency_key) DO UPDATE SET status='sending',error=NULL,access_lease=excluded.access_lease,updated_at=datetime('now')
-    WHERE buyer_notice_log.status='failed' AND buyer_notice_log.order_code=excluded.order_code AND buyer_notice_log.channel=excluded.channel`,
+    ON CONFLICT(idempotency_key) DO UPDATE SET status='sending',error=NULL,access_lease=excluded.access_lease,access_retry_at=NULL,updated_at=datetime('now')
+    WHERE buyer_notice_log.status='failed' AND buyer_notice_log.order_code=excluded.order_code AND buyer_notice_log.channel=excluded.channel
+      AND (buyer_notice_log.access_retry_at IS NULL OR julianday(buyer_notice_log.access_retry_at)<=julianday('now'))`,
   key, channel, lease, code, ...guard.params);
   if (Number(claim.changes ?? 0) > 0) return { lease, sent: false };
   const row = await db.queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=? AND order_code=? AND channel=?`, key, code, channel);
   return { lease: null, sent: row?.status === "sent" };
 }
 
-async function settleStrictFailureNotice(db: DatabaseAccess, key: string, lease: string, ok: boolean, definitive: boolean, providerId?: string, error?: string) {
+async function settleStrictFailureNotice(db: DatabaseAccess, key: string, lease: string, ok: boolean, definitive: boolean, providerId?: string, error?: string, backoff = false) {
   // Unknown transport outcome or crash after send: keep sending, no automatic duplicate.
   if (!ok && !definitive) return false;
   const written = await db.execRun(`UPDATE buyer_notice_log SET status=?,provider_id=?,error=?,access_lease=NULL,updated_at=datetime('now')
+    ${backoff && !ok ? `,access_attempts=access_attempts+1,access_retry_at=datetime('now',CASE access_attempts
+      WHEN 0 THEN '+1 minute' WHEN 1 THEN '+5 minutes' ELSE '+15 minutes' END)` : ""}
     WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
   ok ? "sent" : "failed", providerId ?? null, ok ? null : String(error || "send_failed").slice(0, 300), key, lease);
   return ok && Number(written.changes ?? 0) === 1;
@@ -169,7 +172,7 @@ async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: 
   const claim = guard ? await claimStrictFailureNotice(database, key, orderCode, "email", guard) : null;
   if (claim ? !claim.lease : !(await claimNotice(database, key, orderCode, "email"))) return claim?.sent ?? true;
   const orderUrl = `${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`;
-  let result: { ok: boolean; providerId?: string; error?: string };
+  let result: import("@/lib/warung-rebahan/forward-sender").ForwardSendResult;
   try {
     const { sendForwardEmail } = await import("@/lib/warung-rebahan/forward-sender");
     const { renderBrandedNotice } = await import("@/lib/warung-rebahan/email-forward");
@@ -187,10 +190,10 @@ async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: 
       timeoutMs: NOTICE_EMAIL_TIMEOUT_MS,
     });
   } catch (error) {
-    result = { ok: false, error: error instanceof Error ? error.message : "resend_failed" };
+    result = { kind: "unknown", ok: false, error: error instanceof Error ? error.message : "resend_failed" };
   }
-  if (claim?.lease) return settleStrictFailureNotice(database, key, claim.lease, result.ok && Boolean(result.providerId),
-    result.error === "forward_email_not_configured", result.providerId, result.error);
+  if (claim?.lease) return settleStrictFailureNotice(database, key, claim.lease, result.kind === "accepted",
+    result.kind === "rejected", result.providerId, result.error, true);
   await settleNotice(database, key, result.ok, result.providerId, result.error);
   return result.ok;
 }

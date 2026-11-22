@@ -13,11 +13,19 @@ export function isForwardEmailConfigured(): boolean {
   );
 }
 
-export type ForwardSendResult = {
-  ok: boolean;
-  providerId?: string;
-  error?: string;
-};
+export type ForwardSendResult =
+  | { kind: "accepted"; ok: true; providerId: string; error?: never }
+  | { kind: "rejected"; ok: false; providerId?: never; error: string }
+  | { kind: "unknown"; ok: boolean; providerId?: never; error?: string };
+
+// https://resend.com/docs/api-reference/errors — don't generalize 4xx:
+// e.g. 409 can mean there was already another send in progress.
+const rejected = (status: number, name: unknown) => status === 429
+  || (status === 400 && ["invalid_idempotency_key", "validation_error"].includes(String(name)))
+  || (status === 401 && ["missing_api_key", "restricted_api_key", "validation_error"].includes(String(name)))
+  || (status === 403 && ["invalid_permission", "restricted_api_key", "suspended_api_key", "validation_error"].includes(String(name)))
+  || (status === 404 && name === "not_found") || (status === 405 && name === "method_not_allowed")
+  || (status === 422 && ["invalid_attachment", "invalid_parameter", "missing_required_field", "missing_required_parameter"].includes(String(name)));
 
 /** Kirim 1 email transaksional via Resend. Timeout default 20 dtk. */
 export async function sendForwardEmail(params: {
@@ -34,7 +42,7 @@ export async function sendForwardEmail(params: {
 }): Promise<ForwardSendResult> {
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   const from = process.env.FORWARD_FROM_EMAIL?.trim() || "";
-  if (!apiKey || !from) return { ok: false, error: "forward_email_not_configured" };
+  if (!apiKey || !from) return { kind: "rejected", ok: false, error: "forward_email_not_configured" };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 20_000);
   try {
@@ -54,14 +62,15 @@ export async function sendForwardEmail(params: {
       }),
       signal: controller.signal,
     });
-    const body = (await res.json().catch(() => null)) as { id?: string; message?: string } | null;
-    if (!res.ok) return { ok: false, error: String(body?.message || `resend_${res.status}`) };
-    return { ok: true, providerId: body?.id };
+    const body = (await res.json().catch(() => null)) as { id?: unknown; name?: unknown; message?: unknown } | null;
+    if (!res.ok) return { kind: rejected(res.status, body?.name) ? "rejected" : "unknown", ok: false, error: String(body?.message || `resend_${res.status}`) };
+    if (typeof body?.id === "string" && body.id.trim()) return { kind: "accepted", ok: true, providerId: body.id };
+    return { kind: "unknown", ok: true }; // preserve legacy non-strict 2xx handling
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      return { ok: false, error: "resend_timeout" };
+      return { kind: "unknown", ok: false, error: "resend_timeout" };
     }
-    return { ok: false, error: error instanceof Error ? error.message : "resend_failed" };
+    return { kind: "unknown", ok: false, error: error instanceof Error ? error.message : "resend_failed" };
   } finally {
     clearTimeout(timer);
   }
