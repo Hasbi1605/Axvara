@@ -169,6 +169,11 @@ export function isWrAutoOrderEnabled(): boolean {
   );
 }
 
+/** Gates new C2 work only; existing markers still fence and replay. */
+export function isWrFinalSettlementEnabled(): boolean {
+  return process.env.WR_FINAL_SETTLEMENT_ENABLED === "true";
+}
+
 /**
  * Auto-order untuk kelas ANTREAN (made_by_order / kelas belum dikunci).
  * Default AKTIF begitu auto-order menyala (keputusan owner 2026-09-18):

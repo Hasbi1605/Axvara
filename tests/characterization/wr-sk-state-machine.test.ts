@@ -108,6 +108,7 @@ function changeAfterSelection(db: DatabaseAccess, change: () => void) {
 describe.each(["WR", "SK"] as const)("%s purchase queue", supplier => {
   it("two runners sharing a due snapshot make exactly one purchase", async () => {
     const { fx, p, row } = await setup(supplier);
+    if (supplier === "WR") vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", "true");
     const before = row();
     let observed = 0;
     let release = () => {};
@@ -203,6 +204,7 @@ describe.each(["WR", "SK"] as const)("%s purchase queue", supplier => {
 describe("WR Premium purchase and admin retry", () => {
   it("exhausts a last definitive WR stock rejection without another automatic purchase", async () => {
     const { p, db, fx, row, set } = await setup("WR");
+    vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", "true");
     set("attempt_count=max_attempts-1, fulfillment_item_id=1");
     const http = supplierFetch("WR", () => Response.json({ success: false, message: "OUT_OF_STOCK" }, { status: 409 }));
     expect(await p.process(db, due())).toMatchObject({ failed: 1 });
@@ -378,6 +380,7 @@ describe.each(["premium", "jaspay"] as const)("WR %s transport and receipt", fam
 
   it("WR purchase exhaustion waits for queued siblings before failing the order or emailing", async () => {
     const { fx, db, row, set } = await setupFamily();
+    vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", "true");
     set("attempt_count=max_attempts-1, fulfillment_item_id=1");
     fx.sql.exec(`UPDATE fulfillment_items SET wr_link_id=1;
       INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(2,1,'SIBLING','Sibling',5000,1,'manual');

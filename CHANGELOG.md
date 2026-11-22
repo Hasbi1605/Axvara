@@ -1,5 +1,6 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — FX-21g: nonaktifkan penulisan marker C2 secara default; pertahankan replay dan pagar marker, kembalikan floor WR ke 6 — `src/lib/warung-rebahan/`, `tests/characterization/` — (verifikasi: paritas historis dan budget Workerd lokal)
 - 2026-11-22 — FX-21f: validasi binding baru dan kepemilikan eksklusif WR; pertahankan notice gagal setelah serah terima parsial — `src/lib/warung-rebahan/`, `tests/characterization/wr-sk-matrix.test.ts` — (verifikasi: matriks regresi dan budget lokal)
 - 2026-11-22 — FX-21e: dokumentasikan settlement, pemulihan notice, dan triase marker C2 lokal — `docs/agent-rules/supplier-wr-sk.md`, `docs/ARCHITECTURE.md`, `docs/PRD.md` — (verifikasi: pemeriksaan diff lokal)
 - 2026-11-22 — FX-21d: perluas tiga guard katalog WR ke barrel dan semua leaf sync — `tests/` — (verifikasi: tes guard katalog lokal)

@@ -48,6 +48,7 @@ it("T1 native D1 matches dispatch, cutoff, final-proof batch and GET-ref deltas"
     b.onLoad({ filter: /.*/, namespace: "framework" }, () => ({ contents: "" }));
   } }], define: { "process.env": JSON.stringify({
     WARUNG_REBAHAN_ENABLED: "true", WARUNG_REBAHAN_AUTO_ORDER_ENABLED: "true", WARUNG_REBAHAN_API_KEY: "fixture",
+    WR_FINAL_SETTLEMENT_ENABLED: "true",
     SEKALIPAY_ENABLED: "true", SEKALIPAY_AUTO_ORDER_ENABLED: "true", SEKALIPAY_API_KEY: "fixture", TELEGRAM_BOT_ENABLED: "false",
     RESEND_API_KEY: "fixture", FORWARD_FROM_EMAIL: "sender@fixture.test",
   }) } });

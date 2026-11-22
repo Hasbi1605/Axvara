@@ -43,6 +43,7 @@ import {
   isWrAutoOrderEnabled,
   isWrAutoOrderQueuedEnabled,
   isWrEnabled,
+  isWrFinalSettlementEnabled,
   WrInsufficientBalanceError,
   WrOutOfStockError,
   WrApiError,
@@ -349,6 +350,8 @@ export async function processWrPendingOrders(
   const db = database ?? createDatabaseAccess();
   const result: ProcessResult = { processed: 0, succeeded: 0, retried: 0, failed: 0, blocked: 0, reconciled: 0 };
   if (!isWrEnabled() || !isWrAutoOrderEnabled()) return result;
+  // Use the same mode for admission and the final CAS, including after a POST.
+  const finalSettlementEnabled = isWrFinalSettlementEnabled();
   // P0-3: tutup jendela crash payment-tanpa-link SEBELUM memproses antrean.
   // Cron yang sudah menjalankan probe yatim sendiri melewatinya di sini
   // (2026-10-10: probe ganda ikut menghabiskan budget statement).
@@ -363,7 +366,7 @@ export async function processWrPendingOrders(
   }
   const due = await db
     .queryAll(
-      `SELECT l.*, (l.fulfillment_item_id IS NULL AND NOT EXISTS (SELECT 1 FROM fulfillment_items f WHERE f.wr_link_id=l.id)) AS h4_unbound
+      `SELECT l.*${finalSettlementEnabled ? ", (l.fulfillment_item_id IS NULL AND NOT EXISTS (SELECT 1 FROM fulfillment_items f WHERE f.wr_link_id=l.id)) AS h4_unbound" : ""}
        FROM wr_order_links l
        LEFT JOIN wr_variants wv ON wv.wr_variant_id = l.wr_variant_id
        WHERE l.status IN ('pending','retry')
@@ -399,13 +402,13 @@ export async function processWrPendingOrders(
   let marketZeroed = false;
   const onMarketZeroed = () => { marketZeroed = true; };
   for (const link of due) {
-    const final = Number(link.attempt_count) + 1 >= Number(link.max_attempts);
-    if (!db.canSpend(final ? WR_FINAL_FLOOR : 6)) {
-      if (final) result.finalDeferred = true;
+    const finalSettlement = finalSettlementEnabled && Number(link.attempt_count) + 1 >= Number(link.max_attempts);
+    if (!db.canSpend(finalSettlement ? WR_FINAL_FLOOR : 6)) {
+      if (finalSettlement) result.finalDeferred = true;
       break;
     }
     result.processed++;
-    const outcome = await processOneLink(link, db, getTransactions, onMarketZeroed);
+    const outcome = await processOneLink(link, db, getTransactions, finalSettlement, onMarketZeroed);
     if (outcome === "succeeded") result.succeeded++;
     else if (outcome === "retried") result.retried++;
     else if (outcome === "blocked") result.blocked++;
@@ -521,7 +524,7 @@ async function claimLink(
   return { outcome: "lost" };
 }
 
-async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: () => Promise<WrTransaction[]>, onMarketZeroed?: () => void): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
+async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: () => Promise<WrTransaction[]>, finalSettlement: boolean, onMarketZeroed?: () => void): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
   const { execRun } = db;
   const id = Number(link.id);
   const attempt = Number(link.attempt_count || 0) + 1;
@@ -545,7 +548,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
   // WR3 Jaspay: keluarga `jaspay:` TIDAK PERNAH lewat POST premium.
   // Salah famili = order salah produk + invoice tak terkorelasi.
   if (isJaspayVariantId(String(link.wr_variant_id || ""))) {
-    return processOneJaspayLink(id, link, db, claim.owner, attempt, onMarketZeroed);
+    return processOneJaspayLink(id, link, db, claim.owner, attempt, finalSettlement, onMarketZeroed);
   }
   let receivedOrder = false;
   try {
@@ -613,7 +616,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
       .catch(() => undefined);
     return "succeeded";
   } catch (error) {
-    return handleOrderError(id, link, receivedOrder ? new Error("network_receipt_persist_failed") : error, attempt, db, claim.owner, onMarketZeroed);
+    return handleOrderError(id, link, receivedOrder ? new Error("network_receipt_persist_failed") : error, attempt, db, claim.owner, finalSettlement, onMarketZeroed);
   }
 }
 
@@ -634,6 +637,7 @@ async function processOneJaspayLink(
   db: DatabaseAccess,
   owner: string,
   attempt: number,
+  finalSettlement: boolean,
   onMarketZeroed?: () => void,
 ): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
   const { execRun } = db;
@@ -739,7 +743,7 @@ async function processOneJaspayLink(
     }
     return "succeeded";
   } catch (error) {
-    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt, db, owner, onMarketZeroed);
+    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt, db, owner, finalSettlement, onMarketZeroed);
   }
 }
 
@@ -876,6 +880,7 @@ async function handleJaspayOrderError(
   attempt: number,
   db: DatabaseAccess,
   owner: string,
+  finalSettlement: boolean,
   onMarketZeroed?: () => void,
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
@@ -923,7 +928,7 @@ async function handleJaspayOrderError(
     }
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
-    return finishWrFailure(db, link, owner, attempt, message, "Jaspay", isDefinitiveWrRejection(error));
+    return finishWrFailure(db, link, owner, attempt, message, "Jaspay", finalSettlement && isDefinitiveWrRejection(error));
   }
   await execRun(
     `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
@@ -943,6 +948,7 @@ async function handleOrderError(
   attempt: number,
   db: DatabaseAccess,
   owner: string,
+  finalSettlement: boolean,
   onMarketZeroed?: () => void,
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
@@ -989,7 +995,7 @@ async function handleOrderError(
     }
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
-    return finishWrFailure(db, link, owner, attempt, message, "WR", isDefinitiveWrRejection(error));
+    return finishWrFailure(db, link, owner, attempt, message, "WR", finalSettlement && isDefinitiveWrRejection(error));
   }
   await execRun(
     `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
@@ -1011,14 +1017,14 @@ function isDefinitiveWrRejection(error: unknown) {
 
 // Finality is the max_attempts snapshot checked atomically at claim and send.
 // Editing the limit after the send must not promote an under-budget POST.
-async function finishWrFailure(db: DatabaseAccess, link: Row, owner: string, attempt: number, message: string, label: string, definitive: boolean): Promise<"failed" | "retried"> {
+async function finishWrFailure(db: DatabaseAccess, link: Row, owner: string, attempt: number, message: string, label: string, writeMarker: boolean): Promise<"failed" | "retried"> {
   const id = Number(link.id);
   const code = String(link.order_code);
-  const token = definitive ? crypto.randomUUID() : null;
+  const token = writeMarker ? crypto.randomUUID() : null;
   const failed = await db.execRun(`UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
-    lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now'), wr_final_settle_token=${WR_FINAL_MARKER_SQL}
+    lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now')${token ? `, wr_final_settle_token=${WR_FINAL_MARKER_SQL}` : ""}
     WHERE id=? AND status='claimed' AND COALESCE(wr_order_id,'')='' AND lease_owner=? AND attempt_count=?
-    AND request_sent_at IS NOT NULL AND wr_final_settle_token IS NULL`, message, token, Number(link.h4_unbound), id, owner, attempt);
+    AND request_sent_at IS NOT NULL AND wr_final_settle_token IS NULL`, message, ...(token ? [token, Number(link.h4_unbound)] : []), id, owner, attempt);
   if (!Number(failed.changes)) return "retried";
   await notifyAdmin(`⚠️ <b>Order ${label} gagal</b> <code>${code}</code>\n${escapeHtml(message)}`);
   if (token) {
@@ -1026,8 +1032,10 @@ async function finishWrFailure(db: DatabaseAccess, link: Row, owner: string, att
     if (typeof handoff !== "string") await settleWrFinalAggregate(db, code, handoff.orderToken);
   } else {
     await db.execRun(`UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now') WHERE code=? AND status='lunas'`, code).catch(() => undefined);
-    const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
-    await notifyBuyerDeliveryFailed(code, db);
+    try {
+      const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+      await notifyBuyerDeliveryFailed(code, db);
+    } catch { /* kabar pembeli best-effort */ }
   }
   return "failed";
 }

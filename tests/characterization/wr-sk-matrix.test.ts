@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as retryWr } from "@/app/api/admin/warung/orders/[id]/retry/route";
 import { POST as voidWr } from "@/app/api/admin/warung/orders/[id]/void/route";
@@ -481,6 +481,8 @@ describe("T3 B5 invoice ownership invariant", () => {
 });
 
 describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
+  beforeEach(() => { vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", "true"); });
+
   function prepareH4(mixed = false) {
     const f = setup(family);
     f.bind();
@@ -726,6 +728,8 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
 });
 
 describe("H4 settlement generations and retry", () => {
+  beforeEach(() => { vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", "true"); });
+
   it.each(["retry delivered", "manual handover", "handover after failure", "retry new failure", "retry void", "interrupted handback", "conflicting ownership", "in-flight notice"] as const)("FX-21b hands back the sole proof after %s", async phase => {
     const f = setup("premium");
     f.bind();
@@ -1022,5 +1026,49 @@ describe("H4 settlement generations and retry", () => {
     expect(await replayWrFinalSettlement(f.db)).toMatchObject({ settled: 1 });
     expect(f.order().fulfillment_status).toBe("failed");
     expect(f.order().wr_aggregate_refresh_token).toBeNull();
+  });
+});
+
+describe("FX-21g marker fences with C2 off", () => {
+  it("drains a marker written by an ON dispatch after the switch turns OFF", async () => {
+    const f = setup("premium");
+    f.bind();
+    f.set("attempt_count=max_attempts-1");
+    f.fx.sql.exec("UPDATE orders SET customer_email='buyer@fixture.test'");
+    vi.stubEnv("RESEND_API_KEY", "fixture");
+    vi.stubEnv("FORWARD_FROM_EMAIL", "sender@fixture.test");
+    vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", "true");
+    const http = wire({ [f.buy]: () => {
+      vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", undefined); // in-flight dispatch keeps its admission mode
+      return wrReject(false);
+    } });
+    f.fx.control.fail = sql => sql.includes("UPDATE fulfillment_items AS i");
+    await expect(f.process(f.db, due)).rejects.toThrow("Injected database interruption");
+    expect(f.row()).toMatchObject({ status: "failed", wr_final_settle_token: expect.any(String) });
+    f.fx.control.fail = null;
+    expect((await retry("premium")).status).toBe(409);
+    await notifyBuyerDeliveryFailed(f.code, f.db);
+    expect(f.fx.sql.prepare("SELECT status FROM buyer_notice_log").all()).toEqual([]);
+    expect(http.calls).toEqual([f.buy]);
+    expect(await replayWrFinalSettlement(f.db)).toMatchObject({ settled: 2 });
+    expect(await replayWrFinalSettlement(f.db)).toEqual({ deferred: 0, pending: 0, settled: 0, reasons: {} });
+    expect(f.row().wr_final_settle_token).toBeNull();
+    expect(f.order()).toMatchObject({ fulfillment_status: "failed", wr_aggregate_refresh_token: null });
+    expect(f.items()).toEqual(["failed"]);
+    expect(f.fx.sql.prepare("SELECT status FROM buyer_notice_log").all()).toEqual([{ status: "sent" }]);
+    expect(http.calls).toEqual([f.buy, "POST /emails"]);
+  });
+
+  it.each(["claim", "send"] as const)("does not POST with a marker at %s", async phase => {
+    const f = setup("jaspay");
+    vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", undefined);
+    const marker = `${crypto.randomUUID()}:u`;
+    const mark = () => f.set(`wr_final_settle_token='${marker}'`);
+    if (phase === "claim") mark();
+    else f.fx.control.beforeRun = async sql => { if (sql.includes("SET request_sent_at=datetime('now')")) mark(); };
+    const http = wire();
+    expect(await f.process(f.db, due)).toMatchObject({ processed: 1, retried: 1 });
+    expect(f.row()).toMatchObject({ status: phase === "claim" ? "pending" : "claimed", wr_final_settle_token: marker, request_sent_at: null });
+    expect(http.calls).toEqual([]);
   });
 });

@@ -2216,7 +2216,7 @@ Untuk pesanan Warung Rebahan yang tertahan karena saldo supplier, pembeli web me
 
 ### 2.2 Functional — Admin
 
-**C2/H4 (kandidat lokal, belum dirilis; FR-S17/FR-S26):** penolakan definitif pada percobaan terakhir WR Premium/Jaspay hanya menggagalkan item yang dimiliki link. Pesanan dan kabar gagal menunggu item lain tuntas; pemulihan tidak mengulang pembelian. Admin Retry menunggu settlement link, bukan pekerjaan agregat/notice. Bila hasil kirim tidak diketahui, sistem tidak otomatis mengirim ulang.
+**C2/H4 (lokal, default OFF — FX-21g; FR-S17/FR-S26):** tanpa aktivasi, penolakan definitif terakhir WR Premium/Jaspay tetap menggagalkan link dan order `lunas` serta langsung mengabari admin dan pembeli. Saat C2 ON, hanya item milik link yang langsung gagal; pesanan dan kabar gagal menunggu item lain tuntas. Replay marker tetap aktif saat OFF dan tidak mengulang pembelian. Admin Retry menunggu settlement link, bukan pekerjaan agregat/notice. Bila hasil kirim C2 tidak diketahui, sistem tidak otomatis mengirim ulang.
 
 **FX-21 (lokal):** setelah Retry, serah terima, atau Void menggantikan bukti C2, status item terminal menentukan apakah pembeli masih perlu kabar gagal. Notice yang sudah diakui tidak dikirim ulang; hanya penolakan email yang pasti dapat dicoba lagi setelah jeda. Recovery C2 tidak membeli ulang.
 

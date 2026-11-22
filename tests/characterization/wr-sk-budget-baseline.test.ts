@@ -9,6 +9,7 @@ cleanupFixtures();
 
 const telegramReply = { "POST /botfixture/sendMessage": () => Response.json({ ok: true, result: { message_id: 1 } }) };
 function finalNoticeFixture(f: ReturnType<typeof setup>) {
+  vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", "true");
   f.bind();
   f.fx.sql.exec("UPDATE orders SET customer_email='buyer@fixture.test'");
   vi.stubEnv("RESEND_API_KEY", "fixture");
@@ -25,6 +26,78 @@ function finalNoticeFixture(f: ReturnType<typeof setup>) {
     UPDATE fulfillment_items SET status='delivered',product_id=2,variant_id=NULL WHERE item_index=1`);
   return [f.buy, "POST /botfixture/sendMessage", "POST /emails"];
 }
+
+describe.each(["premium", "jaspay"] as const)("FX-21g C2 off: %s", family => {
+  it.each([undefined, "false", "TRUE", " true ", "1", ""])("uses legacy final failure with flag %j", async flag => {
+    const f = setup(family);
+    vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", flag);
+    f.bind();
+    f.set("attempt_count=max_attempts-1,wr_order_id=''");
+    f.fx.sql.exec(`UPDATE orders SET customer_email='buyer@fixture.test';
+      CREATE TRIGGER no_link_marker_write BEFORE UPDATE OF wr_final_settle_token ON wr_order_links
+        BEGIN SELECT RAISE(ABORT,'unexpected link marker write'); END;
+      CREATE TRIGGER no_order_marker_write BEFORE UPDATE OF wr_aggregate_refresh_token ON orders
+        BEGIN SELECT RAISE(ABORT,'unexpected order marker write'); END;`);
+    vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture");
+    vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "22");
+    vi.stubEnv("RESEND_API_KEY", "fixture");
+    vi.stubEnv("FORWARD_FROM_EMAIL", "sender@fixture.test");
+    const http = wire({ [f.buy]: () => wrReject(false), ...telegramReply });
+    const b = f.budget(20); // enough for the legacy path, below C2's admission floor
+    expect(await f.process(b.access, due)).toEqual({ processed: 1, succeeded: 0, retried: 0, failed: 1, blocked: 0, reconciled: 0 });
+    expect(f.row()).toMatchObject({ status: "failed", attempt_count: 3, wr_order_id: "", request_sent_at: null,
+      lease_owner: null, lease_expires_at: null, wr_final_settle_token: null });
+    expect(f.order()).toMatchObject({ status: "lunas", fulfillment_status: "failed", wr_aggregate_refresh_token: null });
+    expect(f.items()).toEqual(["queued"]); // C2 does not stamp the bound item
+    expect(http.calls).toEqual([f.buy, "POST /botfixture/sendMessage", "POST /emails"]);
+    expect(http.bodies[1]).toMatchObject({ chat_id: "22", text: expect.stringContaining(`Order ${family === "premium" ? "WR" : "Jaspay"} gagal`) });
+    expect(http.bodies[2]).toMatchObject({ to: ["buyer@fixture.test"], subject: `Pengiriman pesanan ${f.code} bermasalah` });
+    expect(f.fx.sql.prepare("SELECT idempotency_key,status FROM buyer_notice_log").all()).toEqual([
+      { idempotency_key: `email:delivery-failed:${f.code}`, status: "sent" },
+    ]);
+  });
+
+  it("stops FIFO at five usable statements and admits the final head at six", async () => {
+    const f = setup(family);
+    vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", undefined);
+    f.set("attempt_count=max_attempts-1");
+    f.fx.sql.exec(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status)
+      SELECT 'fifo-next',customer_name,customer_wa,'[]',subtotal,payment_method,status,payment_status FROM orders;
+      INSERT INTO wr_order_links(id,order_code,wr_variant_id,quantity,wr_cost,status)
+      SELECT 2,'fifo-next',wr_variant_id,1,5000,'pending' FROM wr_order_links WHERE id=1`);
+    const before = f.row();
+    const next = () => f.fx.sql.prepare("SELECT status,attempt_count FROM wr_order_links WHERE id=2").get();
+    const http = wire({ [f.buy]: () => f.receipt("queued") });
+    const cutoff = f.budget(8); // one due SELECT + five usable + two reserved
+    expect(await f.process(cutoff.access, { ...due, limit: 2 })).toEqual({ processed: 0, succeeded: 0, retried: 0, failed: 0, blocked: 0, reconciled: 0 });
+    expect(cutoff.used).toBe(1);
+    expect(f.row()).toEqual(before);
+    expect(next()).toEqual({ status: "pending", attempt_count: 0 });
+    expect(http.calls).toEqual([]);
+    const exact = f.budget(9);
+    expect(await f.process(exact.access, { ...due, limit: 2 })).toMatchObject({ processed: 1, succeeded: 1 });
+    expect(exact.used).toBe(6);
+    expect(f.row()).toMatchObject({ [f.invoice]: "FIXTURE-INVOICE", attempt_count: 3 });
+    expect(next()).toEqual({ status: "pending", attempt_count: 0 });
+    expect(http.calls).toEqual([f.buy]);
+  });
+});
+
+it("FX-21g empty OFF replay spends only two scans and two cursor resets", async () => {
+  const f = setup("premium");
+  vi.stubEnv("WR_FINAL_SETTLEMENT_ENABLED", undefined);
+  const b = f.budget(6); // exactly four usable, two tail
+  const http = wire();
+  const before = [f.row(), f.order(), f.items()];
+  expect(await replayWrFinalSettlement(b.access)).toEqual({ deferred: 0, pending: 0, settled: 0, reasons: {} });
+  expect(b.used).toBe(4);
+  expect(f.fx.control.queries).toBe(4);
+  expect([f.row(), f.order(), f.items()]).toEqual(before);
+  expect(http.calls).toEqual([]);
+  b.beginTail();
+  expect(b.remaining).toBe(2);
+});
 
 describe("T1 statement deltas (one due SELECT, no orphan probe; two reserved tail slots)", () => {
   it.each([
