@@ -85,8 +85,12 @@ describe("Issue #14 — proteksi trafik aktual, bukan klaim", () => {
 describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
   it("cron operations: bounded batch sesuai plafon Workers Paid (tanpa multiplier lama)", () => {
     const cron = read("src/app/api/cron/operations/route.ts");
-    expect(cron).toContain("const EXPIRY_PER_RUN = 30");
+    // 3C expiry: cap constant moved to phases/expiry.ts; route keeps the
+    // no-multiplier rule and the dispatch.
+    expect(read("src/lib/cron/phases/expiry.ts")).toContain("const EXPIRY_PER_RUN = 30");
     expect(cron).not.toContain("BATCH_LIMIT * 4");
+    expect(read("src/lib/cron/phases/expiry.ts")).not.toContain("BATCH_LIMIT * 4");
+    expect(cron).toContain("runExpiryPhase(ctx)");
   });
 
   it("helper cron tetap bounded (Telegram Paid 50, delivery/WA anti-ban tetap 8)", () => {
@@ -114,8 +118,10 @@ describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
   });
 
   it("cron expiry memakai JOIN order (tanpa query order per transaksi)", () => {
-    const cron = read("src/app/api/cron/operations/route.ts");
+    // 3C expiry: expiry queries moved to phases/expiry.ts.
+    const cron = read("src/lib/cron/phases/expiry.ts");
     expect(cron).toContain("JOIN orders o ON o.code=pt.order_code");
+    expect(read("src/app/api/cron/operations/route.ts")).toContain("runExpiryPhase(ctx)");
   });
 
   it("keranjang Telegram memakai 1 JOIN varian (tanpa getActiveVariant per baris)", () => {

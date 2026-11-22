@@ -52,11 +52,16 @@ describe("canonical expiry semantics (ISO vs legacy)", () => {
 
 describe("expiry paths use the canonical helper and guarded transitions", () => {
   it("operations cron evaluates expiry in JS and never raw-compares ISO strings", () => {
-    const cron = read("src/app/api/cron/operations/route.ts");
+    // 3C expiry: phase body moved to phases/expiry.ts; route dispatch pinned.
+    const cron = read("src/lib/cron/phases/expiry.ts");
+    const route = read("src/app/api/cron/operations/route.ts");
+    expect(route).toContain("runExpiryPhase(ctx)");
     expect(cron).toContain("isExpiredIso");
     expect(cron).toContain("transitionPendingPaymentOrder");
     expect(cron).not.toContain("expires_at < datetime('now')");
     expect(cron).not.toContain("expires_at>datetime('now')");
+    expect(route).not.toContain("expires_at < datetime('now')");
+    expect(route).not.toContain("expires_at>datetime('now')");
   });
 
   it("publish-scheduled defers ledger-owned orders to the operations cron", () => {
@@ -84,7 +89,7 @@ describe("expiry paths use the canonical helper and guarded transitions", () => 
   });
 
   it("operations cron repairs stranded terminal-order/pending-ledger rows and frees the amount slot", () => {
-    const cron = read("src/app/api/cron/operations/route.ts");
+    const cron = read("src/lib/cron/phases/expiry.ts");
     expect(cron).toContain("repaired_legacy_expiry");
     expect(cron).toContain("legacy_expiry_repair");
     expect(cron).toContain("o.status IN ('kadaluarsa','dibatalkan')");

@@ -410,12 +410,16 @@ describe("Variant stock expiry lifecycle", () => {
     const db = read("src/lib/db/orders-transition.ts");
     const callback = read("src/app/api/webhook/gopay/route.ts");
     const cron = read("src/app/api/cron/operations/route.ts");
+    // 3C expiry: expiry body moved to phases/expiry.ts.
+    const expiry = read("src/lib/cron/phases/expiry.ts");
     expect(db).toContain("export async function transitionPendingPaymentOrder");
     expect(db).toContain("export async function transitionPendingPaymentToPaid");
     expect(db).toContain("UPDATE product_variants SET stock=stock+?");
     expect(callback).toContain("transitionPendingPaymentToPaid");
-    expect(cron).toContain("transitionPendingPaymentOrder");
+    expect(expiry).toContain("transitionPendingPaymentOrder");
+    expect(expiry).not.toContain("checkStatus");
     expect(cron).not.toContain("checkStatus");
+    expect(cron).toContain("runExpiryPhase(ctx)");
   });
 
   it("authenticates GoPay poller and matches only an active exact amount", () => {
