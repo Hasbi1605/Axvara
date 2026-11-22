@@ -6,19 +6,17 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 import { NextRequest, NextResponse } from "next/server";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { activeQrisProvider } from "@/lib/payments/qris";
-import { z } from "zod";
-import { assertSameBuyerCode, buyerFieldsSchema, withoutPrivateBuyerData } from "@/lib/buyer-fields";
+import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { queryAll, queryFirst } from "@/lib/db";
 import { createdCheckoutResponse, existingCheckoutResponse, paymentMethodProblem } from "@/lib/orders/checkout/response";
 import { decideEmailNeed, decideMinCap, findStalePriceItem } from "@/lib/orders/checkout/guards";
-import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
-import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
-import { verifyCheckoutQuoteToken } from "@/lib/auth";
+import { buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
+import { generateOrderCode as generateCode } from "@/lib/security";
 import { createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/qris";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
 import { readJsonBody } from "@/lib/http-body";
-import { cryptoRailEnabled, cryptoTickerOfMethodId, isCryptoTotalStillPayable, isFxSnapshotAcceptable } from "@/lib/payments/crypto-preflight";
+import { cryptoRailEnabled, isCryptoTotalStillPayable, isFxSnapshotAcceptable } from "@/lib/payments/crypto-preflight";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
 import { isNowpaymentsConfigured } from "@/lib/payments/rails";
@@ -77,36 +75,6 @@ function routeDeps() {
   };
 }
 
-const schema = z.object({
-  // Revamp 2026-09-23 ala Sekalipay: nama dihapus dari form web. Opsional di
-  // API (fallback prefix email di handler); kanal TG/WA tetap kirim nama.
-  customer_name: z.string().trim().max(80).optional().or(z.literal("")),
-  customer_wa: z
-    .string()
-    .trim()
-    .transform((s) => s.replace(/\s|-/g, ""))
-    .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), "No WA harus 08... atau +62... (10-15 digit)"),
-  // Revamp 2026-09-23: email SELALU wajib (semua produk digital — order
-  // tanpa email = macet). Sebelumnya opsional kecuali varian butuh-email.
-  customer_email: z.string().trim().email("Tulis email aktif yang benar sebelum bayar.").max(120),
-  items: z.array(z.object({
-    product_id: z.coerce.number().int().safe().min(1).optional(),
-    slug: z.string().trim().min(1).max(100).optional(),
-    variant_id: z.coerce.number().int().min(1).optional(),
-    // Batas atas web = 100/baris (paritas Telegram) agar varian min-besar
-    // (mis. GSuite min 50) tetap bisa dibeli dari web. Minimum per varian
-    // ditegakkan ulang dari DB di bawah (JANGAN percaya angka client).
-    qty: z.coerce.number().int().min(1).max(100),
-    buyer_fields: buyerFieldsSchema.optional(),
-  }).refine((item) => item.product_id || item.slug)).min(1).max(20),
-  // W3 Web crypto: opaque id nowpayments:<ticker kurasi> ONLY (server-mapped asset/
-  // network; client MUST NOT send currency/network/price). Legacy manual
-  // bank/ewallet tetap ditolak 503 di bawah, bukan dibangkitkan.
-  payment_method: z.string().trim().max(64),
-  proof_url: z.string().trim().max(600).nullable().optional().default(null),
-  quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
-});
-
 // Rate-limit terpusat (issue #14): satu implementasi di src/lib/rateLimit.ts
 // agar batas tidak tersebar + IP anti-spoof (cf-connecting-ip > x-real-ip,
 // x-forwarded-for TIDAK dipakai karena dapat di-spoof client). WAF Free (1
@@ -118,59 +86,13 @@ export async function POST(req: NextRequest) {
 
   const body = await readJsonBody(req);
   if (!body.ok) return body.response;
-  const parsed = schema.safeParse(body.data);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
-
-  const { customer_name, customer_wa, customer_email, items, payment_method, proof_url, quote_token } = parsed.data;
-  try { assertOrderAccessConfigured(); } catch {
-    return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
-  }
-
-  // Proofs are private R2 objects. External URLs would bypass the protected
-  // admin viewer and could be used as a tracking pixel.
-  // Legacy manual E-Wallet/Bank tetap nonaktif (bukan dibangkitkan untuk
-  // gateway): hanya qris + nowpayments:<ticker kurasi> + gateway yang lolos ke validasi token.
-  const cryptoTicker = cryptoTickerOfMethodId(payment_method);
-  const isCryptoMethod = cryptoTicker !== null;
-  if (!isCryptoMethod && payment_method.startsWith("nowpayments:")) {
-    // Koin di luar katalog kurasi tidak pernah ditandatangani/dibuat.
-    return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout.", code: "quote_stale" }, { status: 409 });
-  }
-  const isGatewayMethod = /^sekalipay_gateway:[A-Za-z0-9_-]{1,64}$/.test(payment_method) && !/qris/i.test(payment_method);
-  if (payment_method !== "qris" && !isCryptoMethod && !isGatewayMethod) {
-    return NextResponse.json({ error: "E-Wallet & Transfer Bank sedang maintenance. Silakan bayar via QRIS." }, { status: 503 });
-  }
-  if (proof_url) {
-    return NextResponse.json({ error: "Upload bukti sedang dinonaktifkan. Silakan bayar via QRIS." }, { status: 503 });
-  }
-  if (proof_url && (!proof_url.startsWith("/r2/bukti/") || proof_url.includes(".."))) {
-    return NextResponse.json({ error: "URL bukti tidak valid" }, { status: 400 });
-  }
-
-  const quote = await verifyCheckoutQuoteToken(quote_token);
-  if (!quote) {
-    return NextResponse.json({ error: "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout." }, { status: 409 });
-  }
-
-  const slugs = [...new Set(items.flatMap((item) => item.slug ? [item.slug] : []))];
-  const slugRows = slugs.length ? await queryAll(`SELECT id,slug FROM products WHERE slug IN (${slugs.map(() => "?").join(",")})`, ...slugs) : [];
-  const slugIds = new Map(slugRows.map((row) => [String(row.slug), Number(row.id)]));
-  const canonicalItems = items.map((item) => ({ ...item, product_id: item.slug ? slugIds.get(item.slug) : item.product_id }));
-  if (canonicalItems.some((item, index) => !item.product_id || (items[index].product_id && item.product_id !== items[index].product_id))) return NextResponse.json({ error: "Isi keranjang berubah." }, { status: 409 });
-  const requested = aggregateQty(canonicalItems as { product_id: number; variant_id?: number; qty: number }[]);
-  const quoted = aggregateQty(quote.items);
-  const sameItems = requested.size === quoted.size
-    && [...requested.entries()].every(([key, qty]) => quoted.get(key) === qty);
-  if (!sameItems) {
-    return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
-  }
-  try {
-    assertSameBuyerCode(items);
-    for (const item of canonicalItems) {
-      const signed = quote.items.find(q => q.product_id === item.product_id && q.variant_id === item.variant_id);
-      if ((signed?.buyer_fields?.muse_invite_code ?? "") !== (item.buyer_fields?.muse_invite_code ?? "")) throw new Error("changed");
-    }
-  } catch { return NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }); }
+  // Pre-reuse validation (3B-6): schema, access config, rail/proof checks,
+  // signed quote, slug canonicalization + buyer-field match live in
+  // checkout/validate.ts; reuse lookup and later stages stay below.
+  const { validateCheckoutInput } = await import("@/lib/orders/checkout/validate");
+  const validated = await validateCheckoutInput(body.data);
+  if (validated.kind === "responded") return validated.response;
+  const { customer_name, customer_wa, customer_email, payment_method, proof_url, quote, cryptoTicker, isCryptoMethod, isGatewayMethod } = validated.value;
 
   const previous = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
   if (previous) return existingCheckoutResponse(previous, routeDeps());

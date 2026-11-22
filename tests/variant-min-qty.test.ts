@@ -84,7 +84,11 @@ describe("variant min_qty — guard server", () => {
     expect(orders).toContain("decideMinCap");
     expect(guards).toContain("qtyByVariant");
     expect(guards).toContain("min_qty");
-    expect(orders).toContain("qty: z.coerce.number().int().min(1).max(100)");
+    // 3B-6: the Zod qty schema moved verbatim to checkout/validate.ts;
+    // the route still awaits validation before the DB minimum guard.
+    const validate = read("src/lib/orders/checkout/validate.ts");
+    expect(validate).toContain("qty: z.coerce.number().int().min(1).max(100)");
+    expect(orders).toContain("await validateCheckoutInput(");
   });
 
   it("guard atomik web + channel memagari min di dalam batch", () => {

@@ -182,11 +182,15 @@ describe("F-Medium: Payment proof — upload strict", () => {
 describe("Regression: checkout proof_url conditional", () => {
   it("POST /api/orders menolak jalur manual 503 selama maintenance (QRIS saja)", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
+    // 3B-6: schema + rail/proof validation moved verbatim to
+    // checkout/validate.ts; the route still awaits validateCheckoutInput.
+    const validate = fs.readFileSync(path.join(process.cwd(), "src/lib/orders/checkout/validate.ts"), "utf-8");
     expect(src).toContain("proof_url");
+    expect(src).toContain("await validateCheckoutInput(");
     // Maintenance 2026-09-17: non-QRIS + proof_url apa pun ditolak 503.
-    expect(src).toContain('payment_method !== "qris"');
-    expect(src).toContain("503");
-    expect(src).toContain('proof_url: z.string().trim().max(600).nullable().optional()');
+    expect(validate).toContain('payment_method !== "qris"');
+    expect(validate).toContain("503");
+    expect(validate).toContain('proof_url: z.string().trim().max(600).nullable().optional()');
   });
 });
 
@@ -296,11 +300,17 @@ describe("BUG-09: Zod enum payment_method tanpa duplikat", () => {
     // 3B-4: the token-in-quote assertion moved verbatim to methods.ts
     // (`method.id === payment_method`); route still calls it + wraps rejections.
     const methods = fs.readFileSync(path.join(process.cwd(), "src/lib/orders/checkout/methods.ts"), "utf-8");
-    expect(src).toContain("payment_method: z.string().trim().max(64)");
-    expect(src).toContain('payment_method !== "qris" && !isCryptoMethod && !isGatewayMethod');
+    // 3B-6: the Zod schema + rail gate moved verbatim to validate.ts.
+    const validate = fs.readFileSync(path.join(process.cwd(), "src/lib/orders/checkout/validate.ts"), "utf-8");
+    expect(validate).toContain("payment_method: z.string().trim().max(64)");
+    expect(validate).toContain('payment_method !== "qris" && !isCryptoMethod && !isGatewayMethod');
+    expect(src).toContain("await validateCheckoutInput(");
     expect(methods).toContain("payment_methods.find((method) => method.id === payment_method)");
     expect(src).toContain("resolveCheckoutMethod");
     expect(src).not.toContain("bank:bca");
+    // 3B-6: rail classification moved to validate.ts — the placeholder
+    // must stay absent there too.
+    expect(validate).not.toContain("bank:bca");
   });
 });
 

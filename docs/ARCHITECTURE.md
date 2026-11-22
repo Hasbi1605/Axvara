@@ -2118,7 +2118,8 @@ axvara/
 │   │   ├── checkout/guards.ts   # komputasi guard murni (email wajib, min/max qty, price_changed) atas baris yang dibaca route; baca DB, urutan, early return tetap di route (3B-3)
 │   │   ├── checkout/methods.ts  # preflight quote bertanda untuk crypto, gateway, QRIS (3B-4); slot/pembuatan order di create.ts, invoice di invoice.ts
 │   │   ├── checkout/create.ts   # slot checkout + fallback nama + createOrderWithStock dan reuse pemenang stok/UNIQUE (3B-5a)
-│   │   └── checkout/invoice.ts  # penerbitan invoice QRIS/NOWPayments/gateway pasca-create + probe klaim dan pembatalan terjaga (3B-5b); analytics + respons 201 tetap di route
+│   │   ├── checkout/invoice.ts  # penerbitan invoice QRIS/NOWPayments/gateway pasca-create + probe klaim dan pembatalan terjaga (3B-5b); analytics + respons 201 tetap di route
+│   │   └── checkout/validate.ts # validasi input bertanda pra-reuse: skema Zod, konfigurasi akses, rail/proof, verifikasi quote, kanonikalisasi slug + kecocokan buyer Muse (3B-6)
 │   ├── suppliers/
 │   │   ├── link-lease.ts        # Tier-1: predikat order lunas dan klaim lease satu UPDATE (AIVault, Mirai, StoreBat; TUNVN hanya predikat JS)
 │   │   └── purchase-state.ts    # WR/SK: backoff, eligibility, CAS klaim/send fence, requeue unsent, rank vendor dan CAS invoice/status (lease dibersihkan saat advance menang; replay/audit tetap per supplier)

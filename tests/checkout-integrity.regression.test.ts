@@ -26,8 +26,12 @@ describe("Checkout quote integrity", () => {
     const orders = read("src/app/api/orders/route.ts");
     expect(checkout).toContain("expected_price");
     expect(checkout).toContain("quote_token: quoteToken");
-    expect(orders).toContain("verifyCheckoutQuoteToken");
-    expect(orders).toContain("sameItems");
+    // 3B-6: quote verification + item matching moved verbatim to
+    // checkout/validate.ts; the route still awaits it before reuse.
+    const validate = read("src/lib/orders/checkout/validate.ts");
+    expect(validate).toContain("verifyCheckoutQuoteToken");
+    expect(validate).toContain("sameItems");
+    expect(orders).toContain("await validateCheckoutInput(");
     expect(orders).toContain("quote.subtotal");
     expect(checkout).toContain("quoteRequestId");
     expect(checkout).toContain("() => isDirect");
