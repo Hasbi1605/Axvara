@@ -319,7 +319,7 @@ function CheckoutInner() {
       insufficient_stock: stock ? `Stock remaining: ${stock[1]} (requested: ${stock[2]}).` : "Insufficient stock.",
       invalid_quantity: "Invalid quantity.", variant_required: "Choose a variant.",
       below_minimum: `Minimum purchase: ${issue.min_qty ?? "—"}.`,
-      pixelverif_blocked: "This Gmail was previously rejected by the supplier for this offer and can't be ordered again. Use another Gmail.",
+      pixelverif_blocked: "This Gmail was previously found ineligible for this offer and can't be ordered again. Use another Gmail.",
     };
     return known[issue.type] ? `${name ? `${name}: ` : ""}${known[issue.type]}` : issue.message;
   };

@@ -397,7 +397,7 @@ describe("Pixel Verification dispatch", () => {
     const item = fx.sql.prepare("SELECT delivered_ciphertext,status FROM fulfillment_items WHERE order_code=?").get(ORDER_CODE) as Record<string, unknown>;
     expect(item).toMatchObject({ delivered_ciphertext: null, status: "manual_required" });
     const { pixelverifBuyerErrorMessage } = await import("@/lib/pixelverif/copy");
-    expect(pixelverifBuyerErrorMessage("ACTIVATION_ITEM_NOT_AVAILABLE")).toMatch(/Jangan kirim ulang Gmail yang sama/);
+    expect(pixelverifBuyerErrorMessage("ACTIVATION_ITEM_NOT_AVAILABLE")).toMatch(/tidak bisa dipesan ulang; gunakan Gmail lain/);
     // README: blacklisted for this offer — the hash is recorded before the input purge.
     const { isPixelverifEmailBlocked } = await import("@/lib/pixelverif/blocklist");
     await expect(isPixelverifEmailBlocked(EMAIL, 3, (sql, ...p) => db.queryFirst(sql, ...p))).resolves.toBe(true);

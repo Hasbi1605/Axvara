@@ -2,6 +2,8 @@
 
 ## Pixel Verification — dispatch sesuai panduan API supplier (lokal, belum dideploy)
 
+- Migrasi data `0157_pixelverif_whitelabel_copy.sql` (tanpa perubahan schema; baseline bootstrap diregenerasi) mengisi copy whitelabel ID/EN dari `src/lib/pixelverif/copy.ts` ke `products`/`product_variants` keluarga `google_ai_pro_3m` tanpa menimpa edit admin. `PIXELVERIF_FAMILY.description*` merujuk konstanta yang sama; `projectPixelverifCatalog` mengisi `products.name_en` bila kosong.
+
 - Migrasi `0156_pixelverif_blocked_emails.sql` (+ blok akhir `drizzle/schema.sql`): tabel `pixelverif_blocked_emails(email_hash, validity, error_code, order_code, created_at)`, PK `(email_hash, validity)`, hanya hash. Helper `src/lib/pixelverif/blocklist.ts`; ditulis dispatcher saat `ACTIVATION_ITEM_NOT_AVAILABLE`, dibaca `api/checkout/quote`, `orders/checkout/validate.ts`, `telegram/handlers/buyer-input.ts`, `telegram/cart.ts`.
 - Progres pembeli: `has_automatic_progress` di `orders/status-flags.ts` juga benar bila ada `pixelverif_order_links`; `warung-rebahan/progress.ts` membaca link Pixel dari kolom tersimpan (`status`, `queue_position`, `receipt_json.status`), bukan body receipt. `AutomaticProgressItem.kind="pixelverif"` memilih estimasi 1–5 menit di `AutomaticOrderProgress`.
 

@@ -10,7 +10,7 @@ import { computeFingerprint } from "@/lib/fulfillment/crypto";
 export const PIXELVERIF_BLOCKING_ERRORS: ReadonlySet<string> = new Set(["ACTIVATION_ITEM_NOT_AVAILABLE"]);
 
 export const PIXELVERIF_BLOCKED_EMAIL_MESSAGE =
-  "Gmail ini sebelumnya ditolak supplier untuk penawaran Google AI Pro 3 bulan dan tidak bisa dipesan ulang. Gunakan Gmail lain.";
+  "Gmail ini sebelumnya dinyatakan tidak memenuhi syarat untuk penawaran Google AI Pro 3 bulan dan tidak bisa dipesan ulang. Gunakan Gmail lain.";
 
 /** Gmail ignores dots and +tags in the local part; one account = one key. */
 export function normalizePixelverifGmail(email: string): string {

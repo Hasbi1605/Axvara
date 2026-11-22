@@ -1,3 +1,5 @@
+import { PIXELVERIF_DESCRIPTION_EN, PIXELVERIF_DESCRIPTION_ID } from "./copy";
+
 export type PixelverifFlowType = "normal" | "full";
 export type PixelverifFamilyKey = "google_ai_pro_3m";
 
@@ -15,21 +17,8 @@ export const PIXELVERIF_FAMILY: { key: PixelverifFamilyKey; name: string; slug: 
   slug: "google-ai-pro-3-bulan",
   category: 1,
   imageUrl: "/brand/catalog/products/google-ai-pro-pv.webp",
-  description:
-    "Google AI Pro 3 bulan via Pixel Verification. Dua pilihan: Link Redeem (kirim link aktivasi ke Gmail Anda) atau Aktivasi Langsung (tim aktivasi ke akun Anda).\n\n" +
-    "Syarat wajib sebelum checkout:\n" +
-    "• Akun Gmail aktif tanpa captcha/unusual activity\n" +
-    "• Hapus passkey di myaccount.google.com/signinoptions/passkeys\n" +
-    "• Tutup payment profile lama di payments.google.com (jika ada)\n" +
-    "• Keluar dari Google Family di families.google.com/families\n" +
-    "• Tidak ada langganan Gemini/Google One aktif\n" +
-    "• 2FA aktif + aplikasi authenticator (myaccount.google.com/signinoptions/twosv dan myaccount.google.com/two-step-verification/authenticator)\n" +
-    "• Saran: gunakan Gmail cadangan\n\n" +
-    "Normal vs Full:\n" +
-    "• Link Redeem 3 Bulan (Normal): Anda menerima link https://one.google.com/ — buka link saat login ke Gmail yang didaftarkan.\n" +
-    "• Aktivasi Langsung 3 Bulan (Full): Tim melakukan aktivasi langsung ke akun Anda; Anda menerima link + status aktivasi.\n\n" +
-    "Untuk Full: setelah sukses, cek dan batalkan perpanjangan otomatis di one.google.com bila ada — perpanjangan otomatis belum terkonfirmasi (unconfirmed) dan mungkin menambah metode pembayaran.",
-  description_en: null,
+  description: PIXELVERIF_DESCRIPTION_ID,
+  description_en: PIXELVERIF_DESCRIPTION_EN,
 };
 
 export const PIXELVERIF_VARIANTS: PixelverifVariantSpec[] = [

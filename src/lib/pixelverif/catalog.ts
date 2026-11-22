@@ -109,6 +109,13 @@ export async function projectPixelverifCatalog(db: DatabaseAccess, fx: number) {
     json,
   );
 
+  // English product name only fills an empty column (admin edits win).
+  await db.execRun(
+    "UPDATE products SET name_en=? WHERE pixelverif_family=? AND (name_en IS NULL OR name_en='')",
+    PIXELVERIF_COPY[PIXELVERIF_FAMILY.key].name_en,
+    PIXELVERIF_FAMILY.key,
+  );
+
   // Link services to product: find product id via family column then join
   // For pixelverif, services don't need axvara_product_id; but keep product linkage via product_variants.
 

@@ -1,5 +1,11 @@
 # Aturan agent — Pixel Verification (Google AI Pro 3 bulan)
 
+## Copy whitelabel + kebijakan refund — 23 November 2026 (lokal, belum dideploy)
+
+- Keputusan owner: semua teks pembeli 100% whitelabel — jangan sebut nama mitra (Pixel Verification, Tanvir, `pvsk_`), kata "supplier"/"pemasok"/"mitra"; proses disebut "bot otomatis". Nama internal (kode, admin, env) tetap `pixelverif`. Dijaga `tests/pixelverif-copy.test.ts`.
+- Kebijakan refund (owner): pesanan gagal diproses = dana dikembalikan penuh, termasuk gagal karena password/2FA/syarat akun; coba lagi = pesanan baru setelah refund; Gmail tidak memenuhi syarat tidak bisa dipesan ulang. Refund dikerjakan admin manual (belum otomatis). Dasar: FAQ README supplier mengembalikan kredit order gagal 100% ke saldo key AXVARA.
+- Sumber copy tunggal `src/lib/pixelverif/copy.ts` (ID+EN: deskripsi, `name_en`, S&K + cara aktivasi per varian, pesan error pembeli). Publikasi pertama menulisnya (`INSERT OR IGNORE`; `name_en` hanya bila kosong). Baris D1 existing diperbarui migrasi data `0157_pixelverif_whitelabel_copy.sql` yang dibangkitkan dari copy.ts: ID hanya menimpa kosong/template bawaan lama (awalan tetap), EN hanya bila kosong — edit admin tidak ditimpa. Bila copy.ts diubah lagi untuk baris yang sudah ada, buat migrasi data baru (jangan edit 0157).
+
 ## Blacklist Gmail, antrean pembeli, teks ganti password — 23 November 2026 (lokal, belum dideploy)
 
 - Blacklist: kode `ACTIVATION_ITEM_NOT_AVAILABLE` (poll `failed` atau Full `activation_status=item_not_available`) mencatat SHA-256 Gmail ternormalisasi (huruf kecil, tanpa titik/`+tag` di local part) ke `pixelverif_blocked_emails` (migrasi `0156`, PK `email_hash`+`validity`) sebelum input dihapus. README: Gmail tidak boleh dikirim ulang untuk penawaran yang sama, validity lain boleh — jadi blok per validity, berlaku untuk Normal dan Full. Ditolak di quote web (issue `pixelverif_blocked`), validasi order web, langkah email Telegram dan ringkasan keranjang Telegram. Baca gagal = fail-open (supplier tetap refund). Tidak ada UI admin untuk membuka blok; hapus baris hanya atas instruksi owner.
