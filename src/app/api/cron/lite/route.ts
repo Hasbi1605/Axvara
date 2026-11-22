@@ -97,82 +97,13 @@ export async function POST(request: NextRequest) {
       const { run } = await import("@/lib/cron/lite/jobs/small-suppliers");
       Object.assign(result, await run({ job, db, deadline, result, failedCore }, job));
     }
-    else if (job === "aivault_catalog") {
-      const { isAivaultConfigured,isAivaultSyncEnabled }=await import("@/lib/aivault/client");
-      if (!isAivaultConfigured() || !isAivaultSyncEnabled()) result.skipped="not_configured";
-      else {
-        const { loadCurrentFxSnapshot }=await import("@/lib/payments/market-snapshot");
-        const { parseRateRational }=await import("@/lib/payments/fx");
-        const fx=await loadCurrentFxSnapshot(db.d1), rate=fx ? parseRateRational(fx.rateText) : null;
-        if (!rate) {
-          const { recordSyncError } = await import("@/lib/sync-status");
-          await recordSyncError(db, "aivault_catalog", "fx_unavailable");
-          return NextResponse.json({...result,ok:false,error:"fx_unavailable"},{status:503});
-        }
-        const { publishAivaultCatalog }=await import("@/lib/aivault/catalog");
-        const synced=await publishAivaultCatalog(db,Number(rate.num)/Number(rate.den),{force:false});
-        Object.assign(result,synced);
-        if ("ok" in synced && !synced.ok) return NextResponse.json(result,{status:503});
-        if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
+    else if (job === "aivault_catalog" || job === "storebat_catalog" || job === "mirai_catalog" || job === "tunvn_catalog") {
+      const { run } = await import("@/lib/cron/lite/jobs/catalog");
+      const outcome = await run({ job, db, deadline, result, failedCore }, job);
+      if (outcome === "fx_unavailable") {
+        return NextResponse.json({ ...result, ok: false, error: "fx_unavailable" }, { status: 503 });
       }
-    }
-    else if (job === "storebat_catalog") {
-      const { isStorebatConfigured,isStorebatSyncEnabled }=await import("@/lib/storebat/client");
-      if (!isStorebatConfigured() || !isStorebatSyncEnabled()) result.skipped="not_configured";
-      else {
-        const { loadCurrentFxSnapshot }=await import("@/lib/payments/market-snapshot");
-        const { parseRateRational }=await import("@/lib/payments/fx");
-        const fx=await loadCurrentFxSnapshot(db.d1), rate=fx ? parseRateRational(fx.rateText) : null;
-        if (!rate) {
-          const { recordSyncError } = await import("@/lib/sync-status");
-          await recordSyncError(db, "storebat_catalog", "fx_unavailable");
-          return NextResponse.json({...result,ok:false,error:"fx_unavailable"},{status:503});
-        }
-        const { publishStorebatCatalog }=await import("@/lib/storebat/catalog");
-        const synced=await publishStorebatCatalog(db,Number(rate.num)/Number(rate.den),{force:false});
-        Object.assign(result,synced);
-        if ("ok" in synced && !synced.ok) return NextResponse.json(result,{status:503});
-        if ("ok" in synced && synced.ok && !("unchanged" in synced)) await drainDirtyGroupsIfBudget(db, result);
-      }
-    }
-    else if (job === "mirai_catalog") {
-      const { isMiraiConfigured, isMiraiSyncEnabled } = await import("@/lib/mirai/client");
-      if (!isMiraiConfigured() || !isMiraiSyncEnabled()) result.skipped = "not_configured";
-      else {
-        const { loadCurrentFxSnapshot } = await import("@/lib/payments/market-snapshot");
-        const { parseRateRational } = await import("@/lib/payments/fx");
-        const fx = await loadCurrentFxSnapshot(db.d1), rate = fx ? parseRateRational(fx.rateText) : null;
-        if (!rate) {
-          const { recordSyncError } = await import("@/lib/sync-status");
-          await recordSyncError(db, "mirai_catalog", "fx_unavailable");
-          return NextResponse.json({ ...result, ok: false, error: "fx_unavailable" }, { status: 503 });
-        }
-        const { publishMiraiCatalog } = await import("@/lib/mirai/catalog");
-        const synced = await publishMiraiCatalog(db, Number(rate.num) / Number(rate.den), { force: false });
-        Object.assign(result, synced);
-        if ("ok" in synced && !synced.ok) return NextResponse.json(result, { status: 503 });
-        if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
-      }
-    }
-    else if (job === "tunvn_catalog") {
-      const { isTunvnSyncEnabled, isTunvnConfigured } = await import("@/lib/tunvn/client");
-      if (!isTunvnSyncEnabled() || !isTunvnConfigured()) result.skipped = "not_configured";
-      else {
-        const { loadCurrentFxSnapshot } = await import("@/lib/payments/market-snapshot");
-        const { parseRateRational } = await import("@/lib/payments/fx");
-        const fx = await loadCurrentFxSnapshot(db.d1);
-        const rate = fx ? parseRateRational(fx.rateText) : null;
-        if (!rate) {
-          const { recordSyncError } = await import("@/lib/sync-status");
-          await recordSyncError(db, "tunvn_catalog", "fx_unavailable");
-          return NextResponse.json({ ...result, ok: false, error: "fx_unavailable" }, { status: 503 });
-        }
-        const { publishTunvnCatalog } = await import("@/lib/tunvn/catalog");
-        const synced = await publishTunvnCatalog(db, Number(rate.num) / Number(rate.den), { force: false });
-        Object.assign(result, synced);
-        if ("ok" in synced && !synced.ok) return NextResponse.json(result, { status: 503 });
-        if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
-      }
+      if (outcome === "publish_failed") return NextResponse.json(result, { status: 503 });
     }
     else if (job === "jaspay_catalog") {
       const { syncJaspayCatalog } = await import("@/lib/warung-rebahan/sync");
