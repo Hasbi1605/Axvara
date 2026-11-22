@@ -128,12 +128,9 @@ export async function POST(request: NextRequest) {
       if (failed) return NextResponse.json({ ...result, ok: false }, { status: 503 });
     }
     else if (job === "games_orders") {
-      // docs/GAMES.md §12.3: promosi lunas, dispatch supplier per item (SK baru,
-      // Digiflazz legacy), pemulihan lease, polling. Budget 40 tetap dipakai.
-      const { processGamesPaidOrders } = await import("@/lib/games/dispatch");
-      const ran = await processGamesPaidOrders(undefined, db);
-      Object.assign(result, ran);
-      if (ran.error) return NextResponse.json({ ...result, ok: false }, { status: 503 });
+      const { run } = await import("@/lib/cron/lite/jobs/games-orders");
+      const { failed } = await run({ job, db, deadline, result, failedCore });
+      if (failed) return NextResponse.json({ ...result, ok: false }, { status: 503 });
     }
     else if (job === "tg_webhook") {
       const { guardTelegramWebhook } = await import("@/lib/telegram/webhook-guard");
