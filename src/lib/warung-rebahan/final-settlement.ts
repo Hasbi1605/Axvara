@@ -27,15 +27,53 @@ export const NO_ACTIVE_WR_SIBLINGS = `NOT EXISTS (SELECT 1 FROM fulfillment_item
 const proof = `i.status='failed' AND NOT ${manual}
   AND substr(i.last_error,1,length('wr_final:' || l.id || ':'))='wr_final:' || l.id || ':'
   AND length(i.last_error)=length('wr_final:' || l.id || ':')+36`;
-// Keep the complete set of unbound handoffs, not just the last writer. Bound
-// handoffs keep their proof on the item and do not depend on the link error text.
-const unboundIds = `COALESCE(NULLIF(substr(wr_aggregate_refresh_token,37),''),'[]')`;
-const unboundProof = `EXISTS (SELECT 1 FROM json_each(${unboundIds}) p JOIN wr_order_links l ON l.id=p.value
-  WHERE p.type='integer'
-  AND l.order_code=o.code AND ${liveLink} AND ${unbound})`;
-const aggregateProof = `(${unboundProof} OR EXISTS (SELECT 1 FROM fulfillment_items i JOIN wr_order_links l
+// Keep one witness per handed-off link, including original ownership, item tag,
+// and whether its cause was already the literal Void text. No vendor text or PII.
+// Pre-FX-21 UUID/array markers still settle live proofs, but cannot attest to a
+// missing historical source. Keep that uncertainty when appending a new witness.
+const markerPayload = (column: string) => `COALESCE(NULLIF(substr(${column},37),''),'[]')`;
+const payload = markerPayload("o.wr_aggregate_refresh_token");
+const witnessRows = `json_each(${payload},'$.links')`;
+const legacyIds = `CASE WHEN json_type(${payload})='array' THEN ${payload} ELSE json_extract(${payload},'$.legacy') END`;
+const legacyMarker = `(json_type(${payload})='array' OR json_extract(${payload},'$.legacy') IS NOT NULL)`;
+const isVoid = `(l.last_error IS 'cancelled_by_admin')`;
+const witnessItem = `json_extract(p.value,'$[0]')`;
+const witnessVoid = `json_extract(p.value,'$[2]')`;
+const witnessTag = `'wr_final:' || l.id || ':' || json_extract(p.value,'$[1]')`;
+const witnessLink = `l.id=CAST(p.key AS INTEGER) AND l.order_code=o.code`;
+const witnessLive = `${liveLink} AND ${isVoid}=${witnessVoid}`;
+const unboundProof = `(EXISTS (SELECT 1 FROM ${witnessRows} p JOIN wr_order_links l ON ${witnessLink}
+    WHERE ${witnessItem} IS NULL AND ${witnessLive} AND ${unbound})
+  OR EXISTS (SELECT 1 FROM json_each(${legacyIds}) p JOIN wr_order_links l ON l.id=p.value
+    WHERE p.type='integer' AND l.order_code=o.code AND ${liveLink} AND NOT ${isVoid} AND ${unbound}
+    AND NOT EXISTS (SELECT 1 FROM ${witnessRows} w WHERE w.key=CAST(l.id AS TEXT))))`;
+const aggregateProof = `(${unboundProof} OR EXISTS (SELECT 1 FROM ${witnessRows} p
+  JOIN wr_order_links l ON ${witnessLink} JOIN fulfillment_items i ON i.id=${witnessItem}
+  WHERE ${witnessLive} AND ${owns} AND i.status='failed' AND NOT ${manual} AND i.last_error=${witnessTag})
+  OR (${legacyMarker} AND EXISTS (SELECT 1 FROM fulfillment_items i JOIN wr_order_links l
   ON l.order_code=i.order_code AND (i.wr_link_id=l.id OR l.fulfillment_item_id=i.id)
-  WHERE i.order_code=o.code AND ${liveLink} AND ${owns} AND ${proof}))`;
+  WHERE i.order_code=o.code AND ${liveLink} AND NOT ${isVoid} AND ${owns} AND ${proof}
+    AND NOT EXISTS (SELECT 1 FROM ${witnessRows} w WHERE w.key=CAST(l.id AS TEXT)))))`;
+
+const invoiceUnique = `NOT EXISTS (SELECT 1 FROM wr_order_links w WHERE w.wr_order_id=l.wr_order_id AND w.id<>l.id)`;
+const boundInvoice = `(COALESCE(l.wr_order_id,'')!='' AND l.request_sent_at IS NOT NULL AND ${invoiceUnique})`;
+const voided = `(l.status='failed' AND l.request_sent_at IS NULL AND ${isVoid} AND ${witnessVoid}=0
+  AND (COALESCE(l.wr_order_id,'')='' OR ${invoiceUnique}))`;
+const handedOver = `(i.status='delivered' AND i.delivered_message_id='manual' AND i.last_error LIKE 'manual_handover:%')`;
+// Every source must be explained. Missing, moved or multiply owned rows and
+// replaced error text without authoritative terminal evidence are not handback.
+const allSuperseded = `(json_type(${payload})='object' AND NOT ${legacyMarker}
+  AND EXISTS (SELECT 1 FROM ${witnessRows}) AND NOT EXISTS (SELECT 1 FROM ${witnessRows} p
+    WHERE NOT EXISTS (SELECT 1 FROM wr_order_links l WHERE ${witnessLink} AND (
+      (${witnessItem} IS NULL AND ${unbound} AND (${voided} OR (${boundInvoice} AND l.status IN ('completed','failed'))))
+      OR EXISTS (SELECT 1 FROM fulfillment_items i WHERE i.id=${witnessItem} AND ${owns} AND (
+        ${handedOver}
+        OR (${voided} AND i.status='failed' AND NOT ${manual} AND i.last_error=${witnessTag})
+        OR (${boundInvoice} AND ((l.status='completed' AND i.status='delivered' AND i.delivered_message_id='wr:' || i.id)
+          OR (l.status='failed' AND i.status='failed' AND NOT ${manual} AND i.last_error IS l.last_error AND i.last_error IS NOT ${witnessTag})))
+      ))))))`;
+const noInFlightNotice = `NOT EXISTS (SELECT 1 FROM buyer_notice_log n WHERE n.idempotency_key IN
+  ('email:delivery-failed:' || o.code, 'telegram:delivery-failed:' || o.code) AND n.status='sending')`;
 
 type LinkWork = { id: number; token: string; code: string };
 type LinkOutcome = { orderToken: string } | "protected" | "conflict" | "ineligible" | "race";
@@ -74,9 +112,14 @@ export async function settleWrFinalLink(db: DatabaseAccess, { id, token, code }:
   const eligible = legacy ? `(${unbound} AND substr(l.wr_final_settle_token,37)=':u')` : `EXISTS (SELECT 1 FROM fulfillment_items i WHERE i.id=? AND ${owns}
     AND i.status='failed' AND NOT ${manual} AND i.last_error=?)`;
   const results = await d1.batch([
-    d1.prepare(`UPDATE orders SET wr_aggregate_refresh_token=? || ${legacy ? `json_insert(${unboundIds}, '$[#]', CAST(? AS INTEGER))` : `COALESCE(substr(wr_aggregate_refresh_token,37),'')`}
+    d1.prepare(`UPDATE orders SET wr_aggregate_refresh_token=? || json_set(
+        CASE WHEN wr_aggregate_refresh_token IS NULL THEN json_object('links',json('{}'))
+          WHEN json_type(${markerPayload("wr_aggregate_refresh_token")})='array'
+            THEN json_object('links',json('{}'),'legacy',json(${markerPayload("wr_aggregate_refresh_token")}))
+          ELSE json_remove(substr(wr_aggregate_refresh_token,37),'$.handback') END,
+        '$.links.' || CAST(? AS INTEGER), json((SELECT json_array(CAST(? AS INTEGER),?,${isVoid}) FROM wr_order_links l WHERE l.id=?)))
       WHERE code=? AND EXISTS (SELECT 1 ${sql} AND ${PURCHASE_PAID_SQL_ALIASED} AND NOT (${orderProtected}) AND ${eligible})`)
-      .bind(nonce, ...(legacy ? [id] : []), code, ...args, ...(legacy ? [] : [itemId, tag])),
+      .bind(nonce, id, legacy ? null : itemId, token, id, code, ...args, ...(legacy ? [] : [itemId, tag])),
     d1.prepare(`${ack} AND EXISTS (SELECT 1 FROM orders o WHERE o.code=? AND substr(o.wr_aggregate_refresh_token,1,36)=?)`)
       .bind(id, token, code, nonce),
   ]);
@@ -86,18 +129,54 @@ export async function settleWrFinalLink(db: DatabaseAccess, { id, token, code }:
 export async function settleWrFinalAggregate(db: DatabaseAccess, code: string, token: string): Promise<string> {
   const generation = token.slice(0, 36);
   const matches = `substr(o.wr_aggregate_refresh_token,1,36)=?`;
-  const guard = { sql: `${matches} AND ${PURCHASE_PAID_SQL_ALIASED} AND (${aggregateProof}) AND ${NO_ACTIVE_WR_SIBLINGS}`, params: [generation] };
+  const ready = `${matches} AND ${PURCHASE_PAID_SQL_ALIASED} AND ${NO_ACTIVE_WR_SIBLINGS}`;
+  const handback = `json_extract(${payload},'$.handback') IS 1`;
+  // The durable handback generation still owns the normal failure notice key;
+  // clearing before the strict ledger claim would lose the notice on a crash.
+  const handedBack = token[36] === "{" && (JSON.parse(token.slice(36)) as { handback?: number }).handback === 1;
+  const terminalItems = `EXISTS (SELECT 1 FROM fulfillment_items i WHERE i.order_code=o.code)`;
+  if (handedBack) return finishSupersededAggregate(db, code, { sql: `${ready} AND ${handback} AND ${allSuperseded} AND ${terminalItems}`, params: [generation] });
+  const guard = { sql: `${ready} AND ${aggregateProof}`, params: [generation] };
   const { refreshOrderAggregate } = await import("./deliver");
-  const outcome = await refreshOrderAggregate(code, db, { guard, legacySql: unboundProof });
+  const outcome = await refreshOrderAggregate(code, db, { guard, legacySql: unboundProof, supersededSql: allSuperseded });
+  if (outcome === "superseded") {
+    const changed = await db.execRun(`UPDATE orders AS o SET wr_aggregate_refresh_token=? || json_set(${payload},'$.handback',1)
+      WHERE code=? AND ${ready} AND ${allSuperseded} AND ${terminalItems} AND NOT (${aggregateProof}) AND ${noInFlightNotice}`,
+    crypto.randomUUID(), code, generation);
+    return Number(changed.changes) ? "superseded" : "race";
+  }
   if (outcome === "changed" || outcome === "already_valid") {
     const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
     if (!await notifyBuyerDeliveryFailed(code, db, { ...guard, sql: `${guard.sql} AND o.fulfillment_status='failed'` })) return "notice_pending";
   } else if (outcome !== "protected") return outcome;
   const cleared = await db.execRun(`UPDATE orders AS o SET wr_aggregate_refresh_token=NULL WHERE code=? AND
     ${outcome === "protected" ? `${matches} AND ${PURCHASE_PAID_SQL_ALIASED} AND (${orderProtected})` : `(${guard.sql}) AND o.fulfillment_status='failed'`}
-    AND NOT EXISTS (SELECT 1 FROM buyer_notice_log n WHERE n.idempotency_key IN ('email:delivery-failed:' || o.code, 'telegram:delivery-failed:' || o.code)
-      AND n.status='sending')`, code, generation);
+    AND ${noInFlightNotice}`, code, generation);
   return Number(cleared.changes) ? outcome : "race";
+}
+
+async function finishSupersededAggregate(db: DatabaseAccess, code: string, guard: { sql: string; params: unknown[] }) {
+  const failedItem = `EXISTS (SELECT 1 FROM fulfillment_items i WHERE i.order_code=o.code AND i.status='failed' AND NOT ${manual})`;
+  // Match normal item-based aggregation. An authoritative delivered/manual
+  // order is not overwritten; an explicitly failed sibling can still need the
+  // ordinary failure notice after a partial admin handover (manual_required).
+  const notice = `(${failedItem} AND o.fulfillment_status!='delivered')`;
+  const updated = await db.execRun(`UPDATE orders AS o SET
+    fulfillment_status=CASE WHEN ${orderProtected} THEN fulfillment_status
+      WHEN ${failedItem} THEN 'failed'
+      WHEN NOT EXISTS (SELECT 1 FROM fulfillment_items i WHERE i.order_code=o.code AND i.status!='delivered') THEN 'delivered'
+      ELSE 'manual_required' END,
+    updated_at=datetime('now') WHERE code=? AND (${guard.sql})`, code, ...guard.params);
+  if (!Number(updated.changes)) return "race";
+  const pending = (await db.queryFirst(`SELECT ${notice} AS due FROM orders o WHERE code=? AND (${guard.sql})`, code, ...guard.params))?.due;
+  if (pending == null) return "race";
+  if (Number(pending)) {
+    const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+    if (!await notifyBuyerDeliveryFailed(code, db, { ...guard, sql: `${guard.sql} AND ${notice}` })) return "notice_pending";
+  }
+  const cleared = await db.execRun(`UPDATE orders AS o SET wr_aggregate_refresh_token=NULL WHERE code=? AND (${guard.sql})
+    AND ${Number(pending) ? notice : `NOT (${notice})`} AND ${noInFlightNotice}`, code, ...guard.params);
+  return Number(cleared.changes) ? "already_valid" : "race";
 }
 
 // Durable keyset cursors round-robin conflicts/unknown notices instead of holding page 1.

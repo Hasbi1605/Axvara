@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as retryWr } from "@/app/api/admin/warung/orders/[id]/retry/route";
+import { POST as voidWr } from "@/app/api/admin/warung/orders/[id]/void/route";
 import { POST as retrySk } from "@/app/api/admin/sekalipay/orders/[id]/retry/route";
 import { POST as wrTick } from "@/app/api/cron/lite/route";
 import { POST as skWebhook } from "@/app/api/webhook/sekalipay/route";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { recordManualHandoverDetailed } from "@/lib/fulfillment/delivery/handover";
 import { notifyBuyerDeliveryFailed } from "@/lib/notify-buyer";
 import { replayWrFinalSettlement, settleWrFinalAggregate, settleWrFinalLink } from "@/lib/warung-rebahan/final-settlement";
 import { parseExpiry } from "@/lib/expiry";
@@ -12,7 +14,7 @@ import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { computeSkSignature } from "@/lib/sekalipay/client";
 import { advanceSkLinkMonotonic, skStatusRank } from "@/lib/sekalipay/deliver";
 import { bindSkInvoiceByRef } from "@/lib/sekalipay/order";
-import { advanceWrLinkMonotonic, handleJaspayTerminal, handleWrOrderCompleted, wrStatusRank } from "@/lib/warung-rebahan/deliver";
+import { advanceWrLinkMonotonic, handleJaspayTerminal, handleWrOrderCompleted, handleWrOrderFailed, wrStatusRank } from "@/lib/warung-rebahan/deliver";
 import { reconcileJaspayAmbiguous, reconcileStuckWrOrders } from "@/lib/warung-rebahan/order";
 import { afterRead, cleanupFixtures, due, jaspayDetail, setup, skPreflight, skReject, wire, wrReject } from "./wr-sk-harness-ext";
 import { seedWrOrder } from "../warung-rebahan/helpers";
@@ -698,6 +700,73 @@ describe.each(["premium", "jaspay"] as const)("T3 2C H4 %s", family => {
 });
 
 describe("H4 settlement generations and retry", () => {
+  it.each(["retry delivered", "manual handover", "handover after failure", "retry new failure", "retry void", "interrupted handback", "conflicting ownership", "in-flight notice"] as const)("FX-21b hands back the sole proof after %s", async phase => {
+    const f = setup("premium");
+    f.bind();
+    f.sibling();
+    f.set("attempt_count=max_attempts-1");
+    f.fx.sql.exec(`UPDATE orders SET customer_email='buyer@fixture.test', items=json_insert(items,'$[#]',json_extract(items,'$[0]'));`);
+    f.fx.sql.prepare(`INSERT INTO wr_order_links(id,order_code,wr_variant_id,wr_cost,status,fulfillment_item_id,wr_order_id,request_sent_at)
+      VALUES(2,?,'other',5000,'processing',2,'SIBLING',datetime('now'))`).run(f.code);
+    f.fx.sql.exec("UPDATE fulfillment_items SET wr_link_id=2 WHERE id=2");
+    vi.stubEnv("RESEND_API_KEY", "fixture");
+    vi.stubEnv("FORWARD_FROM_EMAIL", "sender@fixture.test");
+    let buys = 0;
+    const http = wire({ [f.buy]: () => ++buys === 1 ? wrReject(false) : f.receipt() });
+    expect(await f.process(f.db, due)).toMatchObject({ failed: 1 });
+    const original = f.order().wr_aggregate_refresh_token;
+    expect(original).toEqual(expect.any(String));
+    expect(f.row().wr_final_settle_token).toBeNull();
+    if (phase === "manual handover" || phase === "handover after failure") {
+      if (phase === "handover after failure") expect(await handleWrOrderFailed("SIBLING", "ordinary supplier failure", f.db)).toBe(true);
+      expect(await recordManualHandoverDetailed(f.code, 0, "admin@fixture.test", null, f.db)).toMatchObject({ ok: true });
+    } else {
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+      expect((await retry("premium")).status).toBe(200);
+      if (phase === "retry void") {
+        expect((await voidWr(new NextRequest("https://fixture.test/api/admin/warung/orders/1/void", { method: "POST" }),
+          { params: Promise.resolve({ id: "1" }) })).status).toBe(200);
+      } else {
+        vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+        expect(await f.process(f.db, due)).toMatchObject({ succeeded: 1 });
+        if (phase === "retry new failure") expect(await handleWrOrderFailed(invoice, "new supplier failure", f.db)).toBe(true);
+        else expect(await handleWrOrderCompleted(invoice, { accounts: [{ email: "fixture@example.test", password: "fixture" }] }, f.db, { deferDelivery: true })).toBe(true);
+      }
+    }
+    if (phase !== "handover after failure") expect(await handleWrOrderFailed("SIBLING", "ordinary supplier failure", f.db)).toBe(true);
+    expect(http.calls).toEqual(phase.includes("handover") || phase === "retry void" ? [f.buy] : [f.buy, f.buy]);
+    const beforeReplay = [...http.calls];
+    if (phase === "conflicting ownership" || phase === "in-flight notice") {
+      if (phase === "conflicting ownership") f.fx.sql.exec("UPDATE fulfillment_items SET wr_link_id=2 WHERE id=1");
+      else f.fx.sql.prepare(`INSERT INTO buyer_notice_log(idempotency_key,order_code,channel,status,updated_at)
+        VALUES(?,?,'email','sending',datetime('now','-1 day'))`).run(`email:delivery-failed:${f.code}`, f.code);
+      for (let i = 0; i < 4; i++) await replayWrFinalSettlement(createDatabaseAccess(f.fx.db));
+      expect(f.order().wr_aggregate_refresh_token).toBe(original);
+      expect(http.calls).toEqual(beforeReplay);
+      return;
+    }
+    if (phase === "interrupted handback") {
+      f.fx.control.afterRun = async () => {
+        const marker = f.order().wr_aggregate_refresh_token;
+        if (marker !== original) throw new Error("fixture committed handback then crashed");
+      };
+      await expect(replayWrFinalSettlement(f.db)).rejects.toThrow("fixture committed handback then crashed");
+      expect(f.order().wr_aggregate_refresh_token).toEqual(expect.any(String));
+      expect(http.calls).toEqual(beforeReplay);
+      f.fx.control.afterRun = null;
+    } else {
+      expect(await replayWrFinalSettlement(f.db)).toMatchObject({ pending: 1, reasons: { superseded: 1 } });
+      expect(f.order().wr_aggregate_refresh_token).not.toBe(original);
+      expect(http.calls).toEqual(beforeReplay);
+    }
+    for (let i = 0; i < 4; i++) await replayWrFinalSettlement(createDatabaseAccess(f.fx.db));
+    expect(f.order()).toMatchObject({ fulfillment_status: phase === "handover after failure" ? "manual_required" : "failed", wr_aggregate_refresh_token: null });
+    expect(f.row().wr_final_settle_token).toBeNull();
+    expect(f.fx.sql.prepare("SELECT idempotency_key,status FROM buyer_notice_log").all())
+      .toEqual([{ idempotency_key: `email:delivery-failed:${f.code}`, status: "sent" }]);
+    expect(http.calls).toEqual([...beforeReplay, "POST /emails"]);
+  });
+
   it("runs the final admin notice only for the first winning writer, not recovery", async () => {
     const f = setup("premium");
     f.bind();
@@ -788,9 +857,9 @@ describe("H4 settlement generations and retry", () => {
     const generations = await Promise.all([work(1, a), work(2, b)]);
     const live = String(f.order().wr_aggregate_refresh_token);
     const tokens = generations.map(g => typeof g === "string" ? g : g.orderToken);
-    expect(tokens).toContain(live);
+    expect(tokens).toContain(live.slice(0, 36));
     expect(new Set(tokens).size).toBe(2);
-    expect(await settleWrFinalAggregate(f.db, f.code, tokens.find(t => t !== live)!)).toBe("race");
+    expect(await settleWrFinalAggregate(f.db, f.code, tokens.find(t => t !== live.slice(0, 36))!)).toBe("race");
     expect(f.order().wr_aggregate_refresh_token).toBe(live);
     vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
     expect((await retry("premium")).status).toBe(200);
