@@ -14,7 +14,7 @@ import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { computeSkSignature } from "@/lib/sekalipay/client";
 import { advanceSkLinkMonotonic, skStatusRank } from "@/lib/sekalipay/deliver";
 import { bindSkInvoiceByRef } from "@/lib/sekalipay/order";
-import { advanceWrLinkMonotonic, handleJaspayTerminal, handleWrOrderCompleted, handleWrOrderFailed, wrStatusRank } from "@/lib/warung-rebahan/deliver";
+import { advanceWrLinkMonotonic, bindWrLinkToFulfillmentItem, handleJaspayTerminal, handleWrOrderCompleted, handleWrOrderFailed, wrStatusRank } from "@/lib/warung-rebahan/deliver";
 import { reconcileJaspayAmbiguous, reconcileStuckWrOrders } from "@/lib/warung-rebahan/order";
 import { afterRead, cleanupFixtures, due, jaspayDetail, setup, skPreflight, skReject, wire, wrReject } from "./wr-sk-harness-ext";
 import { seedWrOrder } from "../warung-rebahan/helpers";
@@ -791,6 +791,132 @@ describe("H4 settlement generations and retry", () => {
     expect(f.fx.sql.prepare("SELECT idempotency_key,status FROM buyer_notice_log").all())
       .toEqual([{ idempotency_key: `email:delivery-failed:${f.code}`, status: "sent" }]);
     expect(http.calls).toEqual([...beforeReplay, "POST /emails"]);
+  });
+
+  function prepareFollowup(bound = true) {
+    const f = setup("premium");
+    if (bound) f.bind();
+    f.sibling();
+    f.set("attempt_count=max_attempts-1");
+    f.fx.sql.exec(`INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id)
+        VALUES(2,1,'SIBLING','Sibling',7500,1,'manual','other');
+      UPDATE fulfillment_items SET variant_id=2 WHERE id=2;
+      UPDATE orders SET customer_email='buyer@fixture.test', items=json_insert(items,'$[#]',json_set(json_extract(items,'$[0]'),'$.variant_id',2));`);
+    f.fx.sql.prepare(`INSERT INTO wr_order_links(id,order_code,wr_variant_id,wr_cost,status,fulfillment_item_id,wr_order_id,request_sent_at)
+      VALUES(2,?,'other',5000,'processing',2,'SIBLING',datetime('now'))`).run(f.code);
+    f.fx.sql.exec("UPDATE fulfillment_items SET wr_link_id=2 WHERE id=2");
+    vi.stubEnv("RESEND_API_KEY", "fixture");
+    vi.stubEnv("FORWARD_FROM_EMAIL", "sender@fixture.test");
+    let buys = 0;
+    const http = wire({ [f.buy]: () => ++buys === 1 ? wrReject(false) : f.receipt() });
+    const replay = async () => {
+      for (let i = 0; i < 5; i++) await replayWrFinalSettlement(createDatabaseAccess(f.fx.db));
+    };
+    const ledger = () => f.fx.sql.prepare("SELECT idempotency_key,status FROM buyer_notice_log").all();
+    return { ...f, http, replay, ledger };
+  }
+
+  it.each(["exact", "one pointer", "mismatched receipt", "wrong variant"] as const)("FX-21f formerly unbound Retry completion: %s", async evidence => {
+    const f = prepareFollowup(false);
+    expect(await f.process(f.db, due)).toMatchObject({ failed: 1 });
+    const original = String(f.order().wr_aggregate_refresh_token);
+    expect(JSON.parse(original.slice(36)).links["1"][0]).toBeNull();
+    expect(f.row()).toMatchObject({ fulfillment_item_id: null, wr_final_settle_token: null });
+    vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+    expect((await retry("premium")).status).toBe(200);
+    vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+    expect(await f.process(f.db, due)).toMatchObject({ succeeded: 1 });
+    expect(await handleWrOrderCompleted(invoice, { accounts: [{ email: "fixture@example.test", password: "fixture" }] }, f.db, { deferDelivery: true })).toBe(true);
+    expect(f.row()).toMatchObject({ status: "completed", fulfillment_item_id: 1, wr_order_id: invoice });
+    expect(await handleWrOrderFailed("SIBLING", "ordinary supplier failure", f.db)).toBe(true);
+    expect(f.items()).toEqual(["delivered", "failed"]);
+    expect(f.ledger()).toEqual([]);
+    if (evidence === "one pointer") f.fx.sql.exec("UPDATE fulfillment_items SET wr_link_id=NULL WHERE id=1");
+    else if (evidence === "mismatched receipt") f.fx.sql.exec("UPDATE fulfillment_items SET delivered_iv='not-the-receipt' WHERE id=1");
+    else if (evidence === "wrong variant") f.fx.sql.exec("UPDATE fulfillment_items SET variant_id=2 WHERE id=1");
+    await f.replay();
+    expect(f.order().wr_aggregate_refresh_token).toBe(evidence === "exact" ? null : original);
+    expect(f.ledger()).toEqual(evidence === "exact" ? [{ idempotency_key: `email:delivery-failed:${f.code}`, status: "sent" }] : []);
+    expect(f.http.calls).toEqual(evidence === "exact" ? [f.buy, f.buy, "POST /emails"] : [f.buy, f.buy]);
+  });
+
+  it.each(["single witness", "two witnesses", "interrupted notice ACK"] as const)("FX-21f keeps failure notice after partial handover: %s", async phase => {
+    const f = prepareFollowup();
+    expect(await f.process(f.db, due)).toMatchObject({ failed: 1 });
+    if (phase === "two witnesses") {
+      const token = crypto.randomUUID();
+      f.fx.sql.prepare(`UPDATE wr_order_links SET status='failed',wr_order_id=NULL,request_sent_at=NULL,wr_final_settle_token=? WHERE id=2`).run(`${token}:b`);
+      expect(await settleWrFinalLink(f.db, { id: 2, code: f.code, token })).toMatchObject({ orderToken: expect.any(String) });
+    } else expect(await handleWrOrderFailed("SIBLING", "ordinary supplier failure", f.db)).toBe(true);
+    expect(await recordManualHandoverDetailed(f.code, 1, "admin@fixture.test", null, f.db)).toMatchObject({ ok: true, complete: false });
+    const original = f.order().wr_aggregate_refresh_token;
+    expect(original).toEqual(expect.any(String));
+    expect(f.items()).toEqual(["failed", "delivered"]);
+    expect(f.order().fulfillment_status).toBe("manual_required");
+    expect(f.ledger()).toEqual([]);
+    const interrupted = phase === "interrupted notice ACK";
+    if (interrupted) {
+      f.fx.control.fail = sql => sql.includes("UPDATE buyer_notice_log SET");
+      await expect(replayWrFinalSettlement(f.db)).rejects.toThrow("Injected database interruption");
+      expect(f.order().wr_aggregate_refresh_token).toBe(original);
+      f.fx.control.fail = null;
+    }
+    await f.replay();
+    expect(f.ledger()).toEqual([{ idempotency_key: `email:delivery-failed:${f.code}`, status: interrupted ? "sending" : "sent" }]);
+    expect(f.order()).toMatchObject({ fulfillment_status: "manual_required", wr_aggregate_refresh_token: interrupted ? original : null });
+    expect(f.http.calls).toEqual([f.buy, "POST /emails"]);
+  });
+
+  it.each([false, true])("FX-21f hands off the exact item proof when handover races the link ACK (older marker=%s)", async olderMarker => {
+    const f = prepareFollowup();
+    const older = crypto.randomUUID();
+    const pending = olderMarker ? older + JSON.stringify({ links: { 1: [1, older, 0] } }) : null;
+    f.fx.sql.prepare("UPDATE orders SET wr_aggregate_refresh_token=?").run(pending);
+    f.fx.control.fail = sql => sql.includes("UPDATE orders SET wr_aggregate_refresh_token=");
+    await expect(f.process(f.db, due)).rejects.toThrow("Injected database interruption");
+    expect(f.items()).toEqual(["failed", "queued"]);
+    expect(f.row().wr_final_settle_token).toEqual(expect.any(String));
+    expect(f.order().wr_aggregate_refresh_token).toBe(pending);
+    f.fx.control.fail = null;
+    expect(await handleWrOrderFailed("SIBLING", "ordinary supplier failure", f.db)).toBe(true);
+    expect(await recordManualHandoverDetailed(f.code, 1, "admin@fixture.test", null, f.db)).toMatchObject({ ok: true });
+    await f.replay();
+    expect(f.ledger()).toEqual([{ idempotency_key: `email:delivery-failed:${f.code}`, status: "sent" }]);
+    expect(f.order()).toMatchObject({ fulfillment_status: "manual_required", wr_aggregate_refresh_token: null });
+    expect(f.row().wr_final_settle_token).toBeNull();
+    expect(f.http.calls).toEqual([f.buy, "POST /emails"]);
+  });
+
+  it.each(["aivault pointer", "aivault reverse", "storebat pointer", "mirai pointer", "inventory"] as const)("FX-21f retains cross-owned WR proof: %s", async conflict => {
+    const f = prepareFollowup(false);
+    if (conflict.startsWith("aivault")) {
+      f.fx.sql.prepare(`INSERT INTO aivault_order_links(id,order_code,item_index,variant_id,product_id,service_id,quantity,cost_usd,external_order_id,status)
+        VALUES(1,?,0,1,1,'peer',1,1,'peer-ext','needs_admin')`).run(f.code);
+      if (conflict === "aivault pointer") f.fx.sql.exec("UPDATE fulfillment_items SET aivault_link_id=1 WHERE id=1");
+    } else if (conflict === "storebat pointer") {
+      f.fx.sql.prepare(`INSERT INTO storebat_order_links(id,order_code,item_index,variant_id,product_id,storebat_product_id,kind,quantity,cost_usd,fx_idr_per_usd,idempotency_key,status)
+        VALUES(1,?,0,1,1,10,'product',1,1,15000,'peer-key','needs_admin')`).run(f.code);
+      f.fx.sql.exec("UPDATE fulfillment_items SET storebat_link_id=1 WHERE id=1");
+    } else if (conflict === "mirai pointer") {
+      f.fx.sql.prepare(`INSERT INTO mirai_order_links(id,order_code,item_index,variant_id,product_id,package_code,quantity,cost_usdt,external_order_id,idempotency_key,status)
+        VALUES(1,?,0,1,1,'peer',1,1,'peer-ext','peer-key','needs_admin')`).run(f.code);
+      f.fx.sql.exec("UPDATE fulfillment_items SET mirai_link_id=1 WHERE id=1");
+    } else {
+      f.fx.sql.prepare(`INSERT INTO fulfillment_inventory(id,product_id,variant_id,secret_ciphertext,secret_iv,secret_fingerprint,status,order_code)
+        VALUES(1,1,1,'fixture','fixture','fixture','reserved',?)`).run(f.code);
+      f.fx.sql.exec("UPDATE fulfillment_items SET inventory_id=1 WHERE id=1");
+    }
+    expect(await bindWrLinkToFulfillmentItem(1, f.db)).toBe(1);
+    expect(await f.process(f.db, due)).toMatchObject({ failed: 1 });
+    const beforeHandover = f.items();
+    expect(await handleWrOrderFailed("SIBLING", "ordinary supplier failure", f.db)).toBe(true);
+    expect(await recordManualHandoverDetailed(f.code, 0, "admin@fixture.test", null, f.db)).toMatchObject({ ok: true });
+    await f.replay();
+    expect(beforeHandover).toEqual(["queued", "queued"]);
+    expect(f.row().wr_final_settle_token).toEqual(expect.any(String));
+    expect(f.order()).toMatchObject({ fulfillment_status: "manual_required", wr_aggregate_refresh_token: null });
+    expect(f.ledger()).toEqual([]);
+    expect(f.http.calls).toEqual([f.buy]);
   });
 
   it("runs the final admin notice only for the first winning writer, not recovery", async () => {

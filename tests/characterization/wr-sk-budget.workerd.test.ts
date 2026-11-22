@@ -111,6 +111,35 @@ it("T1 native D1 matches dispatch, cutoff, final-proof batch and GET-ref deltas"
     expect(await call("jaspay", "wr-replay", 24)).toMatchObject({ result: { settled: 2 }, used: 15, reserve: 2, calls: ["POST /emails"] });
     expect(await call("jaspay", "wr-replay", 24)).toMatchObject({ result: { settled: 0 }, used: 4, reserve: 2, calls: [] });
     expect(await db.prepare("SELECT fulfillment_status,wr_aggregate_refresh_token FROM orders").first()).toEqual({ fulfillment_status: "failed", wr_aggregate_refresh_token: null });
+
+    // The deeper witness predicates must fit D1's expression-depth cap on
+    // both new aggregate branches, not only on the normal failure path.
+    const old = crypto.randomUUID();
+    const marker = (item: number | null) => old + JSON.stringify({ links: { 1: [item, old, 0] } });
+    await db.batch([
+      db.prepare("DELETE FROM buyer_notice_log"),
+      db.prepare("DELETE FROM wr_sync_state"),
+      db.prepare("UPDATE orders SET wr_aggregate_refresh_token=?").bind(marker(null)),
+      db.prepare(`UPDATE wr_order_links SET status='completed',wr_order_id='RETRY',request_sent_at=datetime('now'),
+        completed_at=datetime('now'),wr_account_details='fixture-cipher',wr_account_iv='fixture-iv' WHERE id=1`),
+      db.prepare(`UPDATE fulfillment_items SET status='delivered',delivered_message_id='wr:1',last_error=NULL,
+        delivered_ciphertext='fixture-cipher',delivered_iv='fixture-iv' WHERE id=1`),
+      db.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,qty,fulfillment_mode,status)
+        VALUES('native',1,1,1,'manual','failed')`),
+    ]);
+    expect(await call("jaspay", "wr-replay", 24)).toMatchObject({ result: { pending: 1, reasons: { superseded: 1 } }, used: 7, reserve: 2, calls: [] });
+    await call("jaspay", "wr-replay", 24); // wrap cursor
+    expect(await call("jaspay", "wr-replay", 24)).toMatchObject({ result: { settled: 1 }, used: 10, reserve: 2, calls: ["POST /emails"] });
+    await db.batch([
+      db.prepare("DELETE FROM buyer_notice_log"),
+      db.prepare("DELETE FROM wr_sync_state"),
+      db.prepare("UPDATE orders SET fulfillment_status='manual_required',wr_aggregate_refresh_token=?").bind(marker(1)),
+      db.prepare("UPDATE wr_order_links SET status='failed',wr_order_id=NULL,request_sent_at=NULL WHERE id=1"),
+      db.prepare("UPDATE fulfillment_items SET status='failed',last_error=?,delivered_message_id=NULL WHERE id=1").bind(`wr_final:1:${old}`),
+      db.prepare("UPDATE fulfillment_items SET status='delivered',delivered_message_id='manual',last_error='manual_handover:fixture' WHERE id=2"),
+    ]);
+    expect(await call("jaspay", "wr-replay", 24)).toMatchObject({ result: { settled: 1 }, used: 10, reserve: 2, calls: ["POST /emails"] });
+    expect(await db.prepare("SELECT fulfillment_status,wr_aggregate_refresh_token FROM orders").first()).toEqual({ fulfillment_status: "manual_required", wr_aggregate_refresh_token: null });
   } finally {
     try { await runtime?.dispose(); } finally { fixture.close(); }
   }

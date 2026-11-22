@@ -902,8 +902,8 @@ async function settleWrFulfillmentItem(
  * menghidupkan ulang delivery terminal: delivered/manual_required/failed
  * tidak pernah dibuka kembali di sini.
  */
-type StrictAggregate = { guard: DeliveryFailureGuard; legacySql: string; supersededSql: string };
-type StrictAggregateOutcome = "changed" | "already_valid" | "active" | "protected" | "superseded" | "race" | "sql_error";
+type StrictAggregate = { guard: DeliveryFailureGuard; legacySql: string; supersededSql: string; failedItemSql: string };
+type StrictAggregateOutcome = "changed" | "already_valid" | "active" | "protected" | "protected_notice" | "superseded" | "race" | "sql_error";
 
 export function refreshOrderAggregate(orderCode: string, database?: DatabaseAccess): Promise<string>;
 export function refreshOrderAggregate(orderCode: string, database: DatabaseAccess, strict: StrictAggregate): Promise<StrictAggregateOutcome>;
@@ -945,10 +945,11 @@ async function applyOrderAggregate(orderCode: string, db: DatabaseAccess, strict
   if (strict) {
     const { sql, params } = strict.guard;
     const current = await queryFirst(`SELECT fulfillment_status, (${sql}) AS eligible, (${strict.legacySql}) AS legacy,
-      (${strict.supersededSql}) AS superseded
+      (${strict.supersededSql}) AS superseded, (${strict.failedItemSql}) AS failed_item
       FROM orders o WHERE code=?`, ...params, orderCode);
     const cur = String(current?.fulfillment_status ?? "");
     if (cur !== "delivered" && !Number(current?.eligible) && Number(current?.superseded)) return "superseded";
+    if (cur === "manual_required" && Number(current?.eligible) && Number(current?.failed_item)) return "protected_notice";
     if (cur === "delivered" || cur === "manual_required") return "protected";
     if (!Number(current?.eligible) || (aggregate !== "failed" && !Number(current?.legacy))) return "race";
     if (cur === "failed") return "already_valid";

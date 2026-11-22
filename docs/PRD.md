@@ -2220,6 +2220,8 @@ Untuk pesanan Warung Rebahan yang tertahan karena saldo supplier, pembeli web me
 
 **FX-21 (lokal):** setelah Retry, serah terima, atau Void menggantikan bukti C2, status item terminal menentukan apakah pembeli masih perlu kabar gagal. Notice yang sudah diakui tidak dikirim ulang; hanya penolakan email yang pasti dapat dicoba lagi setelah jeda. Recovery C2 tidak membeli ulang.
 
+**FX-21f (lokal):** serah terima parsial tidak menghapus kewajiban kabar gagal untuk item yang masih gagal, meski status pesanan tetap penanganan manual.
+
 | ID | Requirement |
 |----|-------------|
 | FR-A1 | Admin login terpisah di `/admin` (email + password, rate-limited) |
