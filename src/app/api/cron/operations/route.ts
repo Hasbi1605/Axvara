@@ -13,6 +13,7 @@ import { transitionPendingOrder as rawTransitionPendingOrder, transitionPendingP
 import { createBudgetedDatabase, QueryBudgetExceeded } from "@/lib/db-access";
 import { catalogSweepDue, CATALOG_SYNC_INTERVAL_MS } from "@/lib/cron/catalog-sweep";
 import { createOperationsContext, createOperationsResults } from "@/lib/cron/operations-context";
+import { initialSchedule, isStalePromotion, promoteStalePhase } from "@/lib/cron/scheduling";
 import { advanceCronPhase, nextPhase, phaseName, readCronPhase, writeCronHeartbeat, writeCronPhase, type CronPhase } from "@/lib/cron/phase-state";
 import { isExpiredIso } from "@/lib/expiry";
 import {
@@ -287,43 +288,12 @@ export async function POST(request: NextRequest) {
     const pendingSkBlocked = skTablesReady ? Number(skQueueRow?.sk_blocked ?? 0) : 0;
     const pendingSkAny = pendingSkDue + pendingSkBlocked;
 
-    // Urutan eksekusi: deferred tersimpan dulu (anti-starvation — expiry
-    // yang terus berdatangan tidak membuat kanal lain kelaparan), lalu fase
-    // giliran, lalu sisanya. Setiap cabang dieksekusi HANYA bila fits().
-    // RR3-01: fulfillment SELALU aktif tiap run selama ada job due
-    // (pendingJobs > 0) — fase bergiliran tidak boleh membuat antrean
-    // pengiriman tertunda selamanya sementara fase lain kosong/ringan.
-    const ordered: CronPhase[] = [];
-    for (const d of storedDeferred) if (!ordered.includes(d)) ordered.push(d);
-    if (!ordered.includes(storedPhase)) ordered.push(storedPhase);
-    // Mode satu-fase: hanya fase yang diminta — tanpa rotasi pelengkap.
-    // Fase SK hanya masuk rotasi bila relevan (SK aktif ATAU ada pekerjaan
-    // SK menunggu ATAU deferred lama menyebutnya): saat SK mati (default),
-    // rotasi IDENTIK dengan baseline (tanpa query/deferred ekstra) sehingga
-    // budget R12 + poison-guard lama tidak bergeser.
-    const skPhaseRelevant =
-      process.env.SEKALIPAY_ENABLED === "true" || pendingSkAny > 0 || ordered.includes("sekalipay");
-    const rotation: CronPhase[] = skPhaseRelevant
-      ? ["expiry", "fulfillment", "warung_rebahan", "sekalipay", "notify", "cleanup"]
-      : ["expiry", "fulfillment", "warung_rebahan", "notify", "cleanup"];
-    if (!forcedPhase) for (const p of rotation) {
-      if (!ordered.includes(p)) ordered.push(p);
-    }
-    const activePhases = new Set<CronPhase>(forcedPhase ? [forcedPhase] : ordered.slice(0, 3)); // maks 3 fase/run
-    for (const p of ordered.slice(3)) deferredOut.push(p);
-    if (!forcedPhase && pendingJobs > 0 && !activePhases.has("fulfillment")) {
-      // Jamin satu slot fulfillment: geser fase non-fulfillment terakhir
-      // (prioritas terendah) keluar menjadi deferred jujur.
-      const actives = ordered.filter((p) => activePhases.has(p));
-      const victim = [...actives].reverse().find((p) => p !== "fulfillment");
-      if (victim) {
-        activePhases.delete(victim);
-        activePhases.add("fulfillment");
-        const idx = deferredOut.indexOf("fulfillment");
-        if (idx >= 0) deferredOut.splice(idx, 1);
-        if (!deferredOut.includes(victim)) deferredOut.push(victim);
-      }
-    }
+    // Urutan eksekusi: kebijakan murni di @/lib/cron/scheduling (3C);
+    // probe async + eksekusi tetap di route ini.
+    const { ordered, activePhases } = initialSchedule(
+      { forcedPhase, storedPhase, storedDeferred, pendingJobs, pendingSkAny, skEnabled: process.env.SEKALIPAY_ENABLED === "true" },
+      deferredOut,
+    );
     // Jaminan anti-starvation WR (2026-09-16, diperbaiki 2026-09-18): sync
     // produk cron pernah MATI TOTAL karena fulfillment mengusir
     // warung_rebahan dari 3 slot tiap run. Bila sync produk terakhir >45
@@ -350,26 +320,8 @@ export async function POST(request: NextRequest) {
       ).catch(() => null);
       const { parseExpiry } = await import("@/lib/expiry");
       const lastTs = parseExpiry((wrStale as Record<string, unknown> | null)?.created_at);
-      if (lastTs == null || lastTs < Date.now() - 45 * 60 * 1000) {
-        if (!activePhases.has("warung_rebahan")) {
-          const actives = ordered.filter((p) => activePhases.has(p));
-          const victim = [...actives].reverse().find((p) => p !== "fulfillment" && p !== "warung_rebahan");
-          if (victim) {
-            activePhases.delete(victim);
-            activePhases.add("warung_rebahan");
-            const idx = deferredOut.indexOf("warung_rebahan");
-            if (idx >= 0) deferredOut.splice(idx, 1);
-            if (!deferredOut.includes(victim)) deferredOut.push(victim);
-          }
-        }
-        // Dahulukan eksekusinya agar sweep bertemu budget + waktu yang segar.
-        if (activePhases.has("warung_rebahan")) {
-          const at = ordered.indexOf("warung_rebahan");
-          if (at > 0) {
-            ordered.splice(at, 1);
-            ordered.unshift("warung_rebahan");
-          }
-        }
+      if (lastTs == null || isStalePromotion(lastTs, Date.now())) {
+        promoteStalePhase(ordered, activePhases, deferredOut, "warung_rebahan", true);
       }
     }
 
@@ -386,18 +338,8 @@ export async function POST(request: NextRequest) {
       ).catch(() => null);
       const { parseExpiry: parseSkExpiry } = await import("@/lib/expiry");
       const skLastTs = parseSkExpiry((skStale as Record<string, unknown> | null)?.created_at);
-      if (skLastTs == null || skLastTs < Date.now() - 45 * 60 * 1000) {
-        if (!activePhases.has("sekalipay")) {
-          const actives = ordered.filter((p) => activePhases.has(p));
-          const victim = [...actives].reverse().find((p) => p !== "fulfillment" && p !== "sekalipay");
-          if (victim) {
-            activePhases.delete(victim);
-            activePhases.add("sekalipay");
-            const idx = deferredOut.indexOf("sekalipay");
-            if (idx >= 0) deferredOut.splice(idx, 1);
-            if (!deferredOut.includes(victim)) deferredOut.push(victim);
-          }
-        }
+      if (skLastTs == null || isStalePromotion(skLastTs, Date.now())) {
+        promoteStalePhase(ordered, activePhases, deferredOut, "sekalipay", false);
       }
     }
 

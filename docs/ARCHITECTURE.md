@@ -2102,7 +2102,8 @@ axvara/
 │   ├── cron/
 │   │   ├── phase-state.ts      # rotasi fase operations, state deferred, poison-pill, heartbeat (3C-1)
 │   │   ├── catalog-sweep.ts    # gerbang waktu sweep WR/SK 14/60 mnt + freshness diff 10 mnt (3C-1)
-│   │   └── operations-context.ts # kontrak OperationsContext beku untuk 6 fase + skeleton hasil berurutan; hasTime memakai wall clock route (3C-2)
+│   │   ├── operations-context.ts # kontrak OperationsContext beku untuk 6 fase + skeleton hasil berurutan; hasTime memakai wall clock route (3C-2)
+│   │   └── scheduling.ts       # kebijakan penjadwalan murni operations: seleksi awal, 3 slot, perlindungan fulfillment, promosi basi WR/SK (3C scheduling)
 │   ├── cron/lite/
 │   │   ├── jobs.ts             # daftar job dan tipe LiteJob, tanpa impor
 │   │   ├── context.ts          # tipe konteks dan helper bersama cron lite; impor berat tetap dinamis
