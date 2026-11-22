@@ -5,6 +5,7 @@
 // belum termasuk biaya operasional.
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
+import { readWrSyncSource } from "./helpers/wr-sync-source";
 import { createRequire } from "node:module";
 import {
   isSameWibWeek,
@@ -103,9 +104,7 @@ describe("modal manual 0058 milik admin", () => {
     const fieldsStart = ownership.indexOf("export const WR_OWNED_VARIANT_FIELDS");
     const fieldsEnd = ownership.indexOf("] as const", fieldsStart);
     expect(ownership.slice(fieldsStart, fieldsEnd)).not.toContain("manual_cost");
-    // 3D-4: variant writes moved to sync/variant.ts; manual_cost must
-    // stay out of the moved leaf too.
-    expect(read("src/lib/warung-rebahan/sync.ts") + "\n" + read("src/lib/warung-rebahan/sync/variant.ts") + "\n" + read("src/lib/warung-rebahan/sync/prefetch.ts") + "\n" + read("src/lib/warung-rebahan/sync/state.ts") + "\n" + read("src/lib/warung-rebahan/sync/zeroing.ts") + "\n" + read("src/lib/warung-rebahan/sync/sweep.ts") + "\n" + read("src/lib/warung-rebahan/sync/jaspay-catalog.ts")).not.toContain("manual_cost");
+    expect(readWrSyncSource()).not.toContain("manual_cost");
     expect(read("src/lib/sekalipay/sync.ts")).not.toContain("manual_cost");
   });
 

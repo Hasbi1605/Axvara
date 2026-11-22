@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createD1Fixture } from "./helpers/d1-fixture";
+import { readWrSyncSource } from "./helpers/wr-sync-source";
 
 // Badge asal supplier (keputusan owner 2026-09-30): pembeli hanya melihat
 // nama bersih; WR/SK/Manual hanya dibedakan di admin + slug.
@@ -49,9 +49,7 @@ describe("badge asal supplier (nama bersih storefront)", () => {
   it("sync SK/WR tidak menulis ulang products.name", async () => {
     const src = await import("node:fs").then((fs) => ({
       sk: fs.readFileSync("src/lib/sekalipay/sync.ts", "utf8"),
-      // 3D-3: product writes moved to sync/product.ts; the guard covers
-      // both files so the moved UPDATE products stays checked.
-      wr: fs.readFileSync("src/lib/warung-rebahan/sync.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/product.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/variant.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/prefetch.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/state.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/zeroing.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/sweep.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/jaspay-catalog.ts", "utf8"),
+      wr: readWrSyncSource(),
     }));
     // Sync SK: tidak ada UPDATE products SET name.
     expect(src.sk).not.toMatch(/UPDATE products SET name/);

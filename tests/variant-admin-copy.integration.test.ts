@@ -10,6 +10,7 @@
 //    sudah ditinjau.
 //  - Teks yang sama dengan salinan otomatis tidak dibekukan ke DB.
 import fs from "node:fs";
+import { readWrSyncSource } from "./helpers/wr-sync-source";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import snapshot from "./fixtures/product-copy-snapshot.json";
@@ -308,9 +309,7 @@ describe("sync WR tidak pernah menyentuh kolom admin", () => {
     const wr = f2.sql.prepare("SELECT wr_terms, wr_price FROM wr_variants WHERE wr_variant_id='wr-zoom-14'").get() as { wr_terms: string; wr_price: number };
     expect(wr.wr_terms).toContain("Dilarang login di TV");
     expect(Number(wr.wr_price)).toBe(25000);
-    // 3D-3: product writes moved to sync/product.ts; admin-owned copy
-    // columns must stay out of both files.
-    expect(fs.readFileSync("src/lib/warung-rebahan/sync.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/product.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/variant.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/prefetch.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/state.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/zeroing.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/sweep.ts", "utf8") + "\n" + fs.readFileSync("src/lib/warung-rebahan/sync/jaspay-catalog.ts", "utf8")).not.toMatch(/admin_terms|admin_activation|admin_copy_fingerprint/);
+    expect(readWrSyncSource()).not.toMatch(/admin_terms|admin_activation|admin_copy_fingerprint/);
   });
 });
 
