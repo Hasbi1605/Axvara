@@ -7,11 +7,14 @@
 // same statement/SQL/bind order, same result keys/order
 // (stale_initializing, expired_payments, orphan_ledgers_swept,
 // games_items_expired), same QueryBudgetExceeded propagation. All payload
-// modules stay behind the original dynamic imports; statics are only the
-// budget throw, context helpers, and the LiteContext type.
+// modules stay behind the original dynamic imports; the shared items parser
+// is pure and has no dependencies.
 
 import { QueryBudgetExceeded } from "@/lib/db-access";
-import { parseItems, type LiteContext } from "@/lib/cron/lite/context";
+import type { LiteContext } from "@/lib/cron/lite/context";
+import { parseItems } from "@/lib/orders/items-json";
+
+type StockItem = { product_id: number; variant_id?: number; qty: number };
 
 const EXPIRY_PER_RUN = 30;
 const ORPHAN_LEDGER_PER_RUN = 30;
@@ -61,7 +64,7 @@ export async function run(ctx: LiteContext): Promise<Record<string, unknown>> {
       orderCode: String(tx.order_code), expectedTransactionStatus: "initializing",
       staleInitializingOnly: true,
       transactionStatus: "failed", orderStatus: "dibatalkan", paymentStatus: "failed",
-      items: parseItems(tx.items), lastError: "stale_initializing",
+      items: parseItems<StockItem>(tx.items), lastError: "stale_initializing",
     }, db.d1, expiryOpts).catch(() => false);
     if (changed) staleInitializing++;
   }
@@ -85,7 +88,7 @@ export async function run(ctx: LiteContext): Promise<Record<string, unknown>> {
     const changed = await transitionPendingPaymentOrder({
       orderCode: String(tx.order_code), expectedTransactionStatus: "pending",
       transactionStatus: "expired", expiredOnly: true, orderStatus: "kadaluarsa",
-      paymentStatus: "expired", items: parseItems(tx.items),
+      paymentStatus: "expired", items: parseItems<StockItem>(tx.items),
     }, db.d1, expiryOpts).catch(() => false);
     if (changed) expired++;
   }
@@ -109,12 +112,12 @@ export async function run(ctx: LiteContext): Promise<Record<string, unknown>> {
           transactionStatus: "expired",
           orderStatus: "kadaluarsa",
           paymentStatus: "expired",
-          items: parseItems(tx.items),
+          items: parseItems<StockItem>(tx.items),
           lastError: tx.last_error ? String(tx.last_error) : "gateway_expired",
         }, db.d1, expiryOpts);
         if (changed) expired++;
       } else {
-        await transitionPendingOrder(String(tx.order_code), "kadaluarsa", "gateway_expired", parseItems(tx.items), db.d1, expiryOpts);
+        await transitionPendingOrder(String(tx.order_code), "kadaluarsa", "gateway_expired", parseItems<StockItem>(tx.items), db.d1, expiryOpts);
         expired++;
       }
     } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }

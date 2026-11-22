@@ -2962,6 +2962,8 @@ Trigger MCP Worker existing `* * * * *` menjalankan `runOperationsTick`; `/api/c
 
 ## 13. Bot Telegram + DANA Dynamic QRIS + Fulfillment
 
+Expiry Lite dan proyeksi nama/profil pengiriman order Telegram memakai parser murni `src/lib/orders/items-json.ts`. Bukan validator: input tersimpan yang bukan array menghasilkan `[]`, dan seluruh anggota array dipertahankan.
+
 Implementasi native TypeScript di codebase AXVARA. Repo `mocasus/telegram-auto-order-bot` hanya referensi UX; tidak ada dependency, subtree, atau source copy.
 
 ### Arsitektur

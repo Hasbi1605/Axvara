@@ -14,16 +14,6 @@ export type LiteContext = {
   failedCore: string[];
 };
 
-type Items = { product_id: number; variant_id?: number; qty: number }[];
-export const parseItems = (raw: unknown): Items => {
-  try {
-    const v = JSON.parse(String(raw ?? "[]"));
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-};
-
 export async function saveServiceHealth(db: Db, key: string, value: string) {
   try {
     await db.execRun(`INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now'))

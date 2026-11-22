@@ -31,23 +31,15 @@ import {
 import { siteOrigin } from "@/lib/site-url";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
 import { GAMES_ORDER_LABEL_SQL } from "@/lib/games/order-display";
+import { parseItems } from "@/lib/orders/items-json";
 
 type OrderItem = {
   name?: string;
   qty?: number;
 };
 
-function parseItems(raw: unknown): OrderItem[] {
-  try {
-    const parsed = JSON.parse(String(raw || "[]"));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
 function productNames(raw: unknown): string {
-  const names = parseItems(raw).map((item) => {
+  const names = parseItems<OrderItem>(raw).map((item) => {
     const name = String(item.name || "Produk");
     const qty = Math.max(1, Number(item.qty || 1));
     return `${name} ×${qty}`;
@@ -79,7 +71,7 @@ export async function telegramPaidDeliveryProfile(
   database: DatabaseAccess,
 ): Promise<{ delivery: TelegramPaidDelivery; hasLocalManual: boolean }> {
   if (["pedia", "games"].includes(String(order.order_kind))) return { delivery: "queued", hasLocalManual: false };
-  const ids = parseItems(order.items)
+  const ids = parseItems<OrderItem>(order.items)
     .map((item) => Number((item as { variant_id?: unknown }).variant_id || 0))
     .filter((id) => Number.isInteger(id) && id > 0);
   const fallbackMode = fulfillmentMode(order.variant_snapshot);
@@ -614,7 +606,7 @@ export { WEB_PAID_ADMIN_PENDING_WHERE };
  */
 export async function retryPendingTelegramNotifications(limit = 50, only?: {
   created?: boolean; paid?: boolean; paidAdmin?: boolean; paidAdminWeb?: boolean;
-}, database: DatabaseAccess = createDatabaseAccess(), hasTime: HasTime = (_ms: number) => true): Promise<{
+}, database: DatabaseAccess = createDatabaseAccess(), hasTime: HasTime = () => true): Promise<{
   created: number;
   paid: number;
   paidAdmin: number;
@@ -742,7 +734,7 @@ const reminderDue = `o.sales_channel='telegram' AND o.status='pending'
   AND (o.telegram_reminder_sent_at IS NULL OR
     ${msBetween("clock.now_jd", "julianday(o.telegram_reminder_sent_at)")} >= MAX(600000, ${reminderLifetime} / 3.0))`;
 
-export async function sendPendingOrderReminders(limit = 50, database: DatabaseAccess = createDatabaseAccess(), hasTime: HasTime = (_ms: number) => true): Promise<number> {
+export async function sendPendingOrderReminders(limit = 50, database: DatabaseAccess = createDatabaseAccess(), hasTime: HasTime = () => true): Promise<number> {
   const { queryAll, execRun } = database;
   if (!telegramNotificationsConfigured()) return 0;
   const pending = await queryAll(
