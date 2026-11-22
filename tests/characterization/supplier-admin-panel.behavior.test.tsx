@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SupplierAdminPanel } from "@/components/admin/SupplierAdminPanel";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -62,6 +62,31 @@ it("T6 bulk markup sends selected IDs once and exposes partial failure with exam
   await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Terapkan markup" }));
   expect(await screen.findByText("Bulk: 1 berubah, 1 gagal (cth. v02: fixture failure).")).toBeTruthy();
   expect(writes()).toEqual([["/api/admin/warung/markup/bulk", { variant_ids: ["v01", "v02"], markup_percent: 42, markup_fixed: 0, update_fixed: false }]]);
+});
+
+it.each([false, true])("holds one write for competing submits and unlocks (reject=%s)", async reject => {
+  const path = "/api/admin/warung/sync";
+  let release!: (response: Response) => void;
+  let fail!: (error: Error) => void;
+  const held = new Promise<Response>((resolve, reject) => { release = resolve; fail = reject; });
+  const sync = vi.fn().mockReturnValueOnce(held).mockImplementation(() => Response.json({ synced: 2 }));
+  const { writes } = api({ [`POST ${path}`]: sync });
+  panel("warung");
+  await tab("Alat");
+  const button = screen.getByRole("button", { name: "Sinkronkan katalog" });
+  act(() => { fireEvent.click(button); fireEvent.click(button); });
+  expect(writes()).toEqual([[path, undefined]]);
+  await tab("Ringkas");
+  await tab("Alat");
+  expect(screen.getByRole("button", { name: "Menyinkronkan…" })).toHaveProperty("disabled", true);
+  expect(writes()).toHaveLength(1);
+  if (reject) fail(new Error("fixture offline"));
+  else release(Response.json({ synced: 1 }));
+  expect(await screen.findByText(reject ? "Sinkron: fixture offline" : "Sync selesai: 1 produk, 0 varian.")).toBeTruthy();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Sinkronkan katalog" })).toHaveProperty("disabled", false));
+  fireEvent.click(screen.getByRole("button", { name: "Sinkronkan katalog" }));
+  expect(await screen.findByText("Sync selesai: 2 produk, 0 varian.")).toBeTruthy();
+  expect(writes()).toEqual([[path, undefined], [path, undefined]]);
 });
 
 it("T6 SK sandbox rejects invalid input locally, then renders isolated success and API failure", async () => {

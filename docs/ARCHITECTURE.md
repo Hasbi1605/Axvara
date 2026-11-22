@@ -6940,6 +6940,8 @@ Publikasi melalui CI `main`; deployment belum dibuktikan.
 
 `SupplierAdminPanel` melayani enam menu supplier. Perubahan kontrak `/api/admin/{warung,sekalipay,aivault,tunvn,storebat,mirai}/*` bersifat aditif.
 
+Sejak refactor 3E, `SupplierAdminPanel.tsx` tetap menjadi shell header, tab, status live, dan dialog. Empat tab (`Ringkas`, `Antrean`, `Markup`, `Alat`) ada di `src/components/admin/supplier/` dan memakai satu controller `panel-context.ts` per panel, termasuk state lintas tab dan satu pagar aksi single-flight. Wrapper supplier dan `supplier-admin-data.ts` tetap.
+
 | Route | Perubahan kontrak (aditif, tanpa memutus field lama) |
 | --- | --- |
 | `GET {warung,sekalipay}/sync-log` | Mempertahankan `logs` + `diff`; menambah `configured`, `dispatch_enabled`, `sync_enabled` (helper env aktual `isWrConfigured`/`isWrAutoOrderEnabled`/`isWrSyncEnabled` dan `isSkConfigured`/`isSkAutoOrderEnabled`/`isSkSyncEnabled`) serta agregat terikat `counts: { active_variants, mapped_variants, total_variants, families }` tanpa fetch markup atau provider. |

@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3E (kelas E): pisahkan empat tab panel supplier dengan satu controller dan pagar single-flight; UI dan kontrak API tetap — `src/components/admin/SupplierAdminPanel.tsx`, `src/components/admin/supplier/`, `docs/ARCHITECTURE.md` — (verifikasi: 113 tes fokus di 12 file, TypeScript, ESLint ketat, dan Chrome desktop/mobile dengan fixture WR/SK/TUNVN)
+
 - 2026-11-22 — Roadmap 3C sekalipay (kelas E): pindahkan badan fase SK operations ke `src/lib/cron/phases/sekalipay.ts`; urutan kerja, anggaran D1 dan waktu, serta kedua jalur pemilihan pasangan tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 20 file fokus, 542 tes lulus termasuk Workerd lokal; TypeScript dan ESLint lulus)
 
 - 2026-11-22 — Roadmap 3C warung_rebahan (kelas E): pindahkan badan fase WR operations ke `src/lib/cron/phases/warung-rebahan.ts`; urutan replay/dispatch/sweep/Jaspay/kirim/saldo tetap — `src/app/api/cron/operations/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 11 file fokus 287 lulus; TypeScript dan ESLint lulus)

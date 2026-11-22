@@ -168,10 +168,11 @@ describe("kontrak bulk markup (skema + hitung harga)", () => {
       const src = readFileSync(`src/components/admin/${mgr}`, "utf8");
       expect(src, `${mgr} mendelegasikan ke SupplierAdminPanel`).toContain(`<SupplierAdminPanel supplier="${supplier}"`);
     }
-    const panel = readFileSync("src/components/admin/SupplierAdminPanel.tsx", "utf8");
+    const markup = readFileSync("src/components/admin/supplier/MarkupTab.tsx", "utf8");
+    const controller = readFileSync("src/components/admin/supplier/panel-context.ts", "utf8");
     const row = readFileSync("src/components/admin/SupplierPriceRow.tsx", "utf8");
-    expect(panel, "panel bersama memakai BulkMarkupToolbar").toContain("BulkMarkupToolbar");
-    expect(panel, "panel bersama memanggil /markup/bulk").toContain("/markup/bulk");
+    expect(markup, "tab Markup merender BulkMarkupToolbar").toContain("<BulkMarkupToolbar");
+    expect(controller, "controller bersama memanggil /markup/bulk").toContain("/markup/bulk");
     expect(row, "baris harga bersama punya checkbox per baris").toContain("aria-label={`Pilih");
   });
 });
