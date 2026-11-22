@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS orders (
   -- Default 'id'; verification pakai token, bukan client JSON.
   locale TEXT NOT NULL DEFAULT 'id' CHECK (locale IN ('id','en')),
   created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  wr_aggregate_refresh_token TEXT DEFAULT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_orders_kind_created ON orders(order_kind, created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_completed_notice_candidates
@@ -150,6 +151,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_qris_reissue
 -- dan index kolom biasa tidak dapat dipakai untuk ekspresi fungsi.
 CREATE INDEX IF NOT EXISTS idx_orders_expires_dt
   ON orders(status, datetime(expires_at));
+CREATE INDEX IF NOT EXISTS idx_wr_aggregate_refresh_pending
+  ON orders(code) WHERE wr_aggregate_refresh_token IS NOT NULL;
 CREATE TABLE IF NOT EXISTS operation_guards (
   operation_id TEXT PRIMARY KEY,
   valid INTEGER NOT NULL CHECK (valid = 1)
@@ -951,7 +954,8 @@ CREATE TABLE IF NOT EXISTS wr_order_links (
   -- admin sudah dikabari bahwa link ini menggantung melewati plafon layanan.
   aging_alerted_at TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  wr_final_settle_token TEXT DEFAULT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_wr_links_idempotency
   ON wr_order_links(idempotency_key) WHERE idempotency_key IS NOT NULL;
@@ -969,6 +973,8 @@ CREATE INDEX IF NOT EXISTS idx_wr_links_aging
   ON wr_order_links(status, aging_alerted_at);
 CREATE INDEX IF NOT EXISTS idx_wr_links_item
   ON wr_order_links(fulfillment_item_id) WHERE fulfillment_item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_wr_final_settle_pending
+  ON wr_order_links(id) WHERE wr_final_settle_token IS NOT NULL;
 CREATE TABLE IF NOT EXISTS wr_sync_log (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   sync_type         TEXT NOT NULL CHECK (sync_type IN ('products', 'saldo', 'order_status')),

@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — C1 (lokal): migrasi 0154 menambah dua marker settlement WR nullable dan indeks parsial tanpa backfill atau aktivasi C2; serializer C1-PRE harus sudah aktif sebelum migrasi — `drizzle/migrations/0154_wr_final_settlement_markers.sql`, `drizzle/schema.sql` — (verifikasi: 49 tes fokus lulus termasuk SQLite dan Workerd D1; TypeScript dan ESLint lulus)
+
 - 2026-11-22 — Roadmap 3B-5b (kelas E): pindahkan blok penerbitan invoice pasca-create (QRIS, NOWPayments, gateway Sekalipay; probe klaim, pembatalan terjaga, respons 503 awal) dari route order ke `src/lib/orders/checkout/invoice.ts`; analytics dan respons 201 tetap di route, tanpa impor provider statis baru — `src/app/api/orders/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 6 file fokus 168 lulus; TypeScript dan ESLint terarah lulus)
 
 - 2026-11-22 — C1-PRE (lokal): pertahankan JSON daftar admin WR dengan mengecualikan marker settlement internal sebelum migrasi 0154, tanpa perubahan SQL/skema — `src/app/api/admin/warung/orders/route.ts` — (verifikasi: 30 tes fokus lulus; TypeScript dan ESLint lulus)

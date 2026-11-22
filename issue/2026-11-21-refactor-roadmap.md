@@ -555,7 +555,7 @@ Nilai status: `belum` / `lokal <sha>` / `push <sha>` / `deploy ✓ <sha>`.
 | B4 | E | lokal (commit B4, 22 Nov) | Rank dan CAS invoice/status bersama; pelepasan lease tetap khusus SK; B4b terpisah |
 | B4b (lease WR) | B | lokal `eba74b42` | Advance otoritatif dan completion baru Premium/Jaspay saja; expected-fail 29→25. |
 | B5 (R2) | B | lokal (patch; belum dipublikasikan) | Kepemilikan invoice SK dijaga atomik pada receipt dan binder; advance recovery tidak menulis ulang invoice. Expected-fail 25→22; 2C tetap terpisah. |
-| C1 (H4 migrasi) | B | belum | D1 disetujui |
+| C1 (H4 migrasi) | B | lokal (patch 0154; belum diterapkan) | Marker-only; deploy dan verifikasi serializer C1-PRE `ea8a58c4` sebelum migrasi; tanpa backfill atau aktivasi C2. |
 | C2 (H4 aktivasi) | B | belum | D1 disetujui |
 | 3A | E | 3A-1, 3A-2a promo, 3A-2b cleanup, 3A-3 notify, 3A-4a supplier kecil, 3A-4b Pedia, 3A-5 payments lokal | Modul job baru tidak menambah import runtime selain yang sudah dimuat route; expiry, fulfillment, WR/SK dan katalog masih inline |
 | 3B | E | 3B-1..3B-5b lokal (GET flags/detail-view; respons POST; guard; metode; slot+create; invoice) | 3B-5b: invoice pasca-create di `checkout/invoice.ts`; berikutnya validasi 3B-6 |

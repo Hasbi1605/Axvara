@@ -1,8 +1,10 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
-## C1-PRE 22 Nov (lokal)
+## C1 / 0154 dan C1-PRE 22 Nov (lokal)
 
-- Marker internal `wr_final_settle_token` tidak masuk JSON daftar order admin WR, baik sebelum 0154 maupun saat kolom NULL/terisi. SQL tetap kompatibel dengan skema lama; penyamaran ciphertext dan penghilangan IV tetap. Rilis serializer ini harus aktif sebelum 0154 karena CI menerapkan D1 sebelum deploy Pages. Tidak ada perubahan skema atau aktivasi C2 di paket ini.
+- Serializer C1-PRE (`ea8a58c4`) menyembunyikan `wr_final_settle_token` dari JSON daftar order admin WR, tanpa mengubah penyamaran ciphertext/IV atau SQL. Deploy dan verifikasi serializer aktif **sebelum** 0154; jangan satukan rilis karena CI normal memigrasikan D1 sebelum deploy Pages.
+- Migrasi 0154 menambah `wr_order_links.wr_final_settle_token` dan `orders.wr_aggregate_refresh_token` (nullable `TEXT DEFAULT NULL`), masing-masing dengan indeks parsial non-NULL. Tidak ada backfill, pembaca/penulis marker runtime, perubahan Retry/cron, atau aktivasi C2. Hanya marker link yang kelak memagari Admin Retry; floor 26 statement setelah SELECT due masih sementara.
+- Rollback mempertahankan skema dan data serta serializer C1-PRE. Sebelum rollback C2 ke kode yang mengabaikan marker, jeda writer sambil mempertahankan pagar Retry dan replay yang kompatibel, lalu selesaikan atau triase kedua marker. Jangan drop atau reset marker massal.
 
 ## B5/R2 22 Nov (lokal)
 
