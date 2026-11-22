@@ -137,7 +137,7 @@ describe("T4b games_catalog drain asymmetry", () => {
 
 describe("T4b drainDirtyGroupsIfBudget failure isolation", () => {
   it("a non-budget drain failure is swallowed: main result and ok marker survive", async () => {
-    // drainDirtyGroupsIfBudget (route.ts:350-360) catches everything except
+    // The Lite catalog wrapper catches everything except
     // QueryBudgetExceeded — a plain failure leaves no pairs keys but the job
     // result stays ok:true and the completion marker is still stamped.
     mocks.pairs.mockRejectedValue(new Error("fixture pairs failure"));
@@ -163,6 +163,14 @@ describe("T4b drainDirtyGroupsIfBudget failure isolation", () => {
     expect(out.status).toBe(200);
     expect(out.body).toMatchObject({ ok: true, job: "tunvn_catalog", pairs_decided: 2, pairs_changed: 1 });
     expect(setting(marker("tunvn_catalog"))).toBeTruthy();
+  });
+
+  it("cleanup propagates an ordinary drain failure to the route instead of stamping success", async () => {
+    mocks.cleanup.mockResolvedValue({});
+    mocks.pairs.mockRejectedValue(new Error("fixture cleanup drain failure"));
+    expect(await run("cleanup")).toMatchObject({ status: 500, body: { ok: false } });
+    expect(mocks.pairs).toHaveBeenCalledOnce();
+    expect(setting(marker("cleanup"))).toBeUndefined();
   });
 });
 

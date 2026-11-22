@@ -2,6 +2,7 @@
 import { catalogSweepDue, CATALOG_SYNC_INTERVAL_MS } from "@/lib/cron/catalog-sweep";
 import type { OperationsContext } from "@/lib/cron/operations-context";
 import { supplierSaldoCheckDue } from "@/lib/cron/saldo-check";
+import { drainSupplierPairs } from "@/lib/cron/supplier-pairs";
 
 // Sekalipay (0049): ambang yang sama dengan WR — unit jaringan SK ikut
 // deadline 45 dtk + cadangan ekor yang sama agar tidak dipotong platform.
@@ -150,8 +151,7 @@ export async function run(ctx: OperationsContext): Promise<void> {
           // sweep SK tuntas (bukan tiap potongan).
           if (part === "sync" && results.more !== true && budget.fits(4) && hasTime(TIME_SK_LIGHT)) {
             try {
-              const { decideAllWinners } = await import("@/lib/supplier-pairs");
-              const pairs = await decideAllWinners(database);
+              const pairs = await drainSupplierPairs(database, { mode: "all" });
               results.pairs_decided = pairs.decided;
               results.pairs_changed = pairs.changed;
             } catch { /* best-effort; sweep berikut retry */ }
@@ -205,8 +205,7 @@ export async function run(ctx: OperationsContext): Promise<void> {
         step("sk_tail_done");
         if (!ordersOnly && budget.fits(4) && hasTime(TIME_SK_LIGHT)) {
           try {
-            const { decideAllWinners } = await import("@/lib/supplier-pairs");
-            const pairs = await decideAllWinners(database);
+            const pairs = await drainSupplierPairs(database, { mode: "all" });
             results.pairs_decided = pairs.decided;
             results.pairs_changed = pairs.changed;
           } catch { /* best-effort; sweep berikut retry */ }

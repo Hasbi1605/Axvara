@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/cron/operations/route";
+import { QueryBudgetExceeded } from "@/lib/db-access";
 import { createD1Fixture } from "../helpers/d1-fixture";
 
 const mocks = vi.hoisted(() => ({ telegram: vi.fn(), wrSync: vi.fn(), skSync: vi.fn(), pairs: vi.fn(), wrWatchdog: vi.fn() }));
@@ -247,6 +248,22 @@ it.each(cases)("T4 operations golden: $name", async ({ query, expected, status =
   else expect(setting("cron_last_ok_at")).toBeUndefined();
   expect(fetch).not.toHaveBeenCalled();
   verify?.();
+});
+
+it.each(["", "&part=sync", "&part=orders"])("SK drain failure stays best-effort, with no drain for orders-only (%s)", async part => {
+  enable("SEKALIPAY");
+  mocks.pairs.mockRejectedValue(new QueryBudgetExceeded());
+  const res = await POST(new NextRequest(`https://fixture.test/api/cron/operations?phase=sekalipay${part}`, {
+    method: "POST", headers: { authorization: "Bearer fixture" },
+  }));
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.ok).toBe(true);
+  expect(body).not.toHaveProperty("pairs_decided");
+  expect(body).not.toHaveProperty("pairs_changed");
+  expect(body).not.toHaveProperty("deferred");
+  expect(setting("cron_last_ok_at")).toBeTruthy();
+  expect(mocks.pairs).toHaveBeenCalledTimes(part === "&part=orders" ? 0 : 1);
 });
 
 it("T4 goldens cover all 33 skeleton and 40 assigned results keys, plus response envelope keys", () => {

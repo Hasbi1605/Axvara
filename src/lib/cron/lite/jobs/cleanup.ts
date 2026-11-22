@@ -6,14 +6,12 @@
 // exports `run(ctx)` with the verbatim bodies merged (the market-refresh
 // helper stays module-private, like the route's local function). The route
 // dispatches via dynamic `await import("@/lib/cron/lite/jobs/cleanup")`.
-// Static imports are exactly the lite `context` helpers the body already
-// used (`monitorRecovery`) plus db-access (budget throw) and the `LiteContext`
-// type — every payload module (maintenance-cleanup, sync-staleness,
-// finance/expenses, supplier-pairs, product-copy/review-alert, market
-// snapshot refresh) stays behind the original `await import()`s.
+// Payload modules stay lazy, including the supplier-pairs facade loaded by
+// the cron drain helper.
 
 import { QueryBudgetExceeded } from "@/lib/db-access";
 import { monitorRecovery, type LiteContext } from "@/lib/cron/lite/context";
+import { drainSupplierPairs } from "@/lib/cron/supplier-pairs";
 
 // cleanup: baris kedaluwarsa (sesi WA, inbox WA 7 hari, event bayar tuntas 30 hari,
 // revokasi sesi admin). Murah dan idempoten.
@@ -40,8 +38,7 @@ export async function run(ctx: LiteContext): Promise<Record<string, unknown>> {
   if (!db.canSpend(3)) return { ...out, ...cleanup, ...staleness };
   // Drain WR-only changes and failed VPS pair requests on the existing cron.
   // Critical order work has its own jobs; this drain is bounded and resumable.
-  const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
-  const pairs = await decideDirtyWinners(db);
+  const pairs = await drainSupplierPairs(db, { mode: "dirty" });
   const copy: Record<string, unknown> = {};
   // Optional admin alert: <=4 statements, 30-minute CAS; never block cleanup.
   if (db.canSpend(4)) {

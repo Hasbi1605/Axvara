@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3H-4 (kelas E): satukan pemuatan drain pasangan khusus cron; mode, pagar, dan kebijakan gagal tetap milik pemanggil — `src/lib/cron/supplier-pairs.ts`, cron Lite dan Operations SK — (verifikasi: 134 tes fokus di 5 file lulus, 1 TODO lama)
+
 - 2026-11-22 — Roadmap 3H-3 (kelas E): satukan pembacaan jadwal cek saldo WR/SK tanpa mengubah anggaran, penanganan error, atau urutan fase — `src/lib/cron/saldo-check.ts`, cron Lite dan Operations — (verifikasi: 78 tes fokus di 6 file lulus)
 
 - 2026-11-22 — Roadmap 3H-2 (kelas E): pindahkan writer sampel kesehatan best-effort, tanpa memindahkan sampler WA — `src/lib/service-health.ts`, cron Lite — (verifikasi: 74 tes fokus di 2 file lulus, 1 TODO lama)

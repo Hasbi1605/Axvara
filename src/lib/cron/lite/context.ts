@@ -1,4 +1,5 @@
 import { QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
+import { drainSupplierPairs } from "@/lib/cron/supplier-pairs";
 import type { LiteJob } from "./jobs";
 
 type Db = DatabaseAccess;
@@ -14,8 +15,7 @@ export type LiteContext = {
 export async function drainDirtyGroupsIfBudget(db: Db, result: Record<string, unknown>) {
   if (!db.canSpend(4)) return;
   try {
-    const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
-    const pairs = await decideDirtyWinners(db);
+    const pairs = await drainSupplierPairs(db, { mode: "dirty" });
     result.pairs_decided = pairs.decided;
     result.pairs_changed = pairs.changed;
   } catch (error) {
