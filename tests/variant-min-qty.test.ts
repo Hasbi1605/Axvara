@@ -59,7 +59,9 @@ describe("variant min_qty — migrasi & schema", () => {
     const fieldsBlock = ownership.slice(ownership.indexOf("WR_OWNED_VARIANT_FIELDS"));
     const blockEnd = fieldsBlock.indexOf("] as const");
     expect(fieldsBlock.slice(0, blockEnd)).not.toContain("min_qty");
-    const sync = read("src/lib/warung-rebahan/sync.ts");
+    // 3D-3: product step moved to sync/product.ts; min_qty must stay out
+    // of both the engine and the moved product writes.
+    const sync = read("src/lib/warung-rebahan/sync.ts") + "\n" + read("src/lib/warung-rebahan/sync/product.ts");
     expect(sync).not.toContain("min_qty");
   });
 });

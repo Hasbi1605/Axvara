@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-22 — Roadmap 3D-3 (kelas E): pindahkan `planLinkedProductWrites`, `upsertWrProduct`, dan `createAxvaraCatalogForWr` dari `sync.ts` WR ke `src/lib/warung-rebahan/sync/product.ts`; SQL/bind/cabang/batch dan permukaan ekspor barrel tidak berubah — `src/lib/warung-rebahan/sync.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 8 file fokus 108 lulus termasuk Workerd Jaspay; TypeScript dan ESLint terarah lulus)
+
 - 2026-11-22 — Roadmap 3B-6 (kelas E): pindahkan validasi input checkout pra-reuse (skema Zod, konfigurasi akses, rail/proof, verifikasi quote bertanda, kanonikalisasi slug, kecocokan field pembeli Muse) dari route order ke `src/lib/orders/checkout/validate.ts`; urutan maintenance/rate-limit/baca body, lookup reuse, dan tahap sesudahnya tidak berubah — `src/app/api/orders/route.ts`, `docs/ARCHITECTURE.md` — (verifikasi: 7 file fokus 112 lulus; TypeScript dan ESLint terarah lulus)
 
 - 2026-11-22 — C1 (lokal): migrasi 0154 menambah dua marker settlement WR nullable dan indeks parsial tanpa backfill atau aktivasi C2; serializer C1-PRE harus sudah aktif sebelum migrasi — `drizzle/migrations/0154_wr_final_settlement_markers.sql`, `drizzle/schema.sql` — (verifikasi: 49 tes fokus lulus termasuk SQLite dan Workerd D1; TypeScript dan ESLint lulus)
