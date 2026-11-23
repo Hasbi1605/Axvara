@@ -52,12 +52,13 @@ WITH labels(product_id, sku, slug, family, old_label, label) AS (VALUES
   (51959, 'TUNVN-122', 'microsoft-copilot-tunvn', 'microsoft-copilot', 'Copilot Premium 1M (FW)', 'Premium 1 Bulan (Full Garansi)')
 )
 UPDATE product_variants AS v SET label = l.label, updated_at = datetime('now')
-FROM labels l JOIN products p ON p.id = l.product_id AND p.slug = l.slug
-WHERE v.product_id = p.id AND v.sku = l.sku AND v.label = l.old_label AND v.is_active = 0
-  AND p.is_active = 0 AND p.archived_at IS NULL
-  AND (('AV-'||v.aivault_service_id = l.sku AND p.aivault_family = l.family)
-    OR ('SB-'||v.storebat_product_id = l.sku AND p.storebat_family = l.family)
-    OR (v.tunvn_source_product_id = 122 AND p.tunvn_family = l.family));
+FROM labels l
+WHERE v.product_id = l.product_id AND v.sku = l.sku AND v.label = l.old_label AND v.is_active = 0
+  AND EXISTS(SELECT 1 FROM products p WHERE p.id = l.product_id AND p.slug = l.slug
+    AND p.is_active = 0 AND p.archived_at IS NULL
+    AND (('AV-'||v.aivault_service_id = l.sku AND p.aivault_family = l.family)
+      OR ('SB-'||v.storebat_product_id = l.sku AND p.storebat_family = l.family)
+      OR (v.tunvn_source_product_id = 122 AND p.tunvn_family = l.family)));
 
 UPDATE products SET aivault_family = 'ilovepdf', name = 'iLovePDF Premium'
 WHERE id = 381 AND aivault_family = 'service:service_ilovepdf_1y'
@@ -83,17 +84,19 @@ WITH moves(old_id, old_key, sku, new_id, new_slug, new_key, label, sort_order) A
 )
 UPDATE product_variants AS v SET product_id = m.new_id, label = m.label,
   sort_order = COALESCE(m.sort_order, v.sort_order), updated_at = datetime('now')
-FROM moves m JOIN products source ON source.id = m.old_id
-  JOIN products target ON target.id = m.new_id AND target.slug = m.new_slug
-WHERE v.product_id = source.id AND v.sku = m.sku AND v.is_active = 0
-  AND source.is_active = 0 AND source.archived_at IS NULL AND target.archived_at IS NULL
-  AND NOT EXISTS(SELECT 1 FROM product_variants other WHERE other.product_id = source.id AND other.id <> v.id)
-  AND ((m.old_id IN (51948,51949) AND source.aivault_family = m.old_key AND target.aivault_family = m.new_key
-      AND 'AV-'||v.aivault_service_id = m.sku)
-    OR (m.old_id IN (51957,51960) AND source.storebat_family = m.old_key AND target.storebat_family = m.new_key
-      AND 'SB-'||v.storebat_product_id = m.sku)
-    OR (m.old_id IN (51947,51956,51958) AND source.tunvn_family = m.old_key AND target.tunvn_family IS m.new_key
-      AND target.source = 'manual' AND 'TUNVN-'||v.tunvn_source_product_id = m.sku));
+FROM moves m
+WHERE v.product_id = m.old_id AND v.sku = m.sku AND v.is_active = 0
+  AND NOT EXISTS(SELECT 1 FROM product_variants other WHERE other.product_id = m.old_id AND other.id <> v.id)
+  AND EXISTS(SELECT 1 FROM products source WHERE source.id = m.old_id
+    AND source.is_active = 0 AND source.archived_at IS NULL
+    AND ((m.old_id IN (51948,51949) AND source.aivault_family = m.old_key AND 'AV-'||v.aivault_service_id = m.sku)
+      OR (m.old_id IN (51957,51960) AND source.storebat_family = m.old_key AND 'SB-'||v.storebat_product_id = m.sku)
+      OR (m.old_id IN (51947,51956,51958) AND source.tunvn_family = m.old_key AND 'TUNVN-'||v.tunvn_source_product_id = m.sku)))
+  AND EXISTS(SELECT 1 FROM products target WHERE target.id = m.new_id AND target.slug = m.new_slug
+    AND target.archived_at IS NULL
+    AND ((m.old_id IN (51948,51949) AND target.aivault_family = m.new_key)
+      OR (m.old_id IN (51957,51960) AND target.storebat_family = m.new_key)
+      OR (m.old_id IN (51947,51956,51958) AND target.tunvn_family IS m.new_key AND target.source = 'manual')));
 
 -- Archive as in admin DELETE. No variant may remain on a merged fallback;
 -- anomalous fallbacks may keep their variants, but only if already inactive.
@@ -107,13 +110,14 @@ WITH merged(old_id, old_key, sku, new_id) AS (VALUES
   (51958, 'p121', 'TUNVN-121', 123)
 )
 UPDATE products AS p SET archived_at = datetime('now'), is_active = 0, updated_at = datetime('now')
-FROM merged m JOIN product_variants v ON v.product_id = m.new_id AND v.sku = m.sku
-  JOIN products target ON target.id = m.new_id AND target.archived_at IS NULL
-WHERE p.id = m.old_id AND p.is_active = 0 AND p.archived_at IS NULL AND v.is_active = 0
+FROM merged m
+WHERE p.id = m.old_id AND p.is_active = 0 AND p.archived_at IS NULL
   AND NOT EXISTS(SELECT 1 FROM product_variants remaining WHERE remaining.product_id = p.id)
-  AND ((m.old_id IN (51948,51949) AND p.aivault_family = m.old_key AND 'AV-'||v.aivault_service_id = m.sku)
-    OR (m.old_id IN (51957,51960) AND p.storebat_family = m.old_key AND 'SB-'||v.storebat_product_id = m.sku)
-    OR (m.old_id IN (51947,51956,51958) AND p.tunvn_family = m.old_key AND 'TUNVN-'||v.tunvn_source_product_id = m.sku));
+  AND EXISTS(SELECT 1 FROM products target WHERE target.id = m.new_id AND target.archived_at IS NULL)
+  AND EXISTS(SELECT 1 FROM product_variants v WHERE v.product_id = m.new_id AND v.sku = m.sku AND v.is_active = 0
+    AND ((m.old_id IN (51948,51949) AND p.aivault_family = m.old_key AND 'AV-'||v.aivault_service_id = m.sku)
+      OR (m.old_id IN (51957,51960) AND p.storebat_family = m.old_key AND 'SB-'||v.storebat_product_id = m.sku)
+      OR (m.old_id IN (51947,51956,51958) AND p.tunvn_family = m.old_key AND 'TUNVN-'||v.tunvn_source_product_id = m.sku)));
 
 UPDATE products AS p SET archived_at = datetime('now'), is_active = 0, updated_at = datetime('now')
 WHERE (p.id, p.aivault_family) IN ((51951,'service:service_5'),(51952,'service:service_4'),
@@ -125,12 +129,14 @@ WHERE (p.id, p.aivault_family) IN ((51951,'service:service_5'),(51952,'service:s
 -- next sync would repair them. No price/stock/markup changes here.
 WITH moved(sid, old_id, new_id) AS (VALUES ('service_chatgpt_plus_1m_fw',51948,174),('service_ilovepdf_nw',51949,381))
 UPDATE aivault_products AS a SET axvara_product_id = m.new_id
-FROM moved m JOIN products old ON old.id = m.old_id AND old.aivault_family = 'service:'||m.sid AND old.archived_at IS NOT NULL
-  JOIN product_variants v ON v.product_id = m.new_id AND v.aivault_service_id = m.sid AND v.sku = 'AV-'||m.sid
-WHERE a.service_id = m.sid AND a.axvara_product_id = m.old_id AND v.is_active = 0;
+FROM moved m
+WHERE a.service_id = m.sid AND a.axvara_product_id = m.old_id
+  AND EXISTS(SELECT 1 FROM products old WHERE old.id = m.old_id AND old.aivault_family = 'service:'||m.sid AND old.archived_at IS NOT NULL)
+  AND EXISTS(SELECT 1 FROM product_variants v WHERE v.product_id = m.new_id AND v.aivault_service_id = m.sid AND v.sku = 'AV-'||m.sid AND v.is_active = 0);
 
 WITH moved(sid, old_id, new_id) AS (VALUES (119,51947,123),(120,51956,112),(121,51958,123))
 UPDATE tunvn_products AS t SET axvara_product_id = m.new_id, visible = 0
-FROM moved m JOIN products old ON old.id = m.old_id AND old.tunvn_family = 'p'||m.sid AND old.archived_at IS NOT NULL
-  JOIN product_variants v ON v.product_id = m.new_id AND v.tunvn_source_product_id = m.sid AND v.sku = 'TUNVN-'||m.sid
-WHERE t.supplier_product_id = m.sid AND t.axvara_product_id = m.old_id AND v.is_active = 0;
+FROM moved m
+WHERE t.supplier_product_id = m.sid AND t.axvara_product_id = m.old_id
+  AND EXISTS(SELECT 1 FROM products old WHERE old.id = m.old_id AND old.tunvn_family = 'p'||m.sid AND old.archived_at IS NOT NULL)
+  AND EXISTS(SELECT 1 FROM product_variants v WHERE v.product_id = m.new_id AND v.tunvn_source_product_id = m.sid AND v.sku = 'TUNVN-'||m.sid AND v.is_active = 0);
