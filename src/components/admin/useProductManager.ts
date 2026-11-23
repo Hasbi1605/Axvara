@@ -220,7 +220,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       const prodRes = await fetch(`/api/products/${p.id}`);
       if (prodRes.ok) {
         const prodData = (await prodRes.json().catch(() => ({}))) as {
-          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean; aivault_family?: unknown; storebat_family?: unknown; mirai_family?: unknown };
+          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean; aivault_family?: unknown; storebat_family?: unknown; mirai_family?: unknown; pixelverif_family?: unknown };
         };
         if (Array.isArray(prodData.product?.variants) && prodData.product.variants.length > 0) {
           rawVars = prodData.product.variants;
@@ -236,12 +236,13 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
           nextForm.nameEn = prodData.product.nameEn ?? "";
           nextForm.wrManaged = Boolean(prodData.product.wrManaged);
           nextForm.aivault_family = typeof prodData.product.aivault_family === "string" ? prodData.product.aivault_family : null;
-          for (const field of ["storebat_family", "mirai_family"] as const) {
+          for (const field of ["storebat_family", "mirai_family", "pixelverif_family"] as const) {
             const family = prodData.product[field];
             if (typeof family === "string") nextForm[field] = family;
           }
           if (nextForm.storebat_family != null) nextForm.supplier = "StoreBat";
           if (nextForm.mirai_family != null) nextForm.supplier = "Mirai";
+          if (nextForm.pixelverif_family != null) nextForm.supplier = "Pixel";
           // Daftar produk tidak membawa require_email; tanpa baris ini
           // centang selalu tampil mati dan Simpan menulis 0 ke database.
           if (typeof prodData.product.requireEmail === "boolean") nextForm.requireEmail = prodData.product.requireEmail;

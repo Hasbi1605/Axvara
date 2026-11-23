@@ -240,7 +240,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
   const variants = await queryAll(
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
-            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.tunvn_buff_quantity_b, pv.tunvn_source_product_id, pv.aivault_service_id,p.aivault_family,pv.storebat_product_id,p.storebat_family,pv.mirai_package_code,p.mirai_family,pv.pixelverif_flow_type,p.slug AS product_slug, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.tunvn_buff_quantity_b, pv.tunvn_source_product_id, pv.aivault_service_id,p.aivault_family,pv.storebat_product_id,p.storebat_family,pv.mirai_package_code,p.mirai_family,pv.pixelverif_flow_type,pv.pixelverif_validity,p.slug AS product_slug, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
             p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
             p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,
@@ -455,6 +455,7 @@ type BuyerDeliveryInput = {
   fulfillment_mode?: unknown; wr_delivery_class?: unknown; sk_order_process?: unknown;
   wr_variant_id?: unknown; sk_variant_id?: unknown; automatic_delivery?: boolean;
   delivery_kind?: BuyerDeliveryKind; automatic_processing?: boolean; queue_has_eta?: boolean;
+  pixelverif_input?: boolean; pixelverif_flow_type?: unknown;
 };
 
 export function buyerDeliveryKind(v: BuyerDeliveryInput): BuyerDeliveryKind {
@@ -466,16 +467,20 @@ export function buyerDeliveryKind(v: BuyerDeliveryInput): BuyerDeliveryKind {
   }) ? "queued" : "instant";
 }
 
-/** Badge pembeli: "Kirim otomatis" (instan) atau "Made By Order" (antrean). */
+/** Badge pembeli: "Kirim otomatis" (instan), "Diproses otomatis" (bot antrean), atau "Made By Order" (manual/antrean). */
 export function buyerDeliveryBadge(v: BuyerDeliveryInput): string {
-  // WR3 Jaspay: dibuat otomatis (bukan disiapkan admin), tapi tetap antrean
-  // (bukan instan/stok). Tanpa brand supplier di copy pembeli.
+  // WR3 Jaspay & Pixel Verification: diproses otomatis oleh bot (bukan disiapkan admin),
+  // tapi tetap kelas antrean (bukan instan/stok). Tanpa brand supplier di copy pembeli.
   if (hasAutomaticProcessing(v)) return "Diproses otomatis";
   return buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Made By Order";
 }
 
-export function hasAutomaticProcessing(v: Pick<BuyerDeliveryInput, "automatic_processing" | "wr_variant_id">): boolean {
-  return v.automatic_processing ?? String(v.wr_variant_id ?? "").trim().startsWith("jaspay:");
+export function isPixelverifDelivery(v: Pick<BuyerDeliveryInput, "pixelverif_input" | "pixelverif_flow_type">): boolean {
+  return v.pixelverif_input === true || v.pixelverif_flow_type === "normal" || v.pixelverif_flow_type === "full";
+}
+
+export function hasAutomaticProcessing(v: Pick<BuyerDeliveryInput, "automatic_processing" | "wr_variant_id" | "pixelverif_input" | "pixelverif_flow_type">): boolean {
+  return v.automatic_processing ?? (String(v.wr_variant_id ?? "").trim().startsWith("jaspay:") || isPixelverifDelivery(v));
 }
 
 /**
@@ -484,6 +489,11 @@ export function hasAutomaticProcessing(v: Pick<BuyerDeliveryInput, "automatic_pr
  */
 export function buyerDeliveryEtaJaspay(): string {
   return "Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi 15 menit–1 jam.";
+}
+
+/** ETA proses otomatis bot 1–5 menit (whitelabel, tanpa brand supplier). */
+export function buyerDeliveryEtaPixel(): string {
+  return "Diproses otomatis oleh bot setelah pembayaran dikonfirmasi. Estimasi 1–5 menit.";
 }
 
 /** True bila varian unique kehabisan kredensial walau kolom stock > 0. */

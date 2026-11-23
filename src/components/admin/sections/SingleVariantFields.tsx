@@ -51,7 +51,8 @@ export function SingleVariantFields({
   const manualProduct = isBulkEligibleForm(form);
   const aivaultProduct = form.aivault_family != null || form.supplier === "AIVault";
   const managedSupplier = form.mirai_family != null || form.supplier === "Mirai" ? "Mirai"
-    : form.storebat_family != null || form.supplier === "StoreBat" ? "StoreBat" : null;
+    : form.storebat_family != null || form.supplier === "StoreBat" ? "StoreBat"
+    : form.pixelverif_family != null || form.supplier === "Pixel" ? "Pixel" : null;
   const bulkDraft = form.bulk ?? emptyBulkDraft();
   const bulkValidation = validateBulkDraft(bulkDraft, {
     base: Number(form.price ?? 0),

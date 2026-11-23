@@ -150,7 +150,9 @@ export function storebatEligibility(row: Record<string, unknown>, qty: number): 
     ...(Number.isFinite(cost) && cost > 0 ? { cost_usd:cost } : {}), ...(Number.isFinite(fx) && fx > 0 ? { fx_idr_per_usd:fx } : {}) };
 }
 
-/** Buyer-facing catalog class, not an order admission or dispatch decision. */
+/** Buyer-facing catalog class, not an order admission or dispatch decision.
+ * Pixel Verification is excluded here because it is queued + automatic_processing
+ * ("Diproses otomatis", 1–5 min like WR Jaspay), not instant stock delivery. */
 export function hasAutomaticSupplierDelivery(row: Record<string, unknown>, qty = 1): boolean {
-  return Boolean(aivaultEligibility(row, qty) || storebatEligibility(row, qty) || miraiEligibility(row, qty) || tunvnEligibility(row, qty) || pixelverifEligibility(row, qty));
+  return Boolean(aivaultEligibility(row, qty) || storebatEligibility(row, qty) || miraiEligibility(row, qty) || tunvnEligibility(row, qty));
 }

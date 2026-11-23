@@ -1,5 +1,12 @@
 # Aturan agent — Pixel Verification (Google AI Pro 3 bulan)
 
+## Admin & tampilan toko — 23 November 2026 (lokal, belum dideploy)
+
+- **Modal di tab Markup:** `catalogItems()` (`src/components/admin/supplier-admin-data.ts`) membaca `credit_cost` sebagai modal USD untuk supplier `pixelverif` (1 kredit = 1 USD); harga jual tidak berubah.
+- **Allowlist foto katalog lokal:** `POST /api/products` dan `PUT /api/products/[id]` mengizinkan path aset pihak pertama `/brand/catalog/products/<file>.(webp|png|jpg|jpeg|avif|svg)` tanpa `..`, sehingga edit produk Pixel dengan foto bawaan tidak ditolak `400 URL gambar tidak diizinkan`.
+- **Identitas asal `Pixel` di Admin Produk:** produk dengan `pixelverif_family` memakai badge/filter asal `Pixel` (`SUPPLIER_STYLES.Pixel`, `.admin-supplier-pixel`) bukan `Manual`, diperlakukan sebagai supplier-managed di editor/bulk/grup/arsip (`product-archive.ts`, `product-groups.ts`), menjaga `pixelverif_admin_price_idr` hanya saat harga berubah, dan mengaktifkan varian pertama saat induk diaktifkan tanpa varian eksplisit.
+- **Badge pengiriman toko:** varian Pixel memakai kelas `queued` + `automatic_processing: true` (seperti WR Jaspay, bukan `instant`/`Kirim otomatis` dan bukan `Made By Order`), sehingga PDP, modal varian, dan checkout menampilkan **"Diproses otomatis"** / **"Processed automatically"** dengan estimasi **1–5 menit** (whitelabel, tanpa nama supplier).
+
 ## Env produksi — 23 November 2026
 
 - Atas permintaan owner, empat env Pages `secret_text` dipasang: `PIXELVERIF_API_KEY`, `PIXELVERIF_API_BASE_URL` (bawaan `https://api.pixelverification.me`), `PIXELVERIF_ENABLED=true`, `PIXELVERIF_SYNC_ENABLED=true`. Sumber lokal `.pixelverification-credentials` (mode 600, git-ignored); backup di `.pages-env-backup` `[production]`. Jangan cetak/commit nilainya. Uji baca-saja saat pasang: saldo 5 kredit, harga normal 1 / full 1,5. Produk dan varian tetap nonaktif sampai admin sinkron katalog dan mengaktifkan; ini bukan bukti order nyata.

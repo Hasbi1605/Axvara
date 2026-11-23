@@ -19,7 +19,7 @@ import { fetchWithTimeout, FetchTimeoutError } from "@/lib/fetch-timeout";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { startNavigation } from "@/stores/navigation";
 import { CheckoutSkeleton, InlineSpinner } from "@/components/storefront/Skeletons";
-import { buyerDeliveryEtaJaspay, formatVariantLabel } from "@/lib/catalog";
+import { buyerDeliveryEtaJaspay, buyerDeliveryEtaPixel, formatVariantLabel } from "@/lib/catalog";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useDisplayContext } from "@/hooks/useDisplayPrices";
 import { useModalA11y } from "@/hooks/useModalA11y";
@@ -406,7 +406,9 @@ function CheckoutInner() {
   // Nama produk Made By Order (dari quote server, bukan
   // tebakan client) — dipakai untuk peringatan waktu sebelum bayar.
   const queuedNames = quotedItems.filter((qi) => qi.queued_delivery === true && qi.automatic_processing !== true).map((qi) => qi.name);
-  const automaticNames = quotedItems.filter((qi) => qi.queued_delivery === true && qi.automatic_processing === true).map((qi) => qi.name);
+  const automaticItems = quotedItems.filter((qi) => qi.queued_delivery === true && qi.automatic_processing === true);
+  const automaticNames = automaticItems.map((qi) => qi.name);
+  const automaticPixelOnly = automaticItems.length > 0 && automaticItems.every((qi) => Boolean(qi.buyer_fields?.pv_fingerprint));
   const displaySubtotal = quotedItems.length > 0 ? quotedSubtotal : subtotal;
   // Total dan biaya metode terpilih: angka dari quote server saja, tanpa
   // penjumlahan/gross-up lokal. Gateway hanya bila estimasinya dihitung dari
@@ -843,7 +845,9 @@ function CheckoutInner() {
               <h2 className="text-sm font-semibold text-[#FFD66B]">{text("Diproses otomatis", "Processed automatically")}</h2>
               <p className="mt-1 text-xs leading-5 text-white/60">
                 <span className="font-semibold text-white">{automaticNames.length === 1 ? automaticNames[0] : `${automaticNames.length} ${text("produk", "products")}`}</span>
-                {". "}{text(buyerDeliveryEtaJaspay(), "Made by order — created automatically by our bot after payment. Estimated 15 minutes–1 hour.")}
+                {". "}{automaticPixelOnly
+                  ? text(buyerDeliveryEtaPixel(), "Processed automatically by our bot after payment is confirmed. Estimated 1–5 minutes.")
+                  : text(buyerDeliveryEtaJaspay(), "Made by order — created automatically by our bot after payment. Estimated 15 minutes–1 hour.")}
               </p>
             </div>
           )}

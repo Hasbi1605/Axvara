@@ -144,10 +144,10 @@ async function readProducts(req: NextRequest) {
   // hanya melihat nama bersih; WR/SK/Manual hanya dibedakan di admin + slug).
   // SK = sk_product_id NOT NULL (source tetap 'manual' karena CHECK D1 lama);
   // WR = source warung_rebahan ATAU wr_product_id NOT NULL; selainnya Manual.
-  const supplierByProduct = new Map<string, "WR" | "SK" | "TUNVN" | "AIVault" | "StoreBat" | "Mirai" | "Manual">();
+  const supplierByProduct = new Map<string, "WR" | "SK" | "TUNVN" | "AIVault" | "StoreBat" | "Mirai" | "Pixel" | "Manual">();
   if (isAdminRequest) {
     const supRows = await queryAll(
-      `SELECT id, source, wr_product_id, sk_product_id, tunvn_family, aivault_family, storebat_family, mirai_family FROM products`,
+      `SELECT id, source, wr_product_id, sk_product_id, tunvn_family, aivault_family, storebat_family, mirai_family, pixelverif_family FROM products`,
     ).catch(() => [] as Record<string, unknown>[]);
     for (const row of supRows) {
       const key = String(row.id);
@@ -155,6 +155,7 @@ async function readProducts(req: NextRequest) {
       else if (row.storebat_family != null) supplierByProduct.set(key,"StoreBat");
       else if (row.mirai_family != null) supplierByProduct.set(key, "Mirai");
       else if (row.aivault_family != null) supplierByProduct.set(key,"AIVault");
+      else if (row.pixelverif_family != null) supplierByProduct.set(key, "Pixel");
       else if (row.sk_product_id != null) supplierByProduct.set(key, "SK");
       else if (String(row.source ?? "") === "warung_rebahan" || row.wr_product_id != null) supplierByProduct.set(key, "WR");
       else supplierByProduct.set(key, "Manual");
@@ -224,7 +225,7 @@ async function readProducts(req: NextRequest) {
       ? (r.variant_compare_price == null ? undefined : Number(r.variant_compare_price))
       : (r.compare_price as number | null | undefined) ?? undefined;
     return {
-      ...(isAdminRequest ? { archivedAt: r.archived_at == null ? null : String(r.archived_at), canHardDelete: !!r.archived_at && r.hard_delete_reason === null, hardDeleteReason: r.hard_delete_reason == null ? null : String(r.hard_delete_reason), aivault_family: (r.aivault_family as string | null) ?? null, storebat_family: (r.storebat_family as string | null) ?? null, mirai_family: (r.mirai_family as string | null) ?? null } : {}),
+      ...(isAdminRequest ? { archivedAt: r.archived_at == null ? null : String(r.archived_at), canHardDelete: !!r.archived_at && r.hard_delete_reason === null, hardDeleteReason: r.hard_delete_reason == null ? null : String(r.hard_delete_reason), aivault_family: (r.aivault_family as string | null) ?? null, storebat_family: (r.storebat_family as string | null) ?? null, mirai_family: (r.mirai_family as string | null) ?? null, pixelverif_family: (r.pixelverif_family as string | null) ?? null } : {}),
       id: String(r.id),
       slug: r.slug,
       name: r.name,
@@ -359,9 +360,10 @@ export async function POST(req: NextRequest) {
   if (!catRow) return NextResponse.json({ error: "Kategori tidak dikenal. Buat atau pilih kategori yang tersedia." }, { status: 400 });
   const category_id = catRow.id;
   const imgArr = Array.isArray(images) ? images.slice(0,8) : [];
-  // F10: strict allowlist — only /r2/* or known CDNs
+  // F10: strict allowlist — only /r2/*, first-party /brand/catalog/products/*, or known CDNs
   const urlOk = (u: string) => {
     if (u.startsWith("/r2/")) return true;
+    if (/^\/brand\/catalog\/products\/[a-z0-9][a-z0-9._-]*\.(?:webp|png|jpe?g|avif|svg)$/i.test(u) && !u.includes("..")) return true;
     try {
       const url = new URL(u);
       return ["images.unsplash.com", "picsum.photos"].includes(url.hostname) && url.protocol === "https:";

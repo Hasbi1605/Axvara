@@ -1,7 +1,7 @@
 import { wrJaspayCoveredSql, wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { assertSameBuyerCode, buyerFieldsSchema, hasAutomaticSupplierDelivery, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, buyerFieldsSchema, hasAutomaticSupplierDelivery, isPixelverifVariantRow, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 import { queryAll, isD1Mode } from "@/lib/db";
 import { buyerDeliveryKind, isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken } from "@/lib/auth";
@@ -370,11 +370,12 @@ export async function POST(req: NextRequest) {
         automatic_delivery: hasAutomaticSupplierDelivery({ ...fieldConfig, product_slug: row.slug,
           aivault_family: row.aivault_family, storebat_family: row.storebat_family, mirai_family: row.mirai_family }, item.qty),
       }) === "queued",
-      // WR3 Jaspay: server-derived (dari wr_variant_id mirror, BUKAN input
-      // client). queued_delivery TETAP true; flag ini hanya memisahkan
-      // notice otomatis vs manual di UI (tanpa nama/id supplier).
+      // WR3 Jaspay & Pixel Verification: server-derived (dari kolom mirror,
+      // BUKAN input client). queued_delivery TETAP true; flag ini memisahkan
+      // notice "Diproses otomatis" vs "Made By Order" di UI (tanpa nama/id supplier).
       ...(item.variant_id
-        && String(variantById.get(item.variant_id)?.wr_variant_id ?? "").trim().startsWith("jaspay:")
+        && (String(variantById.get(item.variant_id)?.wr_variant_id ?? "").trim().startsWith("jaspay:")
+          || isPixelverifVariantRow(fieldConfig))
         ? { automatic_processing: true as const }
         : {}),
     });

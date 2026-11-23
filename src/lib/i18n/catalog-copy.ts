@@ -1,5 +1,5 @@
 import type { Locale } from "./locale";
-import { buyerDeliveryBadge, buyerDeliveryEtaJaspay, buyerDeliveryEtaNonWr, buyerDeliveryKind, formatWarranty, hasAutomaticProcessing, supplierVariantOf } from "@/lib/catalog";
+import { buyerDeliveryBadge, buyerDeliveryEtaJaspay, buyerDeliveryEtaNonWr, buyerDeliveryEtaPixel, buyerDeliveryKind, formatWarranty, hasAutomaticProcessing, isPixelverifDelivery, supplierVariantOf } from "@/lib/catalog";
 import { deliveryEtaForBuyer, WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/delivery-class";
 
 export function catalogDeliveryBadge(v: Parameters<typeof buyerDeliveryBadge>[0], locale: Locale): string {
@@ -11,6 +11,7 @@ export function catalogDeliveryBadge(v: Parameters<typeof buyerDeliveryBadge>[0]
 
 export function catalogDeliveryEta(v: Parameters<typeof buyerDeliveryBadge>[0] | null, locale: Locale): string {
   if (v?.automatic_delivery) return locale === "en" ? "Processed automatically after payment is confirmed; we will notify you when it is complete." : "Diproses otomatis setelah pembayaran dikonfirmasi; kami kabari setelah selesai.";
+  if (v && isPixelverifDelivery(v)) return locale === "id" ? buyerDeliveryEtaPixel() : "Processed automatically by our bot after payment is confirmed. Estimated 1–5 minutes.";
   if (v && hasAutomaticProcessing(v)) return locale === "id" ? buyerDeliveryEtaJaspay() : "Made by order — created automatically by our bot after payment. Estimated 15 minutes–1 hour.";
   if (v && buyerDeliveryKind(v) === "instant") return locale === "id" ? deliveryEtaForBuyer("restock") : "Delivered automatically once payment is confirmed";
   const hasQueueEta = !v || (v.queue_has_eta ?? (supplierVariantOf(v) === "wr"));

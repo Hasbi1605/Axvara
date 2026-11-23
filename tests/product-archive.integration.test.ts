@@ -54,9 +54,11 @@ it("hard-deletes only archived manual rows and variants",async()=>{
 it.each([
   "UPDATE products SET wr_product_id='wr'", "UPDATE products SET sk_product_id='sk'",
   "UPDATE products SET tunvn_family='family'", "UPDATE products SET aivault_family='family'",
+  "UPDATE products SET pixelverif_family='google_ai_pro_3m'",
   "UPDATE product_variants SET wr_variant_id='wr'", "UPDATE product_variants SET sk_variant_id='sk'",
   "UPDATE product_variants SET tunvn_source_product_id=123", "UPDATE product_variants SET tunvn_buff_quantity_b=1",
   "UPDATE product_variants SET aivault_service_id='service'",
+  "UPDATE product_variants SET pixelverif_flow_type='normal'",
 ])("rejects supplier ownership even when archived: %s",async(sql)=>{
   f.sql.exec(sql);await archive();
   const r=await DELETE(req("DELETE",undefined,"?permanent=1"),params);expect(r.status).toBe(409);expect((await r.json()).error).toContain("supplier");

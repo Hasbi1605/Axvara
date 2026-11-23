@@ -357,7 +357,7 @@ export function ProductVariantRows({
   // sini mencerminkan kontrak server; server tetap otoritatif.
   const manualProduct = isBulkEligibleForm(form);
   const aivaultProduct = form.aivault_family != null || form.supplier === "AIVault";
-  const managedSupplier = form.storebat_family != null || form.mirai_family != null || form.supplier === "StoreBat" || form.supplier === "Mirai";
+  const managedSupplier = form.storebat_family != null || form.mirai_family != null || form.pixelverif_family != null || form.supplier === "StoreBat" || form.supplier === "Mirai" || form.supplier === "Pixel";
   const bulkValidations = formVariants.map((v) => validateBulkDraft(v.bulk ?? emptyBulkDraft(), {
     base: Number(v.price),
     minQty: Math.max(1, Number(v.min_qty ?? 1) || 1),

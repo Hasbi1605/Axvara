@@ -534,7 +534,11 @@ route fixture dihapus, bukan bukti login atau transaksi produksi.
 Pembaruan 23 November 2026 (lokal): komponen yang sama juga dipakai untuk item
 Pixel Verification (urutan antrean supplier memakai baris "Urutan antrean: N"
 existing). Untuk item Pixel saja, footer "Made by order" memakai estimasi
-1–5 menit dan tautan admin setelah 15 menit; token visual tidak berubah.
+1–5 menit dan tautan admin setelah 15 menit; token visual tidak berubah. Di PDP,
+modal varian, dan checkout, item Pixel menampilkan badge kuning "Diproses otomatis"
+(EN: "Processed automatically") dengan estimasi 1–5 menit. Di admin Produk, badge
+asal `Pixel` memakai kelas `.admin-supplier-pixel` (sky `3 105 161` terang / `125 211 252` gelap),
+terpisah dari warna status.
 
 Halaman `/pesanan/[code]` memakai `AutomaticOrderProgress` untuk item Jaspay.
 Permukaan mengikuti Midnight storefront existing, border putih10%, teks utama

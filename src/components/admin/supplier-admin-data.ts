@@ -14,6 +14,8 @@ type Product = {
   wr_delivery_class?: string | null; sk_order_process?: string | null; sk_min_order?: number | null; sk_status?: string | null;
   wr_is_active?: number | null; sk_is_active?: number | null;
   name?: string; stock?: number; price_usd?: number; unit_price_usd?: number;
+  /** Pixel Verification: supplier cost per order in USD credits (1 credit = 1 USD). */
+  credit_cost?: number | null;
   cost_usdt?: number | null; price_usdt?: number | null;
   fx_idr_per_usd?: number | null; fx_idr_per_usdt?: number | null;
   markup_percent: number; markup_fixed?: number; admin_price_idr?: number | null;
@@ -194,7 +196,7 @@ export function catalogItems(rows: Product[], config: SupplierConfig) {
       fixed: Number(item.markup_fixed ?? 0),
       sellPrice: item.axvara_sell_price ?? item.variant_price ?? null,
       cost: config.currency === "IDR" ? Number(item.wr_price ?? item.sk_price ?? 0)
-        : config.currency === "USD" ? (item.price_usd ?? item.unit_price_usd)
+        : config.currency === "USD" ? (item.price_usd ?? item.unit_price_usd ?? item.credit_cost ?? undefined)
         : (item.cost_usdt ?? item.price_usdt),
       fx: config.currency === "USD" ? item.fx_idr_per_usd : item.fx_idr_per_usdt,
       variantStatus: live.status,

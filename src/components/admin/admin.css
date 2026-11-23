@@ -35,6 +35,7 @@
 .admin-theme { --admin-storebat: 194 65 12; --admin-mirai: 77 124 15; }
 .admin-supplier-storebat { --supplier-light: 154 52 18; --supplier-dark: 253 186 116; }
 .admin-supplier-mirai { --supplier-light: 63 98 18; --supplier-dark: 190 242 100; }
+.admin-supplier-pixel { --supplier-light: 3 105 161; --supplier-dark: 125 211 252; }
 .admin-supplier-manual { --supplier-light: 51 65 85; --supplier-dark: 203 213 225; border-style: dashed; }
 .admin-theme .admin-supplier-badge {
   --supplier-color: var(--supplier-light);

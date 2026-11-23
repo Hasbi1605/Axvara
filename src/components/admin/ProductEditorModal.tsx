@@ -67,7 +67,7 @@ export function ProductEditorModal({
   // ~2600px di bawah tempat admin bekerja. Tab memotong scroll per pekerjaan;
   // footer sticky membuat Simpan selalu terjangkau.
   const [tab, setTab] = useState<"detail" | "varian" | "konten" | "media">("detail");
-  const supplierOwnsVariants = form.storebat_family != null || form.mirai_family != null || form.supplier === "StoreBat" || form.supplier === "Mirai";
+  const supplierOwnsVariants = form.storebat_family != null || form.mirai_family != null || form.pixelverif_family != null || form.supplier === "StoreBat" || form.supplier === "Mirai" || form.supplier === "Pixel";
   // Badan modal di-scroll bersama semua tab; ganti tab mulai dari atas.
   const bodyRef = useRef<HTMLDivElement>(null);
   // Simpan ditolak karena isian harga grosir: pindah ke tab Varian lalu

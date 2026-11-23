@@ -52,8 +52,8 @@ export type BulkValidation = {
  * Produk WR (`wrManaged`) dan produk supplier (`supplier` WR/SK) tidak
  * pernah menampilkan maupun menyimpan konfigurasi ini.
  */
-export function isBulkEligibleForm(form: { wrManaged?: boolean; supplier?: string | null; aivault_family?: string | null; storebat_family?: string | null; mirai_family?: string | null }): boolean {
-  return form.aivault_family == null && form.storebat_family == null && form.mirai_family == null && !form.wrManaged && (form.supplier ?? "Manual") === "Manual";
+export function isBulkEligibleForm(form: { wrManaged?: boolean; supplier?: string | null; aivault_family?: string | null; storebat_family?: string | null; mirai_family?: string | null; pixelverif_family?: string | null }): boolean {
+  return form.aivault_family == null && form.storebat_family == null && form.mirai_family == null && form.pixelverif_family == null && !form.wrManaged && (form.supplier ?? "Manual") === "Manual";
 }
 
 /** Awalan id unik per varian; dipakai editor dan validasi fokus di form. */
