@@ -3,7 +3,7 @@ import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {createD1Fixture} from "./helpers/d1-fixture";
 import {createBudgetedDatabase,createDatabaseAccess} from "@/lib/db-access";
 import {publishAivaultCatalog,projectAivaultCatalog} from "@/lib/aivault/catalog";
-import {aivaultFamily} from "@/lib/aivault/families";
+import {AIVAULT_EXCLUDED_SERVICE_IDS,aivaultFamily} from "@/lib/aivault/families";
 let f:ReturnType<typeof createD1Fixture>;
 const upstream=(id="service_gemini_plus_6m")=>({service_id:id,name:"Gemini Plus",stock:5,custom_pricing:false,pricing_tiers:[{min:1,max:100,price:0.5}]});
 beforeEach(()=>{f=createD1Fixture();vi.stubEnv("AIVAULT_ENABLED","true");vi.stubEnv("AIVAULT_SYNC_ENABLED","true");vi.stubEnv("AIVAULT_API_KEY","fixture");vi.stubEnv("AIVAULT_BASE_URL","https://supplier.test");vi.stubGlobal("fetch",vi.fn(async()=>Response.json({currency:"USD",products:[upstream()]})));});
@@ -25,6 +25,26 @@ it("uses a constant statement count for many families",async()=>{
     const b=createBudgetedDatabase(40,2,f.db);expect(await publishAivaultCatalog(b.access,20000,{force:true})).toMatchObject({ok:true});used.push(b.used);
   }
   expect(used[1]).toBe(used[0]);
+});
+it("never creates, refreshes or unarchives excluded services, but retains their mirror rows", async () => {
+  expect(AIVAULT_EXCLUDED_SERVICE_IDS).toEqual(["service_1","service_2","service_3","service_4","service_5"]);
+  const uned = {...upstream("service_uned_mail"), name:"UNED Student Email"};
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({currency:"USD",products:[uned,...AIVAULT_EXCLUDED_SERVICE_IDS.map(upstream)]}));
+  f.sql.exec(`INSERT INTO products(id,name,slug,price,stock,is_active,aivault_family,archived_at) VALUES
+    (51953,'Archived anomaly','anomaly-1-av',100,1,0,'service:service_1','2026-11-22'),
+    (51954,'Unarchived anomaly','anomaly-2-av',100,1,0,'service:service_2',NULL);
+    INSERT INTO product_variants(product_id,sku,label,price,stock,is_active,aivault_service_id) VALUES
+    (51953,'AV-service_1','Anomaly 1',100,1,0,'service_1'),(51954,'AV-service_2','Anomaly 2',100,1,0,'service_2');`);
+  const anomalyState = () => [f.sql.prepare("SELECT * FROM products WHERE id IN (51953,51954) ORDER BY id").all(),
+    f.sql.prepare("SELECT * FROM product_variants WHERE product_id IN (51953,51954) ORDER BY id").all()];
+  const before = anomalyState();
+  expect(await publishAivaultCatalog(createDatabaseAccess(f.db), 20000, {force:true})).toMatchObject({ok:true,mirrored:1});
+  expect(anomalyState()).toEqual(before);
+  expect(f.sql.prepare("SELECT COUNT(*) AS n FROM aivault_products").get()).toEqual({n:6});
+  expect(f.sql.prepare("SELECT COUNT(*) AS n FROM products").get()).toEqual({n:3});
+  expect(f.sql.prepare("SELECT COUNT(*) AS n FROM product_variants").get()).toEqual({n:3});
+  expect(f.sql.prepare("SELECT slug,image_url,is_active FROM products WHERE aivault_family='uned-mail'").get())
+    .toEqual({slug:"email-student-uned-av",image_url:"/r2/products/c204df6e033ebd2e9f018f51e76f1a5e.webp",is_active:0});
 });
 it("allows a jittered next minute after a failed feed but not an immediate retry", async () => {
   const now = Date.now();

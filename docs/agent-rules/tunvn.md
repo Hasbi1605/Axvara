@@ -1,5 +1,9 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Kurasi katalog — keputusan owner 23 November 2026 (lokal)
+
+- Migrasi `0158` memindahkan `TUNVN-119` (7 hari, 200–500 kredit) dan `TUNVN-121` (6 hari, garansi penuh) ke CapCut Pro (#123). `TUNVN-120` (Muse 1B tanpa garansi) masuk produk manual #112 tanpa mengubah kepemilikannya. `TUNVN-122` menjadi Microsoft Copilot Premium (`microsoft-copilot-tunvn`), kategori AI & Chatbot, dengan foto dan deskripsi ID/EN. Fallback yang digabung masuk arsip, varian baru tetap nonaktif; cara aktivasi dan syarat varian tidak diubah.
+
 ## Perbaikan audit H2 — 21 November 2026 (lokal)
 
 - Dispatch: preflight `fetchTunvnProducts`/`fetchTunvnBalance` memetakan HTTP 429 ke `rateLimited` sehingga batch berhenti setelah link pertama; gerbang retryable/bind/fence memeriksa kolom supplier saudara (`aivault/storebat/mirai`) dan `archived_at`; handover manual diblokir oleh link TUNVN aktif berdasarkan `(order_code, item_index)` walau `fulfillment_items.tunvn_link_id` belum terikat. Topup: invoice tanpa `expires_at` mengikuti status upstream `expired`. Katalog mengosongkan `compare_price` bila harga proyeksi menyentuh/melampauinya. Status: implementasi lokal + test.

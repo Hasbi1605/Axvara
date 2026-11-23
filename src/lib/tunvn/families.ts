@@ -23,7 +23,7 @@ export type TunvnFamily = {
   members: TunvnFamilyMember[];
   /** false = produk milik owner; jangan tulis products.tunvn_family. */
   markFamily?: boolean;
-  /** Aset cadangan saat tidak ada produk kandidat bergambar (hanya ChatGPT). */
+  /** Aset tetap bila tidak ada produk kandidat bergambar. */
   imageUrl?: string;
 };
 
@@ -56,6 +56,7 @@ export const TUNVN_FAMILIES: readonly TunvnFamily[] = [
       { supplier_product_id: 114, label: "Akun 25–28B Token (tanpa garansi)", sort: 22 },
       { supplier_product_id: 98, label: "Akun 31B Token (tanpa garansi)", sort: 23 },
       { supplier_product_id: 112, label: "Akun 31B Token (garansi 2 hari)", sort: 24 },
+      { supplier_product_id: 120, label: "Akun 1B Token (tanpa garansi)", sort: 25 },
     ],
   },
   {
@@ -68,6 +69,8 @@ export const TUNVN_FAMILIES: readonly TunvnFamily[] = [
       { supplier_product_id: 87, label: "1 Bulan", sort: 2 },
       { supplier_product_id: 37, label: "Team 1 Bulan", sort: 3 },
       { supplier_product_id: 67, label: "6 Bulan", sort: 4 },
+      { supplier_product_id: 119, label: "Pro 7 Hari (200–500 Kredit)", sort: 5 },
+      { supplier_product_id: 121, label: "Pro 6 Hari (Full Garansi)", sort: 6 },
     ],
   },
   {
@@ -97,6 +100,14 @@ export const TUNVN_FAMILIES: readonly TunvnFamily[] = [
     slug: "microsoft-365-tunvn",
     imageFromSlugs: ["microsoft-365-sk", "office365-lifetime"],
     members: [{ supplier_product_id: 73, label: "Admin 12 Bulan", sort: 1 }],
+  },
+  {
+    key: "microsoft-copilot",
+    name: "Microsoft Copilot Premium",
+    slug: "microsoft-copilot-tunvn",
+    imageFromSlugs: [],
+    imageUrl: "/r2/products/a1701a94b1f47ce83ffd1c1527fb9c89.webp",
+    members: [{ supplier_product_id: 122, label: "Premium 1 Bulan (Full Garansi)", sort: 1 }],
   },
   {
     key: "spotify",

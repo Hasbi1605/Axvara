@@ -73,9 +73,10 @@ describe("0127 salinan TUNVN ID/EN", () => {
     for (const slug of referenced) expect(known.has(slug), slug).toBe(true);
   });
 
-  it("mencakup semua varian TUNVN di peta family", () => {
+  it("mencakup varian TUNVN sebelum kurasi 0158; varian baru belum punya cara aktivasi terkonfirmasi", () => {
     const skus = TUNVN_FAMILIES.flatMap(f => f.members.map(m => `TUNVN-${m.supplier_product_id}`));
-    for (const sku of skus) expect(M, sku).toContain(`WHERE sku='${sku}'`);
+    const notIn0127 = skus.filter(sku => !M.includes(`WHERE sku='${sku}'`));
+    expect(notIn0127.sort()).toEqual(["TUNVN-119", "TUNVN-120", "TUNVN-121", "TUNVN-122"]);
   });
 
   it("salinan ID dan EN terurai ke bagian yang benar dan tampil sebagai salinan admin", () => {

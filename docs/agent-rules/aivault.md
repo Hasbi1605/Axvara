@@ -1,5 +1,10 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Kurasi katalog — keputusan owner 23 November 2026 (lokal)
+
+- `service_chatgpt_plus_1m_fw` masuk produk ChatGPT Plus yang sudah ada (`chatgpt-plus-av`, #174) sebagai varian 1 bulan dengan garansi penuh selama masa aktif. Tidak ada produk, foto, atau grup ChatGPT baru; grup #37 tetap.
+- `ilovepdf` memakai URL live `ilovepdf-premium-1-year-1d779655-av` (#381); varian 1 tahun tetap aktif seperti semula, varian tanpa garansi tetap nonaktif. `uned-mail` menjadi Email Student UNED dengan foto dan deskripsi ID/EN. Migrasi `0158` mengarsipkan fallback yang sudah digabung dan lima anomali `service_1`–`service_5`; publisher mengecualikan lima ID ini meski muncul lagi di mirror. Aktivasi penawaran baru tetap di tangan admin.
+
 ## Batas harga preflight (keputusan owner 21 November 2026, lokal)
 
 - Preflight AIVault kini membandingkan `pricing.final_total` quote live dengan

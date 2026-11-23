@@ -1,5 +1,9 @@
 # PRD — AXVARA
 
+## Kurasi katalog Market — 23 November 2026 (lokal)
+
+- ChatGPT Plus dengan garansi penuh atau 25 hari tetap menjadi varian di produk ChatGPT Plus yang sudah ada, bukan kartu atau grup baru. Kurasi juga menambahkan varian iLovePDF, Google AI, CapCut dan Muse, serta merapikan Email Student UNED, LangSmith Plus dan Microsoft Copilot Premium. Semua penawaran baru tetap nonaktif sampai admin memutuskan untuk mengaktifkannya.
+
 ## Pixel Verification — checkout dan dispatch sesuai panduan API (lokal, belum dideploy)
 
 - Pembeli Google AI Pro 3 Bulan (Link Redeem = `normal`, Aktivasi Langsung = `full`; validity 3 saja, paket 12 bulan berstatus NOT AVAILABLE di panduan supplier) mengirim Gmail, password dan kunci setup 2FA (Base32, bukan kode 6 digit) di web atau Telegram. Kredensial disegel AES-GCM, hanya dikirim ke supplier, lalu dihapus setelah order selesai/gagal final.

@@ -4,18 +4,20 @@ import { mapSkCategory } from "@/lib/sekalipay/sync";
 import { buildSupplierProductInsertSql } from "@/lib/supplier/product-insert";
 import { isAivaultConfigured, isAivaultSyncEnabled } from "./client";
 import { AIVAULT_CATALOG_MIN_INTERVAL_MS, syncAivaultCatalog } from "./sync";
-import { aivaultFamily, aivaultSellPrice, aivaultDefaultDescription } from "./families";
+import { AIVAULT_EXCLUDED_SERVICE_IDS, aivaultFamily, aivaultSellPrice, aivaultDefaultDescription } from "./families";
 import { deriveAivaultBulkTiers, parseAivaultBulkMarkup } from "./bulk";
 
 /** Fixed publisher statement count, regardless of family count. Copy and activation are admin-owned. */
 export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
   if (!db.d1 || !db.canSpend(9)) return { ok: false, error: "catalog_budget_exceeded" } as const;
   if (!Number.isFinite(fx) || fx <= 0) return { ok: false, error: "fx_unavailable" } as const;
+  const excluded = JSON.stringify(AIVAULT_EXCLUDED_SERVICE_IDS);
   const mirror = await db.queryAll(`SELECT m.*,v.aivault_admin_price_idr AS admin_price,
     v.id AS v_id,v.price AS v_price,v.stock AS v_stock,v.bulk_pricing_enabled AS v_bulk_enabled,
     v.bulk_pricing_tiers AS v_bulk_tiers,v.max_qty AS v_max_qty
     FROM aivault_products m
-    LEFT JOIN product_variants v ON v.aivault_service_id=m.service_id AND v.sku='AV-'||m.service_id`);
+    LEFT JOIN product_variants v ON v.aivault_service_id=m.service_id AND v.sku='AV-'||m.service_id
+    WHERE m.service_id NOT IN (SELECT value FROM json_each(?))`,excluded);
   let anyVariantChanged = false;
   const rows = mirror.map(m => {
     const family = aivaultFamily(String(m.service_id),String(m.name));
@@ -48,7 +50,7 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
       familyColumn: "aivault_family",
       hasDescriptionEn: false,
       imageExpr:
-        "(SELECT p.image_url FROM json_each(json_extract(j.value,'$.images')) i JOIN products p ON p.slug=i.value WHERE p.image_url IS NOT NULL AND p.image_url<>'' ORDER BY CAST(i.key AS INTEGER) LIMIT 1)",
+        "COALESCE((SELECT p.image_url FROM json_each(json_extract(j.value,'$.images')) i JOIN products p ON p.slug=i.value WHERE p.image_url IS NOT NULL AND p.image_url<>'' ORDER BY CAST(i.key AS INTEGER) LIMIT 1),j.value->>'imageUrl')",
       conflictMode: "insert_or_ignore",
     }),
     json,
@@ -74,10 +76,12 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
       AND product_variants.aivault_admin_price_idr IS json_extract(j.value,'$.admin_price') AND m.markup_percent IS json_extract(j.value,'$.markup')
       AND m.unit_price_usd IS json_extract(j.value,'$.unit_price') AND m.synced_at IS json_extract(j.value,'$.synced_at')
       AND m.bulk_markup_tiers_json IS json_extract(j.value,'$.bulk_markup'))`,json,json,json,json,json);
-  await db.execRun(`UPDATE aivault_products SET sell_price_idr=(SELECT v.price FROM product_variants v WHERE v.aivault_service_id=aivault_products.service_id AND v.product_id=aivault_products.axvara_product_id),fx_idr_per_usd=? WHERE axvara_product_id IS NOT NULL`,fx);
+  await db.execRun(`UPDATE aivault_products SET sell_price_idr=(SELECT v.price FROM product_variants v WHERE v.aivault_service_id=aivault_products.service_id AND v.product_id=aivault_products.axvara_product_id),fx_idr_per_usd=?
+    WHERE axvara_product_id IS NOT NULL AND service_id NOT IN (SELECT value FROM json_each(?))`,fx,excluded);
   await db.execRun(`UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=products.id AND is_active=1),price),
     stock=COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=products.id AND is_active=1),0)
-    WHERE products.archived_at IS NULL AND aivault_family IS NOT NULL`);
+    WHERE products.archived_at IS NULL AND aivault_family IS NOT NULL
+      AND aivault_family NOT IN (SELECT 'service:'||value FROM json_each(?))`,excluded);
   if (Number(newProdRes.changes ?? 0) > 0 || Number(newVarRes.changes ?? 0) > 0 || (anyVariantChanged && Number(updVarRes.changes ?? 0) > 0)) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("market", db);

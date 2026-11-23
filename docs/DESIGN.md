@@ -1,5 +1,9 @@
 # DESIGN.md — AXVARA Design System
 
+## Foto katalog Market — 23 November 2026 (lokal)
+
+- LangSmith Plus dan Microsoft Copilot Premium memakai foto R2 baru (gaya tile 3D katalog); Email Student UNED memakai ulang foto Email Kampus Student (permintaan owner); migrasi tidak menimpa foto yang sudah diatur admin. Varian bergaransi ChatGPT Plus memakai foto produk induk yang sudah ada. Tidak ada perubahan komponen atau tata letak.
+
 ## Aksesibilitas storefront — FX-4b (lokal)
 
 - Copy sekunder yang sebelumnya terlalu redup di footer, lacak/status, dan harga PDP memakai white/65. Tombol hapus pencarian Games/Pedia memiliki target 44×44px; Escape menutup pencarian mobile dan mengembalikan fokus. PDP menaruh heading produk sebelum heading deskripsi pada kedua ukuran layar; thumbnail menyatakan nama dan status pilihan.

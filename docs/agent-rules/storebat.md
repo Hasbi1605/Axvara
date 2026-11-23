@@ -1,5 +1,9 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Kurasi katalog — keputusan owner 23 November 2026 (lokal)
+
+- Migrasi `0158` memindahkan `SB-143` (ChatGPT Plus 1 bulan, garansi 25 hari) ke `chatgpt-plus-sb` (#394) tanpa mengubah grup #37; `SB-144` (CDK AI Pro 12 Bulan V2) masuk `gemini-sb` (#407). Fallback lama diarsipkan, varian tetap nonaktif. LangSmith Plus menjadi produk Developer Tools `langsmith-sb` dengan foto dan deskripsi ID/EN; label `Plus` tidak mengasumsikan durasi. Cara aktivasi dan syarat penawaran baru belum dikonfirmasi dan tidak diisi oleh kurasi ini.
+
 ## Perbaikan audit H2 — 21 November 2026 (lokal)
 
 - Katalog: `projectStorebatCatalog` mengosongkan `compare_price` bila harga proyeksi menyentuh/melampauinya, selaras dengan handler markup. Ringkasan admin (`dashboard-report.ts`) memakai fallback kurs `crypto_market_snapshot.fx_rate_text` untuk baris StoreBat tanpa kurs per-baris/eligibility dan menandainya `estimated`, alih-alih mencatat modal 0. Status: implementasi lokal + test.

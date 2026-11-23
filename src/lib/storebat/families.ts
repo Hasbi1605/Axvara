@@ -3,11 +3,11 @@ import { aivaultSellPrice } from "@/lib/aivault/families";
 export type StorebatFamily = { key: string; name: string; slug: string; category: number | null; images: string[]; imageUrl?: string; label: string };
 export const STOREBAT_FAMILY_SPECS: (Omit<StorebatFamily, "label"> & { members: Record<number, string> })[] = [
   { key: "muse-buff", name: "Muse AI Buff Token", slug: "muse-buff-sb", category: 1, images: ["muse-ai-1-miliar-token"], members: { 124: "1B Token (Invite Code)" } },
-  { key: "chatgpt-plus", name: "ChatGPT Plus", slug: "chatgpt-plus-sb", category: 1, images: ["chatgpt-plus-1-bulan", "chatgpt-plus-av", "chatgpt-tunvn", "chatgpt-sk", "chatgpt-premium"], members: { 60: "Plus 1 Bulan (Apple Pay · Garansi 24 Jam)", 78: "Plus 1 Bulan (UPI · Tanpa Garansi)" } },
+  { key: "chatgpt-plus", name: "ChatGPT Plus", slug: "chatgpt-plus-sb", category: 1, images: ["chatgpt-plus-1-bulan", "chatgpt-plus-av", "chatgpt-tunvn", "chatgpt-sk", "chatgpt-premium"], members: { 60: "Plus 1 Bulan (Apple Pay · Garansi 24 Jam)", 78: "Plus 1 Bulan (UPI · Tanpa Garansi)", 143: "Plus 1 Bulan (Garansi 25 Hari)" } },
   { key: "chatgpt-go", name: "ChatGPT Go", slug: "chatgpt-go-sb", category: 1, images: ["chatgpt-go-3-bulan"], members: { 116: "Go 3 Bulan" } },
   { key: "claude-api", name: "Claude API Credit", slug: "claude-api-sb", category: 1, images: ["claude-api-tunvn", "claude-pro"], members: { 31: "Kredit $100 · 30 Hari", 32: "10M Token · 1 Hari", 33: "50M Token · 2 Hari", 34: "100M Token · 3 Hari", 35: "Kredit $500 · 30 Hari" } },
   { key: "codex-api", name: "Codex API Token", slug: "codex-api-sb", category: 1, images: ["chatgpt-plus-av", "chatgpt-tunvn"], members: { 36: "10M Token · 1 Hari", 37: "50M Token · 2 Hari", 38: "100M Token · 3 Hari" } },
-  { key: "gemini", name: "Google AI / Gemini", slug: "gemini-sb", category: 1, images: ["google-ai-pro-antigravity", "gemini-plus-av", "gemini-tunvn", "gemini-ai-sk"], members: { 3: "AI Pro 12 Bulan", 114: "Gemini Plus 12 Bulan", 121: "Gemini Plus 6 Bulan [No Card]", 137: "CDK AI Pro 12 Bulan" } },
+  { key: "gemini", name: "Google AI / Gemini", slug: "gemini-sb", category: 1, images: ["google-ai-pro-antigravity", "gemini-plus-av", "gemini-tunvn", "gemini-ai-sk"], members: { 3: "AI Pro 12 Bulan", 114: "Gemini Plus 12 Bulan", 121: "Gemini Plus 6 Bulan [No Card]", 137: "CDK AI Pro 12 Bulan", 144: "CDK AI Pro 12 Bulan (V2)" } },
   { key: "elevenlabs", name: "ElevenLabs", slug: "elevenlabs-sb", category: 1, images: ["elevenlabs-tunvn"], members: { 2: "Creator 12 Bulan", 73: "Free 10k Kredit" } },
   { key: "elevenreader", name: "ElevenReader Ultra", slug: "elevenreader-sb", category: 1, images: ["elevenlabs-tunvn"], members: { 119: "Ultra 12 Bulan" } },
   { key: "grok", name: "Grok Plus", slug: "grok-sb", category: 1, images: ["grok-ai", "grok-ai-sk"], members: { 107: "Plus 1 Bulan (Garansi 5 Hari)" } },
@@ -23,6 +23,7 @@ export const STOREBAT_FAMILY_SPECS: (Omit<StorebatFamily, "label"> & { members: 
   { key: "resend", name: "Resend Pro", slug: "resend-sb", category: 6, images: [], imageUrl: "/r2/products/23d5ea83d638355bcb9f41432bcba936.webp", members: { 88: "Pro 12 Bulan" } },
   { key: "posthog", name: "PostHog Scale", slug: "posthog-sb", category: 6, images: [], imageUrl: "/r2/products/36b95dd6a3993956f03c4ada70a89d52.webp", members: { 13: "Scale 12 Bulan (2x Limit)" } },
   { key: "sentry", name: "Sentry", slug: "sentry-sb", category: 6, images: [], imageUrl: "/r2/products/e6c2d0d91f5f0e285b8bb2c6a5e85242.webp", members: { 140: "12 Bulan" } },
+  { key: "langsmith", name: "LangSmith Plus", slug: "langsmith-sb", category: 6, images: [], imageUrl: "/r2/products/9b461c09788050b6a28e42060cbbcffc.webp", members: { 142: "Plus" } },
   { key: "linear", name: "Linear Business", slug: "linear-sb", category: 3, images: [], imageUrl: "/r2/products/62195a86395bd98e4bbdb1b37f7ee312.webp", members: { 10: "Business 12 Bulan" } },
   { key: "warp", name: "Warp Build", slug: "warp-sb", category: 6, images: [], imageUrl: "/r2/products/183c19a6edbd4e1b1074234f2dd0dbd0.webp", members: { 16: "12 Bulan" } },
   { key: "wispr-flow", name: "Wispr Flow Pro", slug: "wispr-flow-sb", category: 3, images: [], imageUrl: "/r2/products/84771c4bd482f32a8bf65777f37de4bf.webp", members: { 17: "Pro 12 Bulan" } },

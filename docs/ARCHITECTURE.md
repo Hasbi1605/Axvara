@@ -1,5 +1,9 @@
 # ARCHITECTURE.md — AXVARA
 
+## Kurasi katalog lintas supplier — 23 November 2026 (lokal)
+
+- Migrasi data `0158_supplier_catalog_tidy_1123.sql` tanpa DDL (baseline bootstrap diperbarui): re-key tiga fallback, pindahkan tujuh varian nonaktif berdasarkan ID/family/SKU, perbarui tautan mirror yang terkait, lalu arsipkan fallback dan lima anomali. Pengulangan tidak menulis ulang data. Produk aktif dan grup ChatGPT Plus #37 tidak diubah, kecuali family/nama/label iLovePDF #381 dengan slug, status, dan harga tetap. Penyegaran penanda dirty grup mengikuti trigger D1 yang sudah ada; tidak ada perubahan aturan winner.
+
 ## Pixel Verification — dispatch sesuai panduan API supplier (lokal, belum dideploy)
 
 - Migrasi data `0157_pixelverif_whitelabel_copy.sql` (tanpa perubahan schema; baseline bootstrap diregenerasi) mengisi copy whitelabel ID/EN dari `src/lib/pixelverif/copy.ts` ke `products`/`product_variants` keluarga `google_ai_pro_3m` tanpa menimpa edit admin. `PIXELVERIF_FAMILY.description*` merujuk konstanta yang sama; `projectPixelverifCatalog` mengisi `products.name_en` bila kosong.
