@@ -9,8 +9,9 @@
   3. Dua baris utilitas biru (`primary`): `[📦 Pesanan Saya | 💬 Bantuan]` (`myorders` | `${SITE.webUrl}/wa`) dan `[🇮🇩 Bahasa | 🌐 Web]` / `[🇬🇧 Language | 🌐 Web]` (`settings` | `https://axvara.tech`).
 - **Ikon bendera Bahasa:** tombol Bahasa di `homeKeyboard` dan reply menu 2×2 (`mainReplyMenu`) memakai bendera bahasa aktif (`🇮🇩 Bahasa` / `🇬🇧 Language`) agar tidak kembar dengan `🌐 Web`; label reply lama (`🌐 Bahasa`, `🌐 Language`, `⚙️ Pengaturan`, `⚙️ Settings`) tetap dirutekan ke layar Bahasa.
 
-## Foto katalog Market — 23 November 2026 (lokal)
+## Foto katalog Market — 23 November 2026
 
+- Adobe Express (`#135`, `adobe-express-av`, terpasang di R2 & D1 prod): memakai foto R2 baru `/r2/products/7da3d7c35b0ffcc8d0c2c5fbbf62ff7c.webp` (`1600×900` WebP, gaya tile 3D obsidian AXVARA dengan logo "A" pelangi Adobe Express baru dari owner), menggantikan foto Adobe Creative Cloud bersama (`41131d…`, tetap dipakai `#45` Adobe Creative Cloud).
 - LangSmith Plus dan Microsoft Copilot Premium memakai foto R2 baru (gaya tile 3D katalog); Email Student UNED memakai ulang foto Email Kampus Student (permintaan owner); migrasi tidak menimpa foto yang sudah diatur admin. Varian bergaransi ChatGPT Plus memakai foto produk induk yang sudah ada. Tidak ada perubahan komponen atau tata letak.
 
 ## Aksesibilitas storefront — FX-4b (lokal)

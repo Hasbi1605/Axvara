@@ -4,7 +4,7 @@ export const AIVAULT_EXCLUDED_SERVICE_IDS = ["service_1", "service_2", "service_
 export type AivaultFamily = { key: string; name: string; slug: string; images: string[]; imageUrl?: string; label: string };
 const specs: (Omit<AivaultFamily, "label"> & { services: Record<string, string> })[] = [
   { key: "chatgpt-plus", name: "ChatGPT Plus", slug: "chatgpt-plus-av", images: ["chatgpt-plus-1-bulan","chatgpt-tunvn","chatgpt-sk","chatgpt-premium"], services: { service_chatgpt_plus_1m: "Plus 1 Bulan (Apple Pay)", service_chatgpt_plus_1m_fw: "Plus 1 Bulan (Full Garansi)" } },
-  { key: "adobe-express", name: "Adobe Express", slug: "adobe-express-av", images: ["adobe-creative-cloud","adobe-firefly-sk"], services: { service_adobe_express_6m: "6 Bulan", service_1789191781: "12 Bulan" } },
+  { key: "adobe-express", name: "Adobe Express", slug: "adobe-express-av", images: [], imageUrl: "/r2/products/7da3d7c35b0ffcc8d0c2c5fbbf62ff7c.webp", services: { service_adobe_express_6m: "6 Bulan", service_1789191781: "12 Bulan" } },
   { key: "gemini", name: "Google AI / Gemini Plus", slug: "gemini-plus-av", images: ["google-ai-pro-antigravity","gemini-ai-sk"], services: { service_gemini_plus_6m: "Gemini Plus 6 Bulan" } },
   { key: "apple-music", name: "Apple Music", slug: "apple-music-av", images: ["apple-music","apple-music-sk"], services: { service_1789191878: "5 Bulan" } },
   { key: "notion", name: "Notion Education Plus", slug: "notion-plus-av", images: [], services: { service_notion_plus: "Plus 12 Bulan" } },

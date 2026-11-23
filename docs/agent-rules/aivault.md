@@ -1,5 +1,10 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Foto produk Adobe Express — 23 November 2026 (prod + repo)
+
+- Atas permintaan owner, produk `#135` Adobe Express (`adobe-express-av`) diganti dari foto bersama Adobe Creative Cloud ke foto R2 baru `/r2/products/7da3d7c35b0ffcc8d0c2c5fbbf62ff7c.webp` (`1600×900` WebP, logo "A" pelangi baru bergaya tile 3D AXVARA) di bucket `axvara-assets` & D1 prod (+ bump `catalog_revision_market`); objek lama `41131d84f9c7dbd56a756caaf452cf0a.webp` dipertahankan karena masih dipakai `#45` Adobe Creative Cloud.
+- `src/lib/aivault/families.ts` family `adobe-express` diperbarui memakai `images: [], imageUrl: "/r2/products/7da3d7c35b0ffcc8d0c2c5fbbf62ff7c.webp"` agar insert baru tidak mewarisi gambar Creative Cloud lagi.
+
 ## Kurasi katalog — keputusan owner 23 November 2026 (lokal)
 
 - `service_chatgpt_plus_1m_fw` masuk produk ChatGPT Plus yang sudah ada (`chatgpt-plus-av`, #174) sebagai varian 1 bulan dengan garansi penuh selama masa aktif. Tidak ada produk, foto, atau grup ChatGPT baru; grup #37 tetap.

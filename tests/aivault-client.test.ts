@@ -19,8 +19,8 @@ describe("AIVault pure contracts",()=>{
     expect(parseAivaultQuote(quote)).toMatchObject({service_id:quote.service_id,quantity:1,price_conflict:false,unit_price:0.5,final_total:0.5});
   });
   it("maps explicit families and collision-safe one-to-one fallbacks",()=>{
-    expect(aivaultFamily("service_1789191781","ignored")).toMatchObject({key:"adobe-express",label:"12 Bulan"});
-    expect(aivaultFamily("service_adobe_express_6m","ignored")).toMatchObject({key:"adobe-express",label:"6 Bulan"});
+    expect(aivaultFamily("service_1789191781","ignored")).toMatchObject({key:"adobe-express",label:"12 Bulan",images:[],imageUrl:"/r2/products/7da3d7c35b0ffcc8d0c2c5fbbf62ff7c.webp"});
+    expect(aivaultFamily("service_adobe_express_6m","ignored")).toMatchObject({key:"adobe-express",label:"6 Bulan",images:[],imageUrl:"/r2/products/7da3d7c35b0ffcc8d0c2c5fbbf62ff7c.webp"});
     expect(aivaultFamily("a","Same").slug).not.toBe(aivaultFamily("b","Same").slug);
   });
   it("maps ChatGPT Plus Apple Pay explicitly and shortens fallback slugs",()=>{
