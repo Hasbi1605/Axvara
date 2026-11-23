@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Badge, Button, Input, Label, Textarea, Tooltip, TooltipContent, TooltipTrigger } from "@/components/admin/ui";
 import type { Locale } from "@/lib/i18n/locale";
+import { PRODUCT_DESCRIPTION_MAX_CHARS } from "@/lib/product-copy/format";
 import {
   composeDescription,
   splitDescription,
@@ -64,23 +65,34 @@ export function ProductCopyTab({
   const [bodyDraft, setBodyDraft] = useState(activeSplit.body);
   const syncKey = `${lang}:${wrManaged ? (hasDescOverride ? "override" : "raw") : "direct"}`;
   const lastSyncKeyRef = useRef(syncKey);
+  const lastComposedRef = useRef<{ lang: Locale; raw: string } | null>(null);
 
   useEffect(() => {
     const keyChanged = lastSyncKeyRef.current !== syncKey;
     lastSyncKeyRef.current = syncKey;
+    if (
+      lastComposedRef.current &&
+      lastComposedRef.current.lang === lang &&
+      lastComposedRef.current.raw === activeRawDescription
+    ) {
+      return;
+    }
     if (keyChanged || activeSplit.body !== bodyDraft.trim()) {
+      lastComposedRef.current = null;
       setBodyDraft(activeSplit.body);
     }
-  }, [syncKey, activeSplit.body, bodyDraft]);
+  }, [lang, syncKey, activeRawDescription, activeSplit.body, bodyDraft]);
 
   const handleBodyChange = (nextBody: string) => {
     setBodyDraft(nextBody);
     if (lang === "en") {
       const nextEn = composeDescription({ ...enSplit, body: nextBody }, "en");
+      lastComposedRef.current = { lang: "en", raw: nextEn };
       onSetForm({ ...form, descriptionEn: nextEn });
       return;
     }
     const nextId = composeDescription({ ...idSplit, body: nextBody }, "id");
+    lastComposedRef.current = { lang: "id", raw: nextId };
     if (wrManaged) {
       onSetForm({ ...form, adminDescriptionOverride: nextId });
     } else {
@@ -214,8 +226,13 @@ export function ProductCopyTab({
             }
             className="min-h-32 resize-y font-sans text-sm leading-5"
           />
-          <p id={`${descriptionId}-status`} className="sr-only">
-            {activeRawDescription.length} karakter
+          <p
+            id={`${descriptionId}-status`}
+            className={activeRawDescription.length > PRODUCT_DESCRIPTION_MAX_CHARS ? "text-xs font-medium text-admin-danger" : "sr-only"}
+          >
+            {activeRawDescription.length > PRODUCT_DESCRIPTION_MAX_CHARS
+              ? `Total deskripsi + S&K umum (${activeRawDescription.length} karakter) melebihi batas ${PRODUCT_DESCRIPTION_MAX_CHARS} karakter.`
+              : `${activeRawDescription.length} karakter`}
           </p>
         </div>
 
@@ -263,6 +280,7 @@ export function ProductCopyTab({
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  lastComposedRef.current = null;
                   setBodyDraft(splitDescription(form.description).body);
                   onSetForm({ ...form, adminDescriptionOverride: "" });
                 }}
@@ -344,6 +362,7 @@ export function ProductCopyTab({
         onReload={variantCopy.reload}
         onApplyProductCopy={({ idDescription, enDescription }) => {
           const nextBody = lang === "en" ? splitDescription(enDescription).body : splitDescription(idDescription).body;
+          lastComposedRef.current = null;
           setBodyDraft(nextBody);
           if (wrManaged) {
             onSetForm({

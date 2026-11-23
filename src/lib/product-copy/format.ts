@@ -436,19 +436,28 @@ const SECTION_BY_HEADING: Record<string, CopySectionKind> = {
   pengiriman: "proses",
   "aturan pakai": "aturan",
   aturan: "aturan",
+  "syarat akun": "aturan",
   garansi: "garansi",
+  "pengembalian dana": "garansi",
   // Judul EN (salinan admin *_en): tanpa ini baris EN jatuh ke tebakan regex ID.
   "package details": "paket",
   "process & delivery": "proses",
   "process and delivery": "proses",
+  "processing & delivery": "proses",
+  "processing and delivery": "proses",
   "usage rules": "aturan",
+  "account requirements": "aturan",
   warranty: "garansi",
+  refunds: "garansi",
+  refund: "garansi",
 };
 const NOTE_HEADING = /^(?:catatan|note|notes|tips|info)$/i;
 const ADMIN_LIST_PREFIX = /^(?:[-–—•·*▪]+\s*|\d{1,2}[.)](?![\d.])\s*)/u;
 
 /** Batas panjang tiap kolom editor (salinan terpanjang saat ini ±1.500 karakter). */
 export const VARIANT_COPY_MAX_CHARS = 4000;
+/** Batas panjang kolom deskripsi produk (body + S&K umum + cara aktivasi) di API. */
+export const PRODUCT_DESCRIPTION_MAX_CHARS = 2000;
 
 /** Satu varian di editor admin (respons /api/admin/variant-copy). */
 export type VariantCopyEntry = {
@@ -516,11 +525,14 @@ export function serializeVariantCopy(copy: VariantCopy | null | undefined): { te
 
 /** Teks editor admin → salinan varian; null bila keduanya kosong. */
 export function parseAdminVariantCopy(terms: string | null | undefined, activation: string | null | undefined): VariantCopy | null {
-  const seen = new Set<string>();
-  const fresh = (text: string) => {
+  // Deduplikasi S&K dan cara aktivasi dipisah agar langkah persiapan di cara
+  // aktivasi tidak pernah terhapus diam-diam bila kalimat serupa ada di S&K.
+  const seenTerms = new Set<string>();
+  const seenActivation = new Set<string>();
+  const freshIn = (set: Set<string>, text: string) => {
     const key = lineKey(text);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
+    if (!key || set.has(key)) return false;
+    set.add(key);
     return true;
   };
 
@@ -531,7 +543,7 @@ export function parseAdminVariantCopy(terms: string | null | undefined, activati
       kind = SECTION_BY_HEADING[line.heading.toLowerCase()] ?? null;
       continue;
     }
-    if (!fresh(line.text)) continue;
+    if (!freshIn(seenTerms, line.text)) continue;
     (buckets[kind ?? classifyTermLine(line.text)] ??= []).push(line.text);
   }
 
@@ -544,7 +556,7 @@ export function parseAdminVariantCopy(terms: string | null | undefined, activati
       if (!inNotes) groups.push({ title: line.heading, steps: [] });
       continue;
     }
-    if (!fresh(line.text)) continue;
+    if (!freshIn(seenActivation, line.text)) continue;
     if (inNotes) notes.push(line.text);
     else {
       if (!groups.length) groups.push({ title: null, steps: [] });
@@ -654,25 +666,35 @@ export function mergeProductCopy(variantCopy: VariantCopy | null | undefined, de
   notes: string[];
   fromVariant: boolean;
 } {
-  const seen = new Set<string>();
-  const keep = (item: string) => {
+  // Pisahkan deduplikasi S&K dan cara aktivasi: ketentuan tingkat produk di
+  // `description.terms` tidak boleh menghapus langkah yang sengaja ditulis
+  // admin di `variantCopy.activation`.
+  const seenTerms = new Set<string>();
+  const keepTerm = (item: string) => {
     const key = lineKey(item);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
+    if (!key || seenTerms.has(key)) return false;
+    seenTerms.add(key);
+    return true;
+  };
+  const seenActivation = new Set<string>();
+  const keepActivation = (item: string) => {
+    const key = lineKey(item);
+    if (!key || seenActivation.has(key)) return false;
+    seenActivation.add(key);
     return true;
   };
   const buckets: Partial<Record<CopySectionKind, string[]>> = {};
   for (const section of variantCopy?.sections ?? []) {
-    for (const item of section.items) if (keep(item)) (buckets[section.kind] ??= []).push(item);
+    for (const item of section.items) if (keepTerm(item)) (buckets[section.kind] ??= []).push(item);
   }
   for (const section of classifyTermLines(description.terms)) {
-    for (const item of section.items) if (keep(item)) (buckets[section.kind] ??= []).push(item);
+    for (const item of section.items) if (keepTerm(item)) (buckets[section.kind] ??= []).push(item);
   }
   const variantActivation = (variantCopy?.activation ?? [])
-    .map((group) => ({ title: group.title, steps: group.steps.filter(keep) }))
+    .map((group) => ({ title: group.title, steps: group.steps.filter(keepActivation) }))
     .filter((group) => group.steps.length > 0);
-  const descActivation = description.activation.filter(keep);
-  const notes = (variantCopy?.notes ?? []).filter(keep);
+  const descActivation = description.activation.filter(keepActivation);
+  const notes = (variantCopy?.notes ?? []).filter(keepActivation);
   const activation = variantActivation.length ? variantActivation : toActivationGroups(descActivation);
   if (variantActivation.length) notes.push(...descActivation);
   return {

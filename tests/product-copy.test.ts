@@ -232,6 +232,49 @@ describe("mergeProductCopy — S&K varian + bagian deskripsi, tiap baris sekali"
     expect(merged.activation).toEqual([{ title: null, steps: ["Login di aplikasi"] }]);
     expect(merged.notes).toEqual(["Hubungi admin bila gagal"]);
   });
+
+  it("deduplikasi S&K dan cara aktivasi terpisah: syarat di deskripsi/S&K tidak menghapus langkah aktivasi", () => {
+    const sharedLine = "Hapus passkey di myaccount.google.com/signinoptions/passkeys.";
+    const parsedAdmin = parseAdminVariantCopy(
+      `Syarat akun:\n- ${sharedLine}\n- ${sharedLine}\n\nPengembalian dana:\n- Dana kembali penuh`,
+      `Persiapan akun:\n1. ${sharedLine}\n2. ${sharedLine}\n3. Aktifkan 2FA`,
+    );
+    expect(parsedAdmin).toEqual({
+      source: "admin",
+      sections: [
+        { kind: "aturan", items: [sharedLine] },
+        { kind: "garansi", items: ["Dana kembali penuh"] },
+      ],
+      activation: [{ title: "Persiapan akun", steps: [sharedLine, "Aktifkan 2FA"] }],
+      notes: [],
+    });
+
+    const descWithGhostTerms = parseProductDescription(`Intro.\n\nSyarat & Ketentuan:\n- ${sharedLine}`);
+    const merged = mergeProductCopy(
+      {
+        source: "admin",
+        sections: [{ kind: "paket", items: ["Aktivasi langsung 3 bulan"] }],
+        activation: [{ title: "Persiapan akun", steps: [sharedLine, "Aktifkan 2FA"] }],
+        notes: [],
+      },
+      descWithGhostTerms,
+    );
+    expect(merged.activation).toEqual([{ title: "Persiapan akun", steps: [sharedLine, "Aktifkan 2FA"] }]);
+    expect(merged.sections.flatMap((s) => s.items)).toContain(sharedLine);
+  });
+
+  it("judul EN tambahan (Processing & delivery, Account requirements, Refunds) terpetakan ke bagian yang benar", () => {
+    const parsedEn = parseAdminVariantCopy(
+      "Package details:\n- 3-month plan\n\nProcessing & delivery:\n- About 3-5 minutes\n\nAccount requirements:\n- Active Gmail\n\nRefunds:\n- Refunded in full",
+      null,
+    );
+    expect(parsedEn?.sections).toEqual([
+      { kind: "paket", items: ["3-month plan"] },
+      { kind: "proses", items: ["About 3-5 minutes"] },
+      { kind: "aturan", items: ["Active Gmail"] },
+      { kind: "garansi", items: ["Refunded in full"] },
+    ]);
+  });
 });
 
 describe("teks editor admin (migrasi 0041) — serialize ⇄ parse", () => {

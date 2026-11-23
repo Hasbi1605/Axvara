@@ -23,6 +23,7 @@
 ## Pixel Verification — dispatch sesuai panduan API supplier (lokal, belum dideploy)
 
 - Migrasi data `0157_pixelverif_whitelabel_copy.sql` (tanpa perubahan schema; baseline bootstrap diregenerasi) mengisi copy whitelabel ID/EN dari `src/lib/pixelverif/copy.ts` ke `products`/`product_variants` keluarga `google_ai_pro_3m` tanpa menimpa edit admin. `PIXELVERIF_FAMILY.description*` merujuk konstanta yang sama; `projectPixelverifCatalog` mengisi `products.name_en` bila kosong.
+- Migrasi data idempoten `0162_pixelverif_activation_copy.sql` (tanpa perubahan schema; `drizzle/bootstrap-baseline.json` diregenerasi ke `schema_through: "0162_pixelverif_activation_copy.sql"`) memangkas hanya ekor `\n\nSyarat & Ketentuan:` / `\n\nSyarat akun:` dari `products.description` keluarga `google_ai_pro_3m` (menjaga isi deskripsi, `description_en`, dan `admin_terms*` suntingan owner) serta memperbarui `admin_activation`/`admin_activation_en` `PV-NORMAL-3` & `PV-FULL-3` sesuai `src/lib/pixelverif/copy.ts` (6 langkah persiapan akun sebelum order + langkah pasca-bayar + catatan video tutorial `yt.....`). `PIXELVERIF_DESCRIPTION_ID`/`EN` di `copy.ts` tidak lagi menyertakan `Syarat akun:`/`Account requirements:`.
 - Admin & storefront Pixel Verification: `catalogItems()` membaca `credit_cost` untuk modal USD; `POST /api/products` + `PUT /api/products/[id]` mengizinkan path pihak pertama `/brand/catalog/products/<file>.(webp|png|jpe?g|avif|svg)` tanpa `..`; produk `pixelverif_family` dipetakan ke asal `Pixel` (`SUPPLIER_STYLES.Pixel`, `product-groups.ts`, `product-archive.ts`, editor produk/varian, dan `PUT` override `pixelverif_admin_price_idr`/aktivasi induk); storefront (`hasAutomaticProcessing`, `catalogDeliveryBadge`/`Eta`, `api/checkout/quote`, `checkout/page.tsx`) memisahkan Pixel dari `hasAutomaticSupplierDelivery` sehingga berkelas `queued` + `automatic_processing: true` ("Diproses otomatis", 1–5 menit).
 
 - Migrasi `0156_pixelverif_blocked_emails.sql` (+ blok akhir `drizzle/schema.sql`): tabel `pixelverif_blocked_emails(email_hash, validity, error_code, order_code, created_at)`, PK `(email_hash, validity)`, hanya hash. Helper `src/lib/pixelverif/blocklist.ts`; ditulis dispatcher saat `ACTIVATION_ITEM_NOT_AVAILABLE`, dibaca `api/checkout/quote`, `orders/checkout/validate.ts`, `telegram/handlers/buyer-input.ts`, `telegram/handlers/payment-methods.ts`, dan `telegram/handlers/payment-lines.ts`.
@@ -3935,6 +3936,21 @@ gate lulus; inspeksi langsung Paseo desktop/mobile memakai proxy fixture lokal
 port3102 ke UI Next port3101 dengan seluruh `/api/**` dimock. Interaksi simpan,
 bulk, konflik/draft, retry dan fokus diuji tanpa menulis produksi; rincian dan
 batas bukti console di `docs/DESIGN.md`.
+
+**Perbaikan editor & deduplikasi copy (23 November 2026, lokal):**
+`parseAdminVariantCopy()` dan `mergeProductCopy()` (`src/lib/product-copy/format.ts`)
+memisahkan set deduplikasi S&K (`seenTerms`) dan cara aktivasi (`seenActivation`)
+agar ketentuan di `description.terms` atau `admin_terms` tidak pernah menghapus
+diam-diam langkah serupa di `Cara Aktivasi` (baik di pratinjau admin maupun PDP).
+`SECTION_BY_HEADING` menambah alias `Syarat akun`, `Pengembalian dana`,
+`Processing & delivery`, `Account requirements`, dan `Refunds`/`Refund`; konstanta
+`PRODUCT_DESCRIPTION_MAX_CHARS = 2000` diekspor bersama. `ProductCopyTab.tsx`
+menyimpan `lastComposedRef` agar ketikan heading berakhiran `:`/baris kosong di
+`Teks deskripsi` tidak direset oleh `useEffect` dan menampilkan peringatan bahaya
+saat total deskripsi + S&K umum melampaui 2.000 karakter. `CopyEditorSheet.tsx`
+memvalidasi batas `PRODUCT_DESCRIPTION_MAX_CHARS` saat `Terapkan` (mode produk)
+dan menampilkan catatan `Termasuk N poin dari "Berlaku untuk semua varian"` di
+`Pratinjau pembeli` (mode varian) bila S&K tingkat produk ikut bergabung.
 
 Format editor varian (`serializeVariantCopy()` ⇄ `parseAdminVariantCopy()`,
 bolak-balik tanpa kehilangan isi untuk ke-83 salinan kurasi — dikunci test):

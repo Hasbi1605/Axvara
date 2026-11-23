@@ -574,6 +574,89 @@ describe("ProductCopyTab & CopyVariantTable & CopyEditorSheet", () => {
     );
     expect(screen.getByText("2 aturan · 2 langkah")).toBeTruthy();
   });
+
+  it("preserves typed headings in Teks deskripsi without wiping the draft and warns when total exceeds 2000 chars", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ variants: [] }) })));
+    const longBody = "A".repeat(1985);
+    render(
+      <CopyTabHarness
+        initialForm={{
+          name: "Google AI Pro 3 Bulan",
+          description: "Pembuka awal.",
+          wrManaged: false,
+        }}
+        variants={[]}
+        initialEntries={[]}
+      />,
+    );
+
+    const textarea = screen.getByLabelText("Teks deskripsi") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Pembuka awal.\n\nSyarat akun:\n- Gmail aktif" } });
+    expect(textarea.value).toBe("Pembuka awal.\n\nSyarat akun:\n- Gmail aktif");
+
+    fireEvent.change(textarea, { target: { value: `${longBody}\n\nSyarat & Ketentuan:\n- Lebih dari batas dua ribu karakter` } });
+    expect(screen.getByText(/melebihi batas 2000 karakter/i)).toBeTruthy();
+  });
+
+  it("variant preview keeps activation steps overlapping with product-wide terms, notes product-wide additions, and blocks oversized product-wide apply", async () => {
+    const sharedStep = "Hapus passkey di myaccount.google.com/signinoptions/passkeys.";
+    const pixelEntry: VariantCopyEntry = {
+      ...base,
+      variantId: 754390,
+      label: "Aktivasi Langsung 3 Bulan",
+      wrManaged: false,
+      supplier: null,
+      supplierKey: "",
+      status: "admin",
+      hasOverride: true,
+      adminTerms: "Detail paket:\n- Aktivasi langsung 3 bulan",
+      adminActivation: `Persiapan akun:\n1. ${sharedStep}\n2. Aktifkan 2FA`,
+      effectiveTerms: "Detail paket:\n- Aktivasi langsung 3 bulan",
+      effectiveActivation: `Persiapan akun:\n1. ${sharedStep}\n2. Aktifkan 2FA`,
+      autoTerms: "",
+      autoActivation: "",
+      supplierTerms: "",
+      supplierActivation: "",
+    };
+    const pixelVariant: FormVariant = {
+      id: 754390,
+      sku: "PV-FULL-3",
+      label: "Aktivasi Langsung 3 Bulan",
+      price: 45000,
+      stock: -1,
+      is_active: 1,
+    };
+
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ variants: [pixelEntry] }) })));
+
+    render(
+      <CopyTabHarness
+        initialForm={{
+          name: "Google AI Pro 3 Bulan",
+          description: `${"B".repeat(1950)}\n\nSyarat & Ketentuan:\n- ${sharedStep}`,
+          wrManaged: false,
+        }}
+        variants={[pixelVariant]}
+        initialEntries={[pixelEntry]}
+      />,
+    );
+
+    // Variant drawer preview must keep overlapping activation step and clearly call out product-wide injection.
+    fireEvent.click(await screen.findByRole("button", { name: "Edit S&K Aktivasi Langsung 3 Bulan" }));
+    const variantSheet = screen.getByRole("dialog");
+    expect(within(variantSheet).getByTestId("product-activation-body").textContent).toContain(sharedStep);
+    expect(within(variantSheet).getByText(/Termasuk 1 poin dari "Berlaku untuk semua varian"/)).toBeTruthy();
+    fireEvent.click(within(variantSheet).getByRole("button", { name: "Tutup panel S&K" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // Product-wide drawer must reject Terapkan when composed length > 2000 instead of silently letting Simpan Produk fail.
+    fireEvent.click(screen.getByRole("button", { name: "Edit S&K berlaku untuk semua varian" }));
+    const productSheet = screen.getByRole("dialog");
+    fireEvent.change(within(productSheet).getByLabelText("Garansi"), { target: { value: "G".repeat(100) } });
+    fireEvent.click(within(productSheet).getByRole("button", { name: "Terapkan" }));
+    expect(within(productSheet).getByRole("alert").textContent).toContain("melebihi batas 2000 karakter");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
 });
 
 describe("ProductVariantRows & NonWrFulfillmentPanel", () => {

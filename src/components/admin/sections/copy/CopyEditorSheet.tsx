@@ -26,6 +26,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ActivationBody, TermsBody } from "@/components/storefront/ProductCopy";
 import type { Locale } from "@/lib/i18n/locale";
 import {
+  PRODUCT_DESCRIPTION_MAX_CHARS,
   VARIANT_COPY_MAX_CHARS,
   mergeProductCopy,
   parseAdminVariantCopy,
@@ -461,6 +462,11 @@ export function CopyEditorSheet({
       !isEmptyStrings(drafts.en) || enBody
         ? composeDescription({ body: enBody, ...enModel }, "en")
         : "";
+    if (nextId.length > PRODUCT_DESCRIPTION_MAX_CHARS || nextEn.length > PRODUCT_DESCRIPTION_MAX_CHARS) {
+      setSaveError(`Total deskripsi dan S&K umum melebihi batas ${PRODUCT_DESCRIPTION_MAX_CHARS} karakter.`);
+      return;
+    }
+    setSaveError(null);
     onApplyProductCopy({ idDescription: nextId, enDescription: nextEn });
     onClose();
   };
@@ -473,8 +479,15 @@ export function CopyEditorSheet({
       return {
         ...mergeProductCopy(null, parseProductDescription(composed)),
         fallingBackToId: false,
+        productExtraCount: 0,
       };
     }
+
+    const countItems = (copy: { sections: { items: string[] }[]; activation: { steps: string[] }[]; notes: string[] }) =>
+      copy.sections.reduce((n, section) => n + section.items.length, 0) +
+      copy.activation.reduce((n, group) => n + group.steps.length, 0) +
+      copy.notes.length;
+    const emptyDesc = parseProductDescription("");
 
     const idComposed = composeAdminCopy(stringsToModel(drafts.id), "id");
     const idVariantCopy =
@@ -485,21 +498,22 @@ export function CopyEditorSheet({
       const enComposed = composeAdminCopy(stringsToModel(drafts.en), "en");
       const enVariantCopy = parseAdminVariantCopy(enComposed.terms, enComposed.activation);
       const enDescParsed = parseProductDescription(descriptionEn?.trim() ? descriptionEn : descriptionId);
-      if (enVariantCopy) {
-        return {
-          ...mergeProductCopy(enVariantCopy, enDescParsed),
-          fallingBackToId: false,
-        };
-      }
+      const sourceVariant = enVariantCopy ?? idVariantCopy;
+      const merged = mergeProductCopy(sourceVariant, enDescParsed);
+      const variantOnly = mergeProductCopy(sourceVariant, emptyDesc);
       return {
-        ...mergeProductCopy(idVariantCopy, enDescParsed),
-        fallingBackToId: true,
+        ...merged,
+        fallingBackToId: !enVariantCopy,
+        productExtraCount: Math.max(0, countItems(merged) - countItems(variantOnly)),
       };
     }
 
+    const merged = mergeProductCopy(idVariantCopy, parseProductDescription(descriptionId));
+    const variantOnly = mergeProductCopy(idVariantCopy, emptyDesc);
     return {
-      ...mergeProductCopy(idVariantCopy, parseProductDescription(descriptionId)),
+      ...merged,
       fallingBackToId: false,
+      productExtraCount: Math.max(0, countItems(merged) - countItems(variantOnly)),
     };
   }, [mode, drafts, lang, descriptionId, descriptionEn, entry]);
 
@@ -885,6 +899,11 @@ export function CopyEditorSheet({
                   {preview.fallingBackToId && (
                     <p className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] text-white/70"> {/* admin-ui-allow: storefront preview */}
                       English kosong — menampilkan pratinjau versi Indonesia/otomatis.
+                    </p>
+                  )}
+                  {preview.productExtraCount > 0 && (
+                    <p className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] text-white/70"> {/* admin-ui-allow: storefront preview */}
+                      Termasuk {preview.productExtraCount} poin dari &quot;Berlaku untuk semua varian&quot; — ubah atau hapus di baris pertama tabel S&amp;K.
                     </p>
                   )}
                   {!preview.sections.length && !preview.activation.length && !preview.notes.length ? (

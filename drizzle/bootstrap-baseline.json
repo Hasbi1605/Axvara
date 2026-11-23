@@ -1,6 +1,6 @@
 {
   "$comment": "Audit AU-G2-1 bootstrap ledger. Exact migration filenames already represented by drizzle/schema.sql as of schema_through. Consumed ONLY by scripts/d1-fresh-init.cjs; regenerate deliberately with --print-baseline after intentionally editing schema.sql or adding a migration.",
-  "schema_through": "0161_drop_telegram_carts.sql",
+  "schema_through": "0162_pixelverif_activation_copy.sql",
   "schema_sha256": "c96fd3f2416728a77c65a67329ef69ee62bf6a4caa9777a303ad79408dd740b5",
   "migrations": [
     "0002_editorial_agent.sql",
@@ -162,6 +162,7 @@
     "0158_supplier_catalog_tidy_1123.sql",
     "0159_telegram_pixelverif_stash.sql",
     "0160_tunvn_copilot_copy.sql",
-    "0161_drop_telegram_carts.sql"
+    "0161_drop_telegram_carts.sql",
+    "0162_pixelverif_activation_copy.sql"
   ]
 }
