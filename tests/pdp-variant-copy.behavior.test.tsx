@@ -72,18 +72,23 @@ beforeEach(() => { localStorage.clear(); useCart.setState({ items: [] }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("PDP multi-varian: S&K mengikuti satu pilihan", () => {
-  it("Jaspay tetap antrean otomatis di PDP dan modal, tanpa klaim proses manual atau stok instan", async () => {
+  it("Jaspay tetap antrean otomatis di kartu/baris varian PDP dan modal, tanpa blok ETA atau checklist duplikat di PDP", async () => {
     renderPdp([{ ...variants[0], wr_variant_id: "jaspay:fixture:monthly", wr_delivery_class: "made_by_order" }, variants[1]]);
-    expect(screen.getByText("Cara pengiriman mengikuti varian yang dipilih.")).toBeTruthy();
+    expect(pickerButton("3 Bulan").textContent).toContain("Diproses otomatis");
+    expect(pickerButton("3 Bulan").textContent).not.toMatch(/Made By Order|Kirim otomatis/);
+    expect(screen.queryByText("Cara pengiriman mengikuti varian yang dipilih.")).toBeNull();
+    expect(screen.queryByText("Support WA admin selama masa aktif")).toBeNull();
+    expect(screen.queryByText("Garansi sesuai Syarat & Ketentuan produk ini")).toBeNull();
     fireEvent.click(within(details()).getByRole("button", { name: "Pilih varian" }));
     const radio = within(screen.getByRole("dialog")).getByRole("radio", { name: /^3 Bulan/ });
     expect(radio.textContent).toContain("Diproses otomatis");
     expect(radio.textContent).not.toContain("Made By Order");
     fireEvent.click(radio);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    const eta = screen.getByText("Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi 15 menit–1 jam.");
-    expect(eta.parentElement?.textContent).toContain("Diproses otomatis");
-    expect(eta.parentElement?.textContent).not.toMatch(/disiapkan admin|Kirim otomatis|12 jam/);
+    const mobileRow = screen.getByRole("button", { name: /^Varian: 3 Bulan/ });
+    expect(mobileRow.textContent).toContain("Diproses otomatis");
+    expect(mobileRow.textContent).not.toMatch(/Made By Order|Kirim otomatis/);
+    expect(screen.queryByText("Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi 15 menit–1 jam.")).toBeNull();
   });
 
   it("S1 belum memilih: placeholder + tombol pilih; bila ada ketentuan produk tampil di bawah chip 'Berlaku untuk semua varian' tanpa judul Ketentuan produk", () => {

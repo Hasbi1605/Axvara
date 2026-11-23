@@ -1767,8 +1767,8 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
   otomatis, selainnya = Made By Order + estimasi supplier); non-WR ikut
   `fulfillment_mode` milik admin (shared/unique = Kirim otomatis dari stok
   sendiri, manual = Made By Order + kalimat admin tanpa angka supplier).
-  Berlaku di kartu varian PDP + badge PDP + QuickVariantModal (badge per
-  kartu; kalimat ETA di atas CTA modal dihapus 2026-09-19). Opsi admin "Cara Pengiriman" di ProductVariantRows sinkron 1:1
+  Berlaku di kartu varian PDP desktop + baris varian terpilih mobile + QuickVariantModal (badge per
+  kartu; kalimat ETA di atas CTA modal dihapus 2026-09-19; blok duplikat badge pengiriman + kalimat ETA + 2 checklist statis WA/garansi di bawah pemilih jumlah PDP dihapus penuh 2026-11-23 atas keputusan owner agar mobile dan desktop tidak sumpek). Opsi admin "Cara Pengiriman" di ProductVariantRows sinkron 1:1
   dengan `fulfillment_mode` + preview badge; panel konten fulfillment
   (shared/unique) hidup di jalur resmi — bukan hanya VariantEditor mati.
 - Nama varian pembeli `formatVariantLabel()` (2026-09-19, diperluas SK 2026-11-20:
@@ -1797,15 +1797,18 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
   2026-09-19). Berlaku di kartu varian PDP desktop +
   QuickVariantModal. JANGAN taruh di card deskripsi/S&K (datanya per-varian,
   bukan per-produk) dan JANGAN pakai emoji ⚡/✋.
-- Ekspektasi waktu (2026-09-18, revisi kata 2026-09-19, live): kalimat `deliveryEtaForBuyer()` wajib
-  tampil SEBELUM pembeli bayar — badge pengiriman PDP (tanpa ikon checklist
-  ganda sejak 2026-09-19) + teks di bawahnya, dan blok checkout "Made By Order"
-  (border+bg gold `#FFB800/25` + `/[0.07]`; template sejak 2026-09-19:
+- Ekspektasi waktu (2026-09-18, revisi kata 2026-09-19, revisi PDP 2026-11-23): ekspektasi waktu antrean wajib
+  tampil SEBELUM pembeli bayar di blok checkout "Made By Order" / "Diproses otomatis"
+  (border+bg gold `#FFB800/25` + `/[0.07]`; template MBO sejak 2026-09-19:
   "{produk} dibuat setelah pembayaran terkonfirmasi. Umumnya terkirim cepat,
   maksimal 12 jam pada jam layanan"; paragraf
   "Detail akun dikirim ke WhatsApp…Tidak perlu menunggu" dihapus 2026-09-19).
-  QuickVariantModal HANYA badge per kartu varian — kalimat ETA di atas CTA
-  dihapus 2026-09-19 (keputusan owner). Angka yang dijanjikan hanya PLAFON (maksimal 12
+  QuickVariantModal (sejak 2026-09-19) dan PDP (sejak 2026-11-23, keputusan
+  owner) HANYA menampilkan badge pengiriman di kartu/baris varian — blok
+  duplikat pill pengiriman + kalimat ETA + 2 checklist statis ("Support WA admin
+  selama masa aktif", "Garansi sesuai Syarat & Ketentuan produk ini") dihapus
+  penuh dari PDP (divider pemisah ikut masuk ke blok Jumlah agar tidak mengambang
+  saat multi-varian belum dipilih). Angka yang dijanjikan hanya PLAFON (maksimal 12
   jam) plus "umumnya lebih cepat"; jangan tampilkan rentang mentah 6–12 jam
   (dibaca sebagai janji minimum) dan jangan tanpa angka (pembeli tetap
   bertanya via support). Nama pemasok tidak pernah muncul di copy pembeli.
@@ -2080,8 +2083,7 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
 - Panel admin "Kirim ke pembeli": satu textarea mono per item ("Detail untuk
   pembeli · {nama baris}") yang terisi dari template varian, kalimat tujuan
   (email/DM Telegram), dan input "Catatan internal" yang tidak dikirim ke pembeli.
-  - PDP varian campuran sebelum dipilih: badge netral `border-white/15
-  bg-white/[0.06]` "Tergantung varian", bukan hijau "Kirim otomatis".
+  - Histori 2026-09-25: PDP varian campuran sebelum dipilih sempat menampilkan badge netral `border-white/15 bg-white/[0.06]` "Tergantung varian"; sejak 2026-11-23 (keputusan owner) seluruh blok ringkasan pengiriman + ETA + 2 checklist statis di PDP dihapus karena badge pengiriman sudah hidup per kartu varian desktop, baris varian terpilih mobile, dan `QuickVariantModal`.
 - **Link bisa diklik di deskripsi/S&K/cara aktivasi (2026-10-03, permintaan
   owner; revisi internal-link hari yang sama, laporan owner + screenshot PDP
   Netflix).** Semua URL (`https://…`), bare domain (`netflix-codes…/mailbox`,

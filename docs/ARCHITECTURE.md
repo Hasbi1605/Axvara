@@ -3187,9 +3187,8 @@ badge storefront menjanjikan "Kirim otomatis". Perubahan:
   nada dibedakan per keadaan — "Pesanan Made By Order" (C1 manual by design, tanpa alasan
   stok) vs "Pengiriman oleh Admin" (C2 instan-gagal: "Stok otomatis habis, jadi admin
   menyiapkan manual"), jalur otomatis tidak pernah menyebut admin/12 jam (lihat Storefront di
-  bagian Warung Rebahan). PDP menampilkan "Tergantung varian" untuk
-  varian campuran sebelum pembeli memilih. Dulu ringkasannya mengikuti varian pertama, jadi
-  Canva tampil "Kirim otomatis" walau 2 dari 3 variannya Made By Order.
+  bagian Warung Rebahan). Histori 2026-09-25: PDP sempat menampilkan "Tergantung varian" untuk
+  varian campuran sebelum pembeli memilih; sejak 2026-11-23 (keputusan owner) blok ringkasan pengiriman + ETA + 2 checklist statis WA/garansi di `product-detail-client.tsx` dihapus penuh (badge per varian tetap di kartu varian desktop, baris varian terpilih mobile, dan `QuickVariantModal`).
 - Dikunci oleh `tests/nonwr-web-delivery.integration.test.ts`,
   `tests/nonwr-handover-content.integration.test.ts`, `tests/admin-handover-dialog.behavior.test.tsx`,
   dan `tests/nonwr-delivery-copy.test.tsx`. Item web `manual_required` lama di produksi tidak
@@ -3456,10 +3455,9 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   janji pembeli), `WR_QUEUED_ALERT_HOURS = 13` (ambang alert internal, sengaja di
   atas plafon agar tidak alert fatigue), `deliveryEtaForBuyer()`, dan
   `isQueuedFulfillment()` (varian WR non-restock ATAU varian non-WR `manual`).
-  Ekspektasi waktu WAJIB tampil SEBELUM bayar: PDP (badge, tanpa ikon
-  checklist ganda sejak 2026-09-19) dan checkout (blok "Made By Order"
-  dari flag `queued_delivery` per baris di respons quote; kalimat ETA modal
-  dihapus 2026-09-19). `GET /api/orders?code=`
+  Ekspektasi waktu antrean WAJIB tampil SEBELUM bayar di checkout (blok "Made By Order" / "Diproses otomatis"
+  dari flag `queued_delivery`/`automatic_processing` per baris di respons quote; kalimat ETA modal
+  dihapus 2026-09-19; blok duplikat badge pengiriman + ETA + 2 checklist statis WA/garansi di PDP dihapus 2026-11-23, badge tetap per kartu/baris varian). `GET /api/orders?code=`
   mengirim `queued_delivery` dan `instant_delivery` (satu query gabungan dengan
   `credentials_ready`, CTE `lines` dari `json_each(orders.items)`), dan halaman pesanan memakainya untuk memilih
   teks serta memperpendek polling ke 3 percobaan (polling tidak mungkin menutup

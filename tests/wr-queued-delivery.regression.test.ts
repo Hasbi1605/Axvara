@@ -85,7 +85,7 @@ describe("copy pembeli", () => {
     expect(checkout).toContain("qi.queued_delivery === true");
   });
 
-  it("PDP + modal varian memakai badge Made By Order polos (tanpa angka jam)", () => {
+  it("PDP + modal varian memakai badge Made By Order polos (tanpa angka jam dan tanpa blok ETA duplikat)", () => {
     for (const file of [
       "src/app/(shop)/produk/[slug]/product-detail-client.tsx",
       "src/components/storefront/QuickVariantModal.tsx",
@@ -93,16 +93,15 @@ describe("copy pembeli", () => {
       const src = read(file);
       expect(src, file).not.toContain("Dikirim admin");
       // Badge berasal dari satu helper (Made By Order / Diproses otomatis).
-      expect(src.includes("Made By Order") || src.includes("buyerDeliveryBadge("), file).toBe(true);
-      // Angka jam hanya di kalimat ETA/template, bukan di badge.
+      expect(src.includes("catalogDeliveryBadge(") || src.includes("buyerDeliveryBadge("), file).toBe(true);
+      // Angka jam hanya di kalimat ETA/template checkout, bukan di badge atau blok duplikat PDP/modal.
       expect(src, file).not.toContain("Made By Order · maks");
+      expect(src, file).not.toContain("catalogDeliveryEta(");
+      expect(src, file).not.toContain("deliveryEtaForBuyer(");
     }
     const catalog = read("src/lib/catalog.ts");
     expect(catalog).toContain('"Made By Order"');
     expect(catalog).not.toContain("Made By Order · maks");
-    // Modal menampilkan badge, TANPA kalimat ETA (dihapus 2026-09-19,
-    // keputusan owner: ekspektasi detail hanya di blok checkout MBO).
-    expect(read("src/components/storefront/QuickVariantModal.tsx")).not.toContain("deliveryEtaForBuyer(");
   });
 
   it("halaman ketentuan MEMPERTAHANKAN status third-party + garansi mulai saat diserahkan", () => {

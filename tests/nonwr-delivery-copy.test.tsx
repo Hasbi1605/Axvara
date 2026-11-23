@@ -77,7 +77,7 @@ describe("template serah terima", () => {
   });
 });
 
-describe("PDP: ringkasan pengiriman varian campuran", () => {
+describe("PDP: badge pengiriman per varian tanpa blok ringkasan duplikat", () => {
   const product = {
     id: "1", slug: "canva-premium", name: "Canva Pro / Premium", description: "Canva Pro.", price: 2000,
     categorySlug: "akun-premium", image: "/brand/axvara-mark.svg", images: [], stock: -1, variantCount: 2,
@@ -88,17 +88,25 @@ describe("PDP: ringkasan pengiriman varian campuran", () => {
   ];
   const catalog = { slug: "canva-premium", product: { id: 1, slug: "canva-premium", name: "Canva Pro / Premium", variants }, variantsEnabled: true };
 
-  it("sebelum memilih: 'Tergantung varian', bukan 'Kirim otomatis' untuk seluruh produk; setelah memilih mengikuti varian", () => {
+  it("badge mengikuti tiap varian di kartu/baris varian, tanpa blok ETA atau checklist duplikat di PDP", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ products: [] }) })));
     render(<ProductDetailClient slug="canva-premium" initialProducts={[product]} initialCatalog={catalog as never} />);
-    expect(screen.getByText("Tergantung varian")).toBeTruthy();
-    expect(screen.queryByText("Kirim otomatis setelah pembayaran dikonfirmasi")).toBeNull();
-
-    fireEvent.click(screen.getAllByRole("button").find((b) => (b.textContent ?? "").includes("Invite 1 Bulan"))!);
+    const instantCard = screen.getAllByRole("button").find((b) => (b.textContent ?? "").includes("Invite 1 Bulan"))!;
+    const manualCard = screen.getAllByRole("button").find((b) => (b.textContent ?? "").includes("Invite Lifetime"))!;
+    expect(instantCard.textContent).toContain("Kirim otomatis");
+    expect(manualCard.textContent).toContain("Made By Order");
     expect(screen.queryByText("Tergantung varian")).toBeNull();
-    expect(screen.getByText("Kirim otomatis setelah pembayaran dikonfirmasi")).toBeTruthy();
-
-    fireEvent.click(screen.getAllByRole("button").find((b) => (b.textContent ?? "").includes("Invite Lifetime"))!);
     expect(screen.queryByText("Kirim otomatis setelah pembayaran dikonfirmasi")).toBeNull();
+    expect(screen.queryByText("Support WA admin selama masa aktif")).toBeNull();
+    expect(screen.queryByText("Garansi sesuai Syarat & Ketentuan produk ini")).toBeNull();
+
+    fireEvent.click(instantCard);
+    const mobileRow = () => screen.getByRole("button", { name: /^Varian:/ });
+    expect(mobileRow().textContent).toContain("Kirim otomatis");
+    expect(screen.queryByText("Kirim otomatis setelah pembayaran dikonfirmasi")).toBeNull();
+
+    fireEvent.click(manualCard);
+    expect(mobileRow().textContent).toContain("Made By Order");
+    expect(mobileRow().textContent).not.toContain("Kirim otomatis");
   });
 });

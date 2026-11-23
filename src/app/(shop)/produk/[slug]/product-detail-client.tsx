@@ -7,7 +7,7 @@ import type { Product } from "@/lib/products";
 import { productIsBuyable } from "@/lib/product-order";
 import type { StorefrontVariant } from "@/lib/product-copy/resolve";
 import { effectiveVariantStock, formatVariantLabel } from "@/lib/catalog";
-import { buyerDeliveryBadge, buyerDeliveryKind } from "@/lib/catalog";
+import { buyerDeliveryKind } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
 import { ProductCard, productCardAmounts } from "@/components/storefront/ProductCard";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
@@ -20,7 +20,7 @@ import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
 import { bulkCopy, bulkUnitEstimate, usableBulkTiers } from "@/lib/bulk-display";
 import { useDisplayPrices } from "@/hooks/useDisplayPrices";
-import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty, localizedProductDescription } from "@/lib/i18n/catalog-copy";
+import { catalogCopy, catalogDeliveryBadge, catalogWarranty, localizedProductDescription } from "@/lib/i18n/catalog-copy";
 import { marketCategoryName } from "@/lib/i18n/market-categories";
 import { badgeLabel } from "@/lib/i18n/badge-copy";
 import { productDisplayName } from "@/lib/i18n/product-name";
@@ -425,13 +425,6 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   const choosableVariants = variantsEnabled && activeVariants.length > 1;
   // Varian tunggal tidak ambigu → salinannya boleh tampil tanpa memilih.
   const copyVariant = selectedVariant ?? (activeVariants.length === 1 ? activeVariants[0] : null);
-  // Sebelum pembeli memilih, ringkasan pengiriman dulu mengikuti varian
-  // pertama saja: Canva (Invite 1 Bulan kirim otomatis, dua varian lain Made
-  // By Order) tampil "Kirim otomatis" untuk seluruh produk. Varian campuran
-  // kini disebut apa adanya sampai satu varian dipilih.
-  const deliveryVariant = selectedVariant ?? activeVariants[0] ?? null;
-  const mixedDelivery = !selectedVariant
-    && new Set(activeVariants.map((v) => buyerDeliveryBadge(v))).size > 1;
   // Deskripsi + S&K + cara aktivasi dalam satu format untuk WR dan non-WR:
   // S&K varian (WR) digabung dengan bagian "Syarat & Ketentuan:" / "Cara
   // Aktivasi:" di deskripsi (produk non-WR); tiap baris tampil sekali.
@@ -859,15 +852,13 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             </>
           )}
 
-          {/* Divider */}
-          <div className="mt-5 border-t border-white/8" />
-
           {/* Jumlah pembelian ala marketplace (Shopee/Tokopedia): stepper di
               bawah varian, dibuka di minimum, floor = min. Satu-satunya
               tempat info "Min. N" tampil — tidak di tiap kartu varian agar
-              tidak menumpuk. */}
+              tidak menumpuk. Divider ikut blok ini agar tidak mengambang saat
+              multi-varian belum dipilih. */}
           {variantsEnabled && selectedVariant && (
-            <div className="mt-4">
+            <div className="mt-5 border-t border-white/8 pt-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-medium text-white/60">{t.quantity}</h3>
                 {selectedMinQty > 1 && (
@@ -942,36 +933,11 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             </div>
           )}
 
-          {/* Badge pengiriman — satu sinyal, tanpa ikon checklist ganda.
-              Mengikuti varian terpilih via buyerDeliveryKind: WR ikut
-              wr_delivery_class, non-WR ikut fulfillment_mode (shared/unique =
-              instan, manual = antrean admin). Non-WR manual memakai kalimat
-              ETA admin (tanpa angka supplier 6–12 jam). */}
-          <div className="mt-5">
-            {mixedDelivery ? (
-              <span className="inline-flex rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-[11px] font-bold text-white/75">{t.mixedDelivery}</span>
-            ) : buyerDeliveryKind(deliveryVariant ?? { fulfillment_mode: "manual" }) === "instant" ? (
-              <span className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">{t.autoDelivery}</span>
-            ) : (
-              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">{catalogDeliveryBadge(deliveryVariant ?? { fulfillment_mode: "manual" }, prices.locale)}</span>
-            )}
-            <p className="mt-2 text-[12px] leading-5 text-white/50">
-              {(() => {
-                if (mixedDelivery) return t.mixedDeliveryNote;
-                return catalogDeliveryEta(deliveryVariant, prices.locale);
-              })()}
-            </p>
-          </div>
-          <ul className="mt-3 space-y-2.5 text-[13px] text-white/60">
-            <li className="flex items-start gap-2">
-              <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              {t.supportLine}
-            </li>
-            <li className="flex items-start gap-2">
-              <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              {t.warrantyLine}
-            </li>
-          </ul>
+          {/* Badge pengiriman sudah tampil di tiap kartu varian desktop, baris
+              varian terpilih mobile, dan QuickVariantModal; ekspektasi waktu
+              antrean (Made By Order / Diproses otomatis) tampil di checkout
+              sebelum bayar (keputusan owner 2026-11-23: hapus blok duplikat
+              badge + ETA + 2 checklist statis WA/garansi dari PDP). */}
 
           {/* Mobile: deskripsi (umum) dulu, lalu S&K/aktivasi — sama untuk
               produk multi-varian maupun lainnya (keputusan owner 2 Nov). */}
