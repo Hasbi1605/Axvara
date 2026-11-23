@@ -70,7 +70,7 @@ export async function handleCommand(
     const locale = prefs.locale ?? "id";
     if (from) {
       const { clearPixelverifStash } = await import("./buyer-input");
-      clearPixelverifStash(String(from.id));
+      await clearPixelverifStash(String(from.id));
       await clearPayq1DraftForCancel(from);
       await clearPendingAction(from);
     } else {
@@ -88,6 +88,10 @@ export async function handleCommand(
     if (await notifyPaymentMaintenance(chatId)) return;
     if (typeof tgApi.sendChatAction === "function") {
       runInBackground(tgApi.sendChatAction(chatId, "typing"));
+    }
+    if (from) {
+      const { clearPixelverifStash } = await import("./buyer-input");
+      await clearPixelverifStash(String(from.id));
     }
     await clearPendingUnlessCreating(from);
     const rawPayload = trimmed.split(/\s+/).slice(1).join(" ").trim();
@@ -355,11 +359,18 @@ export async function handleCommand(
     return;
   }
 
+  // Pixel Verification buyer-input runs BEFORE the `!cmd.startsWith("/")`
+  // guard and receives untrimmed `text` so passwords with leading/trailing
+  // spaces or a leading `/` (other than known commands handled above) are
+  // preserved verbatim, matching web checkout.
+  if (from && text.length > 0) {
+    const { handleBuyerInput } = await import("./buyer-input");
+    if (await handleBuyerInput(text, chatId, from, messageId)) return;
+  }
+
   // Existing pending-input handlers (only when non-empty non-slash text).
   if (from && trimmed && !cmd.startsWith("/")) {
     if (await handlePendingWaInput(trimmed, chatId, from)) return;
-    const { handleBuyerInput } = await import("./buyer-input");
-    if (await handleBuyerInput(trimmed, chatId, from, messageId)) return;
     if (/^\d{1,3}$/.test(cmd)) {
       if (await handlePendingQtyInput(trimmed, chatId, from)) return;
     }

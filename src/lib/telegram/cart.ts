@@ -8,7 +8,7 @@ import { execRun, queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { effectiveVariantStock, formatVariantLabel, getActiveVariant, type VariantSummary } from "@/lib/catalog";
 import { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct } from "@/lib/bulk-pricing";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
-import { assertSameBuyerCode, sealPixelverifCartFields, unsealPixelverifCartFields, validateBuyerFields, type BuyerFields } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, sealPixelverifCartFields, TELEGRAM_PIXELVERIF_CART_TTL_MS, unsealPixelverifCartFields, validateBuyerFields, type BuyerFields } from "@/lib/buyer-fields";
 import { TELEGRAM_MAX_QTY } from "./keyboards";
 
 export type CartLine = {
@@ -60,7 +60,7 @@ export async function addToCart(
   // invoice; default 1 = perilaku lama.
   minQtyRaw = 1,
   buyerFields?: BuyerFields,
-): Promise<{ ok: boolean; reason?: "invalid_variant" | "invalid_quantity" | "out_of_stock" | "cart_full" | "unique_limit" | "below_minimum" | "cart_changed" | "pixelverif_unavailable" }> {
+): Promise<{ ok: boolean; reason?: "invalid_variant" | "invalid_quantity" | "out_of_stock" | "cart_full" | "unique_limit" | "below_minimum" | "cart_changed" | "pixelverif_unavailable" | "pixelverif_limit" }> {
   if (!isD1Mode()) return { ok: false, reason: "invalid_variant" };
   if (!Number.isSafeInteger(rawQty) || rawQty < 1 || rawQty > TELEGRAM_MAX_QTY) return { ok: false, reason: "invalid_quantity" };
   const variant = await getActiveVariant(variantId);
@@ -69,6 +69,16 @@ export async function addToCart(
   // add (stale button / direct call) must never create a credential-less line.
   if (variant.pixelverif_input && !(buyerFields?.pv_email && buyerFields?.pv_password && buyerFields?.pv_totp_secret)) {
     return { ok: false, reason: "pixelverif_unavailable" };
+  }
+  // Enforce at most 1 Pixel Verification variant per Telegram checkout.
+  if (variant.pixelverif_input) {
+    const otherPv = await queryFirst(
+      `SELECT 1 FROM telegram_carts c JOIN product_variants pv ON pv.id=c.variant_id
+       WHERE c.user_id=? AND c.variant_id!=? AND pv.pixelverif_flow_type IS NOT NULL`,
+      userId,
+      variantId,
+    );
+    if (otherPv) return { ok: false, reason: "pixelverif_limit" };
   }
   const stock = effectiveVariantStock(variant);
   if (stock === 0) return { ok: false, reason: "out_of_stock" };
@@ -227,6 +237,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
   );
   if (rows.length > MAX_LINES) issues.push(`Keranjang berisi lebih dari ${MAX_LINES} varian. Hapus varian sebelum melanjutkan.`);
   const staleRows: typeof rows = [];
+  const expiredPixelRows: typeof rows = [];
   // TG2b: tier dihitung dari AGREGAT qty per varian (satu varian = satu
   // harga, alias ikut), bukan per baris keranjang.
   const aggregateQty = new Map<number, number>();
@@ -261,16 +272,35 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     const minQty = Math.max(1, Number(row.v_min_qty ?? 1) || 1);
     const qty = Number(row.qty);
     let fields: BuyerFields = {};
+    let pixelExpired = false;
     try {
       const stored = validateBuyerFields(row,JSON.parse(String(row.buyer_fields ?? "{}")),qty);
-      // Sealed blob -> plaintext only in memory for checkout approval/sealing.
-      fields = stored.pv_sealed_ciphertext ? await unsealPixelverifCartFields(stored) : stored;
+      if (stored.pv_sealed_ciphertext) {
+        const updatedRaw = String(row.updated_at ?? "");
+        const updatedMs = Date.parse(updatedRaw.includes("T") ? updatedRaw : updatedRaw.replace(" ", "T") + "Z");
+        if (Number.isFinite(updatedMs) && Date.now() - updatedMs > TELEGRAM_PIXELVERIF_CART_TTL_MS) {
+          throw new Error("pixelverif_cart_expired");
+        }
+        // Sealed blob -> plaintext only in memory for checkout approval/sealing.
+        fields = await unsealPixelverifCartFields(stored);
+      } else {
+        fields = stored;
+      }
       if (fields.pv_email) {
         const { isPixelverifEmailBlocked, PIXELVERIF_BLOCKED_EMAIL_MESSAGE } = await import("@/lib/pixelverif/blocklist");
         if (await isPixelverifEmailBlocked(fields.pv_email, Number(row.pixelverif_validity) || 3)) issues.push(`${label}: ${PIXELVERIF_BLOCKED_EMAIL_MESSAGE} Hapus baris ini lalu ulangi dari katalog.`);
       }
     }
-    catch { issues.push(row.pixelverif_flow_type != null ? `${label}: data akun Google tidak terbaca. Hapus baris ini lalu ulangi dari katalog.` : `${label}: periksa jumlah dan Kode Invite Muse melalui chat pribadi.`); }
+    catch (err) {
+      if (err instanceof Error && err.message === "pixelverif_cart_expired") {
+        pixelExpired = true;
+        expiredPixelRows.push(row);
+        issues.push(`${label}: sesi data akun Google di keranjang sudah kedaluwarsa. Ulangi dari katalog.`);
+      } else {
+        issues.push(row.pixelverif_flow_type != null ? `${label}: data akun Google tidak terbaca. Hapus baris ini lalu ulangi dari katalog.` : `${label}: periksa jumlah dan Kode Invite Muse melalui chat pribadi.`);
+      }
+    }
+    if (pixelExpired) continue;
     if (!Number.isSafeInteger(qty) || qty < 1 || qty > TELEGRAM_MAX_QTY) {
       issues.push(`${label}: jumlah tidak valid. Pilih jumlah bulat 1 sampai ${TELEGRAM_MAX_QTY}.`);
     }
@@ -326,8 +356,17 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
       userId, ...staleRows.flatMap(row => [row.id, row.qty, row.updated_at]),
     ).catch(() => {});
   }
+  if (expiredPixelRows.length > 0) {
+    await execRun(
+      `DELETE FROM telegram_carts WHERE user_id=? AND (${expiredPixelRows.map(() => "(id=? AND updated_at=?)").join(" OR ")})`,
+      userId, ...expiredPixelRows.flatMap(row => [row.id, row.updated_at]),
+    ).catch(() => {});
+  }
   if (lines.filter(line => line.fulfillmentMode === "unique").reduce((sum, line) => sum + line.qty, 0) > MAX_UNIQUE_UNITS_PER_ORDER) {
     issues.push(`Maksimal ${MAX_UNIQUE_UNITS_PER_ORDER} akun stok unik per pesanan. Kurangi jumlah di keranjang.`);
+  }
+  if (lines.filter(line => line.pixelverifInput).length > 1) {
+    issues.push("Hanya 1 varian layanan aktivasi Google yang dapat dipesan per checkout. Hapus salah satu baris di keranjang.");
   }
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
   try { assertSameBuyerCode(lines.map(line => ({ buyer_fields:line.buyerFields }))); } catch { issues.push("Gunakan satu Kode Invite Muse per checkout."); }

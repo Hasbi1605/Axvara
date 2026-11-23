@@ -200,6 +200,7 @@ export async function recordManualHandoverDetailed(
            AND NOT EXISTS(SELECT 1 FROM storebat_order_links WHERE order_code=fulfillment_items.order_code AND item_index=fulfillment_items.item_index AND status IN ('pending','claimed','processing'))
            AND NOT EXISTS(SELECT 1 FROM mirai_order_links WHERE order_code=fulfillment_items.order_code AND item_index=fulfillment_items.item_index AND status IN ('pending','claimed','processing'))
            AND NOT EXISTS(SELECT 1 FROM aivault_order_links WHERE order_code=fulfillment_items.order_code AND item_index=fulfillment_items.item_index AND status IN ('pending','claimed','processing'))
+           AND NOT EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=fulfillment_items.order_code AND item_index=fulfillment_items.item_index AND status IN ('pending','claimed','processing'))
            AND NOT EXISTS(SELECT 1 FROM wr_order_links l WHERE l.order_code=fulfillment_items.order_code
              AND (l.id=fulfillment_items.wr_link_id OR l.fulfillment_item_id=fulfillment_items.id OR l.wr_variant_id=(SELECT wr_variant_id FROM product_variants WHERE id=fulfillment_items.variant_id))
              AND (l.status IN ('ordering','submitted','processing') OR (l.status='claimed' AND (l.request_sent_at IS NOT NULL OR datetime(l.lease_expires_at)>datetime('now')))))

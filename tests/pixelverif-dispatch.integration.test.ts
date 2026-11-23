@@ -513,7 +513,8 @@ describe("Pixel Verification dispatch", () => {
     await seedPaidOrder();
     const db = createDatabaseAccess(fx.db);
     let progress = await readAutomaticProgress(ORDER_CODE, db);
-    expect(progress).toMatchObject([{ stage: "preparing", queuePosition: null, kind: "pixelverif", total: 1 }]);
+    expect(progress).toMatchObject([{ stage: "preparing", queuePosition: null, estimateProfile: "short", total: 1 }]);
+    expect(JSON.stringify(progress)).not.toMatch(/pixelverif/i);
     await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
     due();
     await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);

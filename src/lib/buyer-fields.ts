@@ -72,23 +72,40 @@ export function buyerSnapshotMatches(a: BuyerFieldSnapshot, b: BuyerFieldSnapsho
     && (a.buyer_fields?.pv_sealed_iv ?? "") === (b.buyer_fields?.pv_sealed_iv ?? "");
 }
 
+/** Maximum age for sealed Pixel Verification credentials stored in an abandoned Telegram cart. */
+export const TELEGRAM_PIXELVERIF_CART_TTL_MS = 30 * 60_000;
+
 /** Seal Pixel credentials for Telegram cart persistence (never plaintext). */
 export async function sealPixelverifCartFields(fields: BuyerFields): Promise<BuyerFields> {
   if (!fields.pv_email || !fields.pv_password || !fields.pv_totp_secret) return fields;
   const { encryptSecret } = await import("@/lib/fulfillment/crypto");
   const { maskPixelverifEmail } = await import("@/lib/pixelverif/purchase");
   const sealed = await encryptSecret(JSON.stringify({
-    pv_email: fields.pv_email, pv_password: fields.pv_password, pv_totp_secret: fields.pv_totp_secret,
+    pv_email: fields.pv_email,
+    pv_password: fields.pv_password,
+    pv_totp_secret: fields.pv_totp_secret,
+    sealed_at: Date.now(),
   }));
   return { pv_sealed_ciphertext: sealed.ciphertext, pv_sealed_iv: sealed.iv, pv_email_masked: maskPixelverifEmail(fields.pv_email) };
 }
 
 /** Unseal a cart-stored Pixel blob back to in-memory credentials (order time only). */
-export async function unsealPixelverifCartFields(fields: BuyerFields): Promise<BuyerFields> {
+export async function unsealPixelverifCartFields(fields: BuyerFields, now = Date.now()): Promise<BuyerFields> {
   if (!fields.pv_sealed_ciphertext || !fields.pv_sealed_iv) return fields;
   const { decryptSecret } = await import("@/lib/fulfillment/crypto");
   const parsed: unknown = JSON.parse(await decryptSecret(fields.pv_sealed_ciphertext, fields.pv_sealed_iv));
-  return parsePixelverifInput(parsed);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Data akun Google tidak valid. Ulangi dari katalog.");
+  }
+  const rec = parsed as Record<string, unknown>;
+  if (typeof rec.sealed_at === "number" && Number.isFinite(rec.sealed_at) && now - rec.sealed_at > TELEGRAM_PIXELVERIF_CART_TTL_MS) {
+    throw new Error("pixelverif_cart_expired");
+  }
+  return parsePixelverifInput({
+    pv_email: rec.pv_email,
+    pv_password: rec.pv_password,
+    pv_totp_secret: rec.pv_totp_secret,
+  });
 }
 
 export type TunvnEligibility = { version: 1; kind: "account" | "buff"; source_product_id: number | null; source_variant_id: number; source_unit_b: number | null; quantity: number; cost_usdt?: number };

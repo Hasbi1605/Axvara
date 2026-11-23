@@ -191,7 +191,7 @@ async function POSTImpl(request: NextRequest) {
 
     // Check product exists (sekaligus identitas supplier untuk guard grosir)
     const product = await queryFirst(
-      `SELECT id, archived_at, is_active, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family, storebat_family, mirai_family
+      `SELECT id, archived_at, is_active, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family, storebat_family, mirai_family, pixelverif_family
          FROM products WHERE id=?`,
       product_id,
     );
@@ -217,11 +217,12 @@ async function POSTImpl(request: NextRequest) {
 
     // Cross-validate each variant & check SKU duplicates inside batch
     const seenSkus = new Set<string>();
-    const tunvnIdentities = await queryAll("SELECT id,sku,storebat_product_id,mirai_package_code FROM product_variants WHERE product_id=? AND (sku LIKE 'TUNVN-%' OR storebat_product_id IS NOT NULL OR mirai_package_code IS NOT NULL)",product_id);
+    const tunvnIdentities = await queryAll("SELECT id,sku,storebat_product_id,mirai_package_code,pixelverif_flow_type FROM product_variants WHERE product_id=? AND (sku LIKE 'TUNVN-%' OR storebat_product_id IS NOT NULL OR mirai_package_code IS NOT NULL OR pixelverif_flow_type IS NOT NULL)",product_id);
     for (const v of variants) {
       const identity = tunvnIdentities.find(row => Number(row.id) === v.id);
       if ((product.storebat_family || v.sku.startsWith("SB-")) && (!identity?.storebat_product_id || storebatFieldsChanged(v,identity.sku))) return NextResponse.json({error:"storebat_identity_managed"},{status:409});
       if ((product.mirai_family || /^MR-/i.test(v.sku)) && (!identity?.mirai_package_code || miraiFieldsChanged(v, identity.sku))) return NextResponse.json({ error: "mirai_identity_managed" }, { status: 409 });
+      if ((product.pixelverif_family || /^PV-/i.test(v.sku)) && (!identity?.pixelverif_flow_type || pixelverifFieldsChanged(v, identity.sku))) return NextResponse.json({ error: "pixelverif_identity_managed" }, { status: 409 });
       if (identity && identity.sku !== v.sku) return NextResponse.json({ error:"Identitas varian tidak boleh diubah." },{ status:409 });
       const crossErr = validateCrossFields(v);
       if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
@@ -280,6 +281,7 @@ async function POSTImpl(request: NextRequest) {
       const isAivault = Boolean(product.aivault_family) || String(stored?.sku ?? variant.sku ?? "").toUpperCase().startsWith("AV-");
       if (product.storebat_family && bulkConfigDiffersFromStored((variant as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, stored)) return NextResponse.json({error:"bulk_pricing_storebat_forbidden"},{status:409});
       if (product.mirai_family && bulkConfigDiffersFromStored((variant as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, stored)) return NextResponse.json({ error: "bulk_pricing_mirai_forbidden" }, { status: 409 });
+      if (product.pixelverif_family && bulkConfigDiffersFromStored((variant as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, stored)) return NextResponse.json({ error: "bulk_pricing_pixelverif_forbidden" }, { status: 409 });
       if (isAivault && bulkConfigDiffersFromStored((variant as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, stored)) {
         return NextResponse.json({ error: "bulk_pricing_aivault_managed", message: AIVAULT_BULK_MANAGED_MESSAGE }, { status: 409 });
       }
@@ -394,6 +396,7 @@ async function POSTImpl(request: NextRequest) {
         const stored = v.id ? batchRows.find(row => Number(row.id) === Number(v.id)) : undefined;
         if (v.sku.startsWith("SB-") && stored && Number(v.price) !== Number(stored.price)) statements.push(d1.prepare("UPDATE product_variants SET storebat_admin_price_idr=? WHERE product_id=? AND sku=? AND storebat_product_id IS NOT NULL").bind(v.price,product_id,v.sku));
         if (v.sku.startsWith("MR-") && stored && Number(v.price) !== Number(stored.price)) statements.push(d1.prepare("UPDATE product_variants SET mirai_admin_price_idr=? WHERE product_id=? AND sku=? AND mirai_package_code IS NOT NULL").bind(v.price, product_id, v.sku));
+        if (v.sku.startsWith("PV-") && stored && Number(v.price) !== Number(stored.price)) statements.push(d1.prepare("UPDATE product_variants SET pixelverif_admin_price_idr=? WHERE product_id=? AND sku=? AND pixelverif_flow_type IS NOT NULL").bind(v.price, product_id, v.sku));
         if (v.sku.startsWith("TUNVN-") && stored && Number(v.price) !== Number(stored.price)) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,product_id,v.sku));
       }
       // Keep legacy/admin summary columns aligned with the authoritative active
@@ -483,7 +486,7 @@ async function POSTImpl(request: NextRequest) {
   if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
 
   const product = await queryFirst(
-    `SELECT id, archived_at, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family, storebat_family, mirai_family
+    `SELECT id, archived_at, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family, storebat_family, mirai_family, pixelverif_family
        FROM products WHERE id=?`,
     v.product_id,
   );
@@ -492,6 +495,7 @@ async function POSTImpl(request: NextRequest) {
 
   if (product.storebat_family || v.sku.startsWith("SB-")) return NextResponse.json({error:"storebat_identity_managed"},{status:409});
   if (product.mirai_family || /^MR-/i.test(v.sku)) return NextResponse.json({ error: "mirai_identity_managed" }, { status: 409 });
+  if (product.pixelverif_family || /^PV-/i.test(v.sku)) return NextResponse.json({ error: "pixelverif_identity_managed" }, { status: 409 });
   const isAivaultSingleCreate = Boolean(product.aivault_family) || v.sku.toUpperCase().startsWith("AV-");
   if (isAivaultSingleCreate && bulkConfigDiffersFromStored((v as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, undefined)) {
     return NextResponse.json({ error: "bulk_pricing_aivault_managed", message: AIVAULT_BULK_MANAGED_MESSAGE }, { status: 409 });
@@ -618,6 +622,7 @@ async function PUTImpl(request: NextRequest) {
 
   if (existing.storebat_product_id != null ? storebatFieldsChanged(v,existing.sku) : /^SB-/i.test(v.sku ?? "")) return NextResponse.json({error:"storebat_identity_managed"},{status:409});
   if (existing.mirai_package_code != null ? miraiFieldsChanged(v, existing.sku) : /^MR-/i.test(v.sku ?? "")) return NextResponse.json({ error: "mirai_identity_managed" }, { status: 409 });
+  if (existing.pixelverif_flow_type != null ? pixelverifFieldsChanged(v, existing.sku) : /^PV-/i.test(v.sku ?? "")) return NextResponse.json({ error: "pixelverif_identity_managed" }, { status: 409 });
   // Check SKU uniqueness if changed
   if (v.sku) {
     const skuConflict = await queryFirst(`SELECT id FROM product_variants WHERE sku=? AND id!=?`, v.sku, Number(id));
@@ -636,13 +641,14 @@ async function PUTImpl(request: NextRequest) {
   // harga grosir AIVault dikelola via menu AIVault → Markup; WR/SK dilarang.
   if (rawBulk !== undefined) {
     const ownerRow = await queryFirst(
-      `SELECT source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family, storebat_family, mirai_family
+      `SELECT source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family, storebat_family, mirai_family, pixelverif_family
          FROM products WHERE id=?`,
       Number(existing.product_id),
     );
     const isAivault = Boolean(ownerRow?.aivault_family) || String(existing.sku ?? "").toUpperCase().startsWith("AV-");
     if (existing.storebat_product_id != null && bulkConfigDiffersFromStored(rawBulk,existing)) return NextResponse.json({error:"bulk_pricing_storebat_forbidden"},{status:409});
     if (existing.mirai_package_code != null && bulkConfigDiffersFromStored(rawBulk, existing)) return NextResponse.json({ error: "bulk_pricing_mirai_forbidden" }, { status: 409 });
+    if ((existing.pixelverif_flow_type != null || Boolean(ownerRow?.pixelverif_family)) && bulkConfigDiffersFromStored(rawBulk, existing)) return NextResponse.json({ error: "bulk_pricing_pixelverif_forbidden" }, { status: 409 });
     if (isAivault && bulkConfigDiffersFromStored(rawBulk, existing)) {
       return NextResponse.json({ error: "bulk_pricing_aivault_managed", message: AIVAULT_BULK_MANAGED_MESSAGE }, { status: 409 });
     }
@@ -677,6 +683,7 @@ async function PUTImpl(request: NextRequest) {
   // yang sama dengan baris tersimpan adalah simpan ulang panel, bukan edit.
   if (existing.storebat_product_id != null && v.price !== undefined && Number(v.price) !== Number(existing.price)) { updates.push("storebat_admin_price_idr=?"); params.push(v.price); }
   if (existing.mirai_package_code != null && v.price !== undefined && Number(v.price) !== Number(existing.price)) { updates.push("mirai_admin_price_idr=?"); params.push(v.price); }
+  if (existing.pixelverif_flow_type != null && v.price !== undefined && Number(v.price) !== Number(existing.price)) { updates.push("pixelverif_admin_price_idr=?"); params.push(v.price); }
   if (String(existing.sku).startsWith("TUNVN-") && v.price !== undefined && Number(v.price) !== Number(existing.price)) {
     updates.push("tunvn_admin_price_idr=?");
     params.push(v.price);
@@ -810,6 +817,12 @@ function storebatFieldsChanged(v: { sku?: string; fulfillment_mode?: string; buy
 }
 
 function miraiFieldsChanged(v: { sku?: string; fulfillment_mode?: string; buyer_field_key?: string | null }, sku: unknown) {
+  return (v.sku !== undefined && v.sku !== sku)
+    || (v.fulfillment_mode !== undefined && v.fulfillment_mode !== "manual")
+    || (v.buyer_field_key !== undefined && v.buyer_field_key !== null);
+}
+
+function pixelverifFieldsChanged(v: { sku?: string; fulfillment_mode?: string; buyer_field_key?: string | null }, sku: unknown) {
   return (v.sku !== undefined && v.sku !== sku)
     || (v.fulfillment_mode !== undefined && v.fulfillment_mode !== "manual")
     || (v.buyer_field_key !== undefined && v.buyer_field_key !== null);

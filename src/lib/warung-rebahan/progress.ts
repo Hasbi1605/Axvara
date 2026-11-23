@@ -9,8 +9,8 @@ export type AutomaticProgressItem = {
   total: number;
   queuePosition: number | null;
   updatedAt: string | null;
-  /** Supplier family; drives the time estimate shown to the buyer. Absent = Jaspay. */
-  kind?: "pixelverif";
+  /** Neutral time-estimate profile for buyer UI ("short" = 1–5 min automatic processing; absent = Jaspay 15m–1h). */
+  estimateProfile?: "short";
 };
 
 const count = (value: unknown, maximum: number) =>
@@ -79,7 +79,7 @@ async function readPixelverifProgress(code: string, db: Pick<DatabaseAccess, "qu
       total: 1,
       queuePosition: stage === "queued" && Number.isSafeInteger(position) && position > 0 && position < 1_000_000 ? position : null,
       updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
-      kind: "pixelverif",
+      estimateProfile: "short",
     };
   });
 }

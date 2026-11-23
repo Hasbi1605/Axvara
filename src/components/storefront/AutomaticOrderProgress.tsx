@@ -14,8 +14,8 @@ export function AutomaticOrderProgress({ items, locale = "id" }: { items: Automa
   // Catatan ekspektasi (keputusan owner 18 Nov 2026): tampil selama masih ada
   // item yang sedang dibuat; hilang begitu semua siap/perlu diperiksa.
   const working = items.some((item) => IN_PROGRESS.has(item.stage));
-  // Pixel Verification (supplier README): Normal ~1–2 min, Full ~3–5 min; client timeout 10/15 min.
-  const pixelOnly = working && items.filter((item) => IN_PROGRESS.has(item.stage)).every((item) => item.kind === "pixelverif");
+  // Short automatic-processing profile (1–5 min; admin after 15 min) vs Made by order (15 min–1 hr; admin after 1 hr).
+  const shortEstimate = working && items.filter((item) => IN_PROGRESS.has(item.stage)).every((item) => item.estimateProfile === "short");
   return <section className="mt-6 space-y-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left" aria-label={en ? "Product progress" : "Progres produk"} aria-live="polite">
     {items.map((item, index) => {
       const ready = item.stage === "ready";
@@ -43,10 +43,10 @@ export function AutomaticOrderProgress({ items, locale = "id" }: { items: Automa
       </div>;
     })}
     {working && <div className="border-t border-white/10 pt-4 text-xs leading-5 text-white/70">
-      <p><span className="font-semibold text-white/90">Made by order</span>{en
-        ? ` — being created automatically by our bot. Estimated ${pixelOnly ? "1–5 minutes" : "15 minutes–1 hour"}. Product details will appear here and in your email once ready.`
-        : ` — sedang dibuat otomatis oleh bot. Estimasi ${pixelOnly ? "1–5 menit" : "15 menit–1 jam"}. Detail produk tampil di sini dan di email begitu siap.`}</p>
-      <p className="mt-1">{en ? `Not done after ${pixelOnly ? "15 minutes" : "1 hour"}? ` : `Lebih dari ${pixelOnly ? "15 menit" : "1 jam"} belum selesai? `}<a href="/wa" className="font-medium text-[#00E5FF] underline-offset-2 hover:underline">{en ? "Contact admin" : "Hubungi admin"}</a></p>
+      <p><span className="font-semibold text-white/90">{shortEstimate ? (en ? "Processed automatically" : "Diproses otomatis") : "Made by order"}</span>{en
+        ? ` — being created automatically by our bot. Estimated ${shortEstimate ? "1–5 minutes" : "15 minutes–1 hour"}. Product details will appear here and in your email once ready.`
+        : ` — sedang dibuat otomatis oleh bot. Estimasi ${shortEstimate ? "1–5 menit" : "15 menit–1 jam"}. Detail produk tampil di sini dan di email begitu siap.`}</p>
+      <p className="mt-1">{en ? `Not done after ${shortEstimate ? "15 minutes" : "1 hour"}? ` : `Lebih dari ${shortEstimate ? "15 menit" : "1 jam"} belum selesai? `}<a href="/wa" className="font-medium text-[#00E5FF] underline-offset-2 hover:underline">{en ? "Contact admin" : "Hubungi admin"}</a></p>
     </div>}
   </section>;
 }

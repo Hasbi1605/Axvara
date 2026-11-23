@@ -160,6 +160,9 @@ export async function validateCheckoutInput(data: unknown): Promise<ValidateOutc
     return { ...signed, buyer_fields: { ...rest, ...triple } } as AtomicOrderItem;
   });
   if (tripleMissing) return { kind: "responded", response: NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }) };
+  if (pixelTriples.size > 1) {
+    return { kind: "responded", response: NextResponse.json({ error: "Hanya 1 varian layanan aktivasi Google per pesanan. Pisahkan pesanan jika ingin membeli varian lain." }, { status: 409 }) };
+  }
   if (pixelTriples.size) {
     const { isPixelverifEmailBlocked, PIXELVERIF_BLOCKED_EMAIL_MESSAGE } = await import("@/lib/pixelverif/blocklist");
     for (const triple of pixelTriples.values()) {

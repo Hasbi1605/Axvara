@@ -181,8 +181,14 @@ function CheckoutInner() {
   const [pvEmail, setPvEmail] = useState("");
   const [pvPassword, setPvPassword] = useState("");
   const [pvTotp, setPvTotp] = useState("");
-  const needsPixelverif = items.some(item => item.pixelverifInput === true);
-  const pvValid = /^[^\s@]+@gmail\.com$/i.test(pvEmail.trim()) && pvPassword.length > 0 && /^[A-Z2-7]{16,64}={0,6}$/.test(pvTotp.replace(/[\s-]/g, "").toUpperCase());
+  const pixelverifCount = items.filter(item => item.pixelverifInput === true).length;
+  const needsPixelverif = pixelverifCount > 0;
+  const multiplePixelverif = pixelverifCount > 1;
+  // Matches PIXELVERIF_GMAIL_REGEX & PIXELVERIF_TOTP_REGEX in src/lib/pixelverif/purchase.ts.
+  const pvValid = !multiplePixelverif
+    && /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/.test(pvEmail.trim().toLowerCase())
+    && pvPassword.length > 0 && pvPassword.length <= 200
+    && /^[A-Z2-7]{16,64}={0,6}$/.test(pvTotp.replace(/[\s-]/g, "").toUpperCase());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -345,6 +351,8 @@ function CheckoutInner() {
   };
 
   // Fetch quote whenever product identity, quantity, or snapshot price changes.
+  // Debounce Pixel Verification credential edits (400 ms) so typing never fires
+  // a quote POST per keystroke while still invalidating stale tokens immediately.
   useEffect(() => {
     if (items.length === 0 || directLoading || (needsMuseCode && !/^[A-Za-z0-9]{6}$/.test(museCode.trim())) || (needsPixelverif && !pvValid)) {
       quoteRequestId.current += 1;
@@ -357,7 +365,14 @@ function CheckoutInner() {
       setShowIssueDialog(false);
       return;
     }
-    void fetchQuote(quoteRequestItems);
+    if (!needsPixelverif) {
+      void fetchQuote(quoteRequestItems);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void fetchQuote(quoteRequestItems);
+    }, 400);
+    return () => window.clearTimeout(timer);
   // quoteKey intentionally represents the complete item contract.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteKey, directLoading, fetchQuote]);
@@ -812,6 +827,13 @@ function CheckoutInner() {
                   <p id="checkout-muse-hint" className="mt-1.5 text-xs text-white/50">{en ? "6 letters/numbers from Invite friends in Muse. Case is preserved. One code per checkout; quantity 1–30 = 1–30B tokens." : "6 huruf/angka dari Invite friends di Muse. Huruf besar/kecil dipertahankan. Satu kode per checkout; jumlah 1–30 = 1–30B token."}</p>
                 </div>}
                 {needsPixelverif && <div className="mb-4 grid gap-3">
+                  {multiplePixelverif && (
+                    <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs leading-5 text-red-200">
+                      {en
+                        ? "Only 1 Google activation variant can be ordered per checkout. Remove one variant from your cart to continue."
+                        : "Hanya 1 varian layanan aktivasi Google yang bisa dipesan per checkout. Hapus salah satu varian di keranjang untuk melanjutkan."}
+                    </p>
+                  )}
                   <div>
                     <label htmlFor="checkout-pv-email" className="mb-1 block text-xs font-medium text-white/60">{en ? "Gmail address to activate" : "Email Gmail yang diaktivasi"} *</label>
                     <input id="checkout-pv-email" type="email" value={pvEmail} onChange={e => { setQuoteToken(null); setPvEmail(e.target.value); }} required maxLength={254} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="nama@gmail.com" className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white focus:outline-none focus:border-[#00E5FF]/40" />

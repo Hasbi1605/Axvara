@@ -215,7 +215,8 @@ export async function POST(request: NextRequest) {
     runInBackground(answerCallbackQuery(cqEarly.id));
   }
 
-  const msgTextRaw = (update.message?.text ?? update.message?.caption ?? "").trim();
+  const msgTextUntrimmed = update.message?.text ?? update.message?.caption ?? "";
+  const msgTextRaw = msgTextUntrimmed.trim();
   const isStartCmd = msgTextRaw.toLowerCase().split(/\s+/)[0]?.split("@")[0] === "/start";
 
   if (from && chatId) {
@@ -318,8 +319,8 @@ export async function POST(request: NextRequest) {
     // 8. Route: text command / photo message
     const photos = update.message?.photo;
     const photoFileId = Array.isArray(photos) && photos.length > 0 ? photos[photos.length - 1]?.file_id : undefined;
-    if ((msgTextRaw || photoFileId) && chatId) {
-      await handleCommand(msgTextRaw, chatId, update.message?.chat?.type ?? "private", from, photoFileId, update.message?.message_id);
+    if ((msgTextUntrimmed || photoFileId) && chatId) {
+      await handleCommand(msgTextUntrimmed, chatId, update.message?.chat?.type ?? "private", from, photoFileId, update.message?.message_id);
       await markDone(updateId);
       return NextResponse.json({ ok: true });
     }

@@ -7,6 +7,7 @@ import { csvCell } from "@/lib/csv";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { TUNVN_RETRYABLE_SQL } from "@/lib/tunvn/orders";
+import { PIXELVERIF_REPOLL_SQL, PIXELVERIF_RETRYABLE_SQL } from "@/lib/pixelverif/orders";
 import { GAMES_ORDER_LABEL_SQL } from "@/lib/games/order-display";
 import { resolvedManuallySql } from "@/lib/supplier/resolved-manually";
 
@@ -132,7 +133,7 @@ export async function GET(req: NextRequest) {
 }
 
 type SupplierLink = {
-  supplier: "wr" | "sk" | "tunvn" | "storebat" | "mirai" | "aivault"; id: number; status: string; attempt_count: number;
+  supplier: "wr" | "sk" | "tunvn" | "storebat" | "mirai" | "aivault" | "pixelverif"; id: number; status: string; attempt_count: number;
   max_attempts: number; last_error: string | null; supplier_order_id: string | null;
   delivery_status: string | null;
   can_retry?: boolean; can_reconcile?: boolean; item_index?: number; purchase_disabled?: boolean;
@@ -188,7 +189,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
   const out = new Map<string, SupplierLink[]>();
   if (!codes.length) return out;
   const marks = codes.map(() => "?").join(",");
-  const [wr, sk, tunvn, storebat, mirai, aivault] = await Promise.all([
+  const [wr, sk, tunvn, storebat, mirai, aivault, pixelverif] = await Promise.all([
     queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, wr_order_id AS supplier_order_id, delivery_status,
       CASE WHEN wr_variant_id LIKE 'jaspay:%' AND wr_order_id IS NOT NULL AND status='completed' AND jaspay_invoice_total IS NULL THEN 1 ELSE 0 END AS can_reconcile
       FROM wr_order_links WHERE order_code IN (${marks}) ORDER BY id`, ...codes).catch(() => [] as Record<string, unknown>[]),
@@ -211,8 +212,13 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
     queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id,
       ${resolvedManuallySql("aivault_order_links")} AS resolved_manually
       FROM aivault_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
+    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id,
+      CASE WHEN (${PIXELVERIF_RETRYABLE_SQL}) OR (${PIXELVERIF_REPOLL_SQL}) THEN 1 ELSE 0 END AS can_retry,
+      (SELECT supplier_purchase_disabled FROM orders WHERE code=pixelverif_order_links.order_code) AS purchase_disabled,
+      ${resolvedManuallySql("pixelverif_order_links")} AS resolved_manually
+      FROM pixelverif_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
   ]);
-  for (const [supplier, rows] of [["wr", wr], ["sk", sk], ["tunvn",tunvn], ["storebat",storebat], ["mirai",mirai], ["aivault",aivault]] as const) {
+  for (const [supplier, rows] of [["wr", wr], ["sk", sk], ["tunvn",tunvn], ["storebat",storebat], ["mirai",mirai], ["aivault",aivault], ["pixelverif",pixelverif]] as const) {
     for (const row of rows) {
       const code = String(row.order_code || "");
       const list = out.get(code) ?? [];
@@ -224,6 +230,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
         delivery_status: row.delivery_status ? String(row.delivery_status) : null,
         ...(supplier === "wr" && Number(row.can_reconcile) === 1 ? { can_reconcile: true } : {}),
         ...(["storebat","mirai","aivault"].includes(supplier) ? { item_index:Number(row.item_index) } : {}),
+        ...(supplier==="pixelverif" ? { item_index:Number(row.item_index), can_retry:Number(row.can_retry)===1, purchase_disabled:Number(row.purchase_disabled)===1 } : {}),
         ...(supplier==="tunvn" ? {can_retry:Number(row.can_retry)===1,can_reconcile:Number(row.can_reconcile)===1,item_index:Number(row.item_index),purchase_disabled:Number(row.purchase_disabled)===1} : {}),
         ...(supplier !== "wr" && supplier !== "sk" && Number(row.resolved_manually) === 1 ? { resolved_manually: true } : {}),
       });

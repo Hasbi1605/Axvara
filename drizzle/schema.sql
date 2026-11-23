@@ -344,6 +344,20 @@ CREATE TABLE IF NOT EXISTS telegram_carts (
 );
 CREATE INDEX IF NOT EXISTS idx_telegram_carts_user
   ON telegram_carts(user_id, updated_at);
+-- Migrasi 0159: stash terenkripsi AES-GCM lintas-isolat untuk input 3 langkah
+-- Pixel Verification di Telegram (TTL keras 10 menit, dibersihkan selesai/batal/cleanup).
+CREATE TABLE IF NOT EXISTS telegram_pixelverif_stashes (
+  user_id TEXT PRIMARY KEY,
+  variant_id INTEGER NOT NULL,
+  flow_id TEXT NOT NULL,
+  ciphertext TEXT NOT NULL,
+  iv TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tg_pv_stashes_expires
+  ON telegram_pixelverif_stashes(expires_at);
 -- Migrasi 0144: langganan notifikasi restok per produk (Item 13).
 -- UNIQUE(user_id, product_id) membuat tap ulang idempoten.
 CREATE TABLE IF NOT EXISTS telegram_restock_alerts (

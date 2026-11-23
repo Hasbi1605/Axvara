@@ -361,6 +361,14 @@ export async function collectDailyAdminSummaryData(
            AND o.status = 'lunas' AND o.payment_status = 'paid'
            AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
            AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi WHERE fi.order_code = ml.order_code AND fi.item_index = ml.item_index AND fi.status = 'delivered')
+         UNION ALL
+         SELECT pl.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
+         FROM pixelverif_order_links pl INDEXED BY idx_pixelverif_orders_due
+         CROSS JOIN orders o ON o.code = pl.order_code
+         WHERE pl.status IN ('pending','claimed','processing','needs_admin')
+           AND o.status = 'lunas' AND o.payment_status = 'paid'
+           AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi WHERE fi.order_code = pl.order_code AND fi.item_index = pl.item_index AND fi.status = 'delivered')
        )
        UNION ALL
        SELECT pi.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
@@ -377,6 +385,7 @@ export async function collectDailyAdminSummaryData(
          AND o.status = 'lunas' AND o.payment_status = 'paid'
          AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
      ) GROUP BY order_code`,
+    nowIso,
     nowIso,
     nowIso,
     nowIso,

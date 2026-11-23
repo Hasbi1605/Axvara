@@ -56,7 +56,7 @@ export function ProfitChart({ series, loading, label = "30 hari", profitLabel = 
   </Card>;
 }
 
-export type NamedBucket = ReportBucket & { label: string; color: string; supplierBadge?: "StoreBat" | "Mirai" };
+export type NamedBucket = ReportBucket & { label: string; color: string; supplierBadge?: "StoreBat" | "Mirai" | "Pixel" };
 export function RevenueDonut({ rows, loading }: { rows: NamedBucket[]; loading: boolean }) {
   const total = rows.reduce((n,r)=>n+r.revenue,0); let angle = -Math.PI/2;
   const position = (a:number) => `${(80+70*Math.cos(a)).toFixed(2)},${(80+70*Math.sin(a)).toFixed(2)}`;

@@ -65,7 +65,7 @@ export type OrderLink = {
   wr_variant_name?: string | null; wr_product_name?: string | null;
   sk_variant_name?: string | null; sk_product_name?: string | null;
   attempt_count?: number; max_attempts?: number;
-  status: string; last_error?: string | null; order_status?: string | null; order_payment_status?: string | null;
+  status: string; last_error?: string | null; last_error_code?: string | null; order_status?: string | null; order_payment_status?: string | null;
   customer_name?: string | null; customer_wa?: string | null; customer_email?: string | null; sales_channel?: string | null;
   purchase_disabled?: number; can_retry?: number; has_receipt?: number; resolved_manually?: boolean;
   completed_at?: string | null; request_sent_at?: string | null; updated_at?: string | null; created_at?: string | null;
@@ -111,7 +111,7 @@ const configs = {
   },
   pixelverif: {
     name: "Pixel Verification",
-    currency: "USD" as const, mode: "manual" as const, itemId: "service_key" as const, orderId: "flow_type" as const,
+    currency: "USD" as const, mode: "manual" as const, itemId: "service_key" as const, orderId: "service_key" as const,
     syncPath: "publish", maxMarkup: 1000, percentStep: 0.5,
   },
 };
@@ -121,7 +121,7 @@ export type SupplierConfig = {
   name: string;
   currency: Currency; mode: "fixed" | "manual";
   itemId: "id" | "supplier_product_id" | "service_id" | "package_code" | "service_key" | "flow_type" | "wr_variant_id" | "sk_variant_id";
-  orderId: "source_product_id" | "service_id" | "storebat_product_id" | "package_code" | "flow_type" | "wr_order_id" | "sk_invoice";
+  orderId: "source_product_id" | "service_id" | "storebat_product_id" | "package_code" | "service_key" | "flow_type" | "wr_order_id" | "sk_invoice";
   lazy?: boolean; syncPath: string; excludedLabel?: string; exclusions?: boolean; sandbox?: boolean;
   exclusionsPlaceholder?: string;
   searchPlaceholder?: string; searchLabel?: string; statusFilterLabel?: string;

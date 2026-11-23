@@ -410,6 +410,7 @@ describe("Mirai admin API routes & shared contracts", () => {
         aivault: { orders: 0, revenue: 0, cost: 0, profit: 0 },
         storebat: { orders: 0, revenue: 0, cost: 0, profit: 0 },
         mirai: { orders: 1, revenue: 50000, cost: 32000, profit: 18000 },
+        pixelverif: { orders: 0, revenue: 0, cost: 0, profit: 0 },
       },
       channels: {
         web: { orders: 1, revenue: 50000, cost: 32000, profit: 18000 },

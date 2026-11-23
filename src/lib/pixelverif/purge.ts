@@ -1,5 +1,5 @@
 import type { DatabaseAccess } from "@/lib/db-access";
-import { PIXELVERIF_RETRYABLE_ERRORS } from "./retryable";
+import { PIXELVERIF_INPUT_MAX_AGE_HOURS, PIXELVERIF_RETRYABLE_ERRORS } from "./retryable";
 
 export async function purgePixelverifInput(db: DatabaseAccess, order_code: string, item_index: number): Promise<number> {
   const result = await db.execRun(
@@ -15,12 +15,13 @@ export async function purgeExpiredPixelverifInputs(db: DatabaseAccess) {
   // One statement: select and clear atomically, so payment cannot race a stale read.
   // Terminal paid links are swept too (settle() purge is best-effort; a failed
   // purge must not leave credentials behind). Retryable pre-send needs_admin
-  // links are deliberately excluded — their retry still needs the input.
+  // links keep the input only within the hard 24h ceiling from creation.
   return db.execRun(
     `UPDATE pixelverif_buyer_inputs SET input_ciphertext=NULL, input_iv=NULL, purged_at=datetime('now')
      WHERE rowid IN (
        SELECT i.rowid FROM pixelverif_buyer_inputs i JOIN orders o ON o.code=i.order_code
        WHERE i.purged_at IS NULL AND (
+         datetime(i.created_at)<=datetime('now','-${PIXELVERIF_INPUT_MAX_AGE_HOURS} hours') OR
          o.status IN ('kadaluarsa','dibatalkan') OR
          (o.status='pending' AND o.payment_status IN ('unpaid','pending','expired','failed') AND datetime(o.expires_at)<=datetime('now')) OR
          EXISTS(

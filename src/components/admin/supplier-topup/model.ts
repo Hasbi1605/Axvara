@@ -2,7 +2,7 @@ import { fetchAdminAuth } from "@/lib/admin-auth-fetch";
 import type { SupplierTopupStatus, SupplierTopupSupplier } from "@/lib/supplier/topup";
 
 type Currency = "IDR" | "USD" | "USDT";
-type BalanceId = SupplierTopupSupplier | "warung" | "aivault" | "storebat" | "mirai" | "pedia";
+type BalanceId = SupplierTopupSupplier | "warung" | "aivault" | "storebat" | "mirai" | "pixelverif" | "pedia";
 
 export const TOPUPS = "/api/admin/supplier-topups";
 export const SUPPLIER_NAMES = { sekalipay: "Sekalipay", tunvn: "TUNVN" };
@@ -13,6 +13,7 @@ export const BALANCE_CARDS = [
   { id: "aivault", name: "AIVault", path: "aivault/balance", currency: "USD" },
   { id: "storebat", name: "StoreBat", path: "storebat/balance", currency: "USD" },
   { id: "mirai", name: "Mirai", path: "mirai/balance", currency: "USDT" },
+  { id: "pixelverif", name: "Pixel Verification", path: "pixelverif/balance", currency: "USD" },
   { id: "pedia", name: "IndoSMM", path: "pedia/overview", currency: "IDR" },
 ] as const satisfies ReadonlyArray<{ id: BalanceId; name: string; path: string; currency: Currency }>;
 

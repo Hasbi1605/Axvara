@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const rows = await db.queryAll(
       `SELECT
           s.service_key, s.flow_type, s.validity, s.credit_cost, s.available, s.pricing_version, s.synced_at,
-          CASE WHEN s.available=1 THEN 1 ELSE 0 END AS stock,
+          CASE WHEN s.available=1 THEN -1 ELSE 0 END AS stock,
           CASE WHEN s.available=0 THEN 1 ELSE 0 END AS disappeared,
           COALESCE(v.pixelverif_markup_percent, 35) AS markup_percent,
           v.pixelverif_admin_price_idr AS admin_price_idr,

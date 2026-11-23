@@ -20,7 +20,9 @@ export async function GET(request: NextRequest) {
   try {
     const rows = await createDatabaseAccess().queryAll(
       `WITH links AS (
-         SELECT id, order_code, item_index, flow_type, validity, credit_cost, fx_idr_per_usd,
+         SELECT id, order_code, item_index,
+           flow_type || '_' || validity AS service_key,
+           flow_type, validity, 1 AS quantity, credit_cost, credit_cost AS cost_usd, fx_idr_per_usd,
            provider_order_id, idempotency_key, status, attempt_count,
            request_sent_at, last_error, last_error_code, activation_status, queue_position, progress_step,
            completed_at, created_at, updated_at, receipt_json,

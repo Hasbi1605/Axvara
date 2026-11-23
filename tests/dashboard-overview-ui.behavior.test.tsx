@@ -127,7 +127,7 @@ it("switching period updates the chart, top products, supplier amounts and compo
     orders:1,revenue:amount,cost:10000,profit:amount-10000,estimated_orders:0,
     payment_fees:0,unique_code_bonus:0,refund_expenses:0,operational_expenses:0,net_profit:amount-10000,expenses_by_category:emptyExpenseTotals(),estimated_order_codes:[],
     series:[{date,orders:1,revenue:amount,cost:10000,profit:amount-10000,expenses:0,payment_fees:0,net_profit:amount-10000}],
-    suppliers:{wr:{orders:0,revenue:0,cost:0,profit:0},sk:{orders:0,revenue:0,cost:0,profit:0},manual:{orders:1,revenue:amount,cost:10000,profit:amount-10000},pedia:{orders:0,revenue:0,cost:0,profit:0},games:{orders:0,revenue:0,cost:0,profit:0},tunvn:{orders:0,revenue:0,cost:0,profit:0},aivault:{orders:0,revenue:0,cost:0,profit:0},storebat:{orders:0,revenue:0,cost:0,profit:0},mirai:{orders:0,revenue:0,cost:0,profit:0}},
+    suppliers:{wr:{orders:0,revenue:0,cost:0,profit:0},sk:{orders:0,revenue:0,cost:0,profit:0},manual:{orders:1,revenue:amount,cost:10000,profit:amount-10000},pedia:{orders:0,revenue:0,cost:0,profit:0},games:{orders:0,revenue:0,cost:0,profit:0},tunvn:{orders:0,revenue:0,cost:0,profit:0},aivault:{orders:0,revenue:0,cost:0,profit:0},storebat:{orders:0,revenue:0,cost:0,profit:0},mirai:{orders:0,revenue:0,cost:0,profit:0},pixelverif:{orders:0,revenue:0,cost:0,profit:0}},
     channels:{web:{orders:1,revenue:amount,cost:10000,profit:amount-10000},telegram:{orders:0,revenue:0,cost:0,profit:0},whatsapp:{orders:0,revenue:0,cost:0,profit:0}},
     top_products:[{name,qty:1,revenue:amount,cost:10000,profit:amount-10000}],
   });

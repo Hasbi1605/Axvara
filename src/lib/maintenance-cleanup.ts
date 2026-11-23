@@ -2,6 +2,7 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import { parseExpiry } from "@/lib/expiry";
 import { PAYMENT_ATTENTION_WHERE } from "@/lib/admin-overview-queries";
 import { purgeExpiredPixelverifInputs } from "./pixelverif/purge";
+import { purgeExpiredTelegramPixelverifStashes } from "./telegram/handlers/buyer-input";
 
 /** Rows deleted per table per tick. Cleanup runs hourly and is resumable, so a
  * backlog drains over several ticks without one long write burst. */
@@ -81,7 +82,15 @@ export async function runMaintenanceCleanup(db: DatabaseAccess) {
         AND id NOT IN (SELECT MAX(id) FROM pedia_supplier_balance_log GROUP BY supplier)
       ORDER BY created_at LIMIT ${PRUNE_BATCH})`,
   ));
-  const pixelPurged = await prune(db, () => purgeExpiredPixelverifInputs(db));
+  const pixelPurged = await prune(db, () => purgeExpiredPixelverifInputs(db))
+    + await prune(db, () => purgeExpiredTelegramPixelverifStashes(db))
+    + await prune(db, () => db.execRun(
+      `DELETE FROM telegram_carts WHERE id IN (
+        SELECT id FROM telegram_carts
+        WHERE json_extract(buyer_fields,'$.pv_sealed_ciphertext') IS NOT NULL
+          AND datetime(updated_at)<=datetime('now','-30 minutes')
+        ORDER BY updated_at LIMIT ${PRUNE_BATCH})`,
+    ));
 
   // Webhook dedupe: Telegram retries and our own reset re-deliver within hours,
   // so 14 days is far beyond any live dedupe window. Orders stay idempotent

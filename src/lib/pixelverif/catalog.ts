@@ -54,7 +54,9 @@ export async function projectPixelverifCatalog(db: DatabaseAccess, fx: number) {
     const adminPrice = ex?.admin_price ?? null;
     const price = adminPrice == null ? pixelverifSellPriceIdr(creditCost, fx, effectiveMarkup) : Number(adminPrice);
     const available = svc ? Number(svc.available) : 1;
-    const stock = available === 1 ? 1 : 0;
+    // Unlimited mirror (-1) when available so order creation never drops stock
+    // from 1 -> 0; per-order 1-unit limit is enforced by max_qty=1 + server checks.
+    const stock = available === 1 ? -1 : 0;
     const sortOrder = spec.flow_type === "normal" ? 1 : 2;
 
     if (

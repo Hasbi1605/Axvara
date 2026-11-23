@@ -30,11 +30,15 @@ export function pixelverifEligibility(row: Record<string, unknown>, qty: number)
   };
 }
 
+export const PIXELVERIF_GMAIL_REGEX = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/;
+export const PIXELVERIF_TOTP_REGEX = /^[A-Z2-7]{16,64}={0,6}$/;
+export const MAX_PIXELVERIF_ITEMS_PER_ORDER = 1;
+
 const gmailSchema = z.string().trim().toLowerCase()
-  .regex(/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/, "Email harus alamat @gmail.com yang valid.");
+  .regex(PIXELVERIF_GMAIL_REGEX, "Email harus alamat @gmail.com yang valid.");
 const passwordSchema = z.string().min(1, "Password Gmail wajib diisi.").max(200);
 const totpSchema = z.string().trim().transform((s) => s.replace(/[\s-]/g, "").toUpperCase())
-  .refine((s) => /^[A-Z2-7]{16,64}={0,6}$/.test(s), "Kunci setup 2FA (TOTP secret) tidak valid.");
+  .refine((s) => PIXELVERIF_TOTP_REGEX.test(s), "Kunci setup 2FA (TOTP secret) tidak valid.");
 
 export const pixelverifInputSchema = z.object({
   pv_email: gmailSchema,

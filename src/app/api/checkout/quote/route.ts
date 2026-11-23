@@ -165,6 +165,7 @@ export async function POST(req: NextRequest) {
   // atau produk require_email=1. Dibawa di respons agar form checkout
   // mengubah label + validasi SEBELUM bayar; API orders menegakkan lagi.
   let emailRequired = false;
+  let pixelverifLines = 0;
 
   // Batas atas web = 100/baris (paritas Telegram TELEGRAM_MAX_QTY) agar
   // produk min-besar (mis. GSuite min 50) tetap bisa dibeli dari web.
@@ -182,6 +183,13 @@ export async function POST(req: NextRequest) {
     }
     const productId = Number(row.id);
     const fieldConfig = item.variant_id ? variantById.get(item.variant_id) ?? {} : {};
+    if ((fieldConfig as Record<string, unknown>).pixelverif_flow_type === "normal" || (fieldConfig as Record<string, unknown>).pixelverif_flow_type === "full") {
+      pixelverifLines++;
+      if (pixelverifLines > 1) {
+        issues.push({ product_id: productId, variant_id: item.variant_id, type: "invalid_quantity", message: "Hanya 1 varian layanan aktivasi Google per pesanan. Pisahkan pesanan jika ingin membeli varian lain." });
+        continue;
+      }
+    }
     let buyerFields;
     try { buyerFields = validateBuyerFields(fieldConfig, item.buyer_fields, item.qty); }
     catch (error) { issues.push({ product_id: productId, variant_id: item.variant_id, type: "invalid_quantity", message: (error as Error).message }); continue; }

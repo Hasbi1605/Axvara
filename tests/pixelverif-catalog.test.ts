@@ -74,7 +74,8 @@ it.each(["bootstrap", "0115 + 0155 migration replay"] as const)("publishes OFF v
   expect(variants[1]).toMatchObject({ sku: "PV-NORMAL-3", is_active: 0, max_qty: 1, min_qty: 1, buyer_field_key: null, pixelverif_flow_type: "normal", pixelverif_validity: 3 });
   expect(variants[1].price).toBe(21600);
   expect(variants[0].price).toBe(32400);
-  expect(variants.every((v) => v.stock === 1)).toBe(true);
+  // Available services project unlimited stock (-1); 1-unit limit is enforced by max_qty=1.
+  expect(variants.every((v) => v.stock === -1)).toBe(true);
 });
 
 it("refreshes cost without replacing an admin price or changing activation and copy", async () => {

@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { SupplierBadge } from "./supplier-style";
 
 export type SupplierLink = {
-  supplier: "wr" | "sk" | "tunvn" | "storebat" | "mirai" | "aivault";
+  supplier: "wr" | "sk" | "tunvn" | "storebat" | "mirai" | "aivault" | "pixelverif";
   id: number;
   status: string;
   attempt_count: number;
@@ -33,10 +33,41 @@ export type SupplierLink = {
   resolved_manually?: boolean;
 };
 
-const SUPPLIER_NAME = { wr: "Warung Rebahan", sk: "Sekalipay", tunvn: "TUNVN", storebat: "StoreBat", mirai: "Mirai", aivault: "AIVault" } as const;
+const SUPPLIER_NAME = { wr: "Warung Rebahan", sk: "Sekalipay", tunvn: "TUNVN", storebat: "StoreBat", mirai: "Mirai", aivault: "AIVault", pixelverif: "Pixel Verification" } as const;
 /** Supplier panel bersama: Pesanan hanya menampilkan status; Retry/Cek status ada di Antrean panelnya. */
-type PanelSupplier = "storebat" | "mirai" | "aivault";
-const isPanelSupplier = (supplier: SupplierLink["supplier"]): supplier is PanelSupplier => supplier === "storebat" || supplier === "mirai" || supplier === "aivault";
+type PanelSupplier = "storebat" | "mirai" | "aivault" | "pixelverif";
+const PANEL_BADGE: Record<PanelSupplier, "StoreBat" | "Mirai" | "AIVault" | "Pixel"> = {
+  storebat: "StoreBat", mirai: "Mirai", aivault: "AIVault", pixelverif: "Pixel",
+};
+const isPanelSupplier = (supplier: SupplierLink["supplier"]): supplier is PanelSupplier =>
+  supplier === "storebat" || supplier === "mirai" || supplier === "aivault" || supplier === "pixelverif";
+
+export const PIXELVERIF_ERROR_LABEL: Record<string, string> = {
+  WRONG_PASSWORD: "Password Gmail pembeli salah. Kredit dikembalikan supplier — koordinasikan refund/ulang.",
+  WRONG_2FA_CODE: "Kunci 2FA (TOTP secret) pembeli salah. Kredit dikembalikan supplier — koordinasikan refund/ulang.",
+  WRONG_EMAIL: "Alamat Gmail pembeli tidak ditemukan. Kredit dikembalikan supplier — koordinasikan refund/ulang.",
+  "2FA_WARNING": "Peringatan keamanan/2FA pada akun Google pembeli.",
+  PAYMENT_WARNING: "Peringatan pembayaran pada akun Google pembeli (aktivasi Full gagal).",
+  CAPTCHA_DETECTED: "Terhenti CAPTCHA saat aktivasi akun Google.",
+  ACTIVATION_ITEM_NOT_AVAILABLE: "Penawaran tidak tersedia untuk akun Gmail tersebut (email masuk daftar blokir).",
+  ACTIVATION_FAILED: "Aktivasi langsung pada akun Google gagal. Kredit dikembalikan supplier.",
+  poll_timeout: "Polling status melewati batas waktu. Gunakan Coba lagi untuk cek status ulang tanpa mengirim ulang order.",
+  insufficient_credits: "Kredit Pixel Verification tidak cukup. Top up kredit lalu klik Coba lagi.",
+  credits_unavailable: "Saldo kredit Pixel Verification belum dapat diperiksa. Pembelian belum dikirim.",
+  service_unavailable: "Layanan/harga Pixel Verification sedang tidak tersedia. Pembelian belum dikirim.",
+  preflight_unavailable: "Pemeriksaan awal Pixel Verification gagal sementara. Pembelian belum dikirim.",
+  price_increased: "Biaya kredit supplier naik di atas snapshot order. Perlu keputusan manual/refund.",
+  input_missing: "Data akun Google pembeli sudah dibersihkan atau tidak tersedia.",
+  input_expired: "Batas simpan 24 jam data akun Google terlewati dan telah dibersihkan. Koordinasikan refund/order baru.",
+  snapshot_mismatch: "Snapshot harga/varian pesanan tidak cocok dengan katalog saat ini.",
+  source_changed: "Varian/produk Pixel diubah atau dinonaktifkan sebelum pengiriman.",
+  send_guard_changed: "Status pesanan berubah tepat sebelum kirim. Periksa ulang sebelum bertindak.",
+  incomplete_receipt: "Supplier menyelesaikan order tetapi link redeem HTTPS tidak ditemukan.",
+  receipt_identity_mismatch: "Identitas receipt supplier tidak cocok dengan pesanan ini.",
+  provider_rejected: "Permintaan ditolak supplier (HTTP 400).",
+  provider_failed: "Order gagal di supplier. Periksa detail receipt/refund.",
+  fulfillment_owned_elsewhere: "Item sudah diklaim atau diserahkan oleh jalur lain.",
+};
 
 export const TUNVN_ERROR_LABEL: Record<string,string> = {
   insufficient_balance: "Saldo supplier TUNVN tidak cukup. Top up saldo TUNVN, lalu tekan Retry.",
@@ -154,11 +185,11 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
           : link.supplier === "tunvn" && link.last_error === "insufficient_balance" ? "Saldo supplier tidak cukup"
           : STATUS_LABEL[link.status] ?? link.status;
       const explanation = link.last_error && !resolved && !link.purchase_disabled && !["completed"].includes(link.status)
-        ? (link.supplier === "tunvn" ? TUNVN_ERROR_LABEL : link.supplier === "sk" ? SK_ERROR_LABEL : {})[link.last_error] ?? link.last_error
+        ? (link.supplier === "tunvn" ? TUNVN_ERROR_LABEL : link.supplier === "sk" ? SK_ERROR_LABEL : link.supplier === "pixelverif" ? PIXELVERIF_ERROR_LABEL : {})[link.last_error] ?? link.last_error
         : null;
       return <div key={key} className="rounded-md border border-admin-border bg-admin-subtle/40 p-3">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {isPanelSupplier(link.supplier) ? <SupplierBadge supplier={SUPPLIER_NAME[link.supplier]} /> : <Badge variant={toneOf(link)}>{link.supplier.toUpperCase()}</Badge>}
+          {isPanelSupplier(link.supplier) ? <SupplierBadge supplier={PANEL_BADGE[link.supplier]} /> : <Badge variant={toneOf(link)}>{link.supplier.toUpperCase()}</Badge>}
           <span className="font-medium text-admin-fg">{heading}</span>
           {link.supplier_order_id && <span className="font-mono text-admin-muted">{link.supplier_order_id}</span>}
           {link.status === "completed" && link.delivery_status && link.delivery_status !== "delivered" && <span className="text-admin-muted">· kredensial: {link.delivery_status === "failed" ? "gagal kirim (dicoba ulang)" : "antre kirim"}</span>}

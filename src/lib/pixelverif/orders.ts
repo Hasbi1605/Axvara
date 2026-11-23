@@ -18,7 +18,7 @@ import {
 } from "./client";
 import { pixelverifEligibility, type PixelverifEligibility, type PixelverifInput } from "./purchase";
 import { purgePixelverifInput } from "./purge";
-import { PIXELVERIF_RETRYABLE_ERRORS } from "./retryable";
+import { PIXELVERIF_INPUT_MAX_AGE_HOURS, PIXELVERIF_RETRYABLE_ERRORS } from "./retryable";
 import { PIXELVERIF_BLOCKING_ERRORS, recordPixelverifEmailBlock } from "./blocklist";
 import { safeRedeemLink } from "./admin";
 
@@ -108,6 +108,8 @@ export const PIXELVERIF_RETRYABLE_SQL = `status='needs_admin' AND attempt_count<
   AND receipt_ciphertext IS NULL AND receipt_iv IS NULL AND completed_at IS NULL
   AND last_error IN (${[...PIXELVERIF_RETRYABLE_ERRORS].map((code) => `'${code}'`).join(",")})
   AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
+  AND EXISTS(SELECT 1 FROM pixelverif_buyer_inputs i WHERE i.order_code=pixelverif_order_links.order_code AND i.item_index=pixelverif_order_links.item_index
+    AND i.purged_at IS NULL AND i.input_ciphertext IS NOT NULL AND datetime(i.created_at)>datetime('now','-${PIXELVERIF_INPUT_MAX_AGE_HOURS} hours'))
   AND EXISTS(SELECT 1 FROM orders o WHERE o.code=pixelverif_order_links.order_code AND ${PAID_ORDER_SQL_ALIASED})
   AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.pixelverif_link_id=pixelverif_order_links.id AND f.order_code=pixelverif_order_links.order_code AND f.item_index=pixelverif_order_links.item_index
     AND f.status IN ('queued','retry','failed','manual_required') AND f.fulfillment_mode='manual' AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL
@@ -399,19 +401,21 @@ async function interpretPoll(
     await settle(db, link, "needs_admin", "provider_failed");
     return true;
   }
-  // Only an https redeem URL may reach the buyer; anything else goes to admin.
-  const redeemLink = safeRedeemLink(parsed.result?.link) ?? "";
-  if (!redeemLink) {
-    await settle(db, link, "needs_admin", "incomplete_receipt");
-    return true;
-  }
-  // Full mode: a refunded activation outcome is a failure, never a delivery.
+  // Full mode: check terminal failed activation BEFORE checking redeemLink,
+  // so a failed activation with no URL (e.g. item_not_available) still records
+  // the Gmail blocklist entry and settles with the true activation error code.
   const failedActivation = link.flow_type === "full" && parsed.activation_status
     ? PIXELVERIF_FAILED_ACTIVATION[parsed.activation_status]
     : undefined;
   if (failedActivation) {
     await blockEmailIfRequired(db, link, failedActivation);
     await settle(db, link, "needs_admin", failedActivation);
+    return true;
+  }
+  // Only an https redeem URL may reach the buyer; anything else goes to admin.
+  const redeemLink = safeRedeemLink(parsed.result?.link) ?? "";
+  if (!redeemLink) {
+    await settle(db, link, "needs_admin", "incomplete_receipt");
     return true;
   }
   const activationLabel = link.flow_type === "full" && parsed.activation_status
@@ -524,12 +528,20 @@ async function loadBuyerInput(db: DatabaseAccess, link: Row): Promise<Pixelverif
   }
 }
 
-async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity): Promise<{ claimed: boolean; rateLimited: boolean }> {
+async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity, pollOnly = false): Promise<{ claimed: boolean; rateLimited: boolean }> {
   const owner = crypto.randomUUID();
   const claimed = await claimLink(db, "pixelverif", id, owner);
   if (!claimed.changes) return { claimed: false, rateLimited: false };
   const link = await db.queryFirst("SELECT * FROM pixelverif_order_links WHERE id=? AND lease_owner=?", id, owner);
   if (!link) return { claimed: true, rateLimited: false };
+  if (pollOnly && !link.provider_order_id) {
+    await db.execRun(
+      "UPDATE pixelverif_order_links SET lease_owner=NULL, lease_expires_at=NULL WHERE id=? AND lease_owner=?",
+      link.id,
+      link.lease_owner,
+    );
+    return { claimed: false, rateLimited: false };
+  }
   if (Date.now() >= deadlineMs) {
     await settle(db, link, link.request_sent_at ? "processing" : "pending", "dispatch_deferred");
     return { claimed: true, rateLimited: false };
@@ -647,6 +659,16 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       return { claimed: true, rateLimited };
     }
 
+    if (pollOnly) {
+      // Defensive: poll-only caller must never touch recovery, preflight, or POST.
+      await db.execRun(
+        "UPDATE pixelverif_order_links SET lease_owner=NULL, lease_expires_at=NULL WHERE id=? AND lease_owner=?",
+        link.id,
+        link.lease_owner,
+      );
+      return { claimed: false, rateLimited: false };
+    }
+
     // Ambiguous POST recovery: a previous send may have created the order.
     // Recover by buyer email (10-minute provider window) before any re-POST.
     if (link.request_sent_at) {
@@ -761,12 +783,19 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       // the sealed-input, live-price, and balance preflight. Skipping it on
       // re-POST would let a stale price/balance state charge the provider.
       const inputRow = await db.queryFirst(
-        "SELECT purged_at, input_ciphertext FROM pixelverif_buyer_inputs WHERE order_code=? AND item_index=?",
+        `SELECT purged_at, input_ciphertext,
+           CASE WHEN datetime(created_at)<=datetime('now','-${PIXELVERIF_INPUT_MAX_AGE_HOURS} hours') THEN 1 ELSE 0 END AS expired
+         FROM pixelverif_buyer_inputs WHERE order_code=? AND item_index=?`,
         link.order_code,
         link.item_index,
       );
       if (!inputRow || inputRow.purged_at != null || !inputRow.input_ciphertext) {
         await settle(db, link, "needs_admin", "input_missing");
+        return { claimed: true, rateLimited: false };
+      }
+      if (Number(inputRow.expired) === 1) {
+        await purgePixelverifInput(db, String(link.order_code), Number(link.item_index)).catch(() => undefined);
+        await settle(db, link, "needs_admin", "input_expired");
         return { claimed: true, rateLimited: false };
       }
       const pricing = await fetchPixelverifPricing();
@@ -817,7 +846,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
          AND provider_order_id IS NULL
          AND datetime(lease_expires_at)>datetime('now')
          AND EXISTS(SELECT 1 FROM orders WHERE code=? AND items=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0)
-         AND EXISTS(SELECT 1 FROM pixelverif_buyer_inputs WHERE order_code=? AND item_index=? AND purged_at IS NULL AND input_ciphertext IS NOT NULL)
+         AND EXISTS(SELECT 1 FROM pixelverif_buyer_inputs WHERE order_code=? AND item_index=? AND purged_at IS NULL AND input_ciphertext IS NOT NULL AND datetime(created_at)>datetime('now','-${PIXELVERIF_INPUT_MAX_AGE_HOURS} hours'))
          AND EXISTS(SELECT 1 FROM fulfillment_items f
            WHERE f.id=? AND f.pixelverif_link_id=? AND f.status NOT IN ('delivered','sending')
              AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.aivault_link_id IS NULL AND f.storebat_link_id IS NULL AND f.mirai_link_id IS NULL AND f.inventory_id IS NULL
@@ -948,4 +977,35 @@ export async function processPixelverifOrders(
     if (res.rateLimited) break;
   }
   return processed;
+}
+
+/**
+ * Bounded GET-only refresh for buyer-facing status polling: only polls
+ * already-submitted provider orders that are due at `next_attempt_at`.
+ * Never creates links, runs preflight, submits POST /api/order, or runs
+ * ambiguous-send recovery.
+ */
+export async function pollKnownPixelverifLinksForOrder(
+  db: DatabaseAccess,
+  orderCode: string,
+  deadlineMs = Date.now() + 8_000,
+): Promise<boolean> {
+  const code = String(orderCode || "").trim();
+  if (!code || !db.d1 || !isPixelverifConfigured() || !db.canSpend(18) || Date.now() >= deadlineMs) return false;
+  const due = await db.queryAll(
+    `SELECT id FROM pixelverif_order_links
+     WHERE order_code=? AND status='processing' AND provider_order_id IS NOT NULL
+       AND datetime(next_attempt_at)<=datetime('now')
+       AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
+     ORDER BY next_attempt_at, id LIMIT 2`,
+    code,
+  );
+  let advanced = false;
+  for (const row of due) {
+    if (Date.now() >= deadlineMs || !db.canSpend(15)) break;
+    const res = await processLink(db, Number(row.id), deadlineMs, true);
+    if (res.claimed) advanced = true;
+    if (res.rateLimited) break;
+  }
+  return advanced;
 }

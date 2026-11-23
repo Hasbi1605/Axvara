@@ -14,7 +14,7 @@ export type PeriodReport = ReportBucket & ReportFinance & {
   merchant_paid?: number;
   credit_used?: number;
   series: ReportPoint[];
-  suppliers: Record<"wr" | "sk" | "manual" | "pedia" | "games" | "tunvn" | "aivault" | "storebat" | "mirai", ReportBucket>;
+  suppliers: Record<"wr" | "sk" | "manual" | "pedia" | "games" | "tunvn" | "aivault" | "storebat" | "mirai" | "pixelverif", ReportBucket>;
   channels: Record<"web" | "telegram" | "whatsapp", ReportBucket>;
   top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[];
 };
@@ -23,7 +23,7 @@ const pointFinance = (): ReportPointFinance => ({ expenses: 0, payment_fees: 0, 
 const finance = (): ReportFinance => ({ payment_fees: 0, unique_code_bonus: 0, refund_expenses: 0, operational_expenses: 0, net_profit: 0, expenses_by_category: emptyExpenseTotals(), estimated_order_codes: [], estimated_jaspay_order_codes: [] });
 export type SelectedReport = PeriodReport & { from: string; to: string; timezone: "Asia/Jakarta"; generated_at: string };
 const emptyReport = (): PeriodReport => ({ ...bucket(), ...finance(), estimated_orders: 0, merchant_paid: 0, credit_used: 0, series: [],
-  suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket(), games: bucket(), tunvn: bucket(), aivault: bucket(), storebat: bucket(), mirai: bucket() },
+  suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket(), games: bucket(), tunvn: bucket(), aivault: bucket(), storebat: bucket(), mirai: bucket(), pixelverif: bucket() },
   channels: { web: bucket(), telegram: bucket(), whatsapp: bucket() }, top_products: [] });
 
 export function emptySelectedReport(selection: ReportSelection, now = new Date()): SelectedReport {
@@ -89,6 +89,7 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
       pv.sku pv_sku, pv.aivault_service_id pv_aivault_service_id,
       pv.storebat_product_id pv_storebat_product_id,pv.storebat_cost_usd pv_storebat_cost,pv.storebat_fx_idr_per_usd pv_storebat_fx,
       pv.mirai_package_code pv_mirai_package_code,pv.mirai_cost_usdt pv_mirai_cost,pv.mirai_fx_idr_per_usdt pv_mirai_fx,
+      pv.pixelverif_flow_type pv_pixelverif_flow_type,pv.pixelverif_cost_usd pv_pixelverif_cost,pv.pixelverif_fx_idr_per_usd pv_pixelverif_fx,
       pv.tunvn_fx_idr_per_usdt pv_tunvn_fx, pv.tunvn_cost_usdt pv_tunvn_cost,
       json_type(j.value,'$.tunvn_eligibility') tunvn_elig,
       json_extract(j.value,'$.tunvn_eligibility.cost_usdt') tunvn_elig_cost,
@@ -99,7 +100,9 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
       json_extract(j.value,'$.storebat_eligibility.cost_usd') storebat_elig_cost,
       json_extract(j.value,'$.storebat_eligibility.fx_idr_per_usd') storebat_elig_fx,
       json_type(j.value,'$.mirai_eligibility') mirai_elig,
-      json_extract(j.value,'$.mirai_eligibility.cost_usdt') mirai_elig_cost
+      json_extract(j.value,'$.mirai_eligibility.cost_usdt') mirai_elig_cost,
+      json_type(j.value,'$.pixelverif_eligibility') pixelverif_elig,
+      json_extract(j.value,'$.pixelverif_eligibility.cost_usd') pixelverif_elig_cost
     FROM paid o JOIN json_each(o.report_items) j
     LEFT JOIN order_item_costs s ON s.order_code=o.code AND s.item_index=CAST(j.key AS INTEGER)
     LEFT JOIN fulfillment_items fi ON fi.order_code=o.code AND fi.item_index=CAST(j.key AS INTEGER)
@@ -126,6 +129,7 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
         WHEN l.aivault_elig IS NOT NULL OR l.pv_aivault_service_id IS NOT NULL OR al.id IS NOT NULL THEN 'aivault'
         WHEN l.storebat_elig IS NOT NULL OR l.pv_storebat_product_id IS NOT NULL OR sb.id IS NOT NULL THEN 'storebat'
         WHEN l.mirai_elig IS NOT NULL OR l.pv_mirai_package_code IS NOT NULL OR mr.id IS NOT NULL THEN 'mirai'
+        WHEN l.pixelverif_elig IS NOT NULL OR l.pv_pixelverif_flow_type IS NOT NULL OR pl.id IS NOT NULL THEN 'pixelverif'
         ELSE COALESCE(l.snapshot_source,
           CASE WHEN l.wr_variant_id IS NOT NULL THEN 'wr' WHEN l.sk_variant_id IS NOT NULL THEN 'sk' ELSE 'manual' END) END source,
       CASE WHEN l.order_kind='games' THEN CASE
@@ -163,6 +167,14 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
           mr.id IS NULL OR (mr.status!='completed' AND l.fi_delivered=0)
           OR COALESCE(mr.cost_usdt,l.mirai_elig_cost,mp.cost_usdt*l.qty,l.pv_mirai_cost*l.qty) IS NULL
           OR COALESCE(mr.fx_idr_per_usdt,mp.fx_idr_per_usdt,l.pv_mirai_fx,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
+        WHEN l.pixelverif_elig IS NOT NULL OR l.pv_pixelverif_flow_type IS NOT NULL OR pl.id IS NOT NULL THEN
+          CASE WHEN pl.status='needs_admin' AND ((pl.request_sent_at IS NULL AND pl.provider_order_id IS NULL)
+              OR json_extract(CASE WHEN json_valid(pl.receipt_json) THEN pl.receipt_json ELSE '{}' END,'$.credit_refunded')=1)
+            THEN 0
+            ELSE pl.id IS NULL OR (pl.status!='completed' AND l.fi_delivered=0)
+              OR COALESCE(pl.credit_cost,l.pixelverif_elig_cost,l.pv_pixelverif_cost) IS NULL
+              OR COALESCE(pl.fx_idr_per_usd,l.pv_pixelverif_fx,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
+          END
         ELSE l.snapshot_cost IS NULL OR COALESCE(l.snapshot_source,'manual')!='manual' END estimated,
       CASE WHEN (l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL)
               AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
@@ -184,6 +196,15 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
           ROUND(COALESCE(COALESCE(mr.cost_usdt,l.mirai_elig_cost,mp.cost_usdt*l.qty,l.pv_mirai_cost*l.qty),0)
             * COALESCE(mr.fx_idr_per_usdt,mp.fx_idr_per_usdt,l.pv_mirai_fx,
               CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END,0))
+        WHEN (l.pixelverif_elig IS NOT NULL OR l.pv_pixelverif_flow_type IS NOT NULL OR pl.id IS NOT NULL)
+              AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
+          CASE WHEN pl.status='needs_admin' AND ((pl.request_sent_at IS NULL AND pl.provider_order_id IS NULL)
+              OR json_extract(CASE WHEN json_valid(pl.receipt_json) THEN pl.receipt_json ELSE '{}' END,'$.credit_refunded')=1)
+            THEN 0
+            ELSE ROUND(COALESCE(pl.credit_cost,l.pixelverif_elig_cost,l.pv_pixelverif_cost,0)
+              * COALESCE(pl.fx_idr_per_usd,l.pv_pixelverif_fx,
+                CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END,0))
+          END
         ELSE COALESCE(l.snapshot_cost,CASE WHEN l.wr_variant_id IS NOT NULL THEN
           (SELECT wr_price FROM wr_variants WHERE wr_variant_id=l.wr_variant_id)
           WHEN l.sk_variant_id IS NOT NULL THEN (SELECT sk_price FROM sk_products WHERE sk_variant_id=l.sk_variant_id)
@@ -199,6 +220,7 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
     LEFT JOIN storebat_order_links sb ON sb.order_code=l.code AND sb.item_index=l.item_index
     LEFT JOIN mirai_order_links mr ON mr.order_code=l.code AND mr.item_index=l.item_index
     LEFT JOIN aivault_order_links al ON al.order_code=l.code AND al.item_index=l.item_index
+    LEFT JOIN pixelverif_order_links pl ON pl.order_code=l.code AND pl.item_index=l.item_index
     LEFT JOIN tunvn_products tp ON tp.supplier_product_id=COALESCE(CAST(tl.source_product_id AS INTEGER),
       CAST(l.tunvn_elig_source_id AS INTEGER),CASE WHEN l.pv_sku LIKE 'TUNVN-%' THEN CAST(substr(l.pv_sku,7) AS INTEGER) END)
     LEFT JOIN aivault_products ap ON ap.service_id=COALESCE(al.service_id,l.pv_aivault_service_id)
@@ -341,7 +363,7 @@ export async function readOverviewFinancialReport(now = new Date()): Promise<Fin
   const cached = db && process.env.NODE_ENV === "production" ? overviewSnapshots.get(db) : undefined;
   if (cached && cached.key === key && cached.expiresAt > Date.now()) return cached.value;
   const load = () => readFinancialReport(now).then(report => ({ ...report, generatedAt: now.toISOString() }));
-  const value = db ? readPrivateFinancialSnapshot(`overview-finance-v5:${key}`, load) : load();
+  const value = db ? readPrivateFinancialSnapshot(`overview-finance-v6:${key}`, load) : load();
   if (db && process.env.NODE_ENV === "production") {
     overviewSnapshots.set(db, { key, expiresAt: Date.now() + FINANCIAL_SNAPSHOT_TTL_MS, value });
     void value.then(snapshot => {

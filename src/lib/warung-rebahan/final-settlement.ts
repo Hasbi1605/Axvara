@@ -13,12 +13,13 @@ const unbound = `l.fulfillment_item_id IS NULL AND NOT EXISTS (SELECT 1 FROM ful
 // not become legacy work just because its pointer(s) disappear before replay.
 export const WR_FINAL_MARKER_SQL = `? || CASE WHEN ?=1 AND ${unbound.replaceAll("l.", "wr_order_links.")} THEN ':u' ELSE ':b' END`;
 const owns = `i.order_code=l.order_code AND i.sk_link_id IS NULL AND i.tunvn_link_id IS NULL
-  AND (i.aivault_link_id IS NULL AND i.storebat_link_id IS NULL AND i.mirai_link_id IS NULL AND i.inventory_id IS NULL)
+  AND (i.aivault_link_id IS NULL AND i.storebat_link_id IS NULL AND i.mirai_link_id IS NULL AND i.pixelverif_link_id IS NULL AND i.inventory_id IS NULL)
   AND ((l.fulfillment_item_id=i.id AND (i.wr_link_id IS NULL OR i.wr_link_id=l.id))
        OR (l.fulfillment_item_id IS NULL AND i.wr_link_id=l.id))
   AND NOT EXISTS (SELECT 1 FROM fulfillment_items r WHERE r.wr_link_id=l.id AND r.id<>i.id)
   AND NOT EXISTS (SELECT 1 FROM wr_order_links w WHERE w.fulfillment_item_id=i.id AND w.id<>l.id)
   AND NOT EXISTS (SELECT 1 FROM sk_order_links s WHERE s.fulfillment_item_id=i.id)
+  AND NOT EXISTS (SELECT 1 FROM pixelverif_order_links t WHERE t.order_code=i.order_code AND t.item_index=i.item_index)
   AND NOT EXISTS (
     SELECT 1 FROM tunvn_order_links t WHERE t.order_code=i.order_code AND t.item_index=i.item_index
     UNION ALL SELECT 1 FROM aivault_order_links t WHERE t.order_code=i.order_code AND t.item_index=i.item_index

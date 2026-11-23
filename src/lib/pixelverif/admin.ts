@@ -28,9 +28,12 @@ export type PixelverifAdminOrder = {
   id: number;
   order_code: string;
   item_index: number;
+  service_key: string;
   flow_type: string;
   validity: number;
+  quantity: number;
   credit_cost: number;
+  cost_usd: number;
   fx_idr_per_usd: number | null;
   provider_order_id: string | null;
   idempotency_key: string;
@@ -91,9 +94,14 @@ export function sanitizePixelverifReceiptSummary(raw: unknown): string | null {
     const out: Record<string, unknown> = {
       status: safeOrderStatus(rec.status),
     };
-    if (typeof rec.link === "string") out.link_present = true;
+    if (rec.link_present === true || (typeof rec.link === "string" && rec.link.length > 0)) {
+      out.link_present = true;
+    } else if (rec.link_present === false) {
+      out.link_present = false;
+    }
     const activation = safeActivationStatus(rec.activation_status);
     if (activation) out.activation_status = activation;
+    if (typeof rec.credit_refunded === "boolean") out.credit_refunded = rec.credit_refunded;
     return JSON.stringify(out);
   } catch {
     return null;

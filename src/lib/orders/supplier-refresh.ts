@@ -147,38 +147,45 @@ export async function refreshSupplierOrderNow(
   const code = String(orderCode || "").trim();
   if (!code) return false;
   const links = await listRunningSupplierLinks(code, db);
-  if (!links.length) return false;
   let advanced = false;
-  const wrLinks = links.filter((link) => link.supplier === "wr" && !link.jaspay);
-  for (const link of links.filter((link) => link.supplier === "wr" && link.jaspay)) {
-    try {
-      const { pollKnownJaspayInvoice } = await import("@/lib/warung-rebahan/order");
-      if (await pollKnownJaspayInvoice(link.id, db)) advanced = true;
-    } catch { /* cooldown bounds retries */ }
-  }
-  if (wrLinks.length) {
-    try {
-      const { reconcileFreshWrLinks } = await import("@/lib/warung-rebahan/order");
-      advanced = (await reconcileFreshWrLinks(wrLinks.map((link) => ({
-        id: link.id, wr_order_id: link.supplierOrderId, order_code: code,
-      })), db, getWrTransactions)) > 0;
-    } catch { /* cooldown bounds retries */ }
-  }
-  for (const link of links.filter((link) => link.supplier === "sk")) {
-    try {
-      const { reconcileSkInvoiceNow } = await import("@/lib/sekalipay/order");
-      const done = await reconcileSkInvoiceNow(link.supplierOrderId, db);
-      if (done) advanced = true;
-    } catch {
-      /* vendor tak terjangkau: gerbang/cooldown pemanggil yang menahan */
+  if (links.length) {
+    const wrLinks = links.filter((link) => link.supplier === "wr" && !link.jaspay);
+    for (const link of links.filter((link) => link.supplier === "wr" && link.jaspay)) {
+      try {
+        const { pollKnownJaspayInvoice } = await import("@/lib/warung-rebahan/order");
+        if (await pollKnownJaspayInvoice(link.id, db)) advanced = true;
+      } catch { /* cooldown bounds retries */ }
     }
+    if (wrLinks.length) {
+      try {
+        const { reconcileFreshWrLinks } = await import("@/lib/warung-rebahan/order");
+        if ((await reconcileFreshWrLinks(wrLinks.map((link) => ({
+          id: link.id, wr_order_id: link.supplierOrderId, order_code: code,
+        })), db, getWrTransactions)) > 0) advanced = true;
+      } catch { /* cooldown bounds retries */ }
+    }
+    for (const link of links.filter((link) => link.supplier === "sk")) {
+      try {
+        const { reconcileSkInvoiceNow } = await import("@/lib/sekalipay/order");
+        const done = await reconcileSkInvoiceNow(link.supplierOrderId, db);
+        if (done) advanced = true;
+      } catch {
+        /* vendor tak terjangkau: gerbang/cooldown pemanggil yang menahan */
+      }
+    }
+    // Kredensial WR yang selesai pada tarikan ini harus langsung terkirim
+    // (email/panel), bukan menunggu tick pengiriman berikutnya.
+    try {
+      const { processDueCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
+      await processDueCredentialDeliveries(db, 2);
+    } catch { /* pengiriman menyusul via cron; status sudah benar */ }
   }
-  // Kredensial WR yang selesai pada tarikan ini harus langsung terkirim
-  // (email/panel), bukan menunggu tick pengiriman berikutnya.
+  // Bounded GET-only poll for known Pixel Verification provider orders (no
+  // link creation, no preflight, no POST, no ambiguous-send recovery).
   try {
-    const { processDueCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
-    await processDueCredentialDeliveries(db, 2);
-  } catch { /* pengiriman menyusul via cron; status sudah benar */ }
+    const { pollKnownPixelverifLinksForOrder } = await import("@/lib/pixelverif/orders");
+    if (await pollKnownPixelverifLinksForOrder(db, code, Date.now() + 8_000)) advanced = true;
+  } catch { /* cron pixelverif_orders remains the durable guarantee */ }
   return advanced;
 }
 

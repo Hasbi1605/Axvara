@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Spinner } from "@/components/ui/Loading";
-import { TUNVN_ERROR_LABEL } from "./SupplierLinkActions";
+import { PIXELVERIF_ERROR_LABEL, TUNVN_ERROR_LABEL } from "./SupplierLinkActions";
 import { RETRYABLE_WR_STATUS, WR_STATUS_LABEL, canRetryWrLink } from "./WarungRebahanManager";
 import { RETRYABLE_SK_STATUS, SK_STATUS_LABEL, canRetrySkLink } from "./SekalipayManager";
 import { ageLabel, supplierMoney, supplierTime, type OrderLink, type Supplier, type SupplierConfig } from "./supplier-admin-data";
@@ -31,10 +31,22 @@ const ORDER_FILTERS: [string, string][] = [
   ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"],
 ];
 
-export function supplierOrderError(error: string | null | undefined, tunvn?: boolean) {
-  if (!error) return null;
-  if (tunvn && Object.hasOwn(TUNVN_ERROR_LABEL, error)) return TUNVN_ERROR_LABEL[error];
-  return Object.hasOwn(commonErrors, error) ? commonErrors[error] : "Perlu diperiksa";
+export function supplierOrderError(
+  error: string | null | undefined,
+  tunvnOrSupplier?: boolean | Supplier,
+  fallbackCode?: string | null,
+) {
+  const isTunvn = tunvnOrSupplier === true || tunvnOrSupplier === "tunvn";
+  const isPixel = tunvnOrSupplier === "pixelverif";
+  const lookup = (code: string | null | undefined): string | null => {
+    if (!code) return null;
+    if (isTunvn && Object.hasOwn(TUNVN_ERROR_LABEL, code)) return TUNVN_ERROR_LABEL[code];
+    if (isPixel && Object.hasOwn(PIXELVERIF_ERROR_LABEL, code)) return PIXELVERIF_ERROR_LABEL[code];
+    if (Object.hasOwn(commonErrors, code)) return commonErrors[code];
+    return null;
+  };
+  if (!error && !fallbackCode) return null;
+  return lookup(error) ?? lookup(fallbackCode) ?? "Perlu diperiksa";
 }
 
 function OrderStatus({ link, supplier, tunvn }: { link: OrderLink; supplier: Supplier; tunvn?: boolean }) {
@@ -56,11 +68,13 @@ function OrderStatus({ link, supplier, tunvn }: { link: OrderLink; supplier: Sup
     return <Badge variant="secondary">Diselesaikan manual</Badge>;
   }
   const code = link.purchase_disabled === 1 ? "manual"
-    : status === "needs_admin" && ["insufficient_balance", "blocked_balance"].includes(link.last_error ?? "") ? "blocked_balance"
+    : status === "needs_admin" && ["insufficient_balance", "blocked_balance", "insufficient_credits"].includes(link.last_error ?? "") ? "blocked_balance"
     : ["submitted", "ordering"].includes(status) ? "processing"
     : ["cancelled", "canceled"].includes(status) ? "failed" : status;
   const [label, tone] = Object.hasOwn(statuses, code) ? statuses[code as keyof typeof statuses] : statuses.needs_admin;
-  const reason = code === "manual" ? "Pembelian otomatis dinonaktifkan." : supplierOrderError(link.last_error, tunvn);
+  const reason = code === "manual"
+    ? "Pembelian otomatis dinonaktifkan."
+    : supplierOrderError(link.last_error, tunvn ? "tunvn" : supplier, link.last_error_code);
   return <><Badge variant={tone}>{label}</Badge>
     {reason && reason !== label && <p className="mt-1 break-words text-xs text-admin-muted">{reason}</p>}
   </>;
