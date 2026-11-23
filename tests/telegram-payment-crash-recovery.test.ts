@@ -91,7 +91,12 @@ function nowpaymentsFetchImpl(opts?: { postAmount?: string; status?: string; act
 async function seedCartUser(locale = "en") {
   fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,locale,buyer_email) VALUES(?,?,?,?)")
     .run(String(buyer.id), String(buyer.id), locale, "buyer@example.test");
-  fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 1, 1, 2);
+}
+
+async function singlePmentry(qty = 2, price = 9500) {
+  const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+  const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty, price }]);
+  return `pmentry:1:1:${qty}:${tag}`;
 }
 
 async function offerWithCrypto(opts?: { nowFetch?: ReturnType<typeof vi.fn> }) {
@@ -101,7 +106,7 @@ async function offerWithCrypto(opts?: { nowFetch?: ReturnType<typeof vi.fn> }) {
   vi.stubEnv("NOWPAYMENTS_OUTCOME_CURRENCY", "usdtbsc");
   vi.stubGlobal("fetch", opts?.nowFetch ?? nowpaymentsFetchImpl());
   await seedCartUser();
-  await click("pmentry");
+  await click(await singlePmentry());
   const frozen = parsePayq1State(userRaw())!;
   const index = frozen.methods.findIndex((m) => m.id === "nowpayments:usdtbsc");
   expect(index).toBeGreaterThanOrEqual(0);
@@ -276,8 +281,8 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
   });
 
   // ---- pending-state guard matrix -------------------------------------------------
-  const textEntries = ["/start", "/start promo_abc", "/language en", "/language id", "/bahasa", "/settings", "/currency", "/currency USD", "/katalog", "/cari", "/search", "/batal", "/help", "/pesanan", "/keranjang", "hello there", "5", "buyer2@example.test"];
-  const callbackEntries = ["lang:en", "lang:id", "langmenu", "curmenu", "cur:USD", "cur:IDR", "home", "catalog:0", "cats:0", "cat:1:0", "prd:1", "buy:1", "vars:1", "var:1", "qty:1:1", "q:1:1:2", "qinput:1:1", "eedit:1:1:2", "ceedit", "help", "myorders"];
+  const textEntries = ["/start", "/start promo_abc", "/language en", "/language id", "/bahasa", "/settings", "/currency", "/currency USD", "/katalog", "/cari", "/search", "/batal", "/help", "/pesanan", "hello there", "5", "buyer2@example.test"];
+  const callbackEntries = ["lang:en", "lang:id", "langmenu", "curmenu", "cur:USD", "cur:IDR", "home", "catalog:0", "cats:0", "cat:1:0", "prd:1", "buy:1", "vars:1", "var:1", "qty:1:1", "q:1:1:2", "qinput:1:1", "eedit:1:1:2", "help", "myorders"];
 
   it.each(textEntries)("creating anchor survives text entry %s", async (text) => {
     const f = nowpaymentsFetchImpl();
@@ -299,7 +304,7 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
   });
 
   it.each([
-    ["/cari", "search:"], ["qty:1:1", "qty_for:1:1"], ["qinput:1:1", "qty_for:1:1"], ["eedit:1:1:2", "email_for:1:1:2"], ["ceedit", "emailcart:"],
+    ["/cari", "search:"], ["qty:1:1", "qty_for:1:1"], ["qinput:1:1", "qty_for:1:1"], ["eedit:1:1:2", "email_for:1:1:2"],
   ])("positive control: entry %s DOES set its own state when no creating anchor exists", async (entry, expected) => {
     await seedCartUser();
     if (entry.startsWith("/")) {
@@ -335,12 +340,11 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
     expect(userRaw()).toBe("onboarding:promo_abc");
   });
 
-  it("creating anchor with NO order whose cart changed/quote expired is not a permanent dead end (buyer can requote)", async () => {
+  it("creating anchor with NO order whose quote expired is not a permanent dead end (buyer can requote)", async () => {
     const f = nowpaymentsFetchImpl();
     const { quoted } = await claimOnly(f);
     expect(count("orders")).toBe(0);
-    // Buyer clears the cart / the 10-minute quote window passes while "down".
-    fx.sql.prepare("DELETE FROM telegram_carts WHERE user_id=?").run(userId);
+    // The 10-minute quote window passes while "down".
     fx.sql.prepare("UPDATE telegram_users SET pending_action=REPLACE(pending_action, '\"exp\":' || ?, '\"exp\":1') WHERE user_id=?").run(String(quoted.exp), userId);
     await click(`pgo:${quoted.nonce}`);
     expect(count("orders")).toBe(0);
@@ -348,12 +352,11 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
     // No order, no TX, no stock held: nothing financial depends on the anchor, so it must release.
     expect(userRaw()).toBe("");
     // And a fresh quote works again (positive control).
-    fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(userId, 1, 1, 2);
-    await click("pmentry");
+    await click(await singlePmentry());
     expect(parsePayq1State(userRaw())?.st).toBe("quoted");
   });
 
-  it("seam 2c: order exists (stock held) but the cart changed before the POST -> resume still POSTs for THAT order and keeps the new cart", async () => {
+  it("seam 2c: order exists (stock held) but catalog price changed before the POST -> resume still POSTs for THAT saved order snapshot", async () => {
     const f = nowpaymentsFetchImpl();
     const { quoted, creating, orderCode, key } = await claimOnly(f);
     const { resolveCurrentPayq1Lines } = await import("@/lib/telegram/handlers/payment-lines");
@@ -369,7 +372,8 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
       salesChannel: "telegram", telegramChatId: userId, telegramUserId: userId, conversationId: null, channelMemberId: null,
       paymentMethod: "nowpayments:usdtbsc", paymentAccount: "NOWPayments", fulfillmentStatus: "not_required", orderWindowMinutes: 15,
     });
-    fx.sql.prepare("UPDATE telegram_carts SET qty=5 WHERE user_id=?").run(userId); // buyer edits the cart while the process was down
+    // Admin changes variant price while the process was down; resume must still POST for the already-saved order snapshot.
+    fx.sql.prepare("UPDATE product_variants SET price=15000, bulk_pricing_enabled=0 WHERE id=1").run();
     await click(`pgo:${quoted.nonce}`);
     expect(count("orders")).toBe(1);
     expect(count("payment_transactions")).toBe(1);
@@ -377,7 +381,6 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
     expect(stock()).toBe(98);
     expect(fx.sql.prepare("SELECT subtotal FROM orders WHERE code=?").get(orderCode)?.subtotal).toBe(19000);
     expect(fx.sql.prepare("SELECT price_amount_text FROM payment_transactions WHERE order_code=?").get(orderCode)?.price_amount_text).toBe("2.49");
-    expect(fx.sql.prepare("SELECT qty FROM telegram_carts WHERE user_id=?").get(userId)?.qty).toBe(5); // new cart untouched
     expect(userRaw()).toBe("");
   });
 
@@ -411,7 +414,7 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
     const f = nowpaymentsFetchImpl();
     vi.stubGlobal("fetch", f);
     await seedCartUser();
-    if (name === "stale nonce") await click("pmentry");
+    if (name === "stale nonce") await click(await singlePmentry());
     else if (name === "malformed payq1") fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id=?").run("payq1:{not-json", userId);
     const before = userRaw();
     await click("pgo:0123456789abcdef");

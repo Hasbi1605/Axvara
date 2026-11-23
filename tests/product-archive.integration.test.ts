@@ -64,7 +64,7 @@ it.each([
   const r=await DELETE(req("DELETE",undefined,"?permanent=1"),params);expect(r.status).toBe(409);expect((await r.json()).error).toContain("supplier");
   const list=await (await GET(new NextRequest("http://localhost/api/products"))).json();expect(list.products[0].canHardDelete).toBe(false);
 });
-it.each(["product","variant","invalid","inventory","fulfillment","cost","job","pair","group","cart","session","wr_mirror","wr_variant","sk_mirror","tunvn_mirror","av_mirror","tunvn_order","av_order"])("preserves history/reference: %s",async(kind)=>{
+it.each(["product","variant","invalid","inventory","fulfillment","cost","job","pair","group","session","wr_mirror","wr_variant","sk_mirror","tunvn_mirror","av_mirror","tunvn_order","av_order"])("preserves history/reference: %s",async(kind)=>{
   order(kind==="variant" ? [{variant_id:String(id)}] : kind==="product" ? [{product_id:String(id)}] : []);
   if(kind==="invalid")f.sql.exec("UPDATE orders SET items='invalid'");
   if(kind==="inventory")f.sql.exec(`INSERT INTO fulfillment_inventory(product_id,variant_id,secret_ciphertext,secret_iv,secret_fingerprint) VALUES(${id},${id},'fake','fake','fake')`);
@@ -73,7 +73,6 @@ it.each(["product","variant","invalid","inventory","fulfillment","cost","job","p
   if(kind==="job")f.sql.exec(`INSERT INTO fulfillment_jobs(order_code,variant_id) VALUES('ARCHIVE-ORDER',${id})`);
   if(kind==="pair")f.sql.exec(`INSERT INTO supplier_pairs(wr_product_id,sk_product_id) VALUES(${id},99999)`);
   if(kind==="group")f.sql.exec(`INSERT INTO product_groups(id,name) VALUES(900,'Archive');INSERT INTO product_group_members(group_id,product_id,position) VALUES(900,${id},0)`);
-  if(kind==="cart")f.sql.exec(`INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('fixture',${id},${id},1)`);
   if(kind==="session")f.sql.exec(`INSERT INTO whatsapp_sessions(conversation_id,member_id,expires_at,selected_product_id,selected_variant_id) VALUES('fixture','fixture','2099-01-01',${id},${id})`);
   if(kind==="wr_mirror"||kind==="wr_variant") {f.sql.exec(`INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('wr','WR',${kind==="wr_mirror"?id:'NULL'})`);if(kind==="wr_variant")f.sql.exec(`INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id) VALUES('wv','wr','V',1,1,${id})`);}
   if(kind==="sk_mirror")f.sql.exec(`INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_price,sk_stock,axvara_variant_id) VALUES('sv','sp','SK','V',1,1,${id})`);

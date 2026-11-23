@@ -6,7 +6,7 @@ import {
 } from "@/lib/telegram/messages/catalog";
 import {
   chooseQtyMessage, reviewPurchaseMessage, confirmVariantBuyMessage, confirmBuyMessage, chooseVariantMessage,
-  emailConfirmationMessage, cartMessage, cartAddedMessage, cartCheckoutSummaryMessage,
+  emailConfirmationMessage,
   invoiceMessage, orderReminderMessage, TELEGRAM_QRIS_DEADLINE_NOTICE,
 } from "@/lib/telegram/messages/purchase";
 import {
@@ -41,8 +41,6 @@ describe("plain Indonesian Telegram buyer copy", () => {
       myOrdersMessage([]), chooseVariantMessage("Produk A"),
       confirmVariantBuyMessage(item), confirmBuyMessage("Produk A", 5000),
       emailConfirmationMessage({ ...item, total: 10000, maskedEmail: "n***@example.test" }),
-      cartMessage([]), cartMessage([item]), cartAddedMessage("Produk A", "Bulanan", 2, 1),
-      cartCheckoutSummaryMessage([item], 10000),
       invoiceMessage({ orderCode, productName: "Produk A", payableAmount: 10123, expiresAt }),
       orderReminderMessage({ orderCode, payableAmount: 10123, expiresMs: Date.parse(expiresAt), now: Date.parse(expiresAt) - 300_000 }),
       orderPaidMessage(orderCode, "Produk A"), orderPaidMessage(orderCode, "Produk A", "instant"),
@@ -163,15 +161,6 @@ describe("plain Indonesian Telegram buyer copy", () => {
     parsed(myOrdersMessage(Array.from({ length: 10 }, (_, i) => ({
       code: `AXV-${i}`, productName: '<&>"😀'.repeat(500), paymentStatus: "paid", fulfillmentStatus: "queued", payableAmount: 10000,
     }))));
-  });
-
-  it("keeps all cart rows and variants instead of hiding everything after five items", () => {
-    const items = Array.from({ length: 20 }, (_, i) => ({ ...item, productName: `Produk ${i + 1}`, variantLabel: `Varian ${i + 1}` }));
-    for (const html of [cartMessage(items), cartCheckoutSummaryMessage(items, 200000)]) {
-      const text = parsed(html).body.textContent ?? "";
-      for (const line of items) expect(text).toContain(`${line.productName} / ${line.variantLabel} x2`);
-      expect(text).toMatch(/Subtotal: Rp\s?200\.000/);
-    }
   });
 
   it("preserves the original search signature while keeping concise output", () => {

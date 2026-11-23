@@ -5,17 +5,22 @@ import {clearRateLimitBucketsForTest} from "@/lib/rateLimit";
 import {checkoutApprovalTag} from "@/lib/telegram/checkout-approval";
 let fx:ReturnType<typeof createD1Fixture>;
 afterEach(()=>{fx?.close();vi.restoreAllMocks();vi.unstubAllEnvs();vi.unstubAllGlobals();clearRateLimitBucketsForTest();});
-it('two concurrent Telegram cart confirmations create one pending order and one invoice call',async()=>{
- fx=createD1Fixture();await insertTestProduct(fx.sql,'manual');fx.sql.exec("INSERT INTO telegram_users(user_id,chat_id,first_name) VALUES('12345','12345','Fixture'); INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('12345',1,1,1)");
+it('two concurrent Telegram single-item payments create one pending order and one invoice call',async()=>{
+ fx=createD1Fixture();await insertTestProduct(fx.sql,'manual');fx.sql.exec("INSERT INTO telegram_users(user_id,chat_id,first_name) VALUES('12345','12345','Fixture')");
+ vi.stubEnv('PRODUCT_VARIANTS_READ','true');
+ vi.stubEnv('QRIS_ACTIVE_PROVIDER','gopay');
+ vi.stubEnv('GOPAY_QRIS_ENABLED','true');
+ vi.stubEnv('GOPAY_STATIC_QRIS','00020101021126570011ID.CO.GOPAY01189360091430000000000210G0000000000303UMI5204549953033605802ID5906AXVARA6007JAKARTA6304ABCD');
+ vi.stubEnv('GOPAY_POLLER_SECRET','audit-poller-secret');
  vi.stubGlobal('fetch',vi.fn(async()=>{throw new Error('NETWORK FORBIDDEN BY AUDIT')}));
  const qris=await import('@/lib/payments/qris');const invoice=vi.spyOn(qris,'createActiveQrisInvoice').mockImplementation(async(code,amount)=>({orderCode:code,requestedAmount:amount,payableAmount:amount+1,uniqueCode:1,qrisPayload:'fixture',qrisUrl:'/fixture.png',expiresAt:'2099-01-01',isExisting:false}));
- const api=await import('@/lib/telegram/api');vi.spyOn(api,'sendMessage').mockResolvedValue({ok:true,result:{message_id:1}} as never);vi.spyOn(api,'sendPhoto').mockResolvedValue({ok:true} as never);
-  const callback=`cconfirm:${await checkoutApprovalTag([{productId:1,variantId:1,qty:1,price:10000}])}`;
+ const api=await import('@/lib/telegram/api');vi.spyOn(api,'sendMessage').mockResolvedValue({ok:true,result:{message_id:1}} as never);vi.spyOn(api,'sendPhoto').mockResolvedValue({ok:true} as never);vi.spyOn(api,'sendChatAction').mockResolvedValue({ok:true} as never);
+  const callback=`pay:1:1:1:${await checkoutApprovalTag([{productId:1,variantId:1,qty:1,price:10000}])}`;
   const {handleCallback}=await import('@/lib/telegram/handlers/callback');await Promise.all([handleCallback(callback,12345,1,{id:12345,first_name:'Fixture'}),handleCallback(callback,12345,1,{id:12345,first_name:'Fixture'})]);
  expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders WHERE telegram_chat_id='12345' AND status='pending'").get()?.n).toBe(1);expect(invoice).toHaveBeenCalledTimes(1);expect(fx.sql.prepare('SELECT stock FROM product_variants WHERE id=1').get()?.stock).toBe(99);
 });
 
-it.each(['email_for:1:1:1','emailcart:1','search:','qty:1:1','wa:'])('Telegram /batal clears input state %s',async(pending)=>{
+it.each(['email_for:1:1:1','search:','qty:1:1','wa:'])('Telegram /batal clears input state %s',async(pending)=>{
  fx=createD1Fixture();fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,first_name,pending_action) VALUES('12345','12345','Fixture',?)").run(pending);
  vi.stubGlobal('fetch',vi.fn(async()=>{throw new Error('NETWORK FORBIDDEN BY AUDIT')}));const api=await import('@/lib/telegram/api');vi.spyOn(api,'sendMessage').mockResolvedValue({ok:true,result:{message_id:1}} as never);
  const {handleCommand}=await import('@/lib/telegram/handlers/command');await handleCommand('/batal',12345,'private',{id:12345,first_name:'Fixture'});expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='12345'").get()?.pending_action).toBeNull();
@@ -28,11 +33,16 @@ it('Telegram fails closed before callbacks on durable update claim failure',asyn
 
 
 it('an expired unswept Telegram order does not block a new live order',async()=>{
- fx=createD1Fixture();await insertTestProduct(fx.sql,'manual');fx.sql.exec("INSERT INTO telegram_users(user_id,chat_id,first_name) VALUES('12345','12345','Fixture'); INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('12345',1,1,1); INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_chat_id,expires_at) VALUES('OLD','','','[]',1000,'qris','pending','pending','telegram','12345','2000-01-01')");
+ fx=createD1Fixture();await insertTestProduct(fx.sql,'manual');fx.sql.exec("INSERT INTO telegram_users(user_id,chat_id,first_name) VALUES('12345','12345','Fixture'); INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_chat_id,expires_at) VALUES('OLD','','','[]',1000,'qris','pending','pending','telegram','12345','2000-01-01')");
+ vi.stubEnv('PRODUCT_VARIANTS_READ','true');
+ vi.stubEnv('QRIS_ACTIVE_PROVIDER','gopay');
+ vi.stubEnv('GOPAY_QRIS_ENABLED','true');
+ vi.stubEnv('GOPAY_STATIC_QRIS','00020101021126570011ID.CO.GOPAY01189360091430000000000210G0000000000303UMI5204549953033605802ID5906AXVARA6007JAKARTA6304ABCD');
+ vi.stubEnv('GOPAY_POLLER_SECRET','audit-poller-secret');
  vi.stubGlobal('fetch',vi.fn(async()=>{throw Error('No real network in regression')}));
  const qris=await import('@/lib/payments/qris');const invoice=vi.spyOn(qris,'createActiveQrisInvoice').mockImplementation(async(code,amount)=>({orderCode:code,requestedAmount:amount,payableAmount:amount+1,uniqueCode:1,qrisPayload:'fixture',qrisUrl:'/fixture.png',expiresAt:'2099-01-01',isExisting:false}));
- const api=await import('@/lib/telegram/api');vi.spyOn(api,'sendMessage').mockResolvedValue({ok:true,result:{message_id:1}} as never);vi.spyOn(api,'sendPhoto').mockResolvedValue({ok:true} as never);
-  const callback=`cconfirm:${await checkoutApprovalTag([{productId:1,variantId:1,qty:1,price:10000}])}`;
+ const api=await import('@/lib/telegram/api');vi.spyOn(api,'sendMessage').mockResolvedValue({ok:true,result:{message_id:1}} as never);vi.spyOn(api,'sendPhoto').mockResolvedValue({ok:true} as never);vi.spyOn(api,'sendChatAction').mockResolvedValue({ok:true} as never);
+  const callback=`pay:1:1:1:${await checkoutApprovalTag([{productId:1,variantId:1,qty:1,price:10000}])}`;
   const {handleCallback}=await import('@/lib/telegram/handlers/callback');await handleCallback(callback,12345,1,{id:12345,first_name:'Fixture'});
  expect(invoice).toHaveBeenCalledTimes(1);expect(invoice.mock.calls[0][0]).not.toBe('OLD');expect(fx.sql.prepare('SELECT stock FROM product_variants WHERE id=1').get()?.stock).toBe(99);
 });

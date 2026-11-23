@@ -198,6 +198,10 @@ export async function dispatchPayq1Creating(
     if (!created.isExisting) trackFunnelEvent({ stage: "order", channel: "telegram", locale: creating.locale,
       method: selectedId, subtotal: built.subtotal, productId: built.lines[0]?.productId, variantId: built.primaryVariantId,
       quantity: built.lines.reduce((sum, line) => sum + line.qty, 0) });
+    if (creating.source.pvFlowId) {
+      const { clearPixelverifStash } = await import("./buyer-input");
+      await clearPixelverifStash(ownerId).catch(() => {});
+    }
   } catch (error) {
     // Stock/config/pending-guard failure: fail closed, intent retained for
     // the user to requote honestly (no silent cart mutation here).
@@ -322,18 +326,6 @@ export async function dispatchPayq1Creating(
     return;
   }
 
-  // Clear cart ONLY on cart checkout success (never touch cart on single-item checkout).
-  if (creating.source.kind === "cart") {
-    try {
-      // Resume from a saved order: the cart may have been edited since the
-      // purchase was frozen — only clear it when it still IS the purchased cart.
-      const stillPurchased = !savedOrder || (await resolveCurrentPayq1Lines(ownerId, creating).catch(() => null))?.ok === true;
-      if (stillPurchased) {
-        const { clearCart } = await import("@/lib/telegram/cart");
-        await clearCart(ownerId);
-      }
-    } catch { /* cart cleanup best-effort; order/TX already durable */ }
-  }
   await refreshResumeView(chatId, messageId, orderedCode, from, locale, creatingRaw);
   void execRun;
 }

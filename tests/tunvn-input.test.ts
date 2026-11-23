@@ -10,11 +10,13 @@ import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 
 const auth = vi.hoisted(() => ({ admin:true }));
-const telegram = vi.hoisted(() => ({ send:vi.fn(),cart:vi.fn() }));
-vi.mock("@/lib/telegram/api",() => ({ sendMessage:telegram.send }));
-vi.mock("@/lib/telegram/handlers/cart",() => ({ handleShowCart:telegram.cart }));
+const telegram = vi.hoisted(() => ({ send:vi.fn(),edit:vi.fn() }));
+vi.mock("@/lib/telegram/api",() => ({ sendMessage:telegram.send,safeEditOrSend:telegram.edit }));
 vi.mock("@/lib/auth",async importOriginal => ({ ...await importOriginal<typeof import("@/lib/auth")>(),requireAdmin:vi.fn(async () => auth.admin ? { email:"fixture@example.test" } : null) }));
-vi.mock("@/lib/payments/method-options",() => ({ buildMethodCatalog:vi.fn(async () => [{ id:"qris",account_number:"-",kind:"qris",available:true,label:"QRIS" }]) }));
+vi.mock("@/lib/payments/method-options",() => ({
+  buildMethodCatalog:vi.fn(async () => [{ id:"qris",account_number:"-",kind:"qris",available:true,label:"QRIS" }]),
+  buildMethodOptions:vi.fn(async () => [{ id:"qris",account_number:"-",kind:"qris",available:true,label:"QRIS" }]),
+}));
 let fx:ReturnType<typeof createD1Fixture>;
 const config = { buyer_field_key:"muse_invite_code" as const,max_qty:30 };
 const fields = { muse_invite_code:"Ab12cD" };
@@ -22,6 +24,7 @@ const req = (url:string,body:unknown,method="POST") => new NextRequest(`http://l
 beforeEach(() => {
   vi.clearAllMocks();
   telegram.send.mockResolvedValue({ ok:true,result:{ message_id:1 } });
+  telegram.edit.mockResolvedValue({ ok:true,result:{ message_id:1 } });
   vi.stubEnv("PRODUCT_VARIANTS_READ","true");
   vi.stubEnv("PRODUCT_VARIANTS_WRITE","true");
   fx=createD1Fixture(); clearRateLimitBucketsForTest(); auth.admin=true;
@@ -282,10 +285,10 @@ describe("admin gates and data access",() => {
   });
   it("0115 upgrades the old schema, retires bundles, and never stamps historical orders",() => {
     const base=fx.sql.prepare("SELECT * FROM product_variants WHERE id=2").get()!;
-    fx.sql.exec(`UPDATE product_variants SET sku='TUNVN-BUFF-5B',tunvn_buff_quantity_b=5,tunvn_admin_price_idr=12345 WHERE id=1;
+    fx.sql.exec(`CREATE TABLE IF NOT EXISTS telegram_carts (id INTEGER PRIMARY KEY, user_id TEXT, product_id INTEGER, variant_id INTEGER, qty INTEGER);
+      UPDATE product_variants SET sku='TUNVN-BUFF-5B',tunvn_buff_quantity_b=5,tunvn_admin_price_idr=12345 WHERE id=1;
       DROP TRIGGER IF EXISTS tunvn_variant_publication; DROP TRIGGER tunvn_retired_bundle_update;
       ALTER TABLE product_variants DROP COLUMN buyer_field_key; ALTER TABLE product_variants DROP COLUMN max_qty;
-      ALTER TABLE telegram_carts DROP COLUMN buyer_fields;
       INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,variant_id) VALUES('AXV-20261109-11223344','Fixture','628000000000','[{"variant_id":1,"qty":1}]',12345,'qris',1);`);
     fx.sql.exec(fs.readFileSync("drizzle/migrations/0115_variant_buyer_input.sql","utf8"));
     expect(fx.sql.prepare("SELECT price,tunvn_admin_price_idr,is_active FROM product_variants WHERE id=1").get()).toEqual({ price:1500,tunvn_admin_price_idr:12345,is_active:0 });
@@ -299,28 +302,37 @@ describe("admin gates and data access",() => {
 describe("Telegram private buyer input",() => {
   const buyer={ id:123,first_name:"Fixture" };
   beforeEach(() => fx.sql.exec("INSERT INTO telegram_users(user_id,chat_id) VALUES('123','123')"));
-  it("collects privately, retries invalid input, trims and persists without echoing code",async () => {
+  it("collects privately, retries invalid input, trims and routes directly to single-item payment offer without cart",async () => {
     const { requestBuyerInput,handleBuyerInput }=await import("@/lib/telegram/handlers/buyer-input");
+    const { parsePayq1State }=await import("@/lib/telegram/payment-quote");
+    const { resolveCurrentPayq1Lines }=await import("@/lib/telegram/handlers/payment-lines");
     expect(await requestBuyerInput(-123,buyer,1,1,2)).toBe(true);
     expect(telegram.send).not.toHaveBeenCalled();
     expect(await requestBuyerInput(123,buyer,1,1,2)).toBe(true);
     expect(await handleBuyerInput("bad",123,buyer)).toBe(true);
-    expect(fx.sql.prepare("SELECT COUNT(*) n FROM telegram_carts").get()).toEqual({ n:0 });
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='123'").get()).toEqual({ pending_action:"buyerinput:1:1:2" });
     expect(await handleBuyerInput(" Ab12cD ",123,buyer)).toBe(true);
-    expect(fx.sql.prepare("SELECT qty,buyer_fields FROM telegram_carts").get()).toEqual({ qty:2,buyer_fields:JSON.stringify(fields) });
-    expect(telegram.cart).toHaveBeenCalledOnce();
+    const offerRaw = String((fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='123'").get() as { pending_action: string | null })?.pending_action ?? "");
+    const offer = parsePayq1State(offerRaw);
+    expect(offer?.source).toEqual({ kind:"single",productId:1,variantId:1,qty:2,museInviteCode:"Ab12cD" });
+    const resolved = await resolveCurrentPayq1Lines("123", offer!);
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) expect(resolved.cartLines[0]).toMatchObject({ qty:2,buyerFields:fields });
+    expect(telegram.edit).toHaveBeenCalledOnce();
     expect(JSON.stringify(telegram.send.mock.calls)).not.toContain("Ab12cD");
     expect(await handleBuyerInput("Ab12cD",123,buyer)).toBe(false);
   });
-  it("same-code merges, conflicting codes and aggregate overflow leave cart untouched",async () => {
-    const { addToCart,setCartLineQty }=await import("@/lib/telegram/cart");
-    expect(await addToCart("123",1,1,20,1,fields)).toEqual({ ok:true });
-    expect(await addToCart("123",1,1,10,1,fields)).toEqual({ ok:true });
-    expect((await addToCart("123",1,1,1,1,fields)).ok).toBe(false);
-    expect((await addToCart("123",1,1,1,1,{ muse_invite_code:"XY1234" })).ok).toBe(false);
-    expect(await setCartLineQty("123",1,31)).toBe(false);
-    expect(fx.sql.prepare("SELECT qty FROM telegram_carts WHERE variant_id=1").get()).toEqual({ qty:30 });
-    expect(await addToCart("123",1,2,1)).toEqual({ ok:true });
+  it("rejects out-of-range qty before buyer input and fails closed on missing muse code in single resolver",async () => {
+    const { requestBuyerInput }=await import("@/lib/telegram/handlers/buyer-input");
+    const { resolveCurrentPayq1Lines }=await import("@/lib/telegram/handlers/payment-lines");
+    await requestBuyerInput(123,buyer,1,1,31);
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='123'").get()).toEqual({ pending_action:null });
+    const bareTag = await checkoutApprovalTag([{ productId:1,variantId:1,qty:2,price:1500 }]);
+    const res = await resolveCurrentPayq1Lines("123", {
+      v:1,nonce:"0123456789abcdef",exp:Math.floor(Date.now()/1000)+600,tag:bareTag,locale:"id",idrSubtotal:3000,
+      source:{ kind:"single",productId:1,variantId:1,qty:2 },methods:[],sel:null,contact:{ email:null,phone:null },st:"quoted",
+    });
+    expect(res).toEqual({ ok:false,reason:"variant_changed" });
   });
   it("no-field variants skip collection and creating anchors are never replaced",async () => {
     const { requestBuyerInput }=await import("@/lib/telegram/handlers/buyer-input");

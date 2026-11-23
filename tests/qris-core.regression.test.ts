@@ -95,11 +95,10 @@ describe("QRIS provider routing", () => {
     const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
     for (const file of [
       "src/app/api/orders/route.ts",
-      // Refactor 2026-09-10: penerbitan QRIS Telegram dipindah dari
-      // route.ts ke handler invoice (varian tunggal) dan cart-invoice (checkout gabungan).
+      // Penerbitan QRIS Telegram khusus single-item (handlers/invoice.ts);
+      // skema keranjang Telegram (cart-invoice.ts) dihapus 23 November 2026.
       // Jalur WhatsApp dihapus 13 November 2026 (alur pembeli dipensiunkan).
       "src/lib/telegram/handlers/invoice.ts",
-      "src/lib/telegram/handlers/cart-invoice.ts",
     ]) {
       expect(read(file)).toMatch(/createActiveQrisInvoice/);
       expect(read(file)).not.toMatch(/getPaymentProvider|KLIKQRIS/);

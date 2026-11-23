@@ -1,12 +1,17 @@
 import { execRun, isD1Mode, queryFirst } from "@/lib/db";
 import type { DatabaseAccess } from "@/lib/db-access";
-import { getActiveVariant } from "@/lib/catalog";
-import { parsePixelverifInput, validateBuyerFields } from "@/lib/buyer-fields";
+import { effectiveVariantStock, formatVariantLabel, getActiveVariant } from "@/lib/catalog";
+import { parsePixelverifInput, validateBuyerFields, type BuyerFields, type PixelverifInput } from "@/lib/buyer-fields";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 import { PIXELVERIF_GMAIL_REGEX } from "@/lib/pixelverif/purchase";
-import { addToCart } from "@/lib/telegram/cart";
+import { resolveBulkPrice } from "@/lib/bulk-pricing";
+import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
+import { readCheckoutEmail } from "@/lib/telegram/checkout-email";
 import { deleteMessage, sendMessage } from "@/lib/telegram/api";
-import { minimalMenuKeyboard } from "@/lib/telegram/keyboards";
+import { minimalMenuKeyboard, TELEGRAM_MAX_QTY } from "@/lib/telegram/keyboards";
+import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
+import { tgCtxFor } from "@/lib/telegram/render-prefs";
+import { productDisplayName } from "@/lib/i18n/product-name";
 import { setPendingActionUnlessCreating } from "./shared";
 
 const PIXELVERIF_STASH_TTL_MS = 10 * 60_000;
@@ -14,6 +19,7 @@ const PIXELVERIF_STASH_TTL_MS = 10 * 60_000;
 type PixelverifStashPayload = {
   email: string;
   password?: string;
+  totpSecret?: string;
   variantId: number;
   flowId: string;
 };
@@ -83,6 +89,7 @@ async function saveEncryptedStash(
 async function loadEncryptedStash(
   userId: string,
   variantId: number,
+  expectedFlowId?: string,
 ): Promise<{ payload: PixelverifStashPayload; expiresAt: string } | null> {
   if (!isD1Mode()) return null;
   const row = await queryFirst(
@@ -93,12 +100,14 @@ async function loadEncryptedStash(
     variantId,
   );
   if (!row || !row.ciphertext || !row.iv) return null;
+  if (expectedFlowId && String(row.flow_id ?? "") !== expectedFlowId) return null;
   try {
     const parsed = JSON.parse(await decryptSecret(String(row.ciphertext), String(row.iv))) as PixelverifStashPayload;
     if (
       !parsed || typeof parsed !== "object" ||
       Number(parsed.variantId) !== variantId ||
       String(parsed.flowId ?? "") !== String(row.flow_id ?? "") ||
+      (expectedFlowId && parsed.flowId !== expectedFlowId) ||
       typeof parsed.email !== "string" || !parsed.email
     ) {
       return null;
@@ -107,6 +116,125 @@ async function loadEncryptedStash(
   } catch {
     return null;
   }
+}
+
+/** Load a completed 3-step encrypted Pixel credential stash for single-item Telegram checkout. */
+export async function loadCompletedPixelverifStash(
+  userId: string,
+  variantId: number,
+  flowId: string,
+): Promise<PixelverifInput | null> {
+  const existing = await loadEncryptedStash(userId, variantId, flowId);
+  if (!existing?.payload.password || !existing.payload.totpSecret) return null;
+  try {
+    return parsePixelverifInput({
+      pv_email: existing.payload.email,
+      pv_password: existing.payload.password,
+      pv_totp_secret: existing.payload.totpSecret,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Open single-item payment picker directly after buyer input (Telegram has no cart). */
+async function openSinglePaymentOfferAfterInput(
+  chatId: number,
+  from: { id: number; first_name: string; username?: string },
+  productId: number,
+  variantId: number,
+  qty: number,
+  extra: { museInviteCode?: string; pvFlowId?: string; buyerFields: BuyerFields },
+): Promise<void> {
+  const ctx = await tgCtxFor(from.id);
+  const en = ctx.locale === "en";
+  const variant = await getActiveVariant(variantId);
+  const product = variant && variant.product_id === productId
+    ? await queryFirst(`SELECT id, name, name_en, is_active, telegram_enabled FROM products WHERE id=?`, productId)
+    : null;
+  if (!variant || variant.product_id !== productId || !product || Number(product.is_active) !== 1 || Number(product.telegram_enabled) !== 1) {
+    if (extra.pvFlowId) await clearPixelverifStash(String(from.id));
+    await sendMessage({
+      chat_id: chatId,
+      text: en ? "Variant unavailable. Please select again from /katalog." : "Varian tidak tersedia. Silakan pilih ulang dari /katalog.",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+    });
+    return;
+  }
+  const stock = effectiveVariantStock(variant);
+  const stockMax = stock === -1 ? TELEGRAM_MAX_QTY : Math.max(0, Math.min(stock, TELEGRAM_MAX_QTY));
+  const uniqueMax = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, stockMax) : stockMax;
+  const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
+  const maxQty = Math.min(variant.max_qty ?? TELEGRAM_MAX_QTY, uniqueMax);
+  if (stock === 0 || qty < minQty || qty > maxQty || (stock !== -1 && qty > stock)) {
+    if (extra.pvFlowId) await clearPixelverifStash(String(from.id));
+    await sendMessage({
+      chat_id: chatId,
+      text: en ? "Stock or quantity limit changed. Please choose again from /katalog." : "Stok atau batas jumlah berubah. Silakan pilih ulang dari /katalog.",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+    });
+    return;
+  }
+  let effectivePrice = Number(variant.price);
+  try {
+    effectivePrice = resolveBulkPrice(Number(variant.price), qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? [])).price;
+  } catch {
+    if (extra.pvFlowId) await clearPixelverifStash(String(from.id));
+    await sendMessage({
+      chat_id: chatId,
+      text: en ? "Price unavailable. Try again from /katalog." : "Harga belum tersedia. Silakan coba lagi dari /katalog.",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+    });
+    return;
+  }
+  let checked: { required: boolean; email: string | null };
+  try {
+    checked = await readCheckoutEmail(String(from.id), [{ productId, variantId }]);
+  } catch {
+    checked = { required: false, email: null };
+  }
+  if (checked.required && !checked.email) {
+    if (extra.pvFlowId) await clearPixelverifStash(String(from.id));
+    await sendMessage({
+      chat_id: chatId,
+      text: en ? "An active email is required for this product. Please try again from /katalog." : "Email aktif dibutuhkan untuk produk ini. Silakan ulangi dari /katalog.",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+    });
+    return;
+  }
+  const approvalTag = await checkoutApprovalTag([{
+    productId,
+    variantId,
+    qty,
+    price: effectivePrice,
+    buyerFieldKey: variant.buyer_field_key,
+    maxQty: variant.max_qty,
+    buyerFields: extra.buyerFields,
+    pixelverifInput: variant.pixelverif_input,
+  }]);
+  const productName = productDisplayName({ name: String(product.name), nameEn: product.name_en == null ? null : String(product.name_en) }, ctx.locale);
+  const label = formatVariantLabel(variant, ctx.locale);
+  const displayName = qty > 1 ? `${productName} · ${label} ×${qty}` : `${productName} · ${label}`;
+  const { showPaymentMethodOffer } = await import("./payment-methods");
+  await showPaymentMethodOffer(chatId, 0, from, {
+    mode: "single",
+    productId,
+    variantId,
+    qty,
+    tag: approvalTag,
+    productName: displayName,
+    subtotal: effectivePrice * qty,
+    identity: {
+      kind: "single",
+      productId,
+      variantId,
+      qty,
+      ...(extra.museInviteCode ? { museInviteCode: extra.museInviteCode } : {}),
+      ...(extra.pvFlowId ? { pvFlowId: extra.pvFlowId } : {}),
+    },
+    contactEmail: checked.email,
+    skipBuyerInputPrompt: true,
+  });
 }
 
 const PV_INTRO =
@@ -241,19 +369,40 @@ async function handlePixelverifInput(text:string,chatId:number,from:{ id:number 
     await sendMessage({ chat_id:chatId,text:`${(error as Error).message} Kirim ulang kunci setup 2FA, atau /batal.` });
     return true;
   }
-  const claim = await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=?",userId,user!.pending_action);
-  if (!claim.changes) return true;
-  await clearPixelverifStash(userId);
-  const result = await addToCart(userId,productId,variantId,1,1,{ pv_email: fields.pv_email, pv_password: fields.pv_password, pv_totp_secret: fields.pv_totp_secret });
-  if (!result.ok) {
-    const msg = result.reason === "pixelverif_limit"
-      ? "Hanya 1 varian aktivasi Google yang dapat dipesan per checkout. Hapus baris lama di keranjang terlebih dahulu."
-      : "Tidak dapat menambah ke keranjang. Coba lagi dari katalog.";
-    await sendMessage({ chat_id:chatId,text:msg,reply_markup:minimalMenuKeyboard() });
+  // Persist completed triple in the encrypted stash (10-min TTL matching payq1 offer);
+  // never persisted in telegram_users.pending_action or any cart table.
+  const offerExpiresAt = new Date(Date.now() + PIXELVERIF_STASH_TTL_MS).toISOString();
+  try {
+    const saved = await saveEncryptedStash(
+      userId,
+      variantId,
+      existing.payload.flowId,
+      { email: fields.pv_email, password: fields.pv_password, totpSecret: fields.pv_totp_secret, variantId, flowId: existing.payload.flowId },
+      offerExpiresAt,
+    );
+    if (!saved) throw new Error("stash_unavailable");
+  } catch {
+    await clearPixelverifStash(userId);
+    await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=?",userId,user!.pending_action).catch(() => {});
+    await sendMessage({ chat_id:chatId,text:"Sesi input tidak dapat disimpan sementara. Silakan ulangi dari katalog.",reply_markup:minimalMenuKeyboard() });
     return true;
   }
-  const { handleShowCart } = await import("./cart");
-  await handleShowCart(chatId,0,{ ...from, first_name: "" });
+  const claim = await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=?",userId,user!.pending_action);
+  if (!claim.changes) {
+    await clearPixelverifStash(userId);
+    return true;
+  }
+  await openSinglePaymentOfferAfterInput(
+    chatId,
+    { ...from, first_name: (from as { first_name?: string }).first_name ?? "" },
+    productId,
+    variantId,
+    1,
+    {
+      pvFlowId: existing.payload.flowId,
+      buyerFields: { pv_email: fields.pv_email, pv_password: fields.pv_password, pv_totp_secret: fields.pv_totp_secret },
+    },
+  );
   return true;
 }
 
@@ -265,16 +414,19 @@ export async function handleBuyerInput(text:string,chatId:number,from:{ id:numbe
   const user = await queryFirst("SELECT pending_action FROM telegram_users WHERE user_id=?",String(from.id));
   const match = /^buyerinput:(\d+):(\d+):(\d+)$/.exec(String(user?.pending_action ?? ""));
   if (!match) return false;
-  const variant = await getActiveVariant(Number(match[2]));
+  const productId = Number(match[1]);
+  const variantId = Number(match[2]);
+  const qty = Number(match[3]);
+  const variant = await getActiveVariant(variantId);
   try {
-    if (!variant?.buyer_field_key || variant.pixelverif_input) throw new Error("stale");
-    validateBuyerFields(variant,{ muse_invite_code:trimmed },Number(match[3]));
+    if (!variant?.buyer_field_key || variant.pixelverif_input || variant.product_id !== productId) throw new Error("stale");
+    validateBuyerFields(variant,{ muse_invite_code:trimmed },qty);
   } catch { await sendMessage({ chat_id:chatId,text:"Kode tidak valid atau varian berubah. Kirim 6 huruf/angka ASCII, atau /batal." }); return true; }
   const claim = await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=?",String(from.id),user!.pending_action);
   if (!claim.changes) return true;
-  const result = await addToCart(String(from.id),Number(match[1]),Number(match[2]),Number(match[3]),1,{ muse_invite_code:trimmed });
-  if (!result.ok) { await sendMessage({ chat_id:chatId,text:"Tidak dapat menambah: maksimum 30 unit dan satu kode per checkout. Hapus baris lama untuk mengganti kode.",reply_markup:minimalMenuKeyboard() }); return true; }
-  const { handleShowCart } = await import("./cart");
-  await handleShowCart(chatId,0,from);
+  await openSinglePaymentOfferAfterInput(chatId, from, productId, variantId, qty, {
+    museInviteCode: trimmed,
+    buyerFields: { muse_invite_code: trimmed },
+  });
   return true;
 }

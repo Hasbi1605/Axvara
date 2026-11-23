@@ -88,12 +88,18 @@ function gatewayFetchImpl(methods: unknown[]) {
 async function seedCartUser() {
   fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,locale,buyer_email) VALUES(?,?,?,?)")
     .run(String(buyer.id), String(buyer.id), "en", "buyer@example.test");
-  fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 1, 1, 2);
+}
+
+async function singlePmentry(qty = 2, price = 10_000) {
+  const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+  const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty, price }]);
+  return `pmentry:1:1:${qty}:${tag}`;
 }
 
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
+  vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
   vi.stubEnv("ADMIN_JWT_SECRET", "tg-r2-fixture");
   vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "tg-r2-fixture-secret-0123456789");
   vi.stubEnv("QRIS_ACTIVE_PROVIDER", "klikqris");
@@ -180,16 +186,18 @@ describe("TG R2 gateway create + consent (local only)", () => {
     const canonical = await buildMethodOptions(20_000);
     const gateway = canonical.find((m) => m.id === "sekalipay_gateway:GATEVA");
     expect(gateway).toBeTruthy();
+    const singleEntry = await singlePmentry();
+    const tag = singleEntry.split(":").at(-1)!;
     const state = {
-      v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600, tag: "0123456789ab",
-      locale: "en", idrSubtotal: 20_000, source: { kind: "cart" },
+      v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600, tag,
+      locale: "en", idrSubtotal: 20_000, source: { kind: "single", productId: 1, variantId: 1, qty: 2 },
       methods: canonical, sel: "sekalipay_gateway:GATEVA",
       contact: { email: "buyer@example.test", phone: "081234567890" }, st: "quoted",
     };
     fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id=?").run(`payq1:${JSON.stringify(state)}`, String(buyer.id));
     await click(`pgo:${state.nonce}`);
     expect(lastText()).toMatch(/Method unavailable|Metode belum tersedia/i);
-    expect(lastCallbacks()).toContain("pmentry");
+    expect(lastCallbacks()).toContain(singleEntry);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(0);
   });
@@ -209,18 +217,19 @@ describe("TG R2 gateway create + consent (local only)", () => {
       throw new Error(`unexpected ${target}`);
     }));
     await seedCartUser();
-    await click("pmentry");
+    const singleEntry = await singlePmentry();
+    await click(singleEntry);
     const frozen = parsePayq1State(userRaw())!;
     const index = frozen.methods.findIndex((m) => m.id === "nowpayments:btc");
     expect(index).toBeGreaterThanOrEqual(0);
     await click(`pm:${frozen.nonce}:${index}`);
     await click(`pgo:${frozen.nonce}`);
     expect(lastText()).toContain("Payment method error. Try another method.");
-    expect(lastCallbacks()).toContain("pmentry");
+    expect(lastCallbacks()).toContain(singleEntry);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(0);
     expect(userRaw()).toBe(""); // definitive failure without order/TX releases the anchor
-    await click("pmentry");
+    await click(singleEntry);
     const fresh = parsePayq1State(userRaw())!;
     expect(fresh.nonce).not.toBe(frozen.nonce);
     expect(fresh.methods.some((m) => m.id.startsWith("sekalipay_gateway:"))).toBe(false);

@@ -7,15 +7,26 @@ vi.mock("@/lib/telegram/api", async (importOriginal) => {
   return {
     ...actual,
     sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+    safeEditOrSend: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+    sendPhoto: vi.fn(async () => ({ ok: true, result: { message_id: 2 } })),
+    sendChatAction: vi.fn(async () => ({ ok: true })),
     answerCallbackQuery: vi.fn(async () => ({ ok: true })),
   };
 });
 
 let fixture: ReturnType<typeof createD1Fixture>;
-beforeEach(() => {
+beforeEach(async () => {
+  const { calculateCrc16 } = await import("@/lib/payments/qris");
+  const gopayBase = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI51440014ID.CO.QRIS.WWW0215ID10111111111110303UMI5204899953033605802ID5911AXVARA TEST6006SLEMAN61055558162070703A016304";
   fixture = createD1Fixture();
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
   vi.stubEnv("TELEGRAM_WEBHOOK_SECRET", "r5-secret");
+  vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
+  vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
+  vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+  vi.stubEnv("GOPAY_STATIC_QRIS", `${gopayBase}${calculateCrc16(gopayBase)}`);
+  vi.stubEnv("GOPAY_POLLER_SECRET", "r5-poller-secret");
+  vi.stubEnv("GOPAY_POLLER_WAKE_URL", "");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })));
 });
 afterEach(() => { fixture.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -32,37 +43,31 @@ function webhookBody(body: unknown) {
 // non-2xx so Telegram actually redelivers. Answering 200 told Telegram
 // "delivered" — Telegram never retried, and the outage became a silent drop.
 describe("R5 transient failure triggers a real Telegram retry", () => {
-  it("injected DB interruption marks update failed and answers non-2xx", async () => {
+  it("normal side-effect free command completes with HTTP 200 done", async () => {
     await insertTestProduct(fixture.sql, "manual", 1);
-    fixture.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('88',1,1,1)").run();
     const { POST } = await import("@/app/api/telegram/webhook/route");
-    // Rusak baca cart tepat saat handler membutuhkannya → error transient.
     const res = await POST(webhookBody({
       update_id: 8801,
-      message: { message_id: 1, date: 1_700_000_000, from: { id: 88, first_name: "R5" }, chat: { id: 88, type: "private" }, text: "/cart" },
+      message: { message_id: 1, date: 1_700_000_000, from: { id: 88, first_name: "R5" }, chat: { id: 88, type: "private" }, text: "/orders" },
     }));
-    // /cart side-effect free: tanpa injeksi ia 200 done. Kontrak retryable
-    // dibuktikan tes berikut (fetch TypeError + ok:false) secara eksplisit.
     expect(res.status).toBe(200);
     expect(fixture.sql.prepare("SELECT status FROM telegram_updates WHERE update_id='8801'").get()?.status).toBe("done");
   });
 
   it("TypeError fetch failed is transient: failed row + HTTP 500", async () => {
     await insertTestProduct(fixture.sql, "manual", 1);
-    fixture.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('89',1,1,1)").run();
-    // Simulasi TypeError jaringan di tengah handler: pesan error persis
-    // "fetch failed" seperti undici/fetch — klasifikasi harus transient
-    // (500 + failed), bukan 200 error_handled. Disimulasikan lewat hasil
-    // kirim transaksional yang gagal dengan jejak jaringan.
+    vi.stubEnv("GOPAY_MERCHANT_QRIS", "00020101021126570011ID.CO.GOPAY01189360091430000000000210G0000000000303UMI5204549953033605802ID5906AXVARA6007JAKARTA6304ABCD");
     const { isTransientWebhookError } = await import("@/lib/telegram/webhook-errors");
     expect(isTransientWebhookError(new TypeError("fetch failed"))).toBe(true);
+    const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+    const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 1, price: 10000 }]);
     const { POST } = await import("@/app/api/telegram/webhook/route");
     const api = await import("@/lib/telegram/api");
-    const send = api.sendMessage as unknown as ReturnType<typeof vi.fn>;
-    send.mockResolvedValueOnce({ ok: false, description: "fetch failed" });
+    const photo = api.sendPhoto as unknown as ReturnType<typeof vi.fn>;
+    photo.mockResolvedValueOnce({ ok: false, error_code: 502, description: "fetch failed" });
     const res = await POST(webhookBody({
       update_id: 8899,
-      message: { message_id: 2, date: 1_700_000_000, from: { id: 89, first_name: "R5" }, chat: { id: 89, type: "private" }, text: "/cart" },
+      callback_query: { id: "r5-89", from: { id: 89, first_name: "R5" }, message: { message_id: 2, chat: { id: 89, type: "private" } }, data: `pay:1:1:1:${tag}` },
     }));
     expect(res.status).toBe(500);
     expect(await res.json()).toMatchObject({ ok: false, status: "error_retryable" });
@@ -70,30 +75,29 @@ describe("R5 transient failure triggers a real Telegram retry", () => {
       ?.toMatchObject({ status: "failed" });
   });
 
-  it("sendMessage ok:false on /cart is NOT done: failed row + HTTP 500", async () => {
+  it("transactional sendPhoto ok:false is NOT done: failed row + HTTP 500, then redelivery succeeds", async () => {
     await insertTestProduct(fixture.sql, "manual", 1);
-    fixture.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('90',1,1,1)").run();
+    vi.stubEnv("GOPAY_MERCHANT_QRIS", "00020101021126570011ID.CO.GOPAY01189360091430000000000210G0000000000303UMI5204549953033605802ID5906AXVARA6007JAKARTA6304ABCD");
+    const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+    const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 1, price: 10000 }]);
     const api = await import("@/lib/telegram/api");
-    const send = api.sendMessage as unknown as ReturnType<typeof vi.fn>;
-    send.mockResolvedValueOnce({ ok: false, description: "Request timeout" });
+    const photo = api.sendPhoto as unknown as ReturnType<typeof vi.fn>;
+    photo.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" });
     const { POST } = await import("@/app/api/telegram/webhook/route");
-    const res = await POST(webhookBody({
+    const payload = {
       update_id: 9901,
-      message: { message_id: 3, date: 1_700_000_000, from: { id: 90, first_name: "R5" }, chat: { id: 90, type: "private" }, text: "/cart" },
-    }));
-    // Hasil kirim transaksional gagal → update failed + 500 agar Telegram
-    // redelivery; retry berikutnya berhasil.
+      callback_query: { id: "r5-90", from: { id: 90, first_name: "R5" }, message: { message_id: 3, chat: { id: 90, type: "private" } }, data: `pay:1:1:1:${tag}` },
+    };
+    const res = await POST(webhookBody(payload));
     expect(res.status).toBe(500);
     expect(await res.json()).toMatchObject({ ok: false, status: "error_retryable" });
     expect(fixture.sql.prepare("SELECT status FROM telegram_updates WHERE update_id='9901'").get()?.status).toBe("failed");
-    send.mockResolvedValueOnce({ ok: true, result: { message_id: 7 } });
-    // Redelivery update_id yang sama: reclaim lalu sukses.
-    const retry = await POST(webhookBody({
-      update_id: 9901,
-      message: { message_id: 3, date: 1_700_000_000, from: { id: 90, first_name: "R5" }, chat: { id: 90, type: "private" }, text: "/cart" },
-    }));
+    photo.mockResolvedValueOnce({ ok: true, result: { message_id: 7 } });
+    // Redelivery update_id yang sama: reclaim lalu sukses tanpa membuat order kedua.
+    const retry = await POST(webhookBody(payload));
     expect(retry.status).toBe(200);
     expect(fixture.sql.prepare("SELECT status FROM telegram_updates WHERE update_id='9901'").get()?.status).toBe("done");
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders WHERE telegram_user_id='90'").get()?.n).toBe(1);
   });
 
   it("checkout failure then retry yields exactly one order and one invoice", async () => {
@@ -151,12 +155,15 @@ describe("R5 transient failure triggers a real Telegram retry", () => {
 
   it("permanent bug answers exactly 200 error_handled with failed row", async () => {
     const { POST } = await import("@/app/api/telegram/webhook/route");
-    // Bug murni tanpa jejak jaringan: handler callback dengan data rusak.
+    const api = await import("@/lib/telegram/api");
+    const err = new TypeError("Cannot read properties of null (reading 'x')");
+    (api.sendMessage as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(err);
+    // Bug murni tanpa jejak jaringan: handler command melempar bug TypeError permanen.
     const res = await POST(webhookBody({
       update_id: 8803,
-      callback_query: {
-        id: "perm-fail", from: { id: 88, first_name: "R5" },
-        message: { message_id: 88, chat: { id: 88 } }, data: "pay:INVALID: NaN",
+      message: {
+        message_id: 88, date: 1_700_000_000, from: { id: 88, first_name: "R5" },
+        chat: { id: 88, type: "private" }, text: "/garansi",
       },
     }));
     // Tepat satu kontrak: 200 error_handled (retry 500 dilarang untuk bug).
@@ -167,15 +174,12 @@ describe("R5 transient failure triggers a real Telegram retry", () => {
 
   it("retry of the same failed update is claimed once (no double order)", async () => {
     // A failed update stays failed: a redelivery with the same update_id is
-    // re-claimable (reclaim CAS), but the /start handler itself is side-effect
+    // re-claimable (reclaim CAS), but the /orders handler itself is side-effect
     // free, and the done marker afterwards makes the third delivery a no-op.
     const { POST } = await import("@/app/api/telegram/webhook/route");
-    // /cart is side-effect free (renders from telegram_carts) so it doubles
-    // as the retry probe: first delivery succeeds, forced-fail simulates a
-    // crashed attempt, redelivery reclaims and succeeds, third is a no-op.
     const body = {
       update_id: 8802,
-      message: { message_id: 1, date: 1_700_000_000, from: { id: 88, first_name: "R5" }, chat: { id: 88, type: "private" }, text: "/cart" },
+      message: { message_id: 1, date: 1_700_000_000, from: { id: 88, first_name: "R5" }, chat: { id: 88, type: "private" }, text: "/orders" },
     };
     const first = await POST(webhookBody(body));
     expect(first.status).toBe(200);

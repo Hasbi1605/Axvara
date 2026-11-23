@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
-vi.mock("@/lib/auth", () => ({
+vi.mock("@/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth")>()),
   requireAdmin: vi.fn(async () => ({ email: "admin@axvara.test", role: "admin" })),
 }));
 
@@ -12,6 +13,8 @@ vi.mock("@/lib/telegram/api", () => ({
   answerCallbackQuery: vi.fn(async () => ({ ok: true })),
   sendChatAction: vi.fn(async () => ({ ok: true })),
   editMessageText: vi.fn(async () => ({ ok: true })),
+  safeEditOrSend: vi.fn(async () => ({ ok: true })),
+  sendPhoto: vi.fn(async () => ({ ok: true, result: { message_id: 100 } })),
 }));
 
 import { createDatabaseAccess } from "@/lib/db-access";
@@ -28,9 +31,10 @@ import { processPixelverifOrders, retryPixelverifOrder } from "@/lib/pixelverif/
 import { purgeExpiredPixelverifInputs } from "@/lib/pixelverif/purge";
 import { PIXELVERIF_RETRYABLE_ERRORS } from "@/lib/pixelverif/retryable";
 import { refreshSupplierOrderNow } from "@/lib/orders/supplier-refresh";
-import { addToCart, getCartSummary } from "@/lib/telegram/cart";
 import { handleCommand } from "@/lib/telegram/handlers/command";
-import { handleBuyerInput, purgeExpiredTelegramPixelverifStashes, requestBuyerInput } from "@/lib/telegram/handlers/buyer-input";
+import { handleBuyerInput, loadCompletedPixelverifStash, purgeExpiredTelegramPixelverifStashes, requestBuyerInput } from "@/lib/telegram/handlers/buyer-input";
+import { resolveCurrentPayq1Lines } from "@/lib/telegram/handlers/payment-lines";
+import { parsePayq1State } from "@/lib/telegram/payment-quote";
 import { runMaintenanceCleanup } from "@/lib/maintenance-cleanup";
 import { POST as bulkMarkupPost } from "@/app/api/admin/pixelverif/markup/bulk/route";
 import { GET as pixelProductsGet } from "@/app/api/admin/pixelverif/products/route";
@@ -116,8 +120,9 @@ describe("Pixel Verification peer-reviewed audit fixes", () => {
     expect(adminBody.items.every((item) => item.stock === -1)).toBe(true);
   });
 
-  it("[C2 + Sol-Bonus-1] persists Telegram 3-step stash encrypted in D1, preserves leading/trailing spaces & slash passwords, and expires abandoned cart blobs", async () => {
+  it("[C2 + Sol-Bonus-1] persists Telegram 3-step stash encrypted in D1, preserves leading/trailing spaces & slash passwords, and routes directly to single-item payment offer without cart", async () => {
     seedPixelCatalog();
+    vi.stubEnv("GOPAY_MERCHANT_QRIS", "00020101021126570011ID.CO.GOPAY01189360091430000000000210G0000000000303UMI5204549953033605802ID5906AXVARA6007JAKARTA6304ABCD");
     const user = { id: 901, first_name: "AuditUser" };
     await requestBuyerInput(user.id, user, 1, 1, 1);
 
@@ -137,36 +142,65 @@ describe("Pixel Verification peer-reviewed audit fixes", () => {
     await handleCommand("BAD", user.id, "private", user, undefined, 103);
     expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_pixelverif_stashes WHERE user_id='901'").get()).toEqual({ n: 1 });
 
-    // Step 3b: valid TOTP completes, deletes D1 stash, and preserves exact raw password in cart.
+    // Step 3b: valid TOTP persists completed triple in encrypted stash and opens single-item payq1 offer directly (no Telegram cart).
     await handleCommand(pvCreds.pv_totp_secret, user.id, "private", user, undefined, 104);
+    const pendingRaw = (fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='901'").get() as { pending_action: string | null })?.pending_action;
+    expect(pendingRaw).toBeTruthy();
+    expect(pendingRaw).not.toContain(pvCreds.pv_password);
+    expect(pendingRaw).not.toContain(pvCreds.pv_totp_secret);
+    const parsedOffer = parsePayq1State(pendingRaw);
+    expect(parsedOffer?.source).toMatchObject({ kind: "single", productId: 1, variantId: 1, qty: 1, pvFlowId: expect.any(String) });
+
+    // Single-item resolver decrypts exact raw password (including leading/trailing spaces & leading '/').
+    const resolved = await resolveCurrentPayq1Lines("901", parsedOffer!);
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) expect(resolved.cartLines[0].buyerFields).toEqual(pvCreds);
+    await expect(loadCompletedPixelverifStash("901", 1, parsedOffer!.source.pvFlowId!)).resolves.toEqual(pvCreds);
+
+    // Expired stash fails closed on resolver and is swept by cleanup.
+    fx.sql.exec("UPDATE telegram_pixelverif_stashes SET expires_at=datetime('now','-1 minute') WHERE user_id='901'");
+    await expect(resolveCurrentPayq1Lines("901", parsedOffer!)).resolves.toEqual({ ok: false, reason: "variant_changed" });
+    await runMaintenanceCleanup(createDatabaseAccess(fx.db));
     expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_pixelverif_stashes WHERE user_id='901'").get()).toEqual({ n: 0 });
-    const cart = await getCartSummary("901");
-    expect(cart.issues).toEqual([]);
-    expect(cart.lines).toHaveLength(1);
-    expect(cart.lines[0].buyerFields).toEqual(pvCreds);
 
-    // M1 parity on Telegram: second Pixel variant in same cart is rejected.
-    const second = await addToCart("901", 1, 2, 1, 1, pvCreds);
-    expect(second).toEqual({ ok: false, reason: "pixelverif_limit" });
-
-    // Sol Bonus 1: cart row older than 30 min expires on read and is deleted.
-    fx.sql.exec("UPDATE telegram_carts SET updated_at=datetime('now','-35 minutes') WHERE user_id='901'");
-    const expiredCart = await getCartSummary("901");
-    expect(expiredCart.lines).toHaveLength(0);
-    expect(expiredCart.issues[0]).toContain("kedaluwarsa");
-    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_carts WHERE user_id='901'").get()).toEqual({ n: 0 });
-
-    // Maintenance cleanup sweeps expired stashes & abandoned >30m Pixel cart rows.
     const sealed = await encryptSecret(JSON.stringify({ email: "x@gmail.com", variantId: 1, flowId: "f1" }));
     fx.sql.prepare("INSERT INTO telegram_pixelverif_stashes(user_id,variant_id,flow_id,ciphertext,iv,expires_at) VALUES('902',1,'f1',?,?,datetime('now','-1 minute'))")
       .run(sealed.ciphertext, sealed.iv);
     await purgeExpiredTelegramPixelverifStashes(createDatabaseAccess(fx.db));
     expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_pixelverif_stashes WHERE user_id='902'").get()).toEqual({ n: 0 });
+  });
 
-    await addToCart("901", 1, 1, 1, 1, pvCreds);
-    fx.sql.exec("UPDATE telegram_carts SET updated_at=datetime('now','-45 minutes') WHERE user_id='901'");
-    await runMaintenanceCleanup(createDatabaseAccess(fx.db));
-    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_carts WHERE user_id='901'").get()).toEqual({ n: 0 });
+  it("[C2-QRIS] Telegram Pixel single-item QRIS seals pixelverif_buyer_inputs and clears encrypted stash without cart", async () => {
+    seedPixelCatalog();
+    const { calculateCrc16 } = await import("@/lib/payments/qris");
+    const gopayBase = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI51440014ID.CO.QRIS.WWW0215ID10111111111110303UMI5204899953033605802ID5911AXVARA TEST6006SLEMAN61055558162070703A016304";
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
+    vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+    vi.stubEnv("GOPAY_STATIC_QRIS", `${gopayBase}${calculateCrc16(gopayBase)}`);
+    vi.stubEnv("GOPAY_POLLER_SECRET", "pixel-qris-poller-secret");
+    vi.stubEnv("GOPAY_POLLER_WAKE_URL", "");
+    const user = { id: 903, first_name: "PixelQrisBuyer" };
+    fx.sql.exec("INSERT INTO telegram_users(user_id,chat_id,first_name,locale) VALUES('903','903','PixelQrisBuyer','id')");
+    await requestBuyerInput(user.id, user, 1, 1, 1);
+    await handleCommand(pvCreds.pv_email, user.id, "private", user, undefined, 201);
+    await handleCommand(pvCreds.pv_password, user.id, "private", user, undefined, 202);
+    await handleCommand(pvCreds.pv_totp_secret, user.id, "private", user, undefined, 203);
+
+    const pendingRaw = String((fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='903'").get() as { pending_action: string | null })?.pending_action ?? "");
+    const offer = parsePayq1State(pendingRaw)!;
+    const qrisIdx = offer.methods.findIndex((m) => m.id === "qris");
+    expect(qrisIdx).toBeGreaterThanOrEqual(0);
+
+    const { handleCallback } = await import("@/lib/telegram/handlers/callback");
+    await handleCallback(`pm:${offer.nonce}:${qrisIdx}`, user.id, 99, user);
+
+    const order = fx.sql.prepare("SELECT code, items, subtotal FROM orders WHERE telegram_user_id='903'").get() as { code: string; items: string; subtotal: number } | undefined;
+    expect(order).toBeTruthy();
+    expect(order!.subtotal).toBe(21600);
+    expect(order!.items).not.toContain(pvCreds.pv_password);
+    expect(order!.items).not.toContain(pvCreds.pv_totp_secret);
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM pixelverif_buyer_inputs WHERE order_code=?").get(order!.code)).toEqual({ n: 1 });
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_pixelverif_stashes WHERE user_id='903'").get()).toEqual({ n: 0 });
   });
 
   it("[H1] POST /api/admin/pixelverif/markup/bulk updates both variants, reports invalid IDs, and resets manual override", async () => {

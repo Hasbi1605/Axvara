@@ -124,11 +124,11 @@ describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
     expect(read("src/app/api/cron/operations/route.ts")).toContain("runExpiryPhase(ctx)");
   });
 
-  it("keranjang Telegram memakai 1 JOIN varian (tanpa getActiveVariant per baris)", () => {
-    const cart = read("src/lib/telegram/cart.ts");
-    expect(cart).toContain("LEFT JOIN product_variants pv ON pv.id=c.variant_id");
-    const summary = cart.slice(cart.indexOf("export async function getCartSummary"));
-    expect(summary).not.toContain("getActiveVariant(");
+  it("skema keranjang Telegram telah dihapus (keranjang hanya di web)", async () => {
+    const fs = await import("node:fs");
+    expect(fs.existsSync("src/lib/telegram/cart.ts")).toBe(false);
+    expect(fs.existsSync("src/lib/telegram/handlers/cart.ts")).toBe(false);
+    expect(fs.existsSync("src/lib/telegram/handlers/cart-invoice.ts")).toBe(false);
   });
 
   it("PDP/checkout tidak lagi fetch seluruh katalog untuk 1 produk", () => {

@@ -270,8 +270,8 @@ export function orderLinesFromSource(
     qty: l.qty,
   }));
   const variantSnapshot = JSON.stringify({
-    cart: true,
-    product_name: cartLines.length === 1 ? cartLines[0].productName : `${cartLines.length} item keranjang`,
+    product_name: cartLines[0].productName,
+    variant_id: cartLines[0].variantId,
     label: cartLines.map((l) => `${l.variantLabel} ×${l.qty}`).join(", "),
     price: subtotal, qty: cartLines.reduce((s, l) => s + l.qty, 0),
     fulfillment_mode: cartLines.every((l) => l.fulfillmentMode === "manual") ? "manual" : "mixed",

@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { getActiveVariant } from "@/lib/catalog";
-import { addToCart, getCartSummary, setCartLineQty } from "@/lib/telegram/cart";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { readCheckoutEmail } from "@/lib/telegram/checkout-email";
 import { handlePayWithQris, createAndSendVariantInvoice } from "@/lib/telegram/handlers/invoice";
-import { createAndSendCartInvoice } from "@/lib/telegram/handlers/cart-invoice";
-import { handleCartAdjust, handleCartCheckout } from "@/lib/telegram/handlers/cart";
 import { handleShowQty } from "@/lib/telegram/handlers/catalog";
 import { showEmailConfirmation } from "@/lib/telegram/handlers/discovery";
-import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
+import { sendMessage } from "@/lib/telegram/api";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 
 vi.mock("@/lib/telegram/api", () => ({
@@ -136,42 +133,38 @@ describe("checkout consent and required-email snapshot", () => {
     expect(fixture.sql.prepare("SELECT pending_action FROM telegram_users").get()?.pending_action).toBe("email_confirm:1:1:1:newer");
   });
 
-  it("checks every cart line and rejects a missing catalog row", async () => {
+  it("checks every checkout line and rejects a missing catalog row", async () => {
     await expect(readCheckoutEmail("42", [line, { productId: 1, variantId: 2 }])).rejects.toThrow("checkout_email_catalog_missing");
     expect(createChannelOrderAtomic).not.toHaveBeenCalled();
   });
 
-  it("cart factory fails closed when the required-email lookup is unavailable", async () => {
-    await addToCart("42", 1, 1, 1);
-    const summary = await getCartSummary("42");
+  it("variant factory fails closed when the required-email lookup is unavailable", async () => {
+    fixture.sql.exec("UPDATE products SET require_email=1 WHERE id=1");
+    const variant = (await getActiveVariant(1))!;
     fixture.control.fail = sql => sql.startsWith("SELECT buyer_email");
-    await createAndSendCartInvoice(42, summary.lines, buyer);
+    await createAndSendVariantInvoice(42, 7, 1, "Produk", variant, buyer, 1);
     expect(createChannelOrderAtomic).not.toHaveBeenCalled();
     expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()?.n).toBe(0);
   });
 
-  it("cart factory requires email for an Invite line even when the first line does not", async () => {
+  it("variant factory requires email for an Invite variant", async () => {
     seedVariant(2);
     fixture.sql.exec(`INSERT INTO wr_products(wr_product_id,wr_product_name) VALUES('wp','Invite');
       INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_type,wr_delivery_class) VALUES('invite','wp','Invite',500,'Invite','restock');
       UPDATE product_variants SET wr_variant_id='invite' WHERE id=2;
       UPDATE telegram_users SET buyer_email=NULL`);
-    await addToCart("42", 1, 1, 1);
-    await addToCart("42", 1, 2, 1);
-    await createAndSendCartInvoice(42, (await getCartSummary("42")).lines, buyer);
+    const variant = (await getActiveVariant(2))!;
+    await createAndSendVariantInvoice(42, 7, 1, "Produk", variant, buyer, 1);
     expect(createChannelOrderAtomic).not.toHaveBeenCalled();
   });
 
-  it("factories retain explicitly validated email snapshots even if the saved email cannot be read again", async () => {
+  it("factory retains explicitly validated email snapshot even if the saved email cannot be read again", async () => {
     fixture.sql.exec("UPDATE products SET require_email=1 WHERE id=1");
     const variant = (await getActiveVariant(1))!;
-    await addToCart("42", 1, 1, 1);
-    const summary = await getCartSummary("42");
     fixture.control.fail = sql => sql.startsWith("SELECT buyer_email");
     await createAndSendVariantInvoice(42, 7, 1, "Produk", variant, buyer, 1, "snapshot@example.com");
-    await createAndSendCartInvoice(42, summary.lines, buyer, "snapshot@example.com");
-    expect(createChannelOrderAtomic).toHaveBeenCalledTimes(2);
-    for (const [input] of vi.mocked(createChannelOrderAtomic).mock.calls) expect(input.customerEmail).toBe("snapshot@example.com");
+    expect(createChannelOrderAtomic).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createChannelOrderAtomic).mock.calls[0][0].customerEmail).toBe("snapshot@example.com");
   });
 
   it("reuses an existing pending order before checking current price, stock or email", async () => {
@@ -181,125 +174,8 @@ describe("checkout consent and required-email snapshot", () => {
       UPDATE products SET is_active=0,require_email=1`);
     fixture.control.fail = sql => sql.startsWith("SELECT buyer_email");
     await handlePayWithQris(42, 7, 1, 1, 1, buyer);
-    await handleCartCheckout(42, 7, buyer);
     expect(createChannelOrderAtomic).not.toHaveBeenCalled();
     expect(handleShowQty).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("RETRY") }));
-  });
-
-  it("cart confirmation carries the exact displayed snapshot tag", async () => {
-    await addToCart("42", 1, 1, 2);
-    await handleCartCheckout(42, 7, buyer);
-    const sent = vi.mocked(safeEditOrSend).mock.calls.at(-1)![0];
-    expect(sent.message_id).toBe(7);
-    expect(sent.reply_markup).toEqual(expect.objectContaining({
-      inline_keyboard: expect.arrayContaining([[expect.objectContaining({ callback_data: `cconfirm:${await checkoutApprovalTag([{ ...line, qty: 2 }])}` })]]),
-    }));
-  });
-});
-
-describe("atomic cart quantity mutations with real SQLite", () => {
-  it("parallel adds accumulate instead of overwriting each other", async () => {
-    await addToCart("42", 1, 1, 1);
-    expect((await Promise.all([addToCart("42", 1, 1, 1), addToCart("42", 1, 1, 1)])).every(r => r.ok)).toBe(true);
-    expect(fixture.sql.prepare("SELECT qty FROM telegram_carts").get()?.qty).toBe(3);
-  });
-
-  it("parallel button increments use durable quantity", async () => {
-    await addToCart("42", 1, 1, 1);
-    await Promise.all([handleCartAdjust(42, 7, buyer, 1, 1), handleCartAdjust(42, 7, buyer, 1, 1)]);
-    expect(fixture.sql.prepare("SELECT qty FROM telegram_carts").get()?.qty).toBe(3);
-  });
-
-  it("an add and a button increment cannot overwrite each other", async () => {
-    await addToCart("42", 1, 1, 1);
-    const results = await Promise.all([addToCart("42", 1, 1, 2), setCartLineQty("42", 1, 1, true)]);
-    expect(results).toEqual([{ ok: true }, true]);
-    expect(fixture.sql.prepare("SELECT qty FROM telegram_carts").get()?.qty).toBe(4);
-  });
-
-  it("a stale summary cleanup cannot delete a new increment after restock", async () => {
-    await addToCart("42", 1, 1, 1);
-    fixture.sql.exec("UPDATE product_variants SET stock=0 WHERE id=1");
-    fixture.control.beforeRun = async sql => {
-      if (!sql.startsWith("DELETE FROM telegram_carts")) return;
-      fixture.control.beforeRun = null;
-      fixture.sql.exec("UPDATE product_variants SET stock=10 WHERE id=1");
-      expect(await addToCart("42", 1, 1, 1)).toEqual({ ok: true });
-    };
-    await getCartSummary("42");
-    expect(fixture.sql.prepare("SELECT qty FROM telegram_carts").get()?.qty).toBe(2);
-  });
-
-  it("concurrent new lines cannot exceed 20 lines", async () => {
-    for (let id = 2; id <= 21; id++) seedVariant(id);
-    for (let id = 1; id <= 19; id++) await addToCart("42", 1, id, 1);
-    const results = await Promise.all([addToCart("42", 1, 20, 1), addToCart("42", 1, 21, 1)]);
-    expect(results.filter(r => r.ok)).toHaveLength(1);
-    expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM telegram_carts").get()?.n).toBe(20);
-  });
-
-  it("concurrent unique lines cannot exceed the combined ten-unit cap", async () => {
-    fixture.sql.exec("UPDATE product_variants SET fulfillment_mode='unique' WHERE id=1");
-    seedInventory(1);
-    seedVariant(2, "unique");
-    seedVariant(3, "unique");
-    await addToCart("42", 1, 1, 9);
-    const results = await Promise.all([addToCart("42", 1, 2, 1), addToCart("42", 1, 3, 1)]);
-    expect(results.filter(r => r.ok)).toHaveLength(1);
-    expect(fixture.sql.prepare("SELECT SUM(qty) AS n FROM telegram_carts").get()?.n).toBe(10);
-  });
-
-  it("parallel quantity updates cannot exceed the combined unique cap", async () => {
-    fixture.sql.exec("UPDATE product_variants SET fulfillment_mode='unique' WHERE id=1");
-    seedInventory(1);
-    seedVariant(2, "unique");
-    await addToCart("42", 1, 1, 4);
-    await addToCart("42", 1, 2, 5);
-    const results = await Promise.all([setCartLineQty("42", 1, 1, true), setCartLineQty("42", 2, 1, true)]);
-    expect(results.filter(Boolean)).toHaveLength(1);
-    expect(fixture.sql.prepare("SELECT SUM(qty) AS n FROM telegram_carts").get()?.n).toBe(10);
-  });
-
-  it("checks stock again in the atomic mutation when stock changes after the initial read", async () => {
-    fixture.control.beforeRun = async sql => {
-      if (sql.includes("INSERT INTO telegram_carts")) fixture.sql.exec("UPDATE product_variants SET stock=1 WHERE id=1");
-    };
-    expect(await addToCart("42", 1, 1, 2)).toEqual({ ok: false, reason: "cart_changed" });
-    expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM telegram_carts").get()?.n).toBe(0);
-  });
-
-  it("parallel adds cannot exceed stock", async () => {
-    fixture.sql.exec("UPDATE product_variants SET stock=2 WHERE id=1");
-    const results = await Promise.all([addToCart("42", 1, 1, 2), addToCart("42", 1, 1, 2)]);
-    expect(results.filter(r => r.ok)).toHaveLength(1);
-    expect(fixture.sql.prepare("SELECT qty FROM telegram_carts").get()?.qty).toBe(2);
-  });
-
-  it("minimum quantity cannot be overridden or decremented below the variant minimum", async () => {
-    fixture.sql.exec("UPDATE product_variants SET min_qty=50 WHERE id=1");
-    expect(await addToCart("42", 1, 1, 1, 1)).toEqual({ ok: false, reason: "below_minimum" });
-    expect(await addToCart("42", 1, 1, 50)).toEqual({ ok: true });
-    expect(await setCartLineQty("42", 1, 49)).toBe(false);
-    expect(await setCartLineQty("42", 1, -1, true)).toBe(false);
-    expect(fixture.sql.prepare("SELECT qty FROM telegram_carts").get()?.qty).toBe(50);
-  });
-
-  it("checks the live minimum if it increases between validation and the cart write", async () => {
-    fixture.control.beforeRun = async sql => {
-      if (sql.includes("INSERT INTO telegram_carts")) fixture.sql.exec("UPDATE product_variants SET min_qty=50 WHERE id=1");
-    };
-    expect(await addToCart("42", 1, 1, 1)).toEqual({ ok: false, reason: "cart_changed" });
-    expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM telegram_carts").get()?.n).toBe(0);
-  });
-
-  it("set quantity enforces stock for ordinary modes and rejects non-finite input", async () => {
-    fixture.sql.exec("UPDATE product_variants SET stock=2 WHERE id=1");
-    await addToCart("42", 1, 1, 1);
-    expect(await setCartLineQty("42", 1, 3)).toBe(false);
-    expect(await setCartLineQty("42", 1, NaN)).toBe(false);
-    expect(await setCartLineQty("42", 1, 2)).toBe(true);
-    expect(await setCartLineQty("42", 1, 1, true)).toBe(false);
-    expect(fixture.sql.prepare("SELECT qty FROM telegram_carts").get()?.qty).toBe(2);
   });
 });

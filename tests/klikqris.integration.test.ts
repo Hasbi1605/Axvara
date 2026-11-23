@@ -305,23 +305,16 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
   await expect(createActiveQrisInvoice(A,1000)).rejects.toThrow("klikqris_http_404");
   expect(row().status).toBe("pending");release();expect((await first).payableAmount).toBe(1089);expect(posts()).toBe(1);
  });
- it.each([false,true])("retains Telegram cart reservations on ambiguous creates (state read failure: %s)",async readFailure=>{
-  const {createAndSendCartInvoice}=await import("@/lib/telegram/handlers/cart-invoice");
+ it.each([false,true])("retains Telegram single-product reservations on ambiguous creates (state read failure: %s)",async readFailure=>{
+  const {createAndSendVariantInvoice}=await import("@/lib/telegram/handlers/invoice");
+  const {getActiveVariant}=await import("@/lib/catalog");const variant=await getActiveVariant(1);expect(variant).toBeTruthy();
   failCreateAfterSave=true;
   let injected=false;fixture.control.fail=q=>{if(readFailure && !injected && q.includes("SELECT id FROM payment_transactions WHERE order_code=? AND provider='klikqris' AND status IN")){injected=true;return true;}return false;};
-  await createAndSendCartInvoice(123,[{productId:1,variantId:1,productName:"Fixture",variantLabel:"Default",price:1000,qty:1,stock:100,minQty:1,fulfillmentMode:"manual"} as import("@/lib/telegram/cart").CartLine],{id:123,first_name:"Test"});
+  await createAndSendVariantInvoice(123,1,1,"Fixture",variant!,{id:123,first_name:"Test"},1);
   expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(99);
   expect(fixture.sql.prepare("SELECT status FROM orders").get()!.status).toBe("pending");
   expect(fixture.sql.prepare("SELECT status FROM payment_transactions").get()!.status).toBe("initializing");
   expect(posts()).toBe(1);
- });
- it("retains Telegram single-product reservations on an ambiguous gateway create",async()=>{
-  const {createAndSendVariantInvoice}=await import("@/lib/telegram/handlers/invoice");
-  const {getActiveVariant}=await import("@/lib/catalog");const variant=await getActiveVariant(1);expect(variant).toBeTruthy();
-  failCreateAfterSave=true;
-  await createAndSendVariantInvoice(123,1,1,"Fixture",variant!,{id:123,first_name:"Test"},1);
-  expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(99);
-  expect(fixture.sql.prepare("SELECT status FROM orders").get()!.status).toBe("pending");expect(posts()).toBe(1);
  });
  it("keeps invoice captions within Telegram limits while warning about late payment",async()=>{
   const {invoiceMessage}=await import("@/lib/telegram/messages");

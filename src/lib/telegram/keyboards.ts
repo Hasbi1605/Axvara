@@ -47,7 +47,6 @@ export const MENU_LABEL_ORDERS = "📦 Pesanan";
 export const MENU_LABEL_WARRANTY = "🛡 Garansi";
 export const MENU_LABEL_HELP = "💬 Bantuan";
 export const MENU_LABEL_HELP_LEGACY = "❓ Bantuan";
-export const MENU_LABEL_CART = "🛒 Keranjang";
 export const MENU_LABEL_SETTINGS = "🌐 Bahasa";
 export const MENU_LABEL_SETTINGS_LEGACY = "⚙️ Pengaturan";
 
@@ -119,19 +118,10 @@ export const cb = {
   reorder: (productId: number) => `reorder:${productId}`,
   search: () => "search",
   myOrders: () => "myorders",
-  cart: () => "cart",
-  cartAdd: (productId: number, variantId: number, qty: number) => `cadd:${productId}:${variantId}:${qty}`,
-  cartDec: (variantId: number) => `cdec:${variantId}`,
-  cartInc: (variantId: number) => `cinc:${variantId}`,
-  cartRemove: (variantId: number) => `crm:${variantId}`,
-  cartClear: () => "cclear",
-  cartCheckout: () => "ccheckout",
   waInput: (orderCode: string) => `wainput:${orderCode}`,
   /** R1 frozen offer entry; single-product entry binds product/variant/qty/tag. */
-  payMethodsEntry: (productId?: number, variantId?: number, qty?: number, tag?: string) =>
-    productId != null && variantId != null && qty != null
-      ? `pmentry:${productId}:${variantId}:${qty}${tag ? `:${tag}` : ""}`
-      : "pmentry",
+  payMethodsEntry: (productId: number, variantId: number, qty: number, tag?: string) =>
+    `pmentry:${productId}:${variantId}:${qty}${tag ? `:${tag}` : ""}`,
   /** R1 frozen offer selection: index into FROZEN payq1 array (nonce-bound). */
   payMethod: (nonce: string, index: number) => `pm:${nonce}:${index}`,
   /** Sub-menu koin crypto (nonce-bound) dan kembali. */
@@ -226,7 +216,7 @@ export function settingsKeyboard(locale?: Locale, _currency?: DisplayCurrency | 
 }
 
 /**
- * TG2a: localized labels for the SAME callback targets (catalog/cart/orders/
+ * TG2a: localized labels for the SAME callback targets (catalog/orders/
  * search/help/settings). Existing ID MENU_LABEL_* retained for old keyboards/policy.
  */
 export const MENU_LABEL_EN = {
@@ -236,7 +226,6 @@ export const MENU_LABEL_EN = {
   warranty: "🛡 Warranty",
   help: "💬 Help",
   helpLegacy: "❓ Help",
-  cart: "🛒 Cart",
   settings: "🌐 Language",
   settingsLegacy: "⚙️ Settings",
 } as const;
@@ -656,36 +645,6 @@ export function emailConfirmationKeyboard(productId: number, variantId: number, 
   ] };
 }
 
-export function cartKeyboard(params: {
-  lines: { variantId: number; qty: number; stock: number; fulfillmentMode: string; minQty?: number; label?: string }[];
-}, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
-  const en = ctx?.locale === "en";
-  const rows: InlineKeyboardButton[][] = params.lines.slice(0, 20).map((line) => {
-    const uniqueTotal = params.lines.reduce((n, item) => n + (item.fulfillmentMode === "unique" ? item.qty : 0), 0);
-    const cap = line.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : TELEGRAM_MAX_QTY;
-    const canInc = (line.fulfillmentMode !== "unique" || uniqueTotal < MAX_UNIQUE_UNITS_PER_ORDER)
-      && line.qty < cap && (line.stock === -1 || line.qty < line.stock);
-    const row: InlineKeyboardButton[] = [
-      { text: `${truncateLabel(line.label ?? String(line.variantId), 20)} ×${line.qty}`, callback_data: "noop" },
-      { text: "−", callback_data: line.qty > (line.minQty ?? 1) ? cb.cartDec(line.variantId) : "noop" },
-    ];
-    row.push(canInc
-      ? { text: "➕", callback_data: cb.cartInc(line.variantId) }
-      : { text: "➕", callback_data: "noop" });
-    return row;
-  });
-  params.lines.slice(0, 20).forEach(line => rows.push([{ text: `${en ? "Remove" : "Hapus"} ${truncateLabel(line.label ?? String(line.variantId), 24)}`, callback_data: cb.cartRemove(line.variantId), style: "danger" }]));
-  if (params.lines.length > 0) {
-    rows.push([{ text: "💳 Checkout", callback_data: cb.cartCheckout(), style: "success" }]);
-    rows.push([{ text: en ? "🧹 Clear" : "🧹 Kosongkan", callback_data: cb.cartClear(), style: "danger" }]);
-  }
-  rows.push([
-    { text: en ? "🛍 Continue Shopping" : "🛍 Lanjut Belanja", callback_data: cb.catalog() },
-    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
-  ]);
-  return { inline_keyboard: rows };
-}
-
 export function qrisInvoiceKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
   return {
@@ -940,18 +899,16 @@ export function qrisExpiredKeyboard(orderCode: string, ctx?: TgLocaleCtx, items?
   ] };
 }
 
-export type Payq1OfferSource =
-  | { kind: "single"; productId: number; variantId: number; qty: number }
-  | { kind: "cart" };
+export type Payq1OfferSource = { kind: "single"; productId: number; variantId: number; qty: number };
 
-/** R1: localized "other payment methods" entry (after qty/email/cart approval).
- * Routes single-product contexts back to single pmentry and cart contexts to "pmentry". */
+/** R1: localized "other payment methods" entry (after qty/email approval).
+ * Routes single-product contexts back to single pmentry; falls back to catalog. */
 export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx & { source?: Payq1OfferSource; tag?: string }): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
-  const callbackData = ctx?.source?.kind === "single"
-    ? cb.payMethodsEntry(ctx.source.productId, ctx.source.variantId, ctx.source.qty, ctx.tag)
-    : cb.payMethodsEntry();
-  return { inline_keyboard: [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: callbackData }]] };
+  if (ctx?.source?.kind === "single") {
+    return { inline_keyboard: [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry(ctx.source.productId, ctx.source.variantId, ctx.source.qty, ctx.tag) }]] };
+  }
+  return { inline_keyboard: [[{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() }]] };
 }
 
 function formatCryptoButtonAmount(amount: string, locale: Locale): string {
@@ -1015,7 +972,7 @@ export function paymentMethodOfferKeyboard(
     ]);
   } else {
     rows.push([
-      { text: en ? "◀️ Back" : "◀️ Kembali", callback_data: cb.cartCheckout(), style: "primary" },
+      { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog(), style: "primary" },
       { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home(), style: "primary" },
     ]);
   }

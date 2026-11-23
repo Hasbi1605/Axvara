@@ -10,7 +10,7 @@
 // satu karakter pun dari teks pesan yang dikirim ke pengguna:
 //   format.ts    — helper escape/format/waktu/breadcrumb bersama
 //   catalog.ts   — welcome, katalog, kategori, detail, cari, daftar order
-//   purchase.ts  — konfirmasi, jumlah, keranjang, invoice, pengingat
+//   purchase.ts  — konfirmasi, jumlah, invoice, pengingat
 //   status.ts    — lunas, kirim, kedaluwarsa/batal, status, error, stok
 //   group.ts     — keamanan grup (deep-link + redirect)
 //   help.ts      — bantuan + ketentuan/klaim garansi
@@ -35,8 +35,8 @@ export {
 export {
   confirmVariantBuyMessage, chooseVariantMessage, confirmBuyMessage, chooseQtyMessage,
   reviewPurchaseMessage, type ReviewCopySection,
-  cartMessage, cartAddedMessage, cartCheckoutSummaryMessage, orderReminderMessage, providerOrderReminderMessage,
-  invoiceMessage, emailConfirmationMessage, type TelegramCartLine,
+  orderReminderMessage, providerOrderReminderMessage,
+  invoiceMessage, emailConfirmationMessage,
 } from "./messages/purchase";
 
 export {

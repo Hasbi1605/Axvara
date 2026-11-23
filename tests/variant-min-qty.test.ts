@@ -113,7 +113,7 @@ describe("variant min_qty — bot & storefront", () => {
     expect(read("src/lib/telegram/handlers/discovery.ts")).toContain("typedQty > max");
     expect(read("src/lib/telegram/keyboards.ts")).toContain("minQty");
     expect(read("src/lib/telegram/messages/purchase.ts")).toContain("Minimal pembelian");
-    expect(read("src/lib/telegram/handlers/cart.ts")).toContain("Minimal pembelian");
+    expect(read("src/lib/telegram/handlers/callback.ts")).toContain("Minimal pembelian");
   });
 
   it("WhatsApp: alur beli (termasuk validasi min>1) dipensiunkan, bukan dipindah diam-diam", () => {

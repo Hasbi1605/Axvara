@@ -81,7 +81,12 @@ function nowpaymentsFetchImpl(opts?: { postAmount?: string; status?: string; act
 async function seedCartUser(locale = "en") {
   fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,locale,buyer_email) VALUES(?,?,?,?)")
     .run(String(buyer.id), String(buyer.id), locale, "buyer@example.test");
-  fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 1, 1, 2);
+}
+
+async function openSingleOffer(qty = 2) {
+  const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+  const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty, price: 9500 }]);
+  await click(`pmentry:1:1:${qty}:${tag}`);
 }
 
 async function offerWithCrypto(opts?: { nowFetch?: ReturnType<typeof vi.fn> }) {
@@ -91,7 +96,7 @@ async function offerWithCrypto(opts?: { nowFetch?: ReturnType<typeof vi.fn> }) {
   vi.stubEnv("NOWPAYMENTS_OUTCOME_CURRENCY", "usdtbsc");
   vi.stubGlobal("fetch", opts?.nowFetch ?? nowpaymentsFetchImpl());
   await seedCartUser();
-  await click("pmentry");
+  await openSingleOffer();
   const frozen = parsePayq1State(userRaw())!;
   const index = frozen.methods.findIndex((m) => m.id === "nowpayments:usdtbsc");
   expect(index).toBeGreaterThanOrEqual(0);

@@ -11,11 +11,6 @@ export const buyerFieldsSchema = z.object({
   pv_email: z.string().trim().max(254).optional(),
   pv_password: z.string().max(200).optional(),
   pv_totp_secret: z.string().trim().max(120).optional(),
-  // Sealed cart representation (AES-256-GCM): the ONLY Pixel shape allowed to
-  // be persisted in telegram_carts.buyer_fields. Plaintext pv_* never persists.
-  pv_sealed_ciphertext: z.string().max(8192).optional(),
-  pv_sealed_iv: z.string().max(128).optional(),
-  pv_email_masked: z.string().max(254).optional(),
 }).strict();
 export type BuyerFields = z.infer<typeof buyerFieldsSchema>;
 export type BuyerFieldSnapshot = { buyer_field_key?: "muse_invite_code" | null; buyer_fields?: BuyerFields; max_qty?: number | null };
@@ -34,17 +29,10 @@ export function validateBuyerFields(config: { buyer_field_key?: unknown; max_qty
   if (isPixelverifVariantRow(config)) {
     // Pixel credentials are validated strictly here; foreign fields rejected.
     if (parsed.muse_invite_code) throw new Error("Konfigurasi input berubah. Muat ulang checkout.");
-    if (parsed.pv_sealed_ciphertext || parsed.pv_sealed_iv || parsed.pv_email_masked) {
-      // Sealed cart blob: shape-checked here, decrypted only at order sealing.
-      if (!parsed.pv_sealed_ciphertext || !parsed.pv_sealed_iv || parsed.pv_email || parsed.pv_password || parsed.pv_totp_secret) {
-        throw new Error("Data akun Google tidak valid. Ulangi dari katalog.");
-      }
-      return { pv_sealed_ciphertext: parsed.pv_sealed_ciphertext, pv_sealed_iv: parsed.pv_sealed_iv, ...(parsed.pv_email_masked ? { pv_email_masked: parsed.pv_email_masked } : {}) };
-    }
     const input = parsePixelverifInput(parsed);
     return { pv_email: input.pv_email, pv_password: input.pv_password, pv_totp_secret: input.pv_totp_secret };
   }
-  if (parsed.pv_email || parsed.pv_password || parsed.pv_totp_secret || parsed.pv_sealed_ciphertext) {
+  if (parsed.pv_email || parsed.pv_password || parsed.pv_totp_secret) {
     throw new Error("Konfigurasi input berubah. Muat ulang checkout.");
   }
   if (config.buyer_field_key == null) {
@@ -67,45 +55,7 @@ export function buyerSnapshotMatches(a: BuyerFieldSnapshot, b: BuyerFieldSnapsho
     && (a.buyer_fields?.muse_invite_code?.trim() ?? "") === (b.buyer_fields?.muse_invite_code?.trim() ?? "")
     && (a.buyer_fields?.pv_email?.trim().toLowerCase() ?? "") === (b.buyer_fields?.pv_email?.trim().toLowerCase() ?? "")
     && (a.buyer_fields?.pv_password ?? "") === (b.buyer_fields?.pv_password ?? "")
-    && (a.buyer_fields?.pv_totp_secret?.replace(/[\s-]/g, "").toUpperCase() ?? "") === (b.buyer_fields?.pv_totp_secret?.replace(/[\s-]/g, "").toUpperCase() ?? "")
-    && (a.buyer_fields?.pv_sealed_ciphertext ?? "") === (b.buyer_fields?.pv_sealed_ciphertext ?? "")
-    && (a.buyer_fields?.pv_sealed_iv ?? "") === (b.buyer_fields?.pv_sealed_iv ?? "");
-}
-
-/** Maximum age for sealed Pixel Verification credentials stored in an abandoned Telegram cart. */
-export const TELEGRAM_PIXELVERIF_CART_TTL_MS = 30 * 60_000;
-
-/** Seal Pixel credentials for Telegram cart persistence (never plaintext). */
-export async function sealPixelverifCartFields(fields: BuyerFields): Promise<BuyerFields> {
-  if (!fields.pv_email || !fields.pv_password || !fields.pv_totp_secret) return fields;
-  const { encryptSecret } = await import("@/lib/fulfillment/crypto");
-  const { maskPixelverifEmail } = await import("@/lib/pixelverif/purchase");
-  const sealed = await encryptSecret(JSON.stringify({
-    pv_email: fields.pv_email,
-    pv_password: fields.pv_password,
-    pv_totp_secret: fields.pv_totp_secret,
-    sealed_at: Date.now(),
-  }));
-  return { pv_sealed_ciphertext: sealed.ciphertext, pv_sealed_iv: sealed.iv, pv_email_masked: maskPixelverifEmail(fields.pv_email) };
-}
-
-/** Unseal a cart-stored Pixel blob back to in-memory credentials (order time only). */
-export async function unsealPixelverifCartFields(fields: BuyerFields, now = Date.now()): Promise<BuyerFields> {
-  if (!fields.pv_sealed_ciphertext || !fields.pv_sealed_iv) return fields;
-  const { decryptSecret } = await import("@/lib/fulfillment/crypto");
-  const parsed: unknown = JSON.parse(await decryptSecret(fields.pv_sealed_ciphertext, fields.pv_sealed_iv));
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Data akun Google tidak valid. Ulangi dari katalog.");
-  }
-  const rec = parsed as Record<string, unknown>;
-  if (typeof rec.sealed_at === "number" && Number.isFinite(rec.sealed_at) && now - rec.sealed_at > TELEGRAM_PIXELVERIF_CART_TTL_MS) {
-    throw new Error("pixelverif_cart_expired");
-  }
-  return parsePixelverifInput({
-    pv_email: rec.pv_email,
-    pv_password: rec.pv_password,
-    pv_totp_secret: rec.pv_totp_secret,
-  });
+    && (a.buyer_fields?.pv_totp_secret?.replace(/[\s-]/g, "").toUpperCase() ?? "") === (b.buyer_fields?.pv_totp_secret?.replace(/[\s-]/g, "").toUpperCase() ?? "");
 }
 
 export type TunvnEligibility = { version: 1; kind: "account" | "buff"; source_product_id: number | null; source_variant_id: number; source_unit_b: number | null; quantity: number; cost_usdt?: number };

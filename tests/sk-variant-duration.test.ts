@@ -214,13 +214,18 @@ describe("SK duration end-to-end queries (Telegram, Cart, Web Catalog, Quote)", 
     expect(buttons).toContain("Basic Sharing · Rp18.000 · stok 45");
   });
 
-  it("Telegram cart summary & Web checkout quote & Web catalog detail carry SK duration without extra queries", async () => {
-    const { addToCart, getCartSummary } = await import("@/lib/telegram/cart");
-    await addToCart("42", 72, 31, 1);
-    fx.control.queries = 0;
-    const summary = await getCartSummary("42");
-    expect(fx.control.queries).toBe(1);
-    expect(summary.lines[0]?.variantLabel).toBe("1 Profile 2 User - 1 Bulan");
+  it("Telegram single-item line resolver & Web checkout quote & Web catalog detail carry SK duration", async () => {
+    const { resolveCurrentPayq1Lines } = await import("@/lib/telegram/handlers/payment-lines");
+    const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+    const tag = await checkoutApprovalTag([{ productId: 72, variantId: 31, qty: 1, price: 19500 }]);
+    const resolved = await resolveCurrentPayq1Lines("42", {
+      v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600,
+      tag, locale: "id", idrSubtotal: 19500,
+      source: { kind: "single", productId: 72, variantId: 31, qty: 1 },
+      methods: [], sel: null, contact: { email: null, phone: null }, st: "quoted",
+    });
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) expect(resolved.cartLines[0]?.variantLabel).toBe("1 Profile 2 User - 1 Bulan");
 
     const { POST: quotePost } = await import("@/app/api/checkout/quote/route");
     const quoteRes = await quotePost(new NextRequest("http://localhost/api/checkout/quote", {

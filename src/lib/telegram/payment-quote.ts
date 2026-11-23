@@ -19,9 +19,16 @@ export const PAYQ1_MAX_METHODS = 96;
 export const PAYQ1_CALLBACK_MAX_BYTES = 64;
 export const PAYQ1_GCONSENT_MAX_BYTES = 64;
 
-export type Payq1CartSource =
-  | { kind: "single"; productId: number; variantId: number; qty: number }
-  | { kind: "cart" };
+export type Payq1CartSource = {
+  kind: "single";
+  productId: number;
+  variantId: number;
+  qty: number;
+  /** Optional Muse Buff invite code (6 ASCII alphanumeric chars, non-secret). */
+  museInviteCode?: string;
+  /** Optional UUID referencing encrypted `telegram_pixelverif_stashes` row (never stores secret in pending_action). */
+  pvFlowId?: string;
+};
 
 export type Payq1State = {
   v: 1;
@@ -63,9 +70,7 @@ export type Payq1FreezeResult =
   | { ok: false; reason: "namespace_busy" | "no_methods" | "overflow" | "store_unavailable" };
 
 function identityLabel(identity: Payq1LineIdentity): string {
-  return identity.kind === "cart"
-    ? "cart"
-    : `single:${identity.productId}:${identity.variantId}:${identity.qty}`;
+  return `single:${identity.productId}:${identity.variantId}:${identity.qty}`;
 }
 
 export function payq1CartLabel(state: Pick<Payq1State, "source">): string {
@@ -134,15 +139,14 @@ export function parsePayq1State(raw: unknown): Payq1State | null {
   if (typeof v.tag !== "string" || !/^[0-9a-f]{12}$/.test(v.tag)) return null;
   if (v.locale !== "id" && v.locale !== "en") return null;
   if (!Number.isSafeInteger(v.idrSubtotal) || (v.idrSubtotal as number) <= 0) return null;
-  const source = v.source as { kind?: unknown; productId?: unknown; variantId?: unknown; qty?: unknown } | null;
-  if (!source || typeof source !== "object") return null;
-  if (source.kind === "single") {
-    if (!Number.isSafeInteger(source.productId) || (source.productId as number) <= 0) return null;
-    if (!Number.isSafeInteger(source.variantId) || (source.variantId as number) <= 0) return null;
-    if (!Number.isSafeInteger(source.qty) || (source.qty as number) <= 0) return null;
-  } else if (source.kind !== "cart") {
-    return null;
-  }
+  const source = v.source as { kind?: unknown; productId?: unknown; variantId?: unknown; qty?: unknown; museInviteCode?: unknown; pvFlowId?: unknown } | null;
+  if (!source || typeof source !== "object" || source.kind !== "single") return null;
+  if (!Number.isSafeInteger(source.productId) || (source.productId as number) <= 0) return null;
+  if (!Number.isSafeInteger(source.variantId) || (source.variantId as number) <= 0) return null;
+  if (!Number.isSafeInteger(source.qty) || (source.qty as number) <= 0) return null;
+  if (source.museInviteCode !== undefined && (typeof source.museInviteCode !== "string" || !/^[A-Za-z0-9]{6}$/.test(source.museInviteCode))) return null;
+  if (source.pvFlowId !== undefined && (typeof source.pvFlowId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.pvFlowId))) return null;
+  if (source.museInviteCode !== undefined && source.pvFlowId !== undefined) return null;
   if (!Array.isArray(v.methods)) return null;
   if (v.methods.length > PAYQ1_MAX_METHODS) return null;
   const idrSubtotal = v.idrSubtotal as number;
@@ -235,7 +239,7 @@ export async function freezePayq1(input: FreezeInput): Promise<Payq1FreezeResult
   if (current !== null) {
     const existing = parsePayq1State(current);
     // Namespace guard: own prior quoted payq1 may be replaced; every other
-    // namespace (email_for:/email_confirm:/emailcart:/cart_confirm:,
+    // namespace (email_for:/email_confirm:,
     // qty_for:, search:, wa_after_paid:, onboarding:, creating, unknown) is
     // protected — render must defer, never mutate. Own quoted-invalid rows
     // (unparseable) are NOT overwritten here either: they requote only after

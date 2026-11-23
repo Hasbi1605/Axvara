@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct } from "./helpers/d1-fixture";
 import { handleCallback } from "@/lib/telegram/handlers/callback";
-import { handlePendingEmailInput, showEmailConfirmation, showCartEmailConfirmation } from "@/lib/telegram/handlers/discovery";
+import { handlePendingEmailInput, showEmailConfirmation } from "@/lib/telegram/handlers/discovery";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { checkoutEmailFingerprint, readCheckoutEmail } from "@/lib/telegram/checkout-email";
-import { getCartSummary } from "@/lib/telegram/cart";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { transitionPendingOrder } from "@/lib/db";
 import { createActiveQrisInvoice } from "@/lib/payments/qris";
@@ -61,23 +60,6 @@ async function singleConfirmation() {
   expect(edited().message_id).toBe(7);
   expect(send).not.toHaveBeenCalled();
   return button(sent(), "epay:");
-}
-async function cartSummary() {
-  await click("cadd:1:1:2");
-  await click("ccheckout");
-  expect(edited().message_id).toBe(7);
-  expect(send).not.toHaveBeenCalled();
-  const summary = await getCartSummary(String(buyer.id));
-  expect(summary.issues).toEqual([]);
-  const confirm = button(sent(), "cconfirm:");
-  expect(confirm).toBe(`cconfirm:${await checkoutApprovalTag(summary.lines)}`);
-  return confirm;
-}
-async function cartConfirmation() {
-  await click(await cartSummary());
-  expect(edited().message_id).toBe(7);
-  expect(send).not.toHaveBeenCalled();
-  return button(sent(), "cconfirm:");
 }
 function changeEmailAfterClaim() {
   fx.control.afterRun = async query => {
@@ -286,124 +268,9 @@ describe("Telegram router single-item checkout with real D1", () => {
   });
 });
 
-describe("Telegram router cart consent with real D1", () => {
-  it("requires a separate saved-email confirmation then claims its nonce and passes the displayed snapshot", async () => {
-    const confirm = await cartSummary();
-    expect(factory).not.toHaveBeenCalled();
-    await click(confirm);
-    const emailConfirm = button(sent(), "cconfirm:");
-    const [, tag, nonce] = emailConfirm.split(":");
-    expect(nonce).toMatch(/^[a-f0-9]{8}$/);
-    expect(tag).toBe(confirm.split(":")[1]);
-    expect(user().pending_action).toBe(`cart_confirm:${tag}:${nonce}:${await checkoutEmailFingerprint(savedEmail)}`);
-    expect(sent().text).toContain("b***r@example.com");
-    expect(sent().text).not.toContain(savedEmail);
-    expect(factory).not.toHaveBeenCalled();
-    changeEmailAfterClaim();
-    await click(emailConfirm);
-    expect(factory).toHaveBeenCalledTimes(1);
-    expect(factory).toHaveBeenCalledWith(expect.objectContaining({
-      customerEmail: savedEmail, subtotal: 20000,
-      items: [expect.objectContaining({ product_id: 1, variant_id: 1, qty: 2, price: 10000 })],
-    }));
-    expect(orders()).toHaveLength(1);
-    expect(orders()[0].customer_email).toBe(savedEmail);
-    expect(JSON.parse(String(orders()[0].variant_snapshot))).toMatchObject({ cart: true, qty: 2, price: 20000 });
-    expect((await getCartSummary(String(buyer.id))).lines).toEqual([]);
-    expect(provider).toHaveBeenCalledTimes(1);
-  });
-
-  it("missing cart email prompts input then returns a masked confirmation before creating", async () => {
-    fx.sql.exec("UPDATE telegram_users SET buyer_email=NULL");
-    await click(await cartSummary());
-    expect(user().pending_action).toBe("emailcart:");
-    expect(sent().reply_markup).toMatchObject({ force_reply: true });
-    expect(await handlePendingEmailInput(savedEmail, buyer.id, buyer)).toBe(true);
-    const confirm = button(sent(), "cconfirm:");
-    expect(confirm).toMatch(/^cconfirm:[a-f0-9]{12}:[a-f0-9]{8}$/);
-    expect(sent().text).toContain("b***r@example.com");
-    expect(factory).not.toHaveBeenCalled();
-    await click(confirm);
-    expect(orders()[0].customer_email).toBe(savedEmail);
-  });
-
-  it("a changed saved cart email invalidates the callback without clearing the old state first", async () => {
-    const confirm = await cartConfirmation();
-    const state = user().pending_action;
-    fx.sql.prepare("UPDATE telegram_users SET buyer_email=?").run(changedEmail);
-    expect(user().pending_action).toBe(state);
-    await click(confirm);
-    expect(factory).not.toHaveBeenCalled();
-    const refreshed = button(sent(), "cconfirm:");
-    expect(refreshed).not.toBe(confirm);
-    expect(sent().text).toContain("c***d@example.net");
-    expect(user().pending_action).toContain(await checkoutEmailFingerprint(changedEmail));
-    await click(refreshed);
-    expect(orders()[0].customer_email).toBe(changedEmail);
-  });
-
-  it.each(["price", "quantity"])("changing cart %s invalidates the displayed tag and refreshes its summary", async field => {
-    const confirm = await cartConfirmation();
-    if (field === "price") fx.sql.exec("UPDATE product_variants SET price=12000 WHERE id=1");
-    else await click("cinc:1");
-    await click(confirm);
-    const summary = await getCartSummary(String(buyer.id));
-    expect(button(sent(), "cconfirm:")).toBe(`cconfirm:${await checkoutApprovalTag(summary.lines)}`);
-    expect(factory).not.toHaveBeenCalled();
-    expect(provider).not.toHaveBeenCalled();
-  });
-
-  it("a cart issue blocks confirmation even when the price/quantity tag still matches", async () => {
-    const confirm = await cartConfirmation();
-    fx.sql.exec("UPDATE product_variants SET min_qty=3 WHERE id=1");
-    expect((await getCartSummary(String(buyer.id))).issues.length).toBeGreaterThan(0);
-    send.mockClear();
-    await click(confirm);
-    expect(factory).not.toHaveBeenCalled();
-    expect(send.mock.calls.flatMap(([message]) => callbacks(message)).some(data => data.startsWith("cconfirm:"))).toBe(false);
-  });
-
-  it("two simultaneous cart confirmations have one CAS winner and one invoice", async () => {
-    const confirm = await cartConfirmation();
-    await Promise.all([click(confirm), click(confirm)]);
-    expect(factory).toHaveBeenCalledTimes(1);
-    expect(provider).toHaveBeenCalledTimes(1);
-    expect(orders()).toHaveLength(1);
-  });
-
-  it("cart email confirmation cannot overwrite a newer pending action", async () => {
-    await cartSummary();
-    fx.sql.exec("UPDATE telegram_users SET pending_action='search:'");
-    send.mockClear();
-    await showCartEmailConfirmation(buyer.id, buyer);
-    expect(send).not.toHaveBeenCalled();
-    expect(user().pending_action).toBe("search:");
-    await showCartEmailConfirmation(buyer.id, buyer, savedEmail, "search:");
-    expect(button(sent(), "cconfirm:")).toMatch(/^cconfirm:[a-f0-9]{12}:[a-f0-9]{8}$/);
-  });
-
-  it.each(["ccheckout", "cconfirm:obsolete:oldnonce"])("%s retries an existing invoice before empty cart, stale tag or email errors", async callback => {
-    await click(await cartConfirmation());
-    const code = String(orders()[0].code);
-    fx.sql.exec("UPDATE orders SET telegram_invoice_sent_at=NULL; UPDATE telegram_users SET buyer_email=NULL; UPDATE products SET require_email=1,is_active=0");
-    // AU-E2-2: photo sends take an atomic claim whose freshness stamp lives in
-    // orders.updated_at; simulate an unsent invoice whose claim is already stale.
-    fx.sql.exec("UPDATE orders SET updated_at=datetime('now','-2 minutes')");
-    fx.control.fail = query => query.includes("FROM telegram_carts") || query.includes("SELECT buyer_email") || query.includes("SELECT pv.id, pv.product_id, wv.wr_type");
-    vi.mocked(sendPhoto).mockClear();
-    await click(callback);
-    expect(factory).toHaveBeenCalledTimes(1);
-    expect(provider).toHaveBeenCalledTimes(1);
-    expect(sendPhoto).toHaveBeenCalledTimes(1);
-    expect(sent().text).toContain(code);
-    expect(button(sent(), "refresh:")).toBe(`refresh:${code}`);
-    expect(orders()).toHaveLength(1);
-  });
-});
-
 describe("Telegram checkout fail-closed reads and navigation", () => {
-  it.each(["single", "cart"])("a failed requirements read cannot authorize %s checkout", async kind => {
-    const callback = kind === "single" ? await quantity() : await cartSummary();
+  it("a failed requirements read cannot authorize single checkout", async () => {
+    const callback = await quantity();
     fx.control.fail = query => query.includes("SELECT pv.id, pv.product_id, wv.wr_type");
     await click(callback);
     expect(factory).not.toHaveBeenCalled();
@@ -412,8 +279,8 @@ describe("Telegram checkout fail-closed reads and navigation", () => {
     expect(sent().text).toMatch(/Email.*diperiksa/i);
   });
 
-  it.each(["single", "cart"])("a failed saved-email read cannot create an email-less %s order", async kind => {
-    const callback = kind === "single" ? await quantity() : await cartSummary();
+  it("a failed saved-email read cannot create an email-less single order", async () => {
+    const callback = await quantity();
     fx.control.fail = query => query.startsWith("SELECT buyer_email");
     await click(callback);
     expect(factory).not.toHaveBeenCalled();
@@ -427,10 +294,10 @@ describe("Telegram checkout fail-closed reads and navigation", () => {
     expect(factory).not.toHaveBeenCalled();
   });
 
-  it.each(["single", "cart"])("navigation expires an old %s email prompt before a later email reply", async kind => {
+  it("navigation expires an old single email prompt before a later email reply", async () => {
     fx.sql.exec("UPDATE telegram_users SET buyer_email=NULL");
-    await click(kind === "single" ? await quantity() : await cartSummary());
-    expect(String(user().pending_action)).toMatch(/^email(?:_for|cart):/);
+    await click(await quantity());
+    expect(String(user().pending_action)).toMatch(/^email_for:/);
     await click("catalog:0");
     expect(user().pending_action).toBeNull();
     send.mockClear();
@@ -440,9 +307,9 @@ describe("Telegram checkout fail-closed reads and navigation", () => {
     expect(factory).not.toHaveBeenCalled();
   });
 
-  it.each(["single", "cart"])("navigation racing a %s email write cannot revive the old prompt", async kind => {
+  it("navigation racing a single email write cannot revive the old prompt", async () => {
     fx.sql.exec("UPDATE telegram_users SET buyer_email=NULL");
-    await click(kind === "single" ? await quantity() : await cartSummary());
+    await click(await quantity());
     fx.control.beforeRun = async query => {
       if (!query.includes("SET buyer_email=?")) return;
       fx.control.beforeRun = null;
@@ -489,12 +356,11 @@ describe("Telegram callback ownership and cancellation", () => {
     expect(provider).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["pay:1:1:2:tag", "epay:1:1:2:tag:nonce", "eedit:1:1:2", "ceedit", "qinput:1:1", "cadd:1:1:2", "ccheckout", "cconfirm:tag:nonce", "cclear", "cinc:1", "cdec:1", "crm:1"])(
+  it.each(["pay:1:1:2:tag", "epay:1:1:2:tag:nonce", "eedit:1:1:2", "qinput:1:1", "pmentry:1:1:2:tag"])(
     "rejects group checkout action %s before mutating buyer state", async callback => {
       const before = user();
       await click(callback, -999);
       expect(user()).toEqual(before);
-      expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_carts").get()?.n).toBe(0);
       expect(factory).not.toHaveBeenCalled();
       expect(provider).not.toHaveBeenCalled();
       expect(send).toHaveBeenCalledTimes(1);
@@ -503,7 +369,7 @@ describe("Telegram callback ownership and cancellation", () => {
 });
 
 describe("Telegram actual catalog labels, inventory and callback budgets", () => {
-  it("uses the canonical Google Head 18Bulan label in product, quantity and cart without appending 1 month", async () => {
+  it("uses the canonical Google Head 18Bulan label in product and quantity without appending 1 month or showing cart", async () => {
     await click("prd:1");
     expect(withLoadingIndicator).not.toHaveBeenCalled();
     const product = edited();
@@ -514,15 +380,10 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     await click(button(product, "var:1"));
     expect(edited().text).toContain("Google Head 18Bulan");
     expect(edited().text).not.toMatch(/1\s*(month|bulan)\b/i);
-    // Add-to-cart button is hidden from qty UI, but legacy cadd: callback still works.
     expect(callbacks(edited()).some((d) => d.startsWith("cadd:"))).toBe(false);
-    await click("cadd:1:1:1");
-    await click("cart");
-    expect(edited().text).toContain("Google Head 18Bulan");
-    expect(edited().text).not.toMatch(/1\s*(month|bulan)\b/i);
   });
 
-  it("zero effective unique inventory disables product buying, quantity, cart add and stale review/pay callbacks", async () => {
+  it("zero effective unique inventory disables product buying, quantity and stale review/pay callbacks", async () => {
     const pmentry = await quantity();
     const stalePay = pmentry.replace(/^pmentry:/, "pay:");
     fx.sql.exec("UPDATE product_variants SET fulfillment_mode='unique',stock=100 WHERE id=1; UPDATE product_variants SET is_active=0 WHERE id=2");
@@ -532,8 +393,6 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     await click("var:1");
     await click("qty:1:1");
     expect(edit).not.toHaveBeenCalled();
-    await click("cadd:1:1:1");
-    expect((await getCartSummary(String(buyer.id))).lines).toEqual([]);
     await click(pmentry);
     await click(stalePay);
     expect(factory).not.toHaveBeenCalled();
@@ -552,12 +411,7 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     await click(button(reviewMessage, "pmentry:"));
     const emailMessage = sent();
     expect(button(emailMessage, "epay:").split(":").at(-1)).toMatch(/^[a-f0-9]{8}$/);
-    await click(`cadd:${id}:${id}:100`);
-    await click("ccheckout");
-    const summaryMessage = sent();
-    await click(button(summaryMessage, "cconfirm:"));
-    const cartMessage = sent();
-    for (const message of [qtyMessage, reviewMessage, emailMessage, summaryMessage, cartMessage]) {
+    for (const message of [qtyMessage, reviewMessage, emailMessage]) {
       expect(callbacks(message).length).toBeGreaterThan(0);
       for (const data of callbacks(message)) expect(Buffer.byteLength(data, "utf8"), data).toBeLessThanOrEqual(64);
     }

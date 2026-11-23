@@ -94,7 +94,12 @@ function nowpaymentsFetchImpl(opts?: { postAmount?: string; status?: string; act
 async function seedCartUser(locale = "en") {
   fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,locale,buyer_email) VALUES(?,?,?,?)")
     .run(String(buyer.id), String(buyer.id), locale, "buyer@example.test");
-  fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 1, 1, 2);
+}
+
+async function singlePmentry(qty = 2, price = 9500) {
+  const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+  const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty, price }]);
+  return `pmentry:1:1:${qty}:${tag}`;
 }
 
 async function offerWithCrypto(opts?: { nowFetch?: ReturnType<typeof vi.fn>; ticker?: string }) {
@@ -104,7 +109,7 @@ async function offerWithCrypto(opts?: { nowFetch?: ReturnType<typeof vi.fn>; tic
   vi.stubEnv("NOWPAYMENTS_OUTCOME_CURRENCY", "usdtbsc");
   vi.stubGlobal("fetch", opts?.nowFetch ?? nowpaymentsFetchImpl());
   await seedCartUser();
-  await click("pmentry");
+  await click(await singlePmentry());
   const frozen = parsePayq1State(userRaw())!;
   const index = frozen.methods.findIndex((m) => m.id === `nowpayments:${opts?.ticker ?? "usdtbsc"}`);
   expect(index).toBeGreaterThanOrEqual(0);
@@ -117,6 +122,7 @@ const postsOf = (fetchMock: ReturnType<typeof vi.fn>) =>
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
+  vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
   vi.stubEnv("ADMIN_JWT_SECRET", "tg-r2a-fixture");
   vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "tg-r2a-fixture-secret-0123456789");
   vi.stubEnv("QRIS_ACTIVE_PROVIDER", "klikqris");
@@ -263,15 +269,16 @@ describe("TG R2-A crypto creation + saved recovery (local only)", () => {
     // at email confirmation (no frozen quote, no order, no provider call).
     fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,locale) VALUES(?,?,?)")
       .run(String(buyer.id), String(buyer.id), "en");
-    fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 1, 1, 2);
-    await click("pmentry");
+    const entry = await singlePmentry();
+    await click(entry);
     expect(parsePayq1State(userRaw())).toBeNull();
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
-    // With email present: crypto completes without any phone capture.
+    // With email present: first single pmentry renders masked email confirmation, second opens offer without any phone capture.
     fx.sql.prepare("UPDATE telegram_users SET buyer_email=?,pending_action=NULL WHERE user_id=?").run("buyer@example.test", String(buyer.id));
     vi.clearAllMocks();
-    await click("pmentry");
+    await click(entry);
+    await click(entry);
     const frozen = parsePayq1State(userRaw())!;
     const index = frozen.methods.findIndex((m) => m.id === "nowpayments:usdtbsc");
     await click(`pm:${frozen.nonce}:${index}`);

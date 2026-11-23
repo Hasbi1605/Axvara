@@ -50,7 +50,8 @@ function migratedSchema() {
   const cut = schema.indexOf("-- Pixel Verification is a separate, opt-in supplier.");
   expect(cut).toBeGreaterThan(0);
   const legacy = schema.slice(0, cut).replace(/^  (?:buyer_field_key TEXT|buyer_fields TEXT|max_qty INTEGER CHECK)[^\n]*\n/gm, "");
-  return [legacy, ...["0115_variant_buyer_input.sql", "0155_pixelverif_supplier.sql"]
+  const pre0115Cart = "CREATE TABLE IF NOT EXISTS telegram_carts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, product_id INTEGER, variant_id INTEGER, qty INTEGER);";
+  return [legacy, pre0115Cart, ...["0115_variant_buyer_input.sql", "0155_pixelverif_supplier.sql", "0161_drop_telegram_carts.sql"]
     .map((file) => readFileSync(`drizzle/migrations/${file}`, "utf8"))].join("\n");
 }
 

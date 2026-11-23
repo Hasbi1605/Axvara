@@ -67,11 +67,6 @@ describe("payment maintenance before financial side effects", () => {
     await handlePayWithQris(123, 1, 60, 1, 1, { id: 123, first_name: "Test" });
     expectTelegramNotice();
   });
-  it("redirects Telegram cart checkout before order creation or clearing the cart", async () => {
-    const { createAndSendCartInvoice } = await import("@/lib/telegram/handlers/cart-invoice");
-    await createAndSendCartInvoice(123, [], { id: 123, first_name: "Test" });
-    expectTelegramNotice();
-  });
   it("redirects Telegram renewal with a manual order button", async () => {
     const { handleQrisRenew } = await import("@/lib/telegram/handlers/orders");
     await handleQrisRenew(123, "AXV-20261018-AAAAAAA1");

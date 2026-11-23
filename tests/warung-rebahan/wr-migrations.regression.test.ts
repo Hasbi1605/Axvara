@@ -85,8 +85,6 @@ const STRIP_SNIPPETS = [
 `,
   `  supplier_purchase_disabled INTEGER NOT NULL DEFAULT 0 CHECK(supplier_purchase_disabled IN (0,1)),
 `,
-  `  buyer_fields TEXT NOT NULL DEFAULT '{}',
-`,
   `  tunvn_link_id INTEGER REFERENCES tunvn_order_links(id),
 `,
   `  -- Migrasi 0033: email pembeli tersimpan (alur email_for:) untuk produk

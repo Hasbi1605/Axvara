@@ -15,8 +15,6 @@ describe("applyButtonStyles", () => {
         [
           { text: "A", callback_data: "cancel:AXV-1" },
           { text: "B", callback_data: "cancelok:AXV-1" },
-          { text: "C", callback_data: "cclear" },
-          { text: "D", callback_data: "crm:9" },
         ],
         [
           { text: "❌ Batal", callback_data: "prd:1" },
@@ -49,9 +47,6 @@ describe("applyButtonStyles", () => {
         [
           { text: "A", callback_data: "pay:1:2:1" },
           { text: "B", callback_data: "epay:1:2:1:tag:n" },
-          { text: "C", callback_data: "cconfirm:tag" },
-          { text: "D", callback_data: "ccheckout" },
-          { text: "E", callback_data: "pmentry" },
           { text: "F", callback_data: "pmentry:1:2:1:tag" },
         ],
         [
@@ -60,7 +55,6 @@ describe("applyButtonStyles", () => {
           { text: "I", callback_data: "pmb:nonce" },
           { text: "J", callback_data: "pgo:nonce" },
           { text: "K", callback_data: "gconsent:AXV-1:100:ab" },
-          { text: "L", callback_data: "cadd:1:2:1" },
           { text: "M", callback_data: "claimstart:AXV-1" },
           { text: "N", callback_data: "confirm:1" },
           { text: "O", callback_data: "cfv:1:7" },
@@ -74,7 +68,6 @@ describe("applyButtonStyles", () => {
           { text: "Lanjut ke pembayaran", callback_data: "noop" },
           { text: "🔄 QRIS Baru", callback_data: "qrenew:AXV-1" },
           { text: "Crypto (USD)", callback_data: "noop" },
-          { text: "Tambah ke Keranjang", callback_data: "noop" },
           { text: "Ajukan Klaim", callback_data: "noop" },
         ],
       ],
@@ -108,7 +101,6 @@ describe("applyButtonStyles", () => {
           { text: "📋 Ketentuan", callback_data: "terms:3:0" },
           { text: "📦 Pesanan", callback_data: "myorders" },
           { text: "🔎 Cari", callback_data: "search" },
-          { text: "🛒 Keranjang", callback_data: "cart" },
           { text: "1/3", callback_data: "noop" },
         ],
         [
@@ -139,7 +131,7 @@ describe("applyButtonStyles", () => {
     const markup: InlineKeyboardMarkup = {
       inline_keyboard: [
         [
-          { text: "🛒 Tambah ke Keranjang", callback_data: "cadd:1:2:1", style: "primary" },
+          { text: "💳 Bayar", callback_data: "pay:1:2:1", style: "primary" },
           { text: "⬅ Kembali", callback_data: "pmb:nonce", style: "primary" },
           { text: "Custom Red Info", callback_data: "home", style: "danger" },
           { text: "Default Nav", callback_data: "home" },

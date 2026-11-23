@@ -3,15 +3,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCheckoutQuoteToken } from "@/lib/auth";
 import { createOrderWithStock } from "@/lib/db/orders-create";
 import { readTelegramCatalog } from "@/lib/telegram/catalog-snapshot";
-import { addToCart, getCartSummary, setCartLineQty } from "@/lib/telegram/cart";
 import { handleCommand } from "@/lib/telegram/handlers/command";
-import { handleCartAdd } from "@/lib/telegram/handlers/cart";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { deleteMessage, safeEditOrSend, sendMessage } from "@/lib/telegram/api";
-import { handleBuyerInput } from "@/lib/telegram/handlers/buyer-input";
+import { handleBuyerInput, loadCompletedPixelverifStash, requestBuyerInput } from "@/lib/telegram/handlers/buyer-input";
 import { resolveCurrentPayq1Lines } from "@/lib/telegram/handlers/payment-lines";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
-import type { Payq1State } from "@/lib/telegram/payment-quote";
+import { parsePayq1State, type Payq1State } from "@/lib/telegram/payment-quote";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { createD1Fixture, stubFulfillmentKey } from "./helpers/d1-fixture";
 
@@ -167,41 +165,29 @@ it("rejects direct order creation atomically when Pixel credentials are absent, 
   expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(2);
 });
 
-it("offers Pixel in Telegram catalog and requires the private credential flow before cart add", async () => {
+it("offers Pixel in Telegram catalog and requires the private credential flow before payment offer (no cart)", async () => {
   fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
   expect(await readTelegramCatalog()).toHaveLength(1);
   await handleCommand("/start prd_1", user.id, "private", user);
   expect(safeEditOrSend).toHaveBeenCalled();
-  expect(await addToCart(String(user.id), 1, 1, 1)).toEqual({ ok: false, reason: "pixelverif_unavailable" });
-  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  // Direct single payment entry intercepts for private 3-step credential collection.
+  expect(await requestBuyerInput(user.id, user, 1, 1, 1)).toBe(true);
   expect(sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({
     text: expect.stringContaining("Data akun Google untuk aktivasi"),
   }));
-  // Cart persistence must hold ONLY the sealed blob, never the plaintext triple.
-  const { sealPixelverifCartFields } = await import("@/lib/buyer-fields");
-  const sealed = await sealPixelverifCartFields({ ...pvFields });
-  const storedJson = JSON.stringify(sealed);
-  expect(storedJson).not.toContain(pvFields.pv_password);
-  expect(storedJson).not.toContain(pvFields.pv_totp_secret);
-  fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty,buyer_fields) VALUES('800',1,1,1,?)").run(storedJson);
-  const rawRow = fx.sql.prepare("SELECT buyer_fields FROM telegram_carts WHERE user_id='800'").get() as { buyer_fields: string };
-  expect(rawRow.buyer_fields).not.toContain(pvFields.pv_password);
-  expect(rawRow.buyer_fields).not.toContain(pvFields.pv_totp_secret);
-  expect(await setCartLineQty(String(user.id), 1, 1)).toBe(true);
-  const summary = await getCartSummary(String(user.id));
-  expect(summary.lines).toHaveLength(1);
-  expect(summary.lines[0]).toMatchObject({ productId: 1, variantId: 1, pixelverifInput: true });
-  // In-memory line carries the unsealed triple for checkout sealing only.
-  expect(summary.lines[0].buyerFields).toEqual(pvFields);
-  expect(summary.issues).toEqual([]);
+  // Bare single payq1 without completed stash fails closed.
+  const bareTag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 1, price: 21500, pixelverifInput: true }]);
+  await expect(resolveCurrentPayq1Lines(String(user.id), payq1({ kind: "single", productId: 1, variantId: 1, qty: 1 }, 21500, bareTag)))
+    .resolves.toEqual({ ok: false, reason: "variant_changed" });
 });
 
 const payq1 = (source: Payq1State["source"], idrSubtotal: number, tag: string) =>
-  ({ v: 1, nonce: "n", exp: Date.now() + 60_000, tag, locale: "id", idrSubtotal, source, methods: [], sel: null, contact: { email: null, phone: null }, st: "quoted" }) as Payq1State;
+  ({ v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600, tag, locale: "id", idrSubtotal, source, methods: [], sel: null, contact: { email: null, phone: null }, st: "quoted" }) as Payq1State;
 
-it("runs the real 3-step Telegram flow into a sealed cart line whose approval tag survives re-resolution (Sol-3/4/5)", async () => {
+it("runs the real 3-step Telegram flow directly into a single-item encrypted-stash payment offer (no cart)", async () => {
   fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
-  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  vi.stubEnv("GOPAY_MERCHANT_QRIS", "00020101021126570011ID.CO.GOPAY01189360091430000000000210G0000000000303UMI5204549953033605802ID5906AXVARA6007JAKARTA6304ABCD");
+  await requestBuyerInput(user.id, user, 1, 1, 1);
   await handleBuyerInput(pvFields.pv_email, user.id, user, 11);
   await handleBuyerInput(pvFields.pv_password, user.id, user, 12);
   await handleBuyerInput("jbsw y3dp ehpk 3pxp", user.id, user, 13);
@@ -209,32 +195,35 @@ it("runs the real 3-step Telegram flow into a sealed cart line whose approval ta
   expect(deleteMessage).toHaveBeenCalledWith(user.id, 12);
   expect(deleteMessage).toHaveBeenCalledWith(user.id, 13);
 
-  const raw = fx.sql.prepare("SELECT buyer_fields FROM telegram_carts WHERE user_id='800'").get() as { buyer_fields: string } | undefined;
-  expect(raw).toBeTruthy();
-  for (const secret of Object.values(pvFields)) expect(raw!.buyer_fields).not.toContain(secret);
-  expect(JSON.parse(raw!.buyer_fields)).toMatchObject({ pv_email_masked: "bu***@gmail.com", pv_sealed_ciphertext: expect.any(String), pv_sealed_iv: expect.any(String) });
-  // The shared checkout-contact column is never overwritten with the target Gmail.
+  // Encrypted stash stores ciphertext only (never plaintext secrets).
+  const stash = fx.sql.prepare("SELECT flow_id, ciphertext, iv FROM telegram_pixelverif_stashes WHERE user_id='800'").get() as { flow_id: string; ciphertext: string; iv: string } | undefined;
+  expect(stash).toBeTruthy();
+  for (const secret of Object.values(pvFields)) expect(stash!.ciphertext).not.toContain(secret);
+  // The shared checkout-contact column is never overwritten with the target Gmail,
+  // and pending_action holds a single-item payq1 referencing only pvFlowId (no secret).
   const tgUser = fx.sql.prepare("SELECT buyer_email,pending_action FROM telegram_users WHERE user_id='800'").get() as Record<string, unknown>;
   expect(tgUser.buyer_email ?? null).toBeNull();
-  expect(tgUser.pending_action ?? null).toBeNull();
+  for (const secret of Object.values(pvFields)) expect(String(tgUser.pending_action ?? "")).not.toContain(secret);
+  const offer = parsePayq1State(tgUser.pending_action);
+  expect(offer?.source).toEqual({ kind: "single", productId: 1, variantId: 1, qty: 1, pvFlowId: stash!.flow_id });
+  await expect(loadCompletedPixelverifStash("800", 1, stash!.flow_id)).resolves.toEqual(pvFields);
 
-  const summary = await getCartSummary(String(user.id));
-  expect(summary.issues).toEqual([]);
-  expect(summary.lines[0].buyerFields).toEqual(pvFields);
-  // Tag as created by the cart approval UI (handlers/cart.ts) must match the payq1 re-resolution.
-  const tag = await checkoutApprovalTag(summary.lines);
-  await expect(resolveCurrentPayq1Lines(String(user.id), payq1({ kind: "cart" }, 21500, tag))).resolves.toMatchObject({ ok: true });
+  // Tag embedded in the single-item offer survives live re-resolution for payment creation.
+  const resolved = await resolveCurrentPayq1Lines(String(user.id), offer!);
+  expect(resolved.ok).toBe(true);
+  if (resolved.ok) expect(resolved.cartLines[0].buyerFields).toEqual(pvFields);
+  vi.unstubAllEnvs();
 });
 
-it("/batal drops the in-memory credential stash so a late TOTP never reaches the cart", async () => {
+it("/batal drops the durable credential stash so a late TOTP never opens a payment offer", async () => {
   fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
-  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  await requestBuyerInput(user.id, user, 1, 1, 1);
   await handleBuyerInput(pvFields.pv_email, user.id, user, 21);
   await handleBuyerInput(pvFields.pv_password, user.id, user, 22);
   await handleCommand("/batal", user.id, "private", user);
   fx.sql.exec("UPDATE telegram_users SET pending_action='pvinput:1:1:totp' WHERE user_id='800'");
   await handleBuyerInput(pvFields.pv_totp_secret, user.id, user, 23);
-  expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_carts").get()?.n).toBe(0);
+  expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_pixelverif_stashes").get()?.n).toBe(0);
   expect(sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ text: expect.stringContaining("Sesi input kedaluwarsa") }));
 });
 
@@ -281,7 +270,7 @@ it("marks Pixel variants on the product detail and public catalog payload so the
 
 it("warns the buyer to delete a secret message manually when Telegram deletion is not confirmed (Sol re-review #3)", async () => {
   fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
-  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  await requestBuyerInput(user.id, user, 1, 1, 1);
   await handleBuyerInput(pvFields.pv_email, user.id, user, 31);
   vi.mocked(deleteMessage).mockResolvedValue({ ok: false, description: "Too Many Requests" } as never);
   await handleBuyerInput(pvFields.pv_password, user.id, user, 32);
@@ -324,7 +313,7 @@ it("rejects a Gmail blacklisted by ACTIVATION_ITEM_NOT_AVAILABLE at quote, order
   }
 
   fx.sql.exec("UPDATE products SET telegram_enabled=1 WHERE id=1");
-  await handleCartAdd(user.id, 0, 1, 1, 1, user);
+  await requestBuyerInput(user.id, user, 1, 1, 1);
   await handleBuyerInput(pvFields.pv_email, user.id, user, 31);
   expect(sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ text: expect.stringContaining(PIXELVERIF_BLOCKED_EMAIL_MESSAGE) }));
   const pending = fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='800'").get() as Record<string, unknown>;

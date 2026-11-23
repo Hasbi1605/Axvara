@@ -1,9 +1,9 @@
 // src/lib/telegram/handlers/shared.ts — Helper kecil bersama antar-handler.
 //
-// MENGAPA dipisah: markDone, clearPendingAction, getBestsellers, clampQty, dan
-// cartLineLabel dipakai oleh beberapa handler (command, callback, cart,
-// invoice). Menaruhnya di satu tempat mencegah impor melingkar antar-handler
-// dan menjaga perilaku IDENTIK dengan route.ts lama (pemindahan murni).
+// MENGAPA dipisah: markDone, clearPendingAction, getBestsellers, dan clampQty
+// dipakai oleh beberapa handler (command, callback, invoice). Menaruhnya di
+// satu tempat mencegah impor melingkar antar-handler dan menjaga perilaku
+// konsisten di seluruh bot Telegram.
 
 import { execRun, getD1, isD1Mode, queryFirst } from "@/lib/db";
 import * as tgApi from "@/lib/telegram/api";
@@ -12,7 +12,6 @@ import type { TelegramBestseller } from "@/lib/telegram/messages";
 import { welcomeMessageLocalized } from "@/lib/telegram/messages/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import type { Locale } from "@/lib/i18n/locale";
-import type { CartLine } from "@/lib/telegram/cart";
 import type { InlineKeyboardMarkup, SendMessageParams, SendPhotoParams, TelegramApiResponse, TelegramMessage } from "@/lib/telegram/types";
 import { unwrapD1 } from "@/lib/db-access";
 
@@ -303,7 +302,7 @@ export async function markDone(updateId: string) {
 
 /** Bersihkan state percakapan (pending_action) milik user, best-effort.
  * R2 anchor guard: durable `creating` payq1 TIDAK PERNAH dihapus di sini —
- * berlaku untuk /start, /language, /currency, /batal, katalog, cart, help,
+ * berlaku untuk /start, /language, /currency, /batal, katalog, help,
  * checkout lama, dan navigasi router. Hanya quoted/contact/namespace lain
  * yang boleh dibersihkan. Creating dibersihkan HANYA setelah TX tersimpan
  * (status apa pun) atau order terminal via clearPayq1AfterDurableTx. */
@@ -378,10 +377,6 @@ export async function getBestsellers(limit = 3): Promise<TelegramBestseller[]> {
 export function clampQty(raw: number): number {
   if (!Number.isFinite(raw)) return 1;
   return Math.max(1, Math.min(TELEGRAM_MAX_QTY, Math.floor(raw)));
-}
-
-export function cartLineLabel(line: CartLine): string {
-  return `${line.productName} — ${line.variantLabel} ×${line.qty}`;
 }
 
 /**

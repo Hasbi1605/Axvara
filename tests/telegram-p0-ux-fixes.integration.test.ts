@@ -10,7 +10,7 @@ import { handleOrderStatus } from "@/lib/telegram/handlers/orders";
 import { resendTelegramCredentials } from "@/lib/telegram/credential-delivery";
 import {
   MENU_LABEL_CATALOG, MENU_LABEL_ORDERS, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY,
-  MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_SEARCH, MENU_LABEL_CART, MENU_LABEL_WARRANTY, MENU_LABEL_EN,
+  MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_SEARCH, MENU_LABEL_WARRANTY, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { parsePayq1State } from "@/lib/telegram/payment-quote";
 import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
@@ -126,11 +126,9 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
     const parsed = parsePayq1State(row.pending_action);
     expect(parsed?.source).toEqual({ kind: "single", productId: 1, variantId: 1, qty: 3 });
     expect(parsed?.idrSubtotal).toBe(30000);
-    expect(fx.sql.prepare("SELECT COUNT(*) n FROM telegram_carts WHERE user_id=?").get(String(buyer.id))?.n).toBe(0);
   });
 
-  it("single pmentry ignores unrelated items in cart and QRIS checkout leaves cart untouched", async () => {
-    fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 2, 2, 5);
+  it("single pmentry dispatches QRIS checkout directly for the selected variant", async () => {
     await click("q:1:1:2");
     const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 2, price: 10000 }]);
     await click(`pmentry:1:1:2:${tag}`);
@@ -140,10 +138,8 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
     expect(state.source).toEqual({ kind: "single", productId: 1, variantId: 1, qty: 2 });
     expect(state.idrSubtotal).toBe(20000);
 
-    // Selecting QRIS from single offer goes straight through dispatch and preserves cart rows.
+    // Selecting QRIS from single offer goes straight through dispatch.
     await click(`pm:${state.nonce}:0`);
-    const cartRow = fx.sql.prepare("SELECT product_id, variant_id, qty FROM telegram_carts WHERE user_id=?").get(String(buyer.id));
-    expect(cartRow).toEqual({ product_id: 2, variant_id: 2, qty: 5 });
 
     const created = fx.sql.prepare("SELECT subtotal, items FROM orders ORDER BY id DESC LIMIT 1").get() as { subtotal: number; items: string };
     expect(created.subtotal).toBe(20000);
@@ -214,7 +210,7 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
     expect(parsed?.contact?.email).toBe("buyer@example.com");
   });
 
-  it("rejects mismatched owner/group on single pmentry and keeps bare pmentry cart-bound", async () => {
+  it("rejects mismatched owner/group on single pmentry and redirects retired bare pmentry to catalog", async () => {
     const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 1, price: 10000 }]);
     await click(`pmentry:1:1:1:${tag}`, -999999, buyer);
     expect(String(lastMsg().text)).toContain("Lanjut di chat pribadi");
@@ -225,18 +221,13 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
     expect(String(lastMsg().text)).toContain("Lanjut di chat pribadi");
     expect(callbacksOf(lastMsg())).toEqual([]);
 
-    // Legacy bare "pmentry" still behaves as cart checkout (empty cart -> Keranjang kosong).
+    // Retired bare "pmentry" no longer opens any Telegram cart — guides buyer to /katalog.
     resetLog();
     await click("pmentry");
-    expect(String(lastMsg().text)).toContain("Keranjang kosong");
-
-    // Legacy bare "pmentry" with populated cart opens cart offer with Back -> ccheckout.
-    fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 2, 2, 1);
-    await click("pmentry");
-    expect(callbacksOf(lastMsg())).toContain("ccheckout");
+    expect(String(lastMsg().text)).toContain("/katalog");
     expect(callbacksOf(lastMsg())).toContain("home");
-    const row = fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer.id)) as { pending_action: string };
-    expect(parsePayq1State(row.pending_action)?.source).toEqual({ kind: "cart" });
+    const row = fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer.id)) as { pending_action: string | null };
+    expect(row.pending_action).toBeNull();
   });
 });
 
@@ -352,10 +343,6 @@ describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
     expect(String(lastMsg().text)).toContain("Cari produk");
 
     resetLog();
-    await handleCommand(MENU_LABEL_CART, buyer.id, "private", buyer);
-    expect(String(lastMsg().text)).toContain("Keranjang");
-
-    resetLog();
     await handleCommand(MENU_LABEL_WARRANTY, buyer.id, "private", buyer);
     expect(String(lastMsg().text)).toContain("WAJIB BACA");
 
@@ -378,10 +365,6 @@ describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
     resetLog();
     await handleCommand(MENU_LABEL_EN.search, buyer.id, "private", buyer);
     expect(String(lastMsg().text)).toContain("Search products");
-
-    resetLog();
-    await handleCommand(MENU_LABEL_EN.cart, buyer.id, "private", buyer);
-    expect(String(lastMsg().text)).toContain("Cart");
 
     resetLog();
     await handleCommand(MENU_LABEL_EN.warranty, buyer.id, "private", buyer);

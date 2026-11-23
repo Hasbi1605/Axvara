@@ -67,7 +67,12 @@ async function clickVisible(data: string) {
 function seedCartUser() {
   fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,locale,buyer_email) VALUES(?,?,?,?)")
     .run(String(buyer.id), String(buyer.id), "en", "buyer@example.test");
-  fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 1, 1, 2);
+}
+
+async function singlePmentry() {
+  const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+  const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 2, price: 9500 }]);
+  return `pmentry:1:1:2:${tag}`;
 }
 
 /** Provider crypto: min-amount/estimate OK; POST/GET diatur per test. */
@@ -92,11 +97,11 @@ function cryptoFetch(opts: { post?: () => Response } = {}) {
   return { mock, posts };
 }
 
-/** Layar checkout keranjang yang nyata (ringkasan persetujuan berisi pmentry). */
+/** Layar review single-item yang nyata (ringkasan persetujuan berisi pmentry single). */
 async function openCheckoutScreen() {
-  const { handleCartCheckout } = await import("@/lib/telegram/handlers/cart");
-  await handleCartCheckout(buyer.id, 21, buyer);
-  await clickVisible("pmentry");
+  const { handleShowReview } = await import("@/lib/telegram/handlers/catalog");
+  await handleShowReview(buyer.id, 21, 1, 1, 2, buyer);
+  await clickVisible(await singlePmentry());
 }
 
 async function seededOffer(ticker = "usdtbsc") {
@@ -116,6 +121,7 @@ async function seededOffer(ticker = "usdtbsc") {
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
+  vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
   vi.stubEnv("ADMIN_JWT_SECRET", "tg-switch-fixture");
   vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "tg-switch-fixture-secret-0123456789");
   vi.stubEnv("USD_IDR_RATE", "8000");
@@ -147,6 +153,7 @@ describe("TG crypto create failure: definitive vs ambiguous", () => {
   it("definitive: order batal + stok kembali sekali + anchor lepas + copy gangguan + pmentry; baris QRIS di offer baru membuat order QRIS", async () => {
     const provider = cryptoFetch();
     const frozen = await seededOffer();
+    const entry = await singlePmentry();
     // Rejeksi terbaca sebelum klaim TX: tidak ada charge yang bisa direkonsiliasi.
     nowMock.create.mockRejectedValueOnce(new Error("nowpayments_price_currency_unsupported"));
     await clickVisible(`pgo:${frozen.nonce}`);
@@ -156,24 +163,21 @@ describe("TG crypto create failure: definitive vs ambiguous", () => {
     expect(stock()).toBe(100); // 100 -> 98 saat order, kembali 100 SEKALI
     expect(count("payment_transactions")).toBe(0);
     expect(lastText()).toContain("Payment method error. Try another method.");
-    expect(lastKeyboard()).toContain("pmentry");
+    expect(lastKeyboard()).toContain(entry);
     expect(userRaw()).toBe(""); // anchor dilepas: quote/nonce baru boleh
 
     // pmentry (tombol nyata) → offer BARU (nonce baru) berisi QRIS + koin lain.
-    await clickVisible("pmentry");
+    await clickVisible(entry);
     const fresh = parsePayq1State(userRaw())!;
     expect(fresh.nonce).not.toBe(frozen.nonce);
     expect(fresh.methods.some((m) => m.id === "qris")).toBe(true);
     expect(fresh.methods.some((m) => m.id === "nowpayments:btc")).toBe(true);
 
-    // Tekan BARIS QRIS di keyboard offer (pm:), tanpa pgo: — langsung masuk alur
-    // QRIS legacy: ringkasan persetujuan → cconfirm → order QRIS baru.
+    // Tekan BARIS QRIS di keyboard offer (pm:), tanpa pgo: — langsung membuat
+    // order QRIS single-item baru dan melepas draft payq1.
     const qrisIndex = fresh.methods.findIndex((m) => m.id === "qris");
     await clickVisible(`pm:${fresh.nonce}:${qrisIndex}`);
     expect(userRaw()).toBe(""); // draft payq1 dilepas oleh tap QRIS
-    const confirm = lastKeyboard().find((data) => data.startsWith("cconfirm:"));
-    expect(confirm).toBeTruthy();
-    await clickVisible(confirm!);
     expect(count("orders")).toBe(2);
     expect(orderRow()).toMatchObject({ payment_method: "qris", status: "pending" });
     expect(stock()).toBe(98); // order QRIS baru mereservasi stok lagi (bukan 96)
@@ -191,6 +195,7 @@ describe("TG crypto create failure: definitive vs ambiguous", () => {
   it("definitive dengan TX 'failed' tersimpan: TX tetap terminal, order batal, tidak ada resurrect", async () => {
     cryptoFetch();
     const frozen = await seededOffer();
+    const entry = await singlePmentry();
     nowMock.create.mockImplementationOnce(async (code: string) => {
       fx.sql.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,currency,status,last_error,expires_at)
         VALUES(?,'nowpayments','hosted',?,'nowpayments',19000,'IDR','failed','nowpayments_http_400',datetime('now','+15 minutes'))`)
@@ -201,13 +206,14 @@ describe("TG crypto create failure: definitive vs ambiguous", () => {
     expect(orderRow()).toMatchObject({ status: "dibatalkan" });
     expect(fx.sql.prepare("SELECT status,last_error FROM payment_transactions").get()).toMatchObject({ status: "failed" });
     expect(stock()).toBe(100);
-    expect(lastKeyboard()).toContain("pmentry");
+    expect(lastKeyboard()).toContain(entry);
     expect(userRaw()).toBe("");
   });
 
   it("ambiguous (POST timeout, klaim TX initializing): tetap terikat order SAMA, tanpa order baru; tombol metode lain TIDAK ditawarkan", async () => {
     const provider = cryptoFetch(); // POST selalu throw => network ambiguous
     const frozen = await seededOffer();
+    const entry = await singlePmentry();
     await clickVisible(`pgo:${frozen.nonce}`);
 
     expect(count("orders")).toBe(1);
@@ -219,16 +225,15 @@ describe("TG crypto create failure: definitive vs ambiguous", () => {
     expect(anchored.st).toBe("creating");
     expect(anchored.orderCode).toBe(orderRow()!.code);
     // Switching TIDAK diiklankan: keyboard status tidak memuat pmentry.
-    expect(lastKeyboard()).not.toContain("pmentry");
+    expect(lastKeyboard()).not.toContain(entry);
 
     // Status/refresh order yang sama tetap bekerja (GET-only, tanpa order/POST baru).
     await clickVisible(`refresh:${orderRow()!.code}`);
     expect(count("orders")).toBe(1);
     expect(provider.posts.count).toBe(1);
 
-    // Simulasi tombol pmentry BASI (keyboard lama): tetap busy, tanpa quote/order kedua.
-    await click("pmentry");
-    expect(allTexts().some((text) => /Finish the current step first|Selesaikan langkah saat ini/i.test(text))).toBe(true);
+    // Simulasi tombol pmentry BASI (keyboard lama): tetap ditahan oleh existing pending order, tanpa quote/order kedua.
+    await click(entry);
     expect(count("orders")).toBe(1);
     expect(userRaw()).not.toBe("");
     expect(provider.posts.count).toBe(1);
@@ -237,12 +242,13 @@ describe("TG crypto create failure: definitive vs ambiguous", () => {
   it("double pmentry setelah definitif: hanya satu quote hidup, tanpa order tambahan", async () => {
     cryptoFetch();
     const frozen = await seededOffer();
+    const entry = await singlePmentry();
     nowMock.create.mockRejectedValueOnce(new Error("nowpayments_price_currency_unsupported"));
     await clickVisible(`pgo:${frozen.nonce}`);
     expect(userRaw()).toBe("");
 
-    expect(lastKeyboard()).toContain("pmentry");
-    await Promise.all([click("pmentry"), click("pmentry")]);
+    expect(lastKeyboard()).toContain(entry);
+    await Promise.all([click(entry), click(entry)]);
     const states = fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").all(String(buyer.id)) as { pending_action: string }[];
     expect(states.filter((row) => String(row.pending_action).startsWith("payq1:"))).toHaveLength(1);
     expect(parsePayq1State(userRaw())?.st).toBe("quoted");
@@ -250,23 +256,20 @@ describe("TG crypto create failure: definitive vs ambiguous", () => {
     expect(stock()).toBe(100);
   });
 
-  it("double tap baris QRIS pada offer baru: hanya satu order QRIS (CAS draft + guard legacy)", async () => {
+  it("double tap baris QRIS pada offer baru: hanya satu order QRIS (single-winner atomic + guard legacy)", async () => {
     cryptoFetch();
     const frozen = await seededOffer();
+    const entry = await singlePmentry();
     nowMock.create.mockRejectedValueOnce(new Error("nowpayments_price_currency_unsupported"));
     await clickVisible(`pgo:${frozen.nonce}`);
 
-    await clickVisible("pmentry");
+    await clickVisible(entry);
     const fresh = parsePayq1State(userRaw())!;
     const qrisIndex = fresh.methods.findIndex((m) => m.id === "qris");
     const qrisCallback = `pm:${fresh.nonce}:${qrisIndex}`;
     expect(lastKeyboard()).toContain(qrisCallback);
     await Promise.all([click(qrisCallback), click(qrisCallback)]);
 
-    // Hanya satu layar persetujuan QRIS yang dirender (tap kedua kalah CAS draft).
-    const confirms = lastKeyboard().filter((data) => data.startsWith("cconfirm:"));
-    expect(confirms).toHaveLength(1);
-    await clickVisible(confirms[0]);
     expect(count("orders")).toBe(2); // order crypto yang dibatalkan + SATU order QRIS
     expect(qrisMock.create).toHaveBeenCalledTimes(1);
     expect(stock()).toBe(98);

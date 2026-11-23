@@ -494,8 +494,10 @@ describe("Variant stock expiry lifecycle", () => {
 
   it("pins Telegram variant fulfillment to an order snapshot and compensates partial invoice setup", () => {
     const telegram = readTelegramWebhook();
+    const commerce = read("src/lib/commerce.ts");
     const delivery = readDelivery();
-    expect(telegram).toContain("variant_snapshot");
+    expect(telegram).toContain("variantSnapshot");
+    expect(commerce).toContain("variant_snapshot");
     expect(telegram).toContain("product_name: productName");
     expect(telegram).toContain("transitionPendingOrder");
     expect(delivery).toContain("fulfillmentModeFromOrderSnapshot");

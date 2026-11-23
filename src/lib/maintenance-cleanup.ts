@@ -83,14 +83,7 @@ export async function runMaintenanceCleanup(db: DatabaseAccess) {
       ORDER BY created_at LIMIT ${PRUNE_BATCH})`,
   ));
   const pixelPurged = await prune(db, () => purgeExpiredPixelverifInputs(db))
-    + await prune(db, () => purgeExpiredTelegramPixelverifStashes(db))
-    + await prune(db, () => db.execRun(
-      `DELETE FROM telegram_carts WHERE id IN (
-        SELECT id FROM telegram_carts
-        WHERE json_extract(buyer_fields,'$.pv_sealed_ciphertext') IS NOT NULL
-          AND datetime(updated_at)<=datetime('now','-30 minutes')
-        ORDER BY updated_at LIMIT ${PRUNE_BATCH})`,
-    ));
+    + await prune(db, () => purgeExpiredTelegramPixelverifStashes(db));
 
   // Webhook dedupe: Telegram retries and our own reset re-deliver within hours,
   // so 14 days is far beyond any live dedupe window. Orders stay idempotent

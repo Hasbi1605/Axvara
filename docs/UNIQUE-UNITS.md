@@ -51,9 +51,10 @@ token saat ready bertambah tanpa auto-scroll berulang. Snapshot lama tanpa
 penanda tidak dipecah atau ditulis ulang. Resolver S&K memakai pemetaan index
 yang sama, termasuk unit tambahan.
 
-Telegram quantity/ForceReply/cart mendukung beberapa unit dan varian unik,
-maksimal10 gabungan; server checkout tetap penjamin ketika state cart balapan.
-UI web/mobile memantulkan cap dan cart lama tetap divalidasi quote/server.
+Telegram single-item quantity/ForceReply mendukung beberapa unit unik per pesanan
+(keranjang hanya ada di web; keranjang Telegram dihapus 23 Nov 2026), maksimal 10;
+server checkout tetap penjamin saat balapan. UI web/mobile memantulkan cap dan
+keranjang web tetap divalidasi quote/server.
 Tidak mengubah unit/mode supplier, minimum pesanan shared/manual, retry quote,
 nominal QRIS, snapshot order historis atau flag pembayaran.
 

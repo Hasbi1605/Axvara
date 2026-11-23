@@ -96,13 +96,13 @@ describe("reservasi unique per baris", () => {
     expect(commerce).toContain("SELECT COUNT(*) FROM fulfillment_inventory");
   });
 
-  it("checkout Telegram (varian + cart) memakai jalur atomik bersama", () => {
+  it("checkout Telegram (varian tunggal + dispatch metode baru) memakai jalur atomik bersama", () => {
     const route = readWebhook();
     // Tidak boleh ada lagi INSERT order manual di route: itu jalur ketiga yang
-    // menyimpang dari Web dan WhatsApp.
+    // menyimpang dari Web.
     expect(route).not.toContain("INSERT INTO orders");
     const atomicCalls = route.match(/createChannelOrderAtomic\(\{/g) ?? [];
-    expect(atomicCalls.length).toBe(3); // varian, cart, dan dispatch metode baru
+    expect(atomicCalls.length).toBe(2); // varian tunggal QRIS dan dispatch metode baru
     expect(route).toContain("StockReservationError");
   });
 

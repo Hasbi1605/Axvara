@@ -417,15 +417,17 @@ Produk admin”. Implementasi/migrasi baru lokal; tanpa perubahan produksi.
   berarti 1..30B untuk satu kode; markup 40%, pembulatan Rp100 **per unit**
   (Rp1.500/unit pada FX18.086), tanpa diskon 30B. Empat SKU bundle lama hanya
   nonaktif; ID, harga override dan snapshot historis tidak dihapus/dibeli ulang.
-- Migrasi 0115 menambah `buyer_field_key`/`max_qty` varian dan `buyer_fields`
-  keranjang Telegram. Preset generik default NULL/off, awal hanya Buff1B:
+- Migrasi 0115 menambah `buyer_field_key`/`max_qty` varian (dan historis `buyer_fields`
+  pada `telegram_carts` yang kini sudah dihapus penuh via `0161_drop_telegram_carts.sql`
+  23 Nov 2026; keranjang hanya di web). Preset generik default NULL/off, awal hanya Buff1B:
   `muse_invite_code`, enam ASCII alnum, trim, case-preserving. Editor varian
   dapat menghidupkan/mematikan preset; bukan form builder/regex arbitrer.
 - Web meminta satu kode checkout dan quote baru setelah perubahan kode.
   Server mengikat config/nilai/qty agregat ke quote dan reservasi atomik.
-  Telegram meminta kode hanya di private chat; callback/notis tidak memuat
-  nilainya. WA menolak varian yang memerlukan input sebelum order/invoice.
-  Kode hanya tersimpan di cart Telegram/snapshot order privat; tidak masuk
+  Telegram meminta kode hanya di private chat lalu langsung membuka pemilih metode
+  bayar single-item (`payq1` `source.museInviteCode`, tanpa keranjang Telegram);
+  callback/notis tidak memuat nilainya. WA menolak varian yang memerlukan input
+  sebelum order/invoice. Kode hanya tersimpan di state `payq1` privat/snapshot order privat; tidak masuk
   daftar publik, URL, log atau email. Detail admin authenticated/no-store
   membaca nilai; daftar order/admin dan buyer status meredaksinya.
 - NEW order saja memperoleh `tunvn_eligibility` versi1 server-side dengan kind,

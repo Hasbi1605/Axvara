@@ -13,7 +13,7 @@ import { SITE } from "@/lib/site";
 import {
   cb, homeKeyboard, warrantyKeyboard, languageChooserKeyboard, settingsKeyboard,
   helpKeyboard, mainReplyMenu, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
-  MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY, MENU_LABEL_CART,
+  MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY,
   MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { welcomeMessage, helpMessage, warrantyFullMessage } from "@/lib/telegram/messages";
@@ -30,7 +30,6 @@ import {
   handlePendingQtyInput, handlePendingWaInput, handlePendingEmailInput,
 } from "./discovery";
 import { handleOrderStatus } from "./orders";
-import { handleShowCart } from "./cart";
 
 async function clearPendingUnlessCreating(from?: { id: number }) {
   if (from) {
@@ -226,12 +225,6 @@ export async function handleCommand(
     return;
   }
 
-  if (cmd === "/cart" || cmd === "/keranjang") {
-    await clearPendingUnlessCreating(from);
-    await handleShowCart(chatId, 0, from);
-    return;
-  }
-
   if (cmd === "/garansi") {
     await clearPendingUnlessCreating(from);
     await sendMessage({
@@ -281,12 +274,6 @@ export async function handleCommand(
   ) {
     await clearPendingUnlessCreating(from);
     await handleMyOrders(chatId, from);
-    return;
-  }
-
-  if (trimmed === MENU_LABEL_CART || trimmed === MENU_LABEL_EN.cart) {
-    await clearPendingUnlessCreating(from);
-    await handleShowCart(chatId, 0, from);
     return;
   }
 

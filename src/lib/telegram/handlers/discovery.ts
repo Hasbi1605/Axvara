@@ -23,9 +23,7 @@ import {
 import { tgCtxFor, tgUsdAlternate, type TgCtx } from "@/lib/telegram/render-prefs";
 import { getProductDetail, formatVariantLabel, effectiveVariantStock } from "@/lib/catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
-import { getCartSummary } from "@/lib/telegram/cart";
-import { readCheckoutEmail, checkoutEmailFingerprint } from "@/lib/telegram/checkout-email";
-import { cartCheckoutSummaryMessage, escapeHtml } from "@/lib/telegram/messages";
+import { checkoutEmailFingerprint } from "@/lib/telegram/checkout-email";
 import { productDisplayName } from "@/lib/i18n/product-name";
 import { countInventory } from "@/lib/fulfillment/inventory";
 import { clampQty, replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
@@ -48,38 +46,7 @@ export async function handlePendingEmailInput(
     String(from.id),
   );
   const action = user?.pending_action ? String(user.pending_action) : "";
-  if (!action.startsWith("email_for:") && !action.startsWith("emailcart:")) return false;
-  if (action.startsWith("emailcart:")) {
-    // Alur keranjang: tidak ada product/variant tunggal — setelah email
-    // tersimpan, user menekan Lanjut lagi (cconfirm) seperti biasa.
-    const cartCtx = await tgCtxFor(from.id);
-    const enCart = cartCtx.locale === "en";
-    if (/^\/batal$/i.test(text.trim())) {
-      await execRun(
-        `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
-        String(from.id),
-      ).catch(() => {});
-      await sendMessage({ chat_id: chatId, text: enCart ? "Cancelled." : "Dibatalkan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: enCart ? "en" : "id" }) });
-      return true;
-    }
-    const cartEmail = text.trim();
-    if (cartEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cartEmail)) {
-      await sendMessage({
-        chat_id: chatId,
-        text: enCart ? "❌ Invalid email format. Example: <code>name@email.com</code>\nType /batal to cancel." : "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
-        parse_mode: "HTML",
-      });
-      return true;
-    }
-    const stored = await execRun(
-      `UPDATE telegram_users SET buyer_email=?, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
-      cartEmail,
-      String(from.id),
-      action,
-    );
-    if (stored.changes) await showCartEmailConfirmation(chatId, from, cartEmail, action);
-    return true;
-  }
+  if (!action.startsWith("email_for:")) return false;
   const [, productIdRaw, variantIdRaw, qtyRaw] = action.split(":");
   const productId = Number(productIdRaw);
   const variantId = Number(variantIdRaw);
@@ -149,34 +116,6 @@ export async function showEmailConfirmation(chatId: number, productId: number, v
     parse_mode: "HTML",
     reply_markup: emailConfirmationKeyboard(productId, variantId, qty, confirmationUnit * qty, tag, nonce, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   });
-}
-
-export async function showCartEmailConfirmation(chatId: number, from: { id: number }, email?: string, expectedAction: string | null = null, messageId = 0) {
-  const ctx = await tgCtxFor(from?.id ?? chatId);
-  const summary = await getCartSummary(String(from.id));
-  if (!summary.lines.length) return;
-  if (summary.issues.length) {
-    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Cart changed. Open the cart and check quantities and stock before paying." : "Keranjang berubah. Buka keranjang dan periksa jumlah serta stok sebelum membayar.", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
-    return;
-  }
-  const checked = await readCheckoutEmail(String(from.id), summary.lines, email);
-  if (!checked.email) {
-    const stored = await execRun("UPDATE telegram_users SET pending_action='emailcart:', updated_at=datetime('now') WHERE user_id=? AND (pending_action IS ? OR (pending_action LIKE 'payq1:%' AND pending_action LIKE '%\"st\":\"quoted\"%'))", String(from.id), expectedAction);
-    if (!stored.changes) return;
-    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Send an active email to receive the product. Type /batal to go back." : "Kirim email aktif untuk menerima produk. Ketik /batal untuk kembali.", reply_markup: { force_reply: true, input_field_placeholder: "nama@email.com" } });
-    return;
-  }
-  const tag = await checkoutApprovalTag(summary.lines);
-  const nonce = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-  const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND (pending_action IS ? OR (pending_action LIKE 'payq1:%' AND pending_action LIKE '%\"st\":\"quoted\"%'))", `cart_confirm:${tag}:${nonce}:${await checkoutEmailFingerprint(checked.email)}`, String(from.id), checked.email, expectedAction);
-  if (!stored.changes) return;
-  const en = ctx.locale === "en";
-  await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({ productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty, basePrice: line.basePrice, appliedTierMinQty: line.appliedTierMinQty })), summary.subtotal, { locale: ctx.locale, ...tgUsdAlternate(summary.subtotal, ctx) }) + `\n\nEmail: ${escapeHtml(maskEmail(checked.email))}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
-    [{ text: en ? "💳 Pay QRIS" : "💳 Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}`, style: "success" }],
-    [{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }],
-    [{ text: en ? "Change Email" : "Ubah Email", callback_data: "ceedit" }, { text: en ? "Edit Cart" : "Ubah Keranjang", callback_data: "cart" }],
-    ...summary.lines.map(line => [{ text: `📋 ${en ? "Terms" : "Ketentuan"} ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
-  ] } });
 }
 
 // --- /orders: real order history with reorder shortcuts ---

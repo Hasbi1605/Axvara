@@ -8,18 +8,18 @@ import {
   reviewPurchaseMessage, orderPaidMessage, waSavedAfterPaymentMessage,
   adminTelegramOrderCreatedMessage, myOrdersMessage, searchPromptMessage,
   searchResultsMessage, breadcrumbLine, formatSoldCountLabel,
-  cartMessage, cartAddedMessage, cartCheckoutSummaryMessage, orderReminderMessage,
+  orderReminderMessage,
   emailConfirmationMessage,
 } from "@/lib/telegram/messages";
 import {
   cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard,
   productsKeyboard, catalogFlatKeyboard, qtyKeyboard, reviewKeyboard, qrisInvoiceKeyboard,
   orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard, searchNoResultsKeyboard,
-  cartKeyboard, productDetailKeyboard, variantsKeyboard, emailConfirmationKeyboard,
+  productDetailKeyboard, variantsKeyboard, emailConfirmationKeyboard,
   helpKeyboard, orderStatusKeyboard, paidOrderStatusKeyboard, orderTerminalKeyboard,
   paymentMethodOfferKeyboard, credentialResendOutcomeKeyboard, settingsKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
-  MENU_LABEL_CART, MENU_LABEL_SETTINGS, MENU_LABEL_EN,
+  MENU_LABEL_SETTINGS, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import fs from "node:fs";
 import path from "node:path";
@@ -581,9 +581,7 @@ describe("Telegram order and payment flow wiring", () => {
     // dilarang = PEMANGGILAN aktual (await ...(...) / import ... from).
     expect(invoice).not.toMatch(/await notifyTelegramOrderCreated\(/);
     expect(invoice).not.toMatch(/import \{[^}]*notifyTelegramOrderCreated/);
-    const cartInvoice = read("src/lib/telegram/handlers/cart-invoice.ts");
-    expect(cartInvoice).not.toMatch(/await notifyTelegramOrderCreated\(/);
-    expect(cartInvoice).not.toMatch(/import \{[^}]*notifyTelegramOrderCreated/);
+    expect(fs.existsSync(path.join(process.cwd(), "src/lib/telegram/handlers/cart-invoice.ts"))).toBe(false);
     // Blok created di retryPendingTelegramNotifications = no-op: tidak ada
     // SELECT antrean "pending created" tanpa filter lunas.
     const notifications = read("src/lib/telegram/order-notifications.ts");
@@ -836,18 +834,20 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
   });
 });
 
-describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
-  it("legacy cart label and /cart stay routed while reply menu hides cart", () => {
+describe("Telegram single-item commerce + reminder (keranjang Telegram dihapus; keranjang hanya di web)", () => {
+  it("removes all Telegram cart routes, handlers, files, and schema table", () => {
     const menu = mainReplyMenu();
     const labels = menu.keyboard.flat().map((b) => b.text);
-    expect(labels).not.toContain(MENU_LABEL_CART);
+    expect(labels.some((l) => /keranjang|cart/i.test(l))).toBe(false);
     const route = readWebhook();
-    expect(route).toContain("MENU_LABEL_CART");
-    expect(route).toContain('cmd === "/cart"');
-    expect(route).toContain("handleShowCart");
-    expect(route).toContain("handleCartCheckout");
-    expect(route).toContain("createAndSendCartInvoice");
-    expect(route).toContain('"cconfirm"');
+    expect(route).not.toContain('cmd === "/cart"');
+    expect(route).not.toContain("handleShowCart");
+    expect(route).not.toContain("handleCartCheckout");
+    expect(route).not.toContain("createAndSendCartInvoice");
+    expect(route).not.toContain('"cconfirm"');
+    expect(fs.existsSync(path.join(process.cwd(), "src/lib/telegram/cart.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(process.cwd(), "src/lib/telegram/handlers/cart.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(process.cwd(), "src/lib/telegram/handlers/cart-invoice.ts"))).toBe(false);
     // /start mengirim satu banner foto welcome + inline keyboard lalu memasang
     // reply keyboard via carrier senyap yang langsung dihapus agar tidak ada
     // pesan bubble sampah tersisa ("Menu Cepat", "—", dsb).
@@ -875,71 +875,20 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(revDatas).toEqual(["pmentry:1:2:2:tag1", "qty:1:2", "prd:1"]);
   });
 
-  it("cart keyboard exposes adjust, remove, checkout, and clear", () => {
-    const kb = cartKeyboard({
-      lines: [
-        { variantId: 11, qty: 2, stock: -1, fulfillmentMode: "manual" },
-        { variantId: 22, qty: 1, stock: 5, fulfillmentMode: "shared" },
-      ],
-    });
-    const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
-    expect(datas).toContain("cdec:11");
-    expect(datas).toContain("cinc:11");
-    expect(datas).toContain("crm:22");
-    expect(datas).toContain("ccheckout");
-    expect(datas).toContain("cclear");
-    const empty = cartKeyboard({ lines: [] });
-    const emptyDatas = empty.inline_keyboard.flat().map((b) => b.callback_data ?? "");
-    expect(emptyDatas).not.toContain("ccheckout");
-  });
-
-  it("cart messages render lines, subtotal, and single-QRIS promise", () => {
-    const lines = [
-      { productName: "Canva Pro", variantLabel: "Pro Head 1 Bulan", price: 5000, qty: 2 },
-      { productName: "ChatGPT Plus", variantLabel: "1 Bulan", price: 89000, qty: 1 },
-    ];
-    const msg = cartMessage(lines);
-    expect(msg).toContain("<b>🛒 Keranjang</b>");
-    expect(msg).toContain("Canva Pro");
-    expect(msg).toMatch(/Subtotal: Rp\s?99\.000/);
-    expect(msg).toContain("Satu pembayaran untuk semua item.");
-    expect(cartMessage([])).toContain("Keranjang kosong");
-    const added = cartAddedMessage("Canva Pro", "Pro Head 1 Bulan", 2, 3);
-    expect(added).toContain("Ditambahkan ke keranjang");
-    const summary = cartCheckoutSummaryMessage(lines, 99000);
-    expect(summary).toContain("Total final ada di invoice.");
-    expect(summary).not.toContain("Langkah");
-  });
-
-  it("cart checkout keeps one order + one QRIS invoice + per-mode fulfillment job", () => {
+  it("single-item checkout keeps one atomic order + one QRIS invoice", () => {
     const route = readWebhook();
-    // Order dibuat lewat jalur atomik bersama (satu batch: guard stok +
-    // reservasi inventory + INSERT order), bukan INSERT manual di route.
     expect(route).toContain("createChannelOrderAtomic({");
     expect(route).toMatch(/create(Dana|Active)QrisInvoice\(orderCode, subtotal\)/);
-    expect(route).toContain("clearCart(String(from.id))");
     expect(route).toContain("variantSnapshot");
-    // Satu job per order (UNIQUE order_code): mode dominan, bukan per item.
-    expect(route).toContain("cartFulfillmentMode");
-    expect(route).not.toContain("for (const line of lines) {\n      const hasInventory");
   });
 
-  it("cart lib guards the combined unique-unit cap and stale rows", () => {
-    const lib = read("src/lib/telegram/cart.ts");
-    const migration = read("drizzle/migrations/0014_telegram_cart_reminders.sql");
-    expect(lib).toContain("unique_limit");
-    expect(lib).toContain("MAX_UNIQUE_UNITS_PER_ORDER");
-    expect(migration).toContain("UNIQUE(user_id, variant_id)");
-    expect(lib).toContain("MAX_LINES = 20");
-    expect(lib).toContain("DELETE FROM telegram_carts WHERE user_id=? AND variant_id=?");
-  });
-
-  it("migration 0014 creates cart table + reminder markers", () => {
-    const migration = read("drizzle/migrations/0014_telegram_cart_reminders.sql");
+  it("migration 0161 drops telegram_carts while keeping reminder markers from 0014", () => {
+    const migration0014 = read("drizzle/migrations/0014_telegram_cart_reminders.sql");
+    const migration0161 = read("drizzle/migrations/0161_drop_telegram_carts.sql");
     const schema = read("drizzle/schema.sql");
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS telegram_carts");
-    expect(migration).toContain("telegram_reminder_count");
-    expect(schema).toContain("CREATE TABLE IF NOT EXISTS telegram_carts");
+    expect(migration0014).toContain("telegram_reminder_count");
+    expect(migration0161).toContain("DROP TABLE IF EXISTS telegram_carts");
+    expect(schema).not.toContain("CREATE TABLE IF NOT EXISTS telegram_carts");
     expect(schema).toContain("telegram_reminder_count INTEGER NOT NULL DEFAULT 0");
   });
 
@@ -963,12 +912,6 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     const expiresMs = Date.parse("2026-11-20T07:05:00Z");
     expect(orderReminderMessage({ orderCode: "AXV-1", payableAmount: 5123, expiresMs, now: expiresMs - 300_000 })).toBe(
       "⏰ <b>5 menit lagi</b>\nKode  : <code>AXV-1</code>\nTotal : <code>Rp5.123</code>\nSelesaikan pembayaran sebelum 14:05 WIB.");
-  });
-
-  it("cart callback data stays within 64 bytes", () => {
-    for (const d of [cb.cartAdd(99999, 88888, 100), cb.cartDec(88888), cb.cartInc(88888), cb.cartRemove(88888), cb.cartCheckout(), cb.cartClear(), cb.cart()]) {
-      expect(new TextEncoder().encode(d).length).toBeLessThanOrEqual(64);
-    }
   });
 
   it("P0-1/3 keyboards stay within 64 bytes and expose expected navigation", () => {
@@ -1003,12 +946,11 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(singleOffer.inline_keyboard.at(-2)?.map((b) => b.callback_data)).toEqual(["q:12:34:2", "prd:12"]);
     expect(singleOffer.inline_keyboard.at(-1)?.map((b) => b.callback_data)).toEqual(["home"]);
 
-    const cartOffer = paymentMethodOfferKeyboard({
+    const fallbackOffer = paymentMethodOfferKeyboard({
       nonce: "abcd1234",
       methods: [{ id: "qris", kind: "qris", label: "QRIS" }],
-      source: { kind: "cart" },
     });
-    expect(cartOffer.inline_keyboard.at(-1)?.map((b) => b.callback_data)).toEqual(["ccheckout", "home"]);
+    expect(fallbackOffer.inline_keyboard.at(-1)?.map((b) => b.callback_data)).toEqual(["catalog:0", "home"]);
 
     expect(orderStatusKeyboard("AXV-1").inline_keyboard.flat().map((b) => b.callback_data)).toContain("myorders");
     expect(paidOrderStatusKeyboard("AXV-1").inline_keyboard.flat().map((b) => b.callback_data)).toContain("myorders");

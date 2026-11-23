@@ -9,7 +9,6 @@ import { chooseQtyMessage, reviewPurchaseMessage } from "@/lib/telegram/messages
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { handleCallback } from "@/lib/telegram/handlers/callback";
 import { handlePendingQtyInput } from "@/lib/telegram/handlers/discovery";
-import { getCartSummary } from "@/lib/telegram/cart";
 import type { InlineKeyboardButton, SendMessageParams } from "@/lib/telegram/types";
 
 const api = vi.hoisted(() => ({ send: vi.fn(), photo: vi.fn(), edit: vi.fn() }));
@@ -293,7 +292,7 @@ describe("TG-QTYREVIEW D1 router flows, guards, and compatibility", () => {
     expect(lastEdited()?.text).toContain("Stock   : 50");
   });
 
-  it("enforces guards on review/pmentry, re-renders review on tag mismatch, and keeps legacy pay + cadd", async () => {
+  it("enforces guards on review/pmentry, re-renders review on tag mismatch, ignores retired cadd, and keeps direct pay", async () => {
     // Min qty guard on review + pmentry
     fx.sql.exec("UPDATE product_variants SET min_qty=5 WHERE id=1");
     await handleCallback("q:1:1:2", buyer.id, 10, buyer);
@@ -318,9 +317,9 @@ describe("TG-QTYREVIEW D1 router flows, guards, and compatibility", () => {
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
     vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
 
-    // Legacy cadd and pay: direct QRIS still work
+    // Retired cadd is a no-op; direct single pay: QRIS works
     await handleCallback("cadd:1:1:2", buyer.id, 10, buyer);
-    expect((await getCartSummary("91001")).lines).toHaveLength(1);
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
     await handleCallback(`pay:1:1:5:${freshTag}`, buyer.id, 10, buyer);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);
 

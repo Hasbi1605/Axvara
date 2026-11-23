@@ -129,16 +129,10 @@ it("Telegram atomic checkout reserves multiple units while preserving an idempot
  expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(8);
 });
 
-it("Telegram cart combines unique variants, retains quantities and enforces the total cap",async()=>{
- await importInventory(1,Array.from({length:5},(_,i)=>`CART-OTHER-${i}`),2);
- const {addToCart,setCartLineQty,getCartSummary}=await import("@/lib/telegram/cart");
- expect(await addToCart('12345',1,1,3)).toMatchObject({ok:true});
- expect(await addToCart('12345',1,2,4)).toMatchObject({ok:true});
- expect((await getCartSummary('12345')).lines.map(l=>l.qty)).toEqual([3,4]);
- expect(await addToCart('12345',1,1,4)).toMatchObject({ok:false,reason:'unique_limit'});
- expect(await setCartLineQty('12345',1,6)).toBe(true);
- expect(await setCartLineQty('12345',1,7)).toBe(false);
- expect((await getCartSummary('12345')).totalQty).toBe(10);
+it("Telegram single-item atomic checkout rejects unique-stock orders above the total cap",async()=>{
+ await importInventory(1,Array.from({length:5},(_,i)=>`CAP-OTHER-${i}`),2);
+ const overCap={orderCode:`${code}-CAP`,idempotencyKey:'tg-unique-cap',lines:[{productId:1,variantId:1,qty:11,fulfillmentMode:'unique',stock:11}],items:[{product_id:1,variant_id:1,name:'Muse',price:1000,qty:11}],variantSnapshot:'{}',subtotal:11000,primaryVariantId:1,customerName:'Buyer',salesChannel:'telegram' as const,telegramChatId:'12345',telegramUserId:'12345',paymentMethod:'qris',paymentAccount:'Fixture',fulfillmentStatus:'reserved'};
+ await expect(createChannelOrderAtomic(overCap)).rejects.toThrow();
 });
 
 it("lookup and both public status URLs report the same multi-unit progress",async()=>{

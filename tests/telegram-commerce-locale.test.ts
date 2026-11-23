@@ -79,8 +79,11 @@ describe("TG2a read commerce follows saved locale/currency", () => {
     expect(lastMarkup()).toContain("Continue to Payment");
     expect(allTexts().join("\n")).not.toContain("<b>Bold</b>");
     vi.clearAllMocks();
+    await handleCommand("/orders", user.id, "private", user);
+    expect(allTexts().join("\n")).toMatch(/Orders|order/i);
+    vi.clearAllMocks();
     await handleCommand("/cart", user.id, "private", user);
-    expect(allTexts().join("\n")).toMatch(/Cart/);
+    expect(allTexts().join("\n")).not.toMatch(/Cart is empty|🛒 Cart/i);
     vi.clearAllMocks();
     await handleCommand("/bantuan", user.id, "private", user);
     expect(sentTexts().join("\n")).toMatch(/AXVARA Help/);

@@ -48,12 +48,17 @@ const lastMessage = (): { text: string; reply_markup?: unknown } => {
 async function seedCartUser() {
   fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,locale,buyer_email) VALUES(?,?,?,?)")
     .run(String(buyer.id), String(buyer.id), "en", "buyer@example.test");
-  fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 1, 1, 2);
+}
+
+async function singlePmentry(qty = 2, price = 10000) {
+  const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty, price }]);
+  return `pmentry:1:1:${qty}:${tag}`;
 }
 
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
+  vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
   vi.stubEnv("ADMIN_JWT_SECRET", "tg-r1-fixture");
   vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "tg-r1-fixture");
   vi.stubEnv("QRIS_ACTIVE_PROVIDER", "klikqris");
@@ -84,7 +89,7 @@ afterEach(() => {
 describe("TG R1 frozen method selection (local only)", () => {
   it("renders EN offer with QRIS line and Rp button when crypto is off, no orders/provider writes", async () => {
     await seedCartUser();
-    await click("pmentry");
+    await click(await singlePmentry());
     const message = lastMessage();
     const callbacks = callbacksOf(message);
     expect(callbacks.length).toBeGreaterThan(0);
@@ -94,7 +99,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     expect(markupJson).toContain("📱 QRIS · Rp20.000");
     expect(markupJson).not.toContain("Fastest");
     expect(lastText()).toContain("💳 <b>Choose payment</b>");
-    expect(lastText()).toContain("Product : Keranjang (1 item)");
+    expect(lastText()).toContain("Product : Fixture · Variant 1 ×2");
     expect(lastText()).toContain("Total   : <b>IDR\u00a020,000</b>");
     expect(lastText()).toContain("QRIS: Indonesian e-wallets &amp; m-banking.");
     expect(lastText()).not.toContain("• QRIS");
@@ -106,7 +111,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     expect(state.st).toBe("quoted");
     expect(state.locale).toBe("en");
     expect(state.idrSubtotal).toBe(20000);
-    expect(state.source).toEqual({ kind: "cart" });
+    expect(state.source).toEqual({ kind: "single", productId: 1, variantId: 1, qty: 2 });
     expect(state.methods[0]?.id).toBe("qris");
     for (const method of state.methods) {
       expect((await import("@/lib/auth")).isCanonicalMethodOption(method, state.idrSubtotal)).toBe(true);
@@ -118,10 +123,10 @@ describe("TG R1 frozen method selection (local only)", () => {
   it("renders ID offer with QRIS first, Rp button, and concise method description", async () => {
     await seedCartUser();
     fx.sql.prepare("UPDATE telegram_users SET locale='id' WHERE user_id=?").run(String(buyer.id));
-    await click("pmentry");
+    await click(await singlePmentry());
     expect(JSON.stringify(lastMessage().reply_markup)).toContain("📱 QRIS · Rp20.000");
     expect(lastText()).toContain("💳 <b>Pilih pembayaran</b>");
-    expect(lastText()).toContain("Produk : Keranjang (1 item)");
+    expect(lastText()).toContain("Produk : Fixture · Variant 1 ×2");
     expect(lastText()).toContain("Total  : <b>Rp\u00a020.000</b>");
     expect(lastText()).toContain("QRIS: semua e-wallet &amp; m-banking.");
     expect(lastText()).not.toContain("• QRIS");
@@ -136,7 +141,7 @@ describe("TG R1 frozen method selection (local only)", () => {
       { payment_code: "AAA", payment_name: "AAA VA", payment_type: "va", min_amount: 100, max_amount: 999999999, fee_info: { type: "flat", description: "Rp 1.000" } },
     ] })));
     await seedCartUser();
-    await click("pmentry");
+    await click(await singlePmentry());
     const frozen = parsePayq1State(String(userState().pending_action))!;
     expect(frozen.methods[0]?.id).toBe("qris");
     expect(frozen.methods.some((m) => m.id.startsWith("sekalipay_gateway:"))).toBe(false);
@@ -151,7 +156,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     const { selectedSnapshotOf } = await import("@/lib/telegram/payment-create");
     const state = {
       v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600, tag: "0123456789ab",
-      locale: "en", idrSubtotal: 20000, source: { kind: "cart" },
+      locale: "en", idrSubtotal: 20000, source: { kind: "single", productId: 1, variantId: 1, qty: 2 },
       methods: [{ id: "sekalipay_gateway:OKVA", kind: "gateway", gateway: { channel: "OKVA", estimated_fee: 1000, estimated_total: 21000, idr_subtotal: 20000 } }],
       sel: "sekalipay_gateway:OKVA", contact: { email: "buyer@example.test", phone: "081234567890" }, st: "quoted",
     };
@@ -159,24 +164,28 @@ describe("TG R1 frozen method selection (local only)", () => {
   });
 
   it("two-tab old nonce cannot change the current offer; baris QRIS memulai alur QRIS; tap koin duplikat idempoten", async () => {
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
+    vi.stubEnv("GOPAY_MERCHANT_QRIS", "00020101021126570011ID.CO.GOPAY01189360091430000000000210G0000000000303UMI5204549953033605802ID5906AXVARA6007JAKARTA6304ABCD");
     await seedCartUser();
-    await click("pmentry");
+    const entry = await singlePmentry();
+    await click(entry);
     const firstRaw = String(userState().pending_action);
     const first = parsePayq1State(firstRaw)!;
-    await click("pmentry");
+    await click(entry);
     const secondRaw = String(userState().pending_action);
     const second = parsePayq1State(secondRaw)!;
     expect(second.nonce).not.toBe(first.nonce);
     await click(`pm:${first.nonce}:0`);
     expect(String(userState().pending_action)).toBe(secondRaw);
-    // Baris QRIS (owner 8 Nov 2026): langsung memulai alur QRIS legacy, draft
+    // Baris QRIS (owner 8 Nov 2026): langsung memulai alur QRIS single-item, draft
     // payq1 dilepas — bukan seleksi yang berhenti di "refreshed" tanpa aksi.
     await click(`pm:${second.nonce}:0`);
     expect(String(userState().pending_action ?? "")).toBe("");
-    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
-    // Idempotensi seleksi non-QRIS: offer baru + koin yang sama dua kali.
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);
+    // Bersihkan pending order agar bisa menguji idempotensi seleksi crypto pada offer baru.
+    fx.sql.exec("DELETE FROM payment_transactions; DELETE FROM orders");
     await enableCrypto();
-    await click("pmentry");
+    await click(entry);
     const offer = parsePayq1State(String(userState().pending_action))!;
     await click(`pmc:${offer.nonce}`);
     const coin = offer.methods.findIndex((m) => m.id === "nowpayments:usdtbsc");
@@ -208,7 +217,7 @@ describe("TG R1 frozen method selection (local only)", () => {
   it("mutated FX keeps frozen cents; expired offer fails closed on requote", async () => {
     await enableCrypto();
     await seedCartUser();
-    await click("pmentry");
+    await click(await singlePmentry());
     const frozen = parsePayq1State(String(userState().pending_action))!;
     const crypto = frozen.methods.find((m) => m.id === "nowpayments:usdtbsc") as { usd?: { cents: string }; total_cents?: number; amount_text?: string } | undefined;
     expect(crypto?.usd?.cents).toBe("250");
@@ -237,7 +246,7 @@ describe("TG R1 frozen method selection (local only)", () => {
       fx.sql.exec("UPDATE payment_methods SET is_active=0 WHERE id!='qris'");
       await enableCrypto();
       await seedCartUser();
-      await click("pmentry");
+      await click(await singlePmentry());
       const message = lastMessage();
       const rows = rowsOf(message);
       expect(rows[0][0].text).toBe("🪙 Crypto · 2.61 USDT");
@@ -258,7 +267,7 @@ describe("TG R1 frozen method selection (local only)", () => {
 
       // ID locale: QRIS first, then Crypto with comma decimal.
       fx.sql.prepare("UPDATE telegram_users SET locale='id', pending_action=NULL WHERE user_id=?").run(String(buyer.id));
-      await click("pmentry");
+      await click(await singlePmentry());
       const idMsg = lastMessage();
       const idRows = rowsOf(idMsg);
       expect(idRows[0][0].text).toBe("📱 QRIS · Rp20.000");
@@ -304,7 +313,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     it("opens one button per coin, keeps frozen network callbacks, and supports Back on both steps", async () => {
       await enableCrypto();
       await seedCartUser();
-      await click("pmentry");
+      await click(await singlePmentry());
       const frozen = parsePayq1State(String(userState().pending_action))!;
       const rawBefore = String(userState().pending_action);
       await click(`pmc:${frozen.nonce}`);
@@ -339,7 +348,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     it("a coin tap behaves exactly like selecting a method: sel = that coin, Continue offered, no order/provider call", async () => {
       await enableCrypto();
       await seedCartUser();
-      await click("pmentry");
+      await click(await singlePmentry());
       const frozen = parsePayq1State(String(userState().pending_action))!;
       await click(`pmc:${frozen.nonce}`);
       const btc = rowsOf(lastMessage()).flat().find(button => button.text === "🟠 BTC")!;
@@ -353,7 +362,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     it("stale/expired nonce on the crypto menu: no mutation, honest requote notice", async () => {
       await enableCrypto();
       await seedCartUser();
-      await click("pmentry");
+      await click(await singlePmentry());
       const raw = String(userState().pending_action);
       await click("pmc:0123456789abcdef:USDT");
       expect(lastText()).toMatch(/expired|kedaluwarsa/i);
@@ -370,11 +379,11 @@ describe("TG R1 frozen method selection (local only)", () => {
       expect(String(userState().pending_action)).toBe(expired);
     });
 
-    it("no AXVARA floor: a US$1.35 cart still shows coins whose provider minimum allows it; BTC is omitted", async () => {
+    it("no AXVARA floor: a US$1.35 single order still shows coins whose provider minimum allows it; BTC is omitted", async () => {
       await enableCrypto();
       vi.stubEnv("USD_IDR_RATE", "16000"); // 20000 IDR -> base 125 + biaya per koin (usdtbsc 10) = total 135
       await seedCartUser();
-      await click("pmentry");
+      await click(await singlePmentry());
       const state = parsePayq1State(String(userState().pending_action))!;
       const ids = state.methods.filter((m) => m.kind === "crypto").map((m) => m.id);
       expect(ids).toEqual(["nowpayments:eth", "nowpayments:trx", "nowpayments:usdtbsc", "nowpayments:usdttrc20"]);
@@ -385,7 +394,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     it("per-coin minimum buffer: a coin whose provider minimum x1.15 exceeds its total is omitted, others stay", async () => {
       await enableCrypto([{ ticker: "btc", min_usd_text: "2.40" }, { ticker: "eth", min_usd_text: "2.20" }, { ticker: "usdtbsc", min_usd_text: "0.08" }]);
       await seedCartUser();
-      await click("pmentry");
+      await click(await singlePmentry());
       // btc total 273 vs needs ceil(2.40*1.15)=276 -> omitted; eth total 270 vs needs ceil(2.53)=253 -> kept
       const ids = parsePayq1State(String(userState().pending_action))!.methods.filter((m) => m.kind === "crypto").map((m) => m.id);
       expect(ids).toEqual(["nowpayments:eth", "nowpayments:usdtbsc"]);
@@ -395,7 +404,7 @@ describe("TG R1 frozen method selection (local only)", () => {
       const { CRYPTO_ASSETS } = await import("@/lib/payments/crypto-assets");
       await enableCrypto(CRYPTO_ASSETS.map((asset) => ({ ticker: asset.ticker, min_usd_text: "0.08" })));
       await seedCartUser();
-      await click("pmentry");
+      await click(await singlePmentry());
       const raw = String(userState().pending_action);
       expect(raw.startsWith("payq1:")).toBe(true);
       const state = parsePayq1State(raw)!;
@@ -438,7 +447,7 @@ describe("TG R1 frozen method selection (local only)", () => {
       ],
     })));
     await seedCartUser();
-    await click("pmentry");
+    await click(await singlePmentry());
     const ids = parsePayq1State(String(userState().pending_action))!.methods.map((m) => m.id);
     expect(ids[0]).toBe("qris");
     expect(ids.some((id) => id.startsWith("sekalipay_gateway:"))).toBe(false);
@@ -452,9 +461,10 @@ describe("TG R1 frozen method selection (local only)", () => {
 
   it("protects email/qty/search/wa/onboarding/unknown/creating namespaces", async () => {
     await seedCartUser();
-    for (const busy of ["email_for:1:1:2", "qty_for:1:1", "search:", "wa_after_paid:AXV-1", "onboarding:abc", "mystery-state", "creating:AXV-1"]) {
+    const entry = await singlePmentry();
+    for (const busy of ["email_for:1:1:2", "qty_for:1:99", "search:", "wa_after_paid:AXV-1", "onboarding:abc", "mystery-state", "creating:AXV-1"]) {
       fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id=?").run(busy, String(buyer.id));
-      await click("pmentry");
+      await click(entry);
       expect(String(userState().pending_action)).toBe(busy);
       expect(lastText()).toMatch(/langkah|step/i);
     }
@@ -462,7 +472,7 @@ describe("TG R1 frozen method selection (local only)", () => {
 
   it("rejects corrupt/forged/cross-user/group selections with no mutation", async () => {
     await seedCartUser();
-    await click("pmentry");
+    await click(await singlePmentry());
     const before = String(userState().pending_action);
     // Corrupt stored state.
     fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id=?").run("payq1:{broken", String(buyer.id));
@@ -485,7 +495,7 @@ describe("TG R1 frozen method selection (local only)", () => {
 
   it("cap byte budget: pending_action <=16KiB and callbacks <=64B", async () => {
     await seedCartUser();
-    await click("pmentry");
+    await click(await singlePmentry());
     const raw = String(userState().pending_action);
     expect(Buffer.byteLength(raw, "utf8")).toBeLessThanOrEqual(64 * 1024);
     for (const data of lastCallbacks()) expect(Buffer.byteLength(data, "utf8")).toBeLessThanOrEqual(64);
@@ -493,7 +503,7 @@ describe("TG R1 frozen method selection (local only)", () => {
 
   it("current line price mismatch requotes; legacy QRIS suites unaffected", async () => {
     await seedCartUser();
-    await click("pmentry");
+    await click(await singlePmentry());
     const tag = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 2, price: 12000 }]);
     expect(tag).not.toBe(parsePayq1State(String(userState().pending_action))!.tag);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);

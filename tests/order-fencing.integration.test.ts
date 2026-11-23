@@ -35,11 +35,12 @@ describe("R4 order-creation fencing and compensation", () => {
       .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
       .join("\n");
     const src = routeSrc + "\n" + handlers;
-    for (const file of ["invoice.ts", "cart-invoice.ts"]) {
+    for (const file of ["invoice.ts"]) {
       const handler = fs.readFileSync(path.join(dir, file), "utf8");
       expect(handler).toContain('transitionPendingOrder(orderCode, "dibatalkan", "invoice_setup_failed", items,');
       expect(handler).toContain("NOT EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=?)");
     }
+    expect(fs.existsSync(path.join(dir, "cart-invoice.ts"))).toBe(false);
     expect(src).not.toContain("String(fence.payment_status)");
   });
 

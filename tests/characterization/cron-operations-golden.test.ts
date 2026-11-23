@@ -137,8 +137,8 @@ const cases: {
   { name: "cleanup removes one stale WA inbox row", query: "?phase=cleanup", seed: () => {
     fx.sql.exec("INSERT INTO whatsapp_inbox_events(external_message_id,created_at) VALUES('old',datetime('now','-8 days')),('keep',datetime('now'))");
   }, expected: {
-    // Bounded Pixel sweeps (inputs + Telegram stashes + expired Pixel cart rows) add 3 statements to maintenance.
-    ok: true, ...SKELETON, whatsapp_rows_cleaned: 1, phase: "cleanup", query_budget_used: 22, ...TAIL,
+    // Bounded Pixel sweeps (inputs + Telegram stashes) add 2 statements to maintenance.
+    ok: true, ...SKELETON, whatsapp_rows_cleaned: 1, phase: "cleanup", query_budget_used: 21, ...TAIL,
   }, verify: () => {
     expect(setting("maintenance_cleanup_at")).toBeTruthy();
     expect(fx.sql.prepare("SELECT external_message_id FROM whatsapp_inbox_events").all()).toEqual([{ external_message_id: "keep" }]);
@@ -210,7 +210,7 @@ const cases: {
     query_budget_used: 7, ...TAIL,
   } },
   { name: "rotation persists its next phase and deferred order without stamping last-ok", query: "", expected: {
-    ok: true, ...SKELETON, wr_sync_skipped: "disabled", fulfillment_aggregates_repaired: 0, query_budget_used: 35, ...TAIL,
+    ok: true, ...SKELETON, wr_sync_skipped: "disabled", fulfillment_aggregates_repaired: 0, query_budget_used: 34, ...TAIL,
     deferred: ["notify", "cleanup"], note: "partial_run_more_pending",
   }, verify: () => {
     expect(setting("cron_phase")).toBe("fulfillment");

@@ -331,19 +331,6 @@ CREATE TABLE IF NOT EXISTS telegram_updates (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
-CREATE TABLE IF NOT EXISTS telegram_carts (
-  buyer_fields TEXT NOT NULL DEFAULT '{}',
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id TEXT NOT NULL,
-  product_id INTEGER NOT NULL,
-  variant_id INTEGER NOT NULL,
-  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty >= 1 AND qty <= 100),
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  UNIQUE(user_id, variant_id)
-);
-CREATE INDEX IF NOT EXISTS idx_telegram_carts_user
-  ON telegram_carts(user_id, updated_at);
 -- Migrasi 0159: stash terenkripsi AES-GCM lintas-isolat untuk input 3 langkah
 -- Pixel Verification di Telegram (TTL keras 10 menit, dibersihkan selesai/batal/cleanup).
 CREATE TABLE IF NOT EXISTS telegram_pixelverif_stashes (

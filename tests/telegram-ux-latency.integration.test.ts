@@ -42,7 +42,7 @@ import { handleShowProduct } from "@/lib/telegram/handlers/catalog";
 import { replaceWithPhoto, replaceWithText, sendCachedPhoto } from "@/lib/telegram/handlers/shared";
 import { scoreTelegramProduct, searchTelegramCatalog, type TelegramCatalogProduct } from "@/lib/telegram/catalog-snapshot";
 import {
-  buttonPrice, cartKeyboard, homeKeyboard, mainReplyMenu,
+  buttonPrice, homeKeyboard, mainReplyMenu,
   qrisInvoiceKeyboard, qtyKeyboard, searchNoResultsKeyboard, variantsKeyboard,
 } from "@/lib/telegram/keyboards";
 import { paymentMethodOfferDetails } from "@/lib/telegram/messages/purchase";
@@ -479,12 +479,6 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     expect(flatQty.find((b) => b.callback_data === "qinput:1:2")?.style).toBe("primary");
     expect(flatQty.some((b) => b.callback_data?.startsWith("pay:"))).toBe(false);
     expect(flatQty.some((b) => b.callback_data?.startsWith("cadd:"))).toBe(false);
-
-    const ck = cartKeyboard({ lines: [{ variantId: 1, qty: 1, stock: 5, fulfillmentMode: "manual", label: "Canva" }] });
-    const flatCart = ck.inline_keyboard.flat();
-    expect(flatCart.find((b) => b.callback_data === "ccheckout")).toMatchObject({ text: "💳 Checkout", style: "success" });
-    expect(flatCart.find((b) => b.callback_data === "cclear")?.style).toBe("danger");
-    expect(flatCart.find((b) => b.callback_data === "crm:1")?.style).toBe("danger");
 
     const ik = qrisInvoiceKeyboard("AXV-1");
     expect(ik.inline_keyboard.flat().find((b) => b.callback_data === "refresh:AXV-1")?.style).toBe("primary");

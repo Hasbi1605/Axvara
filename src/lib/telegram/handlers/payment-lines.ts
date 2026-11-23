@@ -1,40 +1,23 @@
 // src/lib/telegram/handlers/payment-lines.ts — R2 current-line resolver.
-// Narrow: re-read the CURRENT cart/single for a frozen payq1 source and bind
-// price/tag BEFORE create. Drift => explicit requote (never create).
+// Narrow: re-read the CURRENT single variant for a frozen payq1 source and bind
+// price/tag/buyer-input BEFORE create. Drift => explicit requote (never create).
 // No order/provider writes; no UI.
 import { queryFirst } from "@/lib/db";
-import { getCartSummary } from "@/lib/telegram/cart";
 import { getActiveVariant, formatVariantLabel, effectiveVariantStock } from "@/lib/catalog";
 import { resolveBulkPrice } from "@/lib/bulk-pricing";
+import { validateBuyerFields, type BuyerFields } from "@/lib/buyer-fields";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import type { Payq1State, Payq1CartSource } from "@/lib/telegram/payment-quote";
 import type { CartLineLike } from "@/lib/telegram/payment-create";
 
 export type Payq1LinesResolved =
   | { ok: true; cartLines: CartLineLike[]; cartLinesForEmail: { productId: number; variantId: number }[] }
-  | { ok: false; reason: "bad_subtotal" | "cart_changed" | "subtotal_changed" | "tag_changed" | "variant_changed" | "price_unavailable" | "stock" };
+  | { ok: false; reason: "bad_subtotal" | "subtotal_changed" | "tag_changed" | "variant_changed" | "price_unavailable" | "stock" };
 
 export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1State): Promise<Payq1LinesResolved> {
   if (!Number.isSafeInteger(state.idrSubtotal) || state.idrSubtotal <= 0) return { ok: false, reason: "bad_subtotal" };
   const source: Payq1CartSource = state.source;
-  if (source.kind === "cart") {
-    const summary = await getCartSummary(ownerUserId);
-    if (!summary.lines.length || summary.issues.length) return { ok: false, reason: "cart_changed" };
-    if (summary.subtotal !== state.idrSubtotal) return { ok: false, reason: "subtotal_changed" };
-    const tag = await checkoutApprovalTag(summary.lines.map((l) => ({ productId: l.productId, variantId: l.variantId, qty: l.qty, price: l.price, buyerFieldKey: l.buyerFieldKey, maxQty: l.maxQty, buyerFields: l.buyerFields, pixelverifInput: l.pixelverifInput })));
-    if (tag !== state.tag) return { ok: false, reason: "tag_changed" };
-    return {
-      ok: true,
-      cartLines: summary.lines.map((l) => ({
-        productId: l.productId, variantId: l.variantId, qty: l.qty,
-        productName: l.productName, variantLabel: l.variantLabel,
-        price: l.price, basePrice: l.basePrice, appliedTierMinQty: l.appliedTierMinQty ?? null,
-        buyerFieldKey: l.buyerFieldKey, maxQty: l.maxQty, buyerFields: l.buyerFields, pixelverifInput: l.pixelverifInput,
-        stock: l.stock, fulfillmentMode: l.fulfillmentMode,
-      })),
-      cartLinesForEmail: summary.lines.map((l) => ({ productId: l.productId, variantId: l.variantId })),
-    };
-  }
+  if (source.kind !== "single") return { ok: false, reason: "variant_changed" };
   // Single: re-read the CURRENT live variant and re-derive the effective
   // price (aggregate tiers) — caller tag + subtotal must still match.
   const variant = await getActiveVariant(source.variantId);
@@ -50,11 +33,44 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
   const effective = resolved.price;
   if (!Number.isSafeInteger(effective) || effective <= 0) return { ok: false, reason: "price_unavailable" };
   if (effective * source.qty !== state.idrSubtotal) return { ok: false, reason: "subtotal_changed" };
-  // Must mirror the single-path tag creator (callback.ts qty approval), which
-  // hashes product/variant/qty/price only. buyer_field_key and Pixel variants
-  // never reach the single path (requestBuyerInput intercepts them), so a
-  // Pixel variant here deliberately fails closed via pixelverifInput.
-  const tag = await checkoutApprovalTag([{ productId: source.productId, variantId: source.variantId, qty: source.qty, price: effective, pixelverifInput: variant.pixelverif_input }]);
+
+  let buyerFields: BuyerFields | undefined;
+  if (variant.pixelverif_input) {
+    if (source.qty !== 1 || !source.pvFlowId || source.museInviteCode) return { ok: false, reason: "variant_changed" };
+    const { loadCompletedPixelverifStash } = await import("./buyer-input");
+    const pv = await loadCompletedPixelverifStash(ownerUserId, source.variantId, source.pvFlowId);
+    if (!pv) return { ok: false, reason: "variant_changed" };
+    const { isPixelverifEmailBlocked } = await import("@/lib/pixelverif/blocklist");
+    if (await isPixelverifEmailBlocked(pv.pv_email, 3)) return { ok: false, reason: "variant_changed" };
+    buyerFields = pv;
+  } else if (variant.buyer_field_key === "muse_invite_code") {
+    if (!source.museInviteCode || source.pvFlowId) return { ok: false, reason: "variant_changed" };
+    try {
+      buyerFields = validateBuyerFields(
+        { buyer_field_key: variant.buyer_field_key, max_qty: variant.max_qty },
+        { muse_invite_code: source.museInviteCode },
+        source.qty,
+      );
+    } catch {
+      return { ok: false, reason: "variant_changed" };
+    }
+  } else if (source.museInviteCode || source.pvFlowId) {
+    return { ok: false, reason: "variant_changed" };
+  }
+
+  const hasSpecialInput = Boolean(variant.buyer_field_key || variant.pixelverif_input);
+  const tag = await checkoutApprovalTag([{
+    productId: source.productId,
+    variantId: source.variantId,
+    qty: source.qty,
+    price: effective,
+    ...(hasSpecialInput ? {
+      buyerFieldKey: variant.buyer_field_key,
+      maxQty: variant.max_qty,
+      buyerFields,
+      pixelverifInput: variant.pixelverif_input,
+    } : {}),
+  }]);
   if (tag !== state.tag) return { ok: false, reason: "tag_changed" };
   const product = await queryFirst(`SELECT name FROM products WHERE id=?`, source.productId).catch(() => null);
   return {
@@ -64,7 +80,9 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
       productName: String(product?.name ?? "Produk"),
       variantLabel: formatVariantLabel(variant),
       price: effective, basePrice: Number(variant.price), appliedTierMinQty: resolved.tier ?? null,
-      buyerFieldKey: variant.buyer_field_key, maxQty: variant.max_qty, pixelverifInput: variant.pixelverif_input,
+      buyerFieldKey: variant.buyer_field_key, maxQty: variant.max_qty,
+      ...(buyerFields ? { buyerFields } : {}),
+      pixelverifInput: variant.pixelverif_input,
       stock, fulfillmentMode: String(variant.fulfillment_mode || "manual"),
     }],
     cartLinesForEmail: [{ productId: source.productId, variantId: source.variantId }],

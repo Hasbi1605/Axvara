@@ -28,23 +28,34 @@ import {
   type Payq1LineIdentity,
 } from "@/lib/telegram/payment-quote";
 
-export type OfferRenderTarget =
-  | { mode: "single"; productId: number; variantId: number; qty: number; tag: string; productName: string; subtotal: number; identity: Payq1LineIdentity; contactEmail: string | null; allowPendingAction?: string }
-  | { mode: "cart"; tag: string; cartName: string; subtotal: number; identity: Payq1LineIdentity; contactEmail: string | null; allowPendingAction?: string };
+export type OfferRenderTarget = {
+  mode: "single";
+  productId: number;
+  variantId: number;
+  qty: number;
+  tag: string;
+  productName: string;
+  subtotal: number;
+  identity: Payq1LineIdentity;
+  contactEmail: string | null;
+  allowPendingAction?: string;
+  /** Set when caller already captured & validated buyer input (Muse / Pixel). */
+  skipBuyerInputPrompt?: boolean;
+};
 
 /** Canonical 12-hex line identity: SHA-256 over canonical product/variant/qty/effective-price lines. */
 export async function approvalLinesHash(lines: import("@/lib/telegram/checkout-approval").CheckoutApprovalLine[]): Promise<string> {
   return (await import("@/lib/telegram/checkout-approval")).checkoutApprovalTag(lines);
 }
 
-/** Render (or re-render) the frozen offer after qty/email/cart approval. */
+/** Render (or re-render) the frozen offer after qty/email/buyer-input approval. */
 export async function showPaymentMethodOffer(
   chatId: number,
   messageId: number,
   from: { id: number; first_name: string; username?: string },
   target: OfferRenderTarget,
 ): Promise<void> {
-  if (target.mode === "single") {
+  if (!target.skipBuyerInputPrompt && !target.identity.museInviteCode && !target.identity.pvFlowId) {
     const { requestBuyerInput } = await import("./buyer-input");
     if (await requestBuyerInput(chatId,from,target.productId,target.variantId,target.qty)) return;
   }
@@ -72,7 +83,7 @@ export async function showPaymentMethodOffer(
     });
     return;
   }
-  const title = target.mode === "single" ? target.productName : target.cartName;
+  const title = target.productName;
   const details = paymentMethodOfferDetails(frozen.state.methods, { locale: ctx.locale, subtotal: target.subtotal });
   await safeEditOrSend({
     chat_id: chatId,
@@ -84,13 +95,11 @@ export async function showPaymentMethodOffer(
 }
 
 /**
- * QRIS dari offer beku: jalankan alur QRIS legacy yang sudah ada. Single
- * source = `handlePayWithQris` (invoice langsung); cart = `handleCartCheckout`
- * (ringkasan persetujuan → `cconfirm:`). Guard pending-order/email/approval
- * milik jalur legacy tetap berlaku; tidak ada order kedua dari sini.
- * Draft payq1 TIDAK dilepas sebelum checkout (AU-E2-9): kegagalan D1 transient
- * setelah titik ini harus menyisakan anchor agar redelivery `pm:`/`pgo:`
- * melanjutkan alur yang sama, bukan "session expired".
+ * QRIS dari offer beku: jalankan alur QRIS single-item (`handlePayWithQris`).
+ * Guard pending-order/email/approval milik jalur legacy tetap berlaku; tidak ada
+ * order kedua dari sini. Draft payq1 TIDAK dilepas sebelum checkout (AU-E2-9):
+ * kegagalan D1 transient setelah titik ini harus menyisakan anchor agar
+ * redelivery `pm:`/`pgo:` melanjutkan alur yang sama, bukan "session expired".
  */
 async function startLegacyQrisFromOffer(
   chatId: number,
@@ -98,19 +107,46 @@ async function startLegacyQrisFromOffer(
   from: { id: number; first_name: string; username?: string },
   state: Pick<import("@/lib/telegram/payment-quote").Payq1State, "source" | "tag" | "contact">,
 ): Promise<void> {
-  if (state.source.kind === "single") {
-    const { handlePayWithQris } = await import("./invoice");
-    const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
-    const checked = await readCheckoutEmail(String(from.id), [{ productId: state.source.productId, variantId: state.source.variantId }]).catch(() => null);
-    const emailReady = Boolean(checked?.required && state.contact?.email && checked.email === state.contact.email);
-    await handlePayWithQris(
-      chatId, messageId, state.source.productId, state.source.variantId, state.source.qty, from,
-      emailReady, state.tag, emailReady ? state.contact.email! : undefined,
-    );
-  } else {
-    const { handleCartCheckout } = await import("./cart");
-    await handleCartCheckout(chatId, messageId, from);
+  const { handlePayWithQris } = await import("./invoice");
+  const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
+  const checked = await readCheckoutEmail(String(from.id), [{ productId: state.source.productId, variantId: state.source.variantId }]).catch(() => null);
+  const emailReady = Boolean(checked?.required && state.contact?.email && checked.email === state.contact.email);
+  let buyerFields: import("@/lib/buyer-fields").BuyerFields | undefined;
+  let pvFlowId: string | undefined;
+  if (state.source.museInviteCode) {
+    buyerFields = { muse_invite_code: state.source.museInviteCode };
+  } else if (state.source.pvFlowId) {
+    const { clearPixelverifStash, loadCompletedPixelverifStash } = await import("./buyer-input");
+    const pv = await loadCompletedPixelverifStash(String(from.id), state.source.variantId, state.source.pvFlowId);
+    if (!pv) {
+      await clearPixelverifStash(String(from.id));
+      await sendMessage({
+        chat_id: chatId,
+        text: "Sesi data akun Google kedaluwarsa. Silakan ulangi dari /katalog.",
+        parse_mode: "HTML",
+        reply_markup: minimalMenuKeyboard(),
+      });
+      return;
+    }
+    const { isPixelverifEmailBlocked, PIXELVERIF_BLOCKED_EMAIL_MESSAGE } = await import("@/lib/pixelverif/blocklist");
+    if (await isPixelverifEmailBlocked(pv.pv_email, 3)) {
+      await clearPixelverifStash(String(from.id));
+      await sendMessage({
+        chat_id: chatId,
+        text: `${PIXELVERIF_BLOCKED_EMAIL_MESSAGE} Silakan ulangi dari /katalog dengan akun Gmail lain.`,
+        parse_mode: "HTML",
+        reply_markup: minimalMenuKeyboard(),
+      });
+      return;
+    }
+    buyerFields = pv;
+    pvFlowId = state.source.pvFlowId;
   }
+  await handlePayWithQris(
+    chatId, messageId, state.source.productId, state.source.variantId, state.source.qty, from,
+    emailReady, state.tag, emailReady ? state.contact.email! : undefined,
+    buyerFields ? { buyerFields, pvFlowId } : undefined,
+  );
 }
 
 /**

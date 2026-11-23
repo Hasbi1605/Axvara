@@ -79,14 +79,13 @@ it("sold-out variants show as red ❌ buttons plus one restock button; soldout c
 });
 
 describe("RR3-05 failed invoice photo is durably retried without a second order", () => {
-  it("cart checkout: first photo rejected, provider recovers, retry sends the same invoice", async () => {
+  it("single checkout: first photo rejected, provider recovers, retry sends the same invoice without a second order", async () => {
     await insertTestProduct(fixture.sql, "shared", 1);
-    fixture.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('777',1,1,1)").run();
     const { POST } = await import("@/app/api/telegram/webhook/route");
     PHOTO.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" } as never);
     const first = await POST(webhook({
       update_id: 77701,
-      callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
+      callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: `pay:1:1:1:${await approvalTag()}` },
     }));
     // Pekerjaan invoice tersimpan durable: respons boleh 500 (retry Telegram)
     // tetapi order/invoice/reservasi yang sama harus dipertahankan.
@@ -111,7 +110,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     // Duplicate update tidak membuat transaksi kedua.
     const dup = await POST(webhook({
       update_id: 77701,
-      callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
+      callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: `pay:1:1:1:${await approvalTag()}` },
     }));
     expect(await dup.json()).toMatchObject({ ok: true });
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);
@@ -141,21 +140,9 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     PHOTO.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" } as never);
     const first = await POST(webhook({
       update_id: 77901,
-      callback_query: { id: "cb779", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
+      callback_query: { id: "cb779", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: `pay:1:1:1:${await approvalTag()}` },
     }));
-    // Siapkan cart dulu: callback cconfirm butuh cart berisi.
     void first;
-    const codes = fixture.sql.prepare("SELECT code FROM orders").all();
-    // Bila cart kosong (tanpa seed cart), buat order pending + invoice
-    // langsung agar sapuan cron terbukti pada entrypoint yang benar.
-    if (codes.length === 0) {
-      fixture.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('779',1,1,1)").run();
-      PHOTO.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" } as never);
-      await POST(webhook({
-        update_id: 77902,
-        callback_query: { id: "cb779b", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
-      }));
-    }
     const orderCodes = fixture.sql.prepare("SELECT code FROM orders").all();
     expect(orderCodes.length).toBe(1);
     const code = String(orderCodes[0].code);

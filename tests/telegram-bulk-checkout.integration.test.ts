@@ -4,8 +4,6 @@
 // QRIS receives discounted net exact; currency display never changes charge.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { getCartSummary, addToCart, clearCart } from "@/lib/telegram/cart";
-import { createAndSendCartInvoice } from "@/lib/telegram/handlers/cart-invoice";
 import { createAndSendVariantInvoice } from "@/lib/telegram/handlers/invoice";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { resolveBulkPrice } from "@/lib/bulk-pricing";
@@ -178,31 +176,43 @@ describe("TG2b telegram bulk checkout", () => {
     expect(qris.create).not.toHaveBeenCalled();
   });
 
-  it("cart aggregates same-variant qty, isolates variants, rejects stale base/config", async () => {
-    await addToCart("777001", 1, 1, 5);
-    await addToCart("777001", 1, 1, 5);
+  it("single-item checkout applies tier per variant independently and isolates sibling variants", async () => {
     fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,is_active,bulk_pricing_enabled,bulk_pricing_tiers) VALUES(2,1,'SKU-2','Other',10000,-1,'manual',1,1,?)").run(tiersJson);
-    await addToCart("777001", 1, 2, 5);
-    const summary = await getCartSummary("777001");
-    expect(summary.subtotal).toBe(90000 + 50000);
-    expect(summary.lines.find((l) => l.variantId === 1)?.appliedTierMinQty).toBe(10);
-    expect(summary.lines.find((l) => l.variantId === 2)?.appliedTierMinQty).toBeNull();
-    await createAndSendCartInvoice(777001, summary.lines, buyer);
-    const order = fx.sql.prepare("SELECT code,subtotal,locale FROM orders").get();
-    expect(order?.subtotal).toBe(140000);
-    expect(order?.locale).toBe("en");
-    expect(invoiceSavedCount()).toBe(1);
-    expect(qris.create.mock.calls[0]?.[1]).toBe(140000);
-    expect(fx.sql.prepare("SELECT COUNT(*) n FROM telegram_carts WHERE user_id='777001'").get()?.n).toBe(0);
-    function invoiceSavedCount() { return fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n; }
+    const { resolveCurrentPayq1Lines } = await import("@/lib/telegram/handlers/payment-lines");
+    const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+    const tag1 = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 10, price: 9000 }]);
+    const res1 = await resolveCurrentPayq1Lines("777001", {
+      v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600,
+      tag: tag1, locale: "en", idrSubtotal: 90000,
+      source: { kind: "single", productId: 1, variantId: 1, qty: 10 },
+      methods: [], sel: null, contact: { email: null, phone: null }, st: "quoted",
+    });
+    expect(res1.ok).toBe(true);
+    if (res1.ok) expect(res1.cartLines[0]).toMatchObject({ price: 9000, appliedTierMinQty: 10 });
+    const tag2 = await checkoutApprovalTag([{ productId: 1, variantId: 2, qty: 5, price: 10000 }]);
+    const res2 = await resolveCurrentPayq1Lines("777001", {
+      v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600,
+      tag: tag2, locale: "en", idrSubtotal: 50000,
+      source: { kind: "single", productId: 1, variantId: 2, qty: 5 },
+      methods: [], sel: null, contact: { email: null, phone: null }, st: "quoted",
+    });
+    expect(res2.ok).toBe(true);
+    if (res2.ok) expect(res2.cartLines[0]).toMatchObject({ price: 10000, appliedTierMinQty: null });
   });
 
   it("disabled treats stale tiers as base; corrupt enabled fails closed before order", async () => {
     fx.sql.prepare("UPDATE product_variants SET bulk_pricing_enabled=0 WHERE id=1").run();
-    await addToCart("777001", 1, 1, 10);
-    const disabled = await getCartSummary("777001");
-    expect(disabled.subtotal).toBe(100000);
-    await clearCart("777001", disabled.lines);
+    const { resolveCurrentPayq1Lines } = await import("@/lib/telegram/handlers/payment-lines");
+    const { checkoutApprovalTag } = await import("@/lib/telegram/checkout-approval");
+    const tagBase = await checkoutApprovalTag([{ productId: 1, variantId: 1, qty: 10, price: 10000 }]);
+    const disabled = await resolveCurrentPayq1Lines("777001", {
+      v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600,
+      tag: tagBase, locale: "en", idrSubtotal: 100000,
+      source: { kind: "single", productId: 1, variantId: 1, qty: 10 },
+      methods: [], sel: null, contact: { email: null, phone: null }, st: "quoted",
+    });
+    expect(disabled.ok).toBe(true);
+    if (disabled.ok) expect(disabled.cartLines[0].price).toBe(10000);
     // DB CHECK hanya membolehkan JSON array valid; bentuk 'bukan JSON'
     // tetap lolos CHECK tetapi gagal di validasi strict helper.
     fx.sql.prepare("UPDATE product_variants SET bulk_pricing_enabled=1, bulk_pricing_tiers='[1]' WHERE id=1").run();
@@ -318,12 +328,32 @@ describe("TG2b telegram bulk checkout", () => {
 
   it("honors stock/unique caps and never relaxes them for tiers", async () => {
     fx.sql.prepare("UPDATE product_variants SET stock=5, bulk_pricing_enabled=1, bulk_pricing_tiers=? WHERE id=1").run(tiersJson);
-    const out = await addToCart("777001", 1, 1, 10);
-    expect(out.ok).toBe(false);
-    expect(out.reason).toBe("out_of_stock");
+    await expect(createChannelOrderAtomic({
+      orderCode: "TG-CAP-STOCK",
+      lines: [{ productId: 1, variantId: 1, qty: 10, fulfillmentMode: "manual", stock: 5 }],
+      items: [{ product_id: 1, variant_id: 1, price: 9000, base_price: 10000, applied_tier_min_qty: 10, qty: 10 }],
+      variantSnapshot: "{}", subtotal: 90000, primaryVariantId: 1, customerName: "Bulk",
+      salesChannel: "telegram", telegramChatId: "777001", telegramUserId: "777001",
+      paymentMethod: "qris", paymentAccount: "DANA", fulfillmentStatus: "not_required",
+    })).rejects.toThrow();
     fx.sql.prepare("UPDATE product_variants SET stock=-1, fulfillment_mode='unique' WHERE id=1").run();
     for (let i = 0; i < 10; i++) fx.sql.prepare("INSERT INTO fulfillment_inventory(product_id,variant_id,secret_ciphertext,secret_iv,secret_fingerprint) VALUES(1,1,'c','v',?)").run(`u-${i}`);
-    expect((await addToCart("777001", 1, 1, 10)).ok).toBe(true);
-    expect((await addToCart("777001", 1, 1, 1)).ok).toBe(false);
+    const ok10 = await createChannelOrderAtomic({
+      orderCode: "TG-CAP-UNIQ-10",
+      lines: [{ productId: 1, variantId: 1, qty: 10, fulfillmentMode: "unique", stock: -1 }],
+      items: [{ product_id: 1, variant_id: 1, price: 9000, base_price: 10000, applied_tier_min_qty: 10, qty: 10 }],
+      variantSnapshot: "{}", subtotal: 90000, primaryVariantId: 1, customerName: "Bulk",
+      salesChannel: "telegram", telegramChatId: "777001", telegramUserId: "777001",
+      paymentMethod: "qris", paymentAccount: "DANA", fulfillmentStatus: "reserved",
+    });
+    expect(ok10.code).toBe("TG-CAP-UNIQ-10");
+    await expect(createChannelOrderAtomic({
+      orderCode: "TG-CAP-UNIQ-11",
+      lines: [{ productId: 1, variantId: 1, qty: 1, fulfillmentMode: "unique", stock: -1 }],
+      items: [{ product_id: 1, variant_id: 1, price: 10000, base_price: 10000, applied_tier_min_qty: null, qty: 1 }],
+      variantSnapshot: "{}", subtotal: 10000, primaryVariantId: 1, customerName: "Bulk2",
+      salesChannel: "telegram", telegramChatId: "777002", telegramUserId: "777002",
+      paymentMethod: "qris", paymentAccount: "DANA", fulfillmentStatus: "reserved",
+    })).rejects.toThrow();
   });
 });

@@ -48,10 +48,13 @@ export async function handlePayWithQris(
   emailConfirmed = false,
   approvalTag?: string,
   confirmedEmail?: string,
+  buyerInput?: { buyerFields?: import("@/lib/buyer-fields").BuyerFields; pvFlowId?: string },
 ) {
   if (await notifyPaymentMaintenance(chatId)) return;
-  const { requestBuyerInput } = await import("./buyer-input");
-  if (await requestBuyerInput(chatId,from,productId,variantId,rawQty)) return;
+  if (!buyerInput?.buyerFields) {
+    const { requestBuyerInput } = await import("./buyer-input");
+    if (await requestBuyerInput(chatId,from,productId,variantId,rawQty)) return;
+  }
   await sendChatAction(chatId, "typing");
   // Legacy QRIS rail NEVER borrows new-method payq1 state: pending winner
   // preserves the existing rail. A quoted payq1 row stays untouched here —
@@ -127,7 +130,33 @@ export async function handlePayWithQris(
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
-  const currentTag = await checkoutApprovalTag([{ productId, variantId, qty, price: effectivePrice }]);
+  let validatedBuyerFields: import("@/lib/buyer-fields").BuyerFields | undefined;
+  if (buyerInput?.buyerFields || variant.buyer_field_key || variant.pixelverif_input) {
+    try {
+      const { validateBuyerFields } = await import("@/lib/buyer-fields");
+      validatedBuyerFields = validateBuyerFields(
+        { buyer_field_key: variant.buyer_field_key, max_qty: variant.max_qty, pixelverif_flow_type: variant.pixelverif_input ? "normal" : null },
+        buyerInput?.buyerFields,
+        qty,
+      );
+    } catch {
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
+      return;
+    }
+  }
+  const hasSpecialInput = Boolean(variant.buyer_field_key || variant.pixelverif_input);
+  const currentTag = await checkoutApprovalTag([{
+    productId,
+    variantId,
+    qty,
+    price: effectivePrice,
+    ...(hasSpecialInput ? {
+      buyerFieldKey: variant.buyer_field_key,
+      maxQty: variant.max_qty,
+      buyerFields: validatedBuyerFields,
+      pixelverifInput: variant.pixelverif_input,
+    } : {}),
+  }]);
   if (!approvalTag || approvalTag !== currentTag) {
     if (approvalTag) console.warn("[telegram-checkout] rejected", { method: "qris", variantId, reason: "price_or_approval_changed" });
     await handleShowQty(chatId, messageId, productId, variantId, qty);
@@ -179,7 +208,19 @@ export async function handlePayWithQris(
     return;
   }
 
-  await createAndSendVariantInvoice(chatId, messageId, productId, String(product.name), variant, from, qty, buyerEmail);
+  await createAndSendVariantInvoice(
+    chatId,
+    messageId,
+    productId,
+    String(product.name),
+    variant,
+    from,
+    qty,
+    buyerEmail,
+    effectivePrice,
+    appliedTier,
+    validatedBuyerFields ? { buyerFields: validatedBuyerFields, pvFlowId: buyerInput?.pvFlowId } : undefined,
+  );
 }
 
 export { handlePayWithQris as handleVariantPay };
@@ -195,6 +236,7 @@ export async function createAndSendVariantInvoice(
   emailSnapshot?: string | null,
   effectivePrice?: number,
   appliedTierMinQty?: number | null,
+  buyerInput?: { buyerFields?: import("@/lib/buyer-fields").BuyerFields; pvFlowId?: string },
 ) {
   const qty = clampQty(rawQty);
   // TG2b: harga efektif server dari bulk config aktif (bukan klaim tombol).
@@ -235,6 +277,7 @@ export async function createAndSendVariantInvoice(
     base_price: Number(variant.price),
     buyer_field_key: variant.buyer_field_key ?? null,
     max_qty: variant.max_qty ?? null,
+    ...(buyerInput?.buyerFields ? { buyer_fields: buyerInput.buyerFields } : {}),
     ...(appliedSingleTier != null ? { applied_tier_min_qty: appliedSingleTier } : {}),
     qty,
   }];
@@ -342,6 +385,10 @@ export async function createAndSendVariantInvoice(
       throw reservationError;
     }
     orderInserted = true;
+    if (buyerInput?.pvFlowId) {
+      const { clearPixelverifStash } = await import("./buyer-input");
+      await clearPixelverifStash(String(from.id)).catch(() => {});
+    }
     trackFunnelEvent({ stage: "order", channel: "telegram", productId, variantId: variant.id,
       subtotal, quantity: qty, locale: tgLocale, method: `qris:${activeQrisProvider()}` });
     if (uniqueFulfillment) {

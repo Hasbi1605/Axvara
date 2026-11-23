@@ -12,7 +12,7 @@ import type {
 
 export type TelegramButtonStyle = "primary" | "success" | "danger";
 
-const DANGER_ACTIONS = new Set(["cancel", "cancelok", "cclear", "crm"]);
+const DANGER_ACTIONS = new Set(["cancel", "cancelok"]);
 const DANGER_TEXT_RE = /\b(?:batal|batalkan|hapus|kosongkan|cancel|remove|clear)\b/i;
 
 const SUCCESS_ACTIONS = new Set([
@@ -22,19 +22,16 @@ const SUCCESS_ACTIONS = new Set([
   "var",
   "pay",
   "epay",
-  "cconfirm",
-  "ccheckout",
   "pm",
   "pmc",
   "pmb",
   "pgo",
   "gconsent",
-  "cadd",
   "claimstart",
   "confirm",
   "cfv",
 ]);
-const SUCCESS_TEXT_RE = /\b(?:bayar|pay|checkout|beli|konfirmasi|lanjut ke pembayaran|qris|crypto|tambah ke keranjang|ajukan)\b/i;
+const SUCCESS_TEXT_RE = /\b(?:bayar|pay|checkout|beli|konfirmasi|lanjut ke pembayaran|qris|crypto|ajukan)\b/i;
 
 function callbackAction(callbackData?: string): string {
   if (typeof callbackData !== "string") return "";
