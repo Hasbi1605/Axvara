@@ -1,5 +1,10 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Penyesuaian tukar ID CDK Google AI Pro (`SB-137` ↔ `SB-144`) — 23 November 2026
+
+- Di sisi StoreBat upstream, `id=137` (`SB-137`) menjadi **`CDK GOOGLE AI PRO 12M V2`** (situs `https://www.geminipass.si/`, aktif & berstok) sedangkan `id=144` (`SB-144`) diubah menjadi **`CDK google ia pro 12M V1`** dan hilang dari feed (`disappeared=1`, stok 0 sejak 23 Nov `01:44 WIB`).
+- Atas instruksi owner, data D1 produksi `gemini-sb` (#407) dirapikan langsung: `SB-144` (`id=648444`) dinonaktifkan & dilabeli `CDK AI Pro 12 Bulan (V1)`, sementara `SB-137` (`id=100490`, S&K/Cara Aktivasi ID+EN & shortlink `gemini-cdk-verify` → `geminipass.si` sudah lengkap) diaktifkan dengan label `CDK AI Pro 12 Bulan (V2)` dan markup `60%` (`Rp 29.200`); `products.id=407` + `catalog_revision_market` disegarkan. Mapping `families.ts` ikut diselaraskan (`137` = V2, `144` = V1).
+
 ## Kurasi katalog — keputusan owner 23 November 2026 (lokal)
 
 - Migrasi `0158` memindahkan `SB-143` (ChatGPT Plus 1 bulan, garansi 25 hari) ke `chatgpt-plus-sb` (#394) tanpa mengubah grup #37; `SB-144` (CDK AI Pro 12 Bulan V2) masuk `gemini-sb` (#407). Fallback lama diarsipkan, varian tetap nonaktif. LangSmith Plus menjadi produk Developer Tools `langsmith-sb` dengan foto dan deskripsi ID/EN; label `Plus` tidak mengasumsikan durasi. Cara aktivasi dan syarat penawaran baru belum dikonfirmasi dan tidak diisi oleh kurasi ini.

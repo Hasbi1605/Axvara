@@ -24,7 +24,8 @@ it("maps AIVault warranty, iLovePDF and UNED to their canonical product URLs", (
 
 it("maps StoreBat warranty and CDK to existing families, and LangSmith to Developer Tools", () => {
   expect(storebatFamily(143, "feed")).toMatchObject({ key: "chatgpt-plus", slug: "chatgpt-plus-sb", label: "Plus 1 Bulan (Garansi 25 Hari)" });
-  expect(storebatFamily(144, "feed")).toMatchObject({ key: "gemini", slug: "gemini-sb", label: "CDK AI Pro 12 Bulan (V2)" });
+  expect(storebatFamily(137, "feed")).toMatchObject({ key: "gemini", slug: "gemini-sb", label: "CDK AI Pro 12 Bulan (V2)" });
+  expect(storebatFamily(144, "feed")).toMatchObject({ key: "gemini", slug: "gemini-sb", label: "CDK AI Pro 12 Bulan (V1)" });
   expect(storebatFamily(142, "feed")).toMatchObject({ key: "langsmith", name: "LangSmith Plus", slug: "langsmith-sb", category: 6, label: "Plus", imageUrl: langsmithImage });
 });
 
