@@ -3,7 +3,7 @@
 // = harga DASAR, melewati ambang tier tidak memicu dialog harga palsu, dan
 // perubahan harga dasar/tier sungguhan tetap tampil di dialog yang sudah ada.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import CheckoutPage from "@/app/(shop)/checkout/page";
 import { useCart, type CartItem } from "@/stores/cart";
 
@@ -71,6 +71,68 @@ describe("checkout + grosir", () => {
     fireEvent.change(input,{ target:{ value:"" } });
     expect(bodies).toHaveLength(2);
     expect(localStorage.getItem("axvara-cart") ?? "").not.toContain("Ab12cD");
+  });
+
+  it("checkout Google activation separates contact fields above activation section, toggles password visibility, and validates on blur", async () => {
+    const bodies = stubQuote(() => ({ body: ok([quoted(1, 39_900, { queued_delivery: true, automatic_processing: true, buyer_fields: { pv_fingerprint: "fp1" } })]) }));
+    useCart.setState({ items: [line({ qty: 1, price: 39_900, pixelverifInput: true, maxQty: 1, bulkTiers: [] })] });
+    render(<CheckoutPage />);
+
+    // Contact fields (WA + Email) sit together ABOVE the separated Google activation section.
+    const waInput = document.getElementById("checkout-wa") as HTMLInputElement;
+    const contactEmail = document.getElementById("checkout-email") as HTMLInputElement;
+    const activationSection = screen.getByTestId("checkout-activation-section");
+    const pvEmailInput = document.getElementById("checkout-pv-email") as HTMLInputElement;
+    const pvPassInput = document.getElementById("checkout-pv-password") as HTMLInputElement;
+    const pvTotpInput = document.getElementById("checkout-pv-totp") as HTMLInputElement;
+
+    expect(Boolean(waInput.compareDocumentPosition(contactEmail) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean(contactEmail.compareDocumentPosition(activationSection) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(activationSection.contains(pvEmailInput)).toBe(true);
+    expect(activationSection.contains(contactEmail)).toBe(false);
+
+    // No premature errors on initial mount or tab-through before typing.
+    expect(pvEmailInput.getAttribute("aria-invalid")).toBe("false");
+    expect(pvTotpInput.getAttribute("aria-invalid")).toBe("false");
+    fireEvent.blur(pvEmailInput);
+    expect(screen.queryByText(/Gunakan alamat @gmail\.com/)).toBeNull();
+
+    // Typing invalid non-Gmail shows no error mid-typing, only after blur, and clears immediately when fixed.
+    fireEvent.change(pvEmailInput, { target: { value: "buyer@yahoo.com" } });
+    expect(within(activationSection).queryByText(/Gunakan alamat @gmail\.com/)).toBeNull();
+    fireEvent.blur(pvEmailInput);
+    expect(within(activationSection).getByText(/Gunakan alamat @gmail\.com/)).toBeTruthy();
+    expect(pvEmailInput.getAttribute("aria-invalid")).toBe("true");
+    expect(pvEmailInput.getAttribute("aria-describedby")).toBe("checkout-pv-email-error");
+
+    fireEvent.change(pvEmailInput, { target: { value: "buyer@gmail.com" } });
+    expect(within(activationSection).queryByText(/Gunakan alamat @gmail\.com/)).toBeNull();
+    expect(pvEmailInput.getAttribute("aria-invalid")).toBe("false");
+
+    // Password toggle button uses aria-pressed and unmasks/masks input.
+    const toggleBtn = screen.getByRole("button", { name: "Tampilkan password Gmail" });
+    expect(toggleBtn.getAttribute("aria-pressed")).toBe("false");
+    expect(pvPassInput.type).toBe("password");
+    fireEvent.click(toggleBtn);
+    expect(pvPassInput.type).toBe("text");
+    expect(screen.getByRole("button", { name: "Sembunyikan password Gmail" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.change(pvPassInput, { target: { value: "secret-pass" } });
+
+    // 6-digit OTP triggers specific guidance on blur, then valid Base32 key clears it and triggers debounced quote.
+    fireEvent.change(pvTotpInput, { target: { value: "123456" } });
+    fireEvent.blur(pvTotpInput);
+    expect(within(activationSection).getByText(/bukan kode OTP 6 digit/)).toBeTruthy();
+    expect(pvTotpInput.getAttribute("aria-invalid")).toBe("true");
+    expect(pvTotpInput.getAttribute("aria-describedby")).toContain("checkout-pv-totp-error");
+    expect(bodies).toHaveLength(0);
+
+    fireEvent.change(pvTotpInput, { target: { value: "JBSWY3DPEHPK3PXP" } });
+    expect(within(activationSection).queryByText(/bukan kode OTP 6 digit/)).toBeNull();
+    expect(pvTotpInput.getAttribute("aria-invalid")).toBe("false");
+    await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 1500 });
+    expect(bodies[0].items[0]).toMatchObject({
+      buyer_fields: { pv_email: "buyer@gmail.com", pv_password: "secret-pass", pv_totp_secret: "JBSWY3DPEHPK3PXP" },
+    });
   });
   it("melewati ambang tier: expected_price tetap harga DASAR, tanpa dialog harga; ringkasan memakai satuan/hemat server", async () => {
     const bodies = stubQuote((body) => {

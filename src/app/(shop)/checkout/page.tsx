@@ -4,6 +4,7 @@ import { marketRefundNotice } from "@/lib/warranty-policy";
 import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
 import { ManualOrderPanel } from "@/components/shared/PaymentMaintenanceNotice";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Eye, EyeOff, Info, Lock } from "lucide-react";
 import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
 import { orderCheckoutPath, rememberCheckoutCredentialGrant, rememberDeviceForOrder } from "@/lib/order-access-client";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -181,14 +182,30 @@ function CheckoutInner() {
   const [pvEmail, setPvEmail] = useState("");
   const [pvPassword, setPvPassword] = useState("");
   const [pvTotp, setPvTotp] = useState("");
+  const [showPvPassword, setShowPvPassword] = useState(false);
+  type FieldInteractState = "pristine" | "dirty" | "blurred";
+  const [activationFieldState, setActivationFieldState] = useState<Record<"email" | "password" | "totp" | "muse", FieldInteractState>>({
+    email: "pristine",
+    password: "pristine",
+    totp: "pristine",
+    muse: "pristine",
+  });
+  const markActivationDirty = (key: "email" | "password" | "totp" | "muse") => {
+    setActivationFieldState((prev) => (prev[key] === "pristine" ? { ...prev, [key]: "dirty" } : prev));
+  };
+  const markActivationBlurred = (key: "email" | "password" | "totp" | "muse") => {
+    setActivationFieldState((prev) => (prev[key] === "dirty" ? { ...prev, [key]: "blurred" } : prev));
+  };
   const pixelverifCount = items.filter(item => item.pixelverifInput === true).length;
   const needsPixelverif = pixelverifCount > 0;
   const multiplePixelverif = pixelverifCount > 1;
   // Matches PIXELVERIF_GMAIL_REGEX & PIXELVERIF_TOTP_REGEX in src/lib/pixelverif/purchase.ts.
-  const pvValid = !multiplePixelverif
-    && /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/.test(pvEmail.trim().toLowerCase())
-    && pvPassword.length > 0 && pvPassword.length <= 200
-    && /^[A-Z2-7]{16,64}={0,6}$/.test(pvTotp.replace(/[\s-]/g, "").toUpperCase());
+  const pvEmailValid = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/.test(pvEmail.trim().toLowerCase());
+  const pvPasswordValid = pvPassword.length > 0 && pvPassword.length <= 200;
+  const pvTotpClean = pvTotp.replace(/[\s-]/g, "").toUpperCase();
+  const pvTotpValid = /^[A-Z2-7]{16,64}={0,6}$/.test(pvTotpClean);
+  const pvValid = !multiplePixelverif && pvEmailValid && pvPasswordValid && pvTotpValid;
+  const museValid = /^[A-Za-z0-9]{6}$/.test(museCode.trim());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -214,6 +231,33 @@ function CheckoutInner() {
   const en = uiLocale === "en";
   const text = (id: string, english: string) => en ? english : id;
   const message = (value: string) => checkoutMessage(value, uiLocale);
+  // Validasi inline input aktivasi hanya tampil setelah user berinteraksi dan
+  // keluar dari field (blur), lalu hilang langsung saat diperbaiki.
+  const pvEmailError = activationFieldState.email === "blurred" && !pvEmailValid
+    ? (pvEmail.trim()
+        ? text("Gunakan alamat @gmail.com yang valid.", "Use a valid @gmail.com address.")
+        : text("Email Gmail wajib diisi.", "Gmail address is required."))
+    : "";
+  const pvPasswordError = activationFieldState.password === "blurred" && !pvPasswordValid
+    ? text("Password Gmail wajib diisi.", "Gmail password is required.")
+    : "";
+  const pvTotpError = activationFieldState.totp === "blurred" && !pvTotpValid
+    ? (/^\d{6}$/.test(pvTotpClean)
+        ? text("Masukkan kunci setup (min. 16 karakter), bukan kode OTP 6 digit.", "Enter the setup key (at least 16 characters), not the 6-digit OTP code.")
+        : text("Kunci setup 2FA harus 16–64 karakter (huruf A–Z dan angka 2–7).", "2FA setup key must be 16–64 characters (A–Z and 2–7)."))
+    : "";
+  const museError = activationFieldState.muse === "blurred" && !museValid
+    ? text("Kode Invite Muse harus tepat 6 huruf/angka.", "Muse invite code must be exactly 6 letters or numbers.")
+    : "";
+  const activationErrorAnnouncement = pvEmailError
+    ? `${text("Email Gmail", "Gmail address")}: ${pvEmailError}`
+    : pvPasswordError
+      ? `${text("Password Gmail", "Gmail password")}: ${pvPasswordError}`
+      : pvTotpError
+        ? `${text("Kunci Setup 2FA", "2FA setup key")}: ${pvTotpError}`
+        : museError
+          ? `${text("Kode Invite Muse", "Muse invite code")}: ${museError}`
+          : "";
   // Email SELALU wajib (revamp 2026-09-23 ala Sekalipay): semua produk
   // Axvara digital — order tanpa email = macet. Flag server emailRequired
   // (migrasi 0033) tetap dibaca quote tapi tidak lagi mengubah validasi.
@@ -680,9 +724,15 @@ function CheckoutInner() {
     <div>
       <h2 className="text-sm font-semibold text-white">{text("① Metode Pembayaran", "① Payment Method")}</h2>
       {needsPixelverif && !pvValid ? (
-        <p className="mt-3 text-sm text-white/60" role="status">{text("Isi Email Gmail, Password, dan Kunci Setup 2FA di bagian Data untuk memuat harga dan metode pembayaran.", "Enter your Gmail address, password, and 2FA setup key in the Details section to load prices and payment methods.")}</p>
-      ) : needsMuseCode && !/^[A-Za-z0-9]{6}$/.test(museCode.trim()) ? (
-        <p className="mt-3 text-sm text-white/60" role="status">{text("Isi Kode Invite Muse (6 huruf/angka) untuk memuat harga dan metode pembayaran.", "Enter your Muse invite code (6 letters/numbers) to load prices and payment methods.")}</p>
+        <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] px-3.5 py-2.5 text-xs leading-5 text-white/75" role="status">
+          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-[#00E5FF]" />
+          <span>{text("Lengkapi data akun Google di bawah untuk menampilkan metode pembayaran.", "Complete the Google account details below to load payment methods.")}</span>
+        </div>
+      ) : needsMuseCode && !museValid ? (
+        <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] px-3.5 py-2.5 text-xs leading-5 text-white/75" role="status">
+          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-[#00E5FF]" />
+          <span>{text("Isi Kode Invite Muse di bawah untuk menampilkan metode pembayaran.", "Enter your Muse invite code below to load payment methods.")}</span>
+        </div>
       ) : quoteLoading ? (
         <div className="mt-3 text-sm text-white/50" role="status">
           <div className="flex items-center gap-2">
@@ -811,49 +861,196 @@ function CheckoutInner() {
             {paymentBlock}
           </div>
 
-          <div>
+          <div className="border-t border-white/10 pt-6">
             <h2 className="text-sm font-semibold text-white">{text("② Data Pembeli", "② Buyer Details")}</h2>
-            <div className="mt-3 grid gap-3">
+            <p id="checkout-contact-hint" className="mt-1 text-xs leading-5 text-white/45">
+              {text("Detail pesanan, hasil aktivasi, dan bantuan dikirim ke kontak ini.", "Order updates, delivery details, and support are sent here.")}
+            </p>
+            <p className="sr-only" aria-live="polite" aria-atomic="true">{activationErrorAnnouncement}</p>
+
+            <div className="mt-3.5 grid gap-3 sm:grid-cols-2">
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
-                <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">{text("No WA aktif *", "Active WhatsApp number *")}</label>
-                <input id="checkout-wa" type="tel" inputMode="tel" autoComplete="tel" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} aria-describedby={fieldErrors.wa ? "checkout-wa-hint checkout-wa-error" : "checkout-wa-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
-                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Nomor WhatsApp aktif untuk verifikasi dan bantuan. Produk tersedia lewat email atau halaman pesanan.", "An active WhatsApp number for verification and support. Find your product by email or on the order page.")}</p>
+                <label htmlFor="checkout-wa" className="mb-1.5 block text-xs font-medium text-white/70">{text("No WA aktif *", "Active WhatsApp number *")}</label>
+                <input
+                  id="checkout-wa"
+                  name="customer_wa"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  enterKeyHint="next"
+                  value={wa}
+                  onChange={(e) => { setWa(e.target.value); setFieldErrors((f) => ({ ...f, wa: "" })); }}
+                  placeholder="08..."
+                  aria-invalid={!!fieldErrors.wa}
+                  aria-describedby={fieldErrors.wa ? "checkout-contact-hint checkout-wa-error" : "checkout-contact-hint"}
+                  className={`h-11 w-full rounded-xl border bg-white/[0.06] px-3.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                />
                 {fieldErrors.wa && <p id="checkout-wa-error" className="mt-1.5 text-xs text-red-300">{message(fieldErrors.wa)}</p>}
               </div>
+
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
-                {needsMuseCode && <div className="mb-4">
-                  <label htmlFor="checkout-muse-code" className="mb-1 block text-xs font-medium text-white/60">{en ? "Muse invite code" : "Kode Invite Muse"} *</label>
-                  <input id="checkout-muse-code" value={museCode} onChange={e => { setQuoteToken(null); setMuseCode(e.target.value); }} required maxLength={32} pattern="\s*[A-Za-z0-9]{6}\s*" autoComplete="off" autoCapitalize="none" spellCheck={false} aria-describedby="checkout-muse-hint" className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white focus:outline-none focus:border-[#00E5FF]/40" />
-                  <p id="checkout-muse-hint" className="mt-1.5 text-xs text-white/50">{en ? "6 letters/numbers from Invite friends in Muse. Case is preserved. One code per checkout; quantity 1–30 = 1–30B tokens." : "6 huruf/angka dari Invite friends di Muse. Huruf besar/kecil dipertahankan. Satu kode per checkout; jumlah 1–30 = 1–30B token."}</p>
-                </div>}
-                {needsPixelverif && <div className="mb-4 grid gap-3">
-                  {multiplePixelverif && (
-                    <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs leading-5 text-red-200">
-                      {en
-                        ? "Only 1 Google activation variant can be ordered per checkout. Remove one variant from your cart to continue."
-                        : "Hanya 1 varian layanan aktivasi Google yang bisa dipesan per checkout. Hapus salah satu varian di keranjang untuk melanjutkan."}
-                    </p>
-                  )}
-                  <div>
-                    <label htmlFor="checkout-pv-email" className="mb-1 block text-xs font-medium text-white/60">{en ? "Gmail address to activate" : "Email Gmail yang diaktivasi"} *</label>
-                    <input id="checkout-pv-email" type="email" value={pvEmail} onChange={e => { setQuoteToken(null); setPvEmail(e.target.value); }} required maxLength={254} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="nama@gmail.com" className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white focus:outline-none focus:border-[#00E5FF]/40" />
-                  </div>
-                  <div>
-                    <label htmlFor="checkout-pv-password" className="mb-1 block text-xs font-medium text-white/60">{en ? "Gmail password" : "Password Gmail"} *</label>
-                    <input id="checkout-pv-password" type="password" value={pvPassword} onChange={e => { setQuoteToken(null); setPvPassword(e.target.value); }} required maxLength={200} autoComplete="new-password" className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white focus:outline-none focus:border-[#00E5FF]/40" />
-                  </div>
-                  <div>
-                    <label htmlFor="checkout-pv-totp" className="mb-1 block text-xs font-medium text-white/60">{en ? "2FA setup key (TOTP secret)" : "Kunci Setup 2FA (TOTP secret)"} *</label>
-                    <input id="checkout-pv-totp" value={pvTotp} onChange={e => { setQuoteToken(null); setPvTotp(e.target.value); }} required maxLength={120} autoComplete="off" autoCapitalize="characters" spellCheck={false} aria-describedby="checkout-pv-hint" placeholder="JBSWY3DPEHPK3PXP" className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white focus:outline-none focus:border-[#00E5FF]/40" />
-                    <p id="checkout-pv-hint" className="mt-1.5 text-xs text-white/50">{en ? "The setup key from your authenticator (not the 6-digit code). Stored encrypted, used once for activation, then deleted." : "Kunci setup dari aplikasi authenticator (bukan kode 6 digit). Tersimpan terenkripsi, dipakai sekali untuk aktivasi, lalu dihapus."}</p>
-                  </div>
-                </div>}
-                <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email *</label>
-                <input id="checkout-email" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder={text("email@contoh.com", "email@example.com")} aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "checkout-email-hint checkout-email-error" : "checkout-email-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
-                <p id="checkout-email-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Detail pesanan & produk dikirim ke email ini. Gunakan email aktif yang bisa menerima pesan.", "Order and product details are sent here. Use an active email address.")}</p>
+                <label htmlFor="checkout-email" className="mb-1.5 block text-xs font-medium text-white/70">Email *</label>
+                <input
+                  id="checkout-email"
+                  name="customer_email"
+                  type="email"
+                  autoComplete="email"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  enterKeyHint={needsPixelverif || needsMuseCode ? "next" : "done"}
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setFieldErrors((f) => ({ ...f, email: "" })); }}
+                  placeholder={text("email@contoh.com", "email@example.com")}
+                  aria-invalid={!!fieldErrors.email}
+                  aria-describedby={fieldErrors.email ? "checkout-contact-hint checkout-email-error" : "checkout-contact-hint"}
+                  className={`h-11 w-full rounded-xl border bg-white/[0.06] px-3.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                />
                 {fieldErrors.email && <p id="checkout-email-error" className="mt-1.5 text-xs text-red-300">{message(fieldErrors.email)}</p>}
               </div>
             </div>
+
+            {needsMuseCode && (
+              <div className="mt-5 border-t border-white/10 pt-5" data-testid="checkout-muse-section">
+                <h3 className="text-sm font-semibold text-white">{text("Data Aktivasi Muse", "Muse Activation Details")}</h3>
+                <p id="checkout-muse-hint" className="mt-1 text-xs leading-5 text-white/45">
+                  {text("6 huruf/angka dari menu Invite friends (huruf besar/kecil berpengaruh; 1–30 = 1–30B token).", "6 letters/numbers from Invite friends (case-sensitive; qty 1–30 = 1–30B tokens).")}
+                </p>
+                <div className="mt-3">
+                  <label htmlFor="checkout-muse-code" className="mb-1.5 block text-xs font-medium text-white/70">{text("Kode Invite Muse *", "Muse invite code *")}</label>
+                  <input
+                    id="checkout-muse-code"
+                    name="muse_invite_code"
+                    value={museCode}
+                    onChange={(e) => { setQuoteToken(null); setMuseCode(e.target.value); markActivationDirty("muse"); }}
+                    onBlur={() => markActivationBlurred("muse")}
+                    required
+                    maxLength={32}
+                    pattern="\s*[A-Za-z0-9]{6}\s*"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    enterKeyHint="done"
+                    placeholder="Ab12cD"
+                    aria-invalid={!!museError}
+                    aria-describedby={museError ? "checkout-muse-hint checkout-muse-error" : "checkout-muse-hint"}
+                    className={`h-11 w-full rounded-xl border bg-white/[0.06] px-3.5 font-mono text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${museError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                  />
+                  {museError && <p id="checkout-muse-error" className="mt-1.5 text-xs text-red-300">{museError}</p>}
+                </div>
+              </div>
+            )}
+
+            {needsPixelverif && (
+              <div className="mt-5 border-t border-white/10 pt-5" data-testid="checkout-activation-section">
+                <h3 className="text-sm font-semibold text-white">
+                  {text("Data Akun Google yang Diaktivasi", "Google Account to Activate")}
+                </h3>
+                <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-white/45">
+                  <Lock aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#00E5FF]/75" />
+                  <span>{text("Terenkripsi, dipakai sekali oleh bot untuk aktivasi, lalu dihapus.", "Encrypted, used once by our bot for activation, then deleted.")}</span>
+                </p>
+
+                <div className="mt-3.5 grid gap-3">
+                  {multiplePixelverif && (
+                    <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs leading-5 text-red-200">
+                      {text(
+                        "Hanya 1 varian layanan aktivasi Google yang bisa dipesan per checkout. Hapus salah satu varian di keranjang untuk melanjutkan.",
+                        "Only 1 Google activation variant can be ordered per checkout. Remove one variant from your cart to continue.",
+                      )}
+                    </p>
+                  )}
+
+                  <div>
+                    <label htmlFor="checkout-pv-email" className="mb-1.5 block text-xs font-medium text-white/70">
+                      {text("Email Gmail *", "Gmail address *")}
+                    </label>
+                    <input
+                      id="checkout-pv-email"
+                      name="pv_email"
+                      type="email"
+                      value={pvEmail}
+                      onChange={(e) => { setQuoteToken(null); setPvEmail(e.target.value); markActivationDirty("email"); }}
+                      onBlur={() => markActivationBlurred("email")}
+                      required
+                      maxLength={254}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      enterKeyHint="next"
+                      placeholder="nama@gmail.com"
+                      aria-invalid={!!pvEmailError}
+                      aria-describedby={pvEmailError ? "checkout-pv-email-error" : undefined}
+                      className={`h-11 w-full rounded-xl border bg-white/[0.06] px-3.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${pvEmailError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                    />
+                    {pvEmailError && <p id="checkout-pv-email-error" className="mt-1.5 text-xs text-red-300">{pvEmailError}</p>}
+                  </div>
+
+                  <div>
+                    <label htmlFor="checkout-pv-password" className="mb-1.5 block text-xs font-medium text-white/70">
+                      {text("Password Gmail *", "Gmail password *")}
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="checkout-pv-password"
+                        name="pv_password"
+                        type={showPvPassword ? "text" : "password"}
+                        value={pvPassword}
+                        onChange={(e) => { setQuoteToken(null); setPvPassword(e.target.value); markActivationDirty("password"); }}
+                        onBlur={() => markActivationBlurred("password")}
+                        required
+                        maxLength={200}
+                        autoComplete="new-password"
+                        enterKeyHint="next"
+                        aria-invalid={!!pvPasswordError}
+                        aria-describedby={pvPasswordError ? "checkout-pv-password-error" : undefined}
+                        className={`h-11 w-full rounded-xl border bg-white/[0.06] pl-3.5 pr-11 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${pvPasswordError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPvPassword((v) => !v)}
+                        aria-pressed={showPvPassword}
+                        aria-label={showPvPassword ? text("Sembunyikan password Gmail", "Hide Gmail password") : text("Tampilkan password Gmail", "Show Gmail password")}
+                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-white/45 transition hover:text-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]"
+                      >
+                        {showPvPassword ? <EyeOff aria-hidden className="h-4 w-4" /> : <Eye aria-hidden className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {pvPasswordError && <p id="checkout-pv-password-error" className="mt-1.5 text-xs text-red-300">{pvPasswordError}</p>}
+                  </div>
+
+                  <div>
+                    <label htmlFor="checkout-pv-totp" className="mb-1.5 block text-xs font-medium text-white/70">
+                      {text("Kunci Setup 2FA *", "2FA setup key *")}
+                    </label>
+                    <input
+                      id="checkout-pv-totp"
+                      name="pv_totp_secret"
+                      value={pvTotp}
+                      onChange={(e) => { setQuoteToken(null); setPvTotp(e.target.value); markActivationDirty("totp"); }}
+                      onBlur={() => markActivationBlurred("totp")}
+                      required
+                      maxLength={120}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      enterKeyHint="done"
+                      placeholder="JBSWY3DPEHPK3PXP"
+                      aria-invalid={!!pvTotpError}
+                      aria-describedby={pvTotpError ? "checkout-pv-hint checkout-pv-totp-error" : "checkout-pv-hint"}
+                      className={`h-11 w-full rounded-xl border bg-white/[0.06] px-3.5 font-mono text-base sm:text-sm tracking-wide text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${pvTotpError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                    />
+                    <p id="checkout-pv-hint" className="mt-1.5 text-[11px] leading-4 text-white/45">
+                      {text("Kunci setup dari aplikasi authenticator (bukan kode 6 digit).", "Setup key from your authenticator app (not the 6-digit code).")}
+                    </p>
+                    {pvTotpError && <p id="checkout-pv-totp-error" className="mt-1.5 text-xs text-red-300">{pvTotpError}</p>}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Ekspektasi waktu SEBELUM bayar. Wajib di sini, bukan hanya di
