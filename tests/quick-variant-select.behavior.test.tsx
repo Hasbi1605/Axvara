@@ -32,7 +32,9 @@ describe("QuickVariantModal mode select", () => {
     render(<QuickVariantModal product={product} mode="select" onClose={onClose} variants={mk(3)} onVariantChange={onVariantChange} />);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(checkedLabels()).toEqual([]);
-    expect(screen.queryByRole("button", { name: /Beli Sekarang|Tambah ke Keranjang/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Beli Sekarang|Tambah ke Keranjang|Lanjut/ })).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByTestId("quick-modal-copy")).toBeNull();
     fireEvent.click(variantRadio("2 Hari"));
     expect(onVariantChange).toHaveBeenCalledWith(101);
     expect(onClose).toHaveBeenCalledTimes(1);

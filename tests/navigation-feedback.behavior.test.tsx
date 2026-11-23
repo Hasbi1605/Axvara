@@ -212,6 +212,7 @@ describe("CTA menuju checkout", () => {
     const onClose = vi.fn();
     render(<QuickVariantModal product={simpleProduct} mode="checkout" onClose={onClose} />);
     await waitFor(() => expect(screen.getByRole("radio", { name: /1 Bulan/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("checkbox", { name: /sudah membaca/i }));
     fireEvent.click(screen.getByRole("button", { name: /Beli Sekarang/ }));
     expect(nav.push).toHaveBeenCalledWith("/checkout?buy=canva-pro&variant=11&qty=1");
     expect(onClose).not.toHaveBeenCalled();

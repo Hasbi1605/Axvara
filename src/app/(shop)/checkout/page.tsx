@@ -451,8 +451,16 @@ function CheckoutInner() {
   // Key komposit produk+varian (temuan audit: dua varian produk sama memakai
   // product_id yang sama sehingga React me-reuse baris dan qty tertukar).
   type DisplayLine = { id: unknown; slug: string; variantId?: number; name: string; price: number; qty: number; image: string; basePrice?: number; tierMin?: number; variantQty?: number };
+  const slugOfQuoted = (qi: QuotedItem): string => {
+    if (isDirect && buySlug) return buySlug;
+    const matched = items.find((it) =>
+      (qi.variant_id !== undefined && it.variantId === qi.variant_id)
+      || String(it.id) === String(qi.product_id),
+    );
+    return matched?.slug ?? "";
+  };
   const displayItems: DisplayLine[] = quotedItems.length > 0
-    ? quotedItems.map((qi) => ({ id: qi.product_id, slug: "", variantId: qi.variant_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image, basePrice: qi.base_price, tierMin: qi.applied_tier_min_qty, variantQty: quoteVariantQty(quotedItems, qi) }))
+    ? quotedItems.map((qi) => ({ id: qi.product_id, slug: slugOfQuoted(qi), variantId: qi.variant_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image, basePrice: qi.base_price, tierMin: qi.applied_tier_min_qty, variantQty: quoteVariantQty(quotedItems, qi) }))
     : items;
   // Hemat grosir HANYA dari quote server (base_price hadir bila tier berlaku);
   // total sudah terdiskon, jadi tidak ada baris pengurang tambahan.
@@ -840,7 +848,17 @@ function CheckoutInner() {
                       {/* Subline qty: "Qty N × unit" hanya informatif bila
                           qty > 1 (kedua angka beda). Untuk qty 1, angka kanan
                           sudah = harga — jangan ulang lagi. */}
-                      <p className="text-[11px] text-white/50">{it.qty > 1 ? `Qty ${it.qty} × ${formatRupiah(it.price)}` : `Qty ${it.qty}`}</p>
+                      <p className="text-[11px] text-white/50">
+                        {it.qty > 1 ? `Qty ${it.qty} × ${formatRupiah(it.price)}` : `Qty ${it.qty}`}
+                        {it.slug && (
+                          <>
+                            {" · "}
+                            <Link prefetch={false} href={`/produk/${it.slug}`} target="_blank" rel="noreferrer" className="text-[#00E5FF]/80 hover:text-[#00E5FF] hover:underline">
+                              {text("Lihat S&K", "View terms")}
+                            </Link>
+                          </>
+                        )}
+                      </p>
                       {bulkLineNotes(it)}
                     </div>
                     <span className="text-[13px] font-semibold text-white">{formatRupiah(it.price * it.qty)}</span>
@@ -1139,7 +1157,17 @@ function CheckoutInner() {
                   <img src={it.image} alt={translateProductName(it.name, uiLocale)} className="w-14 h-14 rounded-xl object-cover" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white leading-4 line-clamp-2">{translateProductName(it.name, uiLocale)}</p>
-                    <p className="text-xs text-white/50">Qty {it.qty} × {formatRupiah(it.price)}</p>
+                    <p className="text-xs text-white/50">
+                      Qty {it.qty} × {formatRupiah(it.price)}
+                      {it.slug && (
+                        <>
+                          {" · "}
+                          <Link prefetch={false} href={`/produk/${it.slug}`} target="_blank" rel="noreferrer" className="text-[#00E5FF]/80 hover:text-[#00E5FF] hover:underline">
+                            {text("Lihat S&K", "View terms")}
+                          </Link>
+                        </>
+                      )}
+                    </p>
                     {bulkLineNotes(it)}
                   </div>
                   <span className="text-sm font-semibold text-white">{formatRupiah(it.price * it.qty)}</span>

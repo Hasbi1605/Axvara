@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Konfirmasi baca deskripsi, S&K & cara aktivasi di QuickVariantModal — 23 November 2026 (lokal)
+
+- Tombol **Keranjang** dan **Checkout** pada kartu katalog beranda tetap dipertahankan. Untuk semua produk pada mode `checkout` dan `cart` (`QuickVariantModal`), pembeli kini melihat **Aturan pakai** (highlight amber bila ada, tanpa duplikasi), **Deskripsi Produk**, **Syarat & Ketentuan**, dan **Cara Aktivasi** (ID/EN) secara terbuka langsung sebelum dapat melanjutkan — sejajar dengan gerbang "Baca sebelum bayar" di Bot Telegram.
+- Desktop (`lg+`) menampilkan 2 kolom dalam 1 layar (varian + jumlah di kiri, ketentuan/aktivasi live di kanan); mobile (`<lg`) berjalan 2 langkah (`Pilih paket` → `Baca ketentuan & aktivasi`, dengan tombol `Ubah` kembali ke paket). Pembeli wajib mencentang konfirmasi baca sebelum `Beli Sekarang` / `Tambah ke Keranjang`; centang otomatis di-reset saat berpindah ke varian dengan ketentuan berbeda. Mode `select` pada PDP mobile tetap 1 langkah ringkas.
+- Pendukung: `CartDrawer` menautkan nama produk ke `/produk/[slug]` dan Ringkasan Pesanan `/checkout` menyediakan tautan `Lihat S&K` (`target="_blank"`).
+
 ## Beranda kategori langsung & ikon bendera Bahasa Bot Telegram (`@Axvara_bot`) — 23 November 2026 (lokal)
 
 - **Beranda `/start` langsung menampilkan kategori:** saat pembeli mengetuk `/start` (atau kembali ke beranda / mengganti bahasa), pesan sambutan langsung menampilkan grid kategori aktif yang memiliki produk siap beli di Telegram (maksimal 6 kategori / 3 baris), diikuti tombol hijau penuh **🛍 Lihat Semua Katalog** (`🛍 View All Catalog`), lalu 2 baris utilitas (**Pesanan Saya**, **Bantuan**, **🇮🇩 Bahasa** / **🇬🇧 Language**, dan **🌐 Web**).

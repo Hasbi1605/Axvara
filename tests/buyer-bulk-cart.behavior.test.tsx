@@ -131,8 +131,10 @@ describe("CartDrawer", () => {
     expect(legacy).toContain("Rp 120.000");
     expect(legacy).not.toMatch(/grosir|Tambah \d+ pcs/);
   });
-  it("tombol +/- tetap bekerja dan harga dasar tidak berubah", () => {
+  it("tombol +/- tetap bekerja, harga dasar tidak berubah, dan judul item menaut ke halaman produk", () => {
     open([{ ...base(), qty: 9 }]);
+    const link = screen.getByRole("link", { name: "GPT Plus" });
+    expect(link.getAttribute("href")).toBe("/produk/gpt");
     fireEvent.click(screen.getByRole("button", { name: /Tambah jumlah GPT Plus/ }));
     expect(useCart.getState().items[0]).toMatchObject({ qty: 10, price: 10_000 });
     expect(text(screen.getByRole("dialog"))).toContain("Rp 90.000");

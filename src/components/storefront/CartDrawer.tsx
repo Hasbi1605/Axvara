@@ -84,7 +84,18 @@ export function CartDrawer() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={it.image} alt={productDisplayName(it, prices.locale)} className="w-16 h-16 rounded-xl object-cover shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white leading-4 line-clamp-2">{productDisplayName(it, prices.locale)}</p>
+                    {it.slug ? (
+                      <Link
+                        prefetch={false}
+                        href={`/produk/${it.slug}`}
+                        onClick={() => setDrawer(false)}
+                        className="block text-sm font-medium text-white leading-4 line-clamp-2 hover:text-[#00E5FF] transition"
+                      >
+                        {productDisplayName(it, prices.locale)}
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-medium text-white leading-4 line-clamp-2">{productDisplayName(it, prices.locale)}</p>
+                    )}
                     {translateVariantLabel(it.variantLabel, prices.locale) && (
                       <p className="text-[11px] text-[#00E5FF]/80 font-medium mt-0.5">
                         {translateVariantLabel(it.variantLabel, prices.locale)}

@@ -259,4 +259,14 @@ describe("checkout + grosir", () => {
     render(<CheckoutPage />);
     expect(norm(document.body.textContent)).toMatch(/kosong/i);
   });
+
+  it("ringkasan checkout menyediakan tautan Lihat S&K ke halaman produk (tab baru)", async () => {
+    stubQuote(() => ({ body: ok([quoted(1, 10_000)]) }));
+    useCart.setState({ items: [line({ qty: 1, bulkTiers: [] })] });
+    render(<CheckoutPage />);
+    await waitFor(() => expect(within(rail()).getByRole("link", { name: "Lihat S&K" })).toBeTruthy());
+    const link = within(rail()).getByRole("link", { name: "Lihat S&K" });
+    expect(link.getAttribute("href")).toBe("/produk/gpt-plus");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
 });

@@ -2120,7 +2120,7 @@ axvara/
 │   ├── storefront/              # Navbar, ProductCard, CartDrawer, CheckoutForm, QrisDisplay,
 │   │                            # MobileBottomNav (Beranda · Kategori · Pesanan · Bantuan) + HelpSheet + CategorySheet,
 │   │                            # DeviceOrders ("Pesanan di perangkat ini" di /lacak-pesanan),
-│   │                            # QuickVariantModal (beli cepat + mode select untuk PDP mobile),
+│   │                            # QuickVariantModal (beli cepat 2 kolom desktop / 2 langkah mobile + konfirmasi baca S&K/aktivasi, serta mode select PDP mobile),
 │   │                            # ProductCopy (deskripsi + S&K + cara aktivasi PDP, panel lipat mobile),
 │   │                            # Skeletons (satu bentuk skeleton per halaman: overlay navigasi + loading halaman)
 │   └── admin/                   # Shell, login gate, hooks (useAdminAuth/useProductManager),

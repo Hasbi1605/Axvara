@@ -124,9 +124,10 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     expect(screen.getByRole("button", { name: /Tambah ke Keranjang/ }).textContent).toContain("65.000");
   });
 
-  it("mode cart menambahkan varian terpilih ke store lalu menutup modal", async () => {
+  it("mode cart menambahkan varian terpilih ke store lalu menutup modal setelah konfirmasi baca", async () => {
     const { onClose } = await renderModal("cart");
     fireEvent.click(screen.getByRole("radio", { name: /3 Bulan/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /sudah membaca/i }));
     fireEvent.click(screen.getByRole("button", { name: /Tambah ke Keranjang/ }));
     const { items } = useCart.getState();
     expect(items).toHaveLength(1);
@@ -135,9 +136,10 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("mode checkout mengarahkan ke checkout dengan slug + variant + qty stepper", async () => {
+  it("mode checkout mengarahkan ke checkout dengan slug + variant + qty stepper setelah konfirmasi baca", async () => {
     await renderModal("checkout");
     fireEvent.click(screen.getByRole("radio", { name: /3 Bulan/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /sudah membaca/i }));
     fireEvent.click(screen.getByRole("button", { name: /Beli Sekarang/ }));
     // Qty default = min (1 untuk varian biasa) — dibawa eksplisit agar Beli
     // Langsung varian min>1 tidak dead-end di quote.
@@ -185,7 +187,8 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     fireEvent.change(input, { target: { value: "5" } });
     fireEvent.blur(input);
     await waitFor(() => expect(screen.getByRole("button", { name: /Tambah ke Keranjang/ }).textContent).toContain("500.000"));
-    // Confirm memakai qty ter-commit (50) → add + tutup.
+    // Confirm memakai qty ter-commit (50) → centang baca → add + tutup.
+    fireEvent.click(screen.getByRole("checkbox", { name: /sudah membaca/i }));
     fireEvent.click(screen.getByRole("button", { name: /Tambah ke Keranjang/ }));
     const { useCart } = await import("@/stores/cart");
     expect(useCart.getState().items[0]?.qty).toBe(50);
@@ -227,21 +230,145 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     await waitFor(() => expect(screen.getByText(/Gagal mengambil varian/)).toBeTruthy());
   });
 
-  it("panel desktop dilebarkan (mobile tetap bottom-sheet 480px)", async () => {
-    // Regresi visual 2026-09-18: panel 480px terlalu sempit di desktop —
-    // sm+ harus 620→660px, grid 2 kolom, dan list lebih tinggi agar scroll
-    // internal tidak muncul untuk 4 varian. Cukup assert kelas responsif.
-    await renderModal();
+  it("panel desktop dilebarkan ke 2 kolom untuk cart/checkout (mobile tetap bottom-sheet 480px)", async () => {
+    await renderModal("checkout");
     const dialog = screen.getByRole("dialog");
     const panel = dialog.firstElementChild as HTMLElement | null;
     expect(panel).toBeTruthy();
     const classes = panel?.getAttribute("class") ?? "";
     expect(classes).toContain("max-w-[480px]");
     expect(classes).toContain("sm:max-w-[620px]");
-    expect(classes).toContain("lg:max-w-[660px]");
+    expect(classes).toContain("lg:max-w-[920px]");
     const group = screen.getByRole("radiogroup", { name: "Pilih paket atau varian" });
     const groupClasses = group.getAttribute("class") ?? "";
     expect(groupClasses).toContain("sm:grid-cols-2");
     expect(groupClasses).toContain("sm:max-h-[340px]");
+  });
+
+  it("wajib centang konfirmasi baca sebelum Beli Sekarang / Tambah ke Keranjang", async () => {
+    const { onClose } = await renderModal("checkout");
+    fireEvent.click(screen.getByRole("button", { name: /Beli Sekarang/ }));
+    expect(push).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("Centang konfirmasi");
+    const checkbox = screen.getByRole("checkbox", { name: /sudah membaca/i });
+    expect(document.activeElement).toBe(checkbox);
+    fireEvent.click(checkbox);
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Beli Sekarang/ }));
+    expect(push).toHaveBeenCalledWith("/checkout?buy=netflix-premium&variant=11&qty=1");
+  });
+
+  it("menampilkan deskripsi, aturan pakai (tanpa duplikasi), S&K, cara aktivasi, dan me-reset centang saat S&K varian berubah", async () => {
+    const richProduct = {
+      ...product,
+      name: "Google AI / Gemini Pro 12 Bulan",
+      slug: "gemini-sb",
+      description: "Aktivasi Google AI Pro langsung ke akun Google sendiri.\n- Akses Gemini Pro & Google One",
+    } as unknown as Product;
+    const richVariants = [
+      {
+        id: 51,
+        label: "CDK AI Pro 12 Bulan",
+        price: 29_200,
+        stock: 48,
+        is_active: 1,
+        warranty_type: "none",
+        copy: {
+          source: "admin",
+          sections: [
+            { kind: "paket", items: ["Kunci aktivasi CDK Student 12 bulan."] },
+            { kind: "aturan", items: ["Wajib VPN USA selama aktivasi.", "Wajib kartu kredit/debit valid."] },
+            { kind: "garansi", items: ["Tidak ada garansi bila kartu ditolak."] },
+          ],
+          activation: [{ title: null, steps: ["Sambungkan VPN USA lalu buka axvara.tech/go/gemini-students.", "Tempel CDK di axvara.tech/go/gemini-cdk-verify."] }],
+          notes: ["Video tutorial: axvara.tech/go/tutor-gemini-cdk"],
+        },
+      },
+      {
+        id: 52,
+        label: "Link Redeem 6 Bulan",
+        price: 19_000,
+        stock: 10,
+        is_active: 1,
+        warranty_type: "none",
+        copy: {
+          source: "admin",
+          sections: [
+            { kind: "paket", items: ["Link redeem 6 bulan tanpa kartu."] },
+            { kind: "aturan", items: ["Wajib di-redeem dalam 12 jam."] },
+          ],
+          activation: [{ title: null, steps: ["Buka link redeem di browser."] }],
+          notes: [],
+        },
+      },
+    ];
+    vi.stubGlobal("fetch", mockCatalog({ product: { description: richProduct.description, variants: richVariants } }));
+    render(<QuickVariantModal product={richProduct} mode="checkout" onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: /CDK AI Pro 12 Bulan/ })).toBeTruthy());
+
+    const copyPanel = screen.getByTestId("quick-modal-copy");
+    expect(copyPanel.textContent).toContain("Wajib VPN USA selama aktivasi.");
+    expect(copyPanel.textContent).toContain("Aktivasi Google AI Pro langsung ke akun Google sendiri.");
+    expect(copyPanel.textContent).toContain("Kunci aktivasi CDK Student 12 bulan.");
+    expect(copyPanel.textContent).toContain("Tidak ada garansi bila kartu ditolak.");
+    expect(copyPanel.textContent).toContain("Cara Aktivasi");
+    // Aturan pakai tampil 1x di blok highlight atas, bukan dobel di TermsBody.
+    expect(copyPanel.textContent?.match(/Wajib VPN USA selama aktivasi\./g)).toHaveLength(1);
+    const links = Array.from(copyPanel.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(links).toContain("/go/gemini-students");
+    expect(links).toContain("/go/gemini-cdk-verify");
+
+    const checkbox = screen.getByRole("checkbox", { name: /sudah membaca/i }) as HTMLInputElement;
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+
+    // Ganti ke varian dengan S&K berbeda → isi panel berganti & centang di-reset.
+    fireEvent.click(screen.getByRole("radio", { name: /Link Redeem 6 Bulan/ }));
+    expect(copyPanel.textContent).toContain("Wajib di-redeem dalam 12 jam.");
+    expect(copyPanel.textContent).not.toContain("Wajib VPN USA selama aktivasi.");
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it("alur 2 langkah mobile: Lanjut → baca ketentuan → Ubah kembali ke pilihan paket", async () => {
+    await renderModal("checkout");
+    const nextBtn = screen.getByRole("button", { name: /Lanjut · Rp\s+25\.000/ });
+    fireEvent.click(nextBtn);
+    expect(screen.queryByRole("button", { name: /Lanjut ·/ })).toBeNull();
+    const backBtn = screen.getByRole("button", { name: /Ubah/ });
+    fireEvent.click(backBtn);
+    expect(screen.getByRole("button", { name: /Lanjut · Rp\s+25\.000/ })).toBeTruthy();
+  });
+
+  it("locale EN memakai descriptionEn, copy_en, dan label bahasa Inggris", async () => {
+    const enProduct = {
+      ...product,
+      name: "Google AI Pro",
+      nameEn: "Google AI Pro",
+      description: "Deskripsi ID",
+      descriptionEn: "English product overview.",
+    } as unknown as Product;
+    vi.stubGlobal("fetch", mockCatalog({
+      product: {
+        description: "Deskripsi ID",
+        descriptionEn: "English product overview.",
+        variants: [{
+          id: 61,
+          label: "12 Bulan",
+          price: 29_200,
+          stock: 10,
+          is_active: 1,
+          warranty_type: "none",
+          copy: { source: "admin", sections: [{ kind: "aturan", items: ["Aturan ID"] }], activation: [], notes: [] },
+          copy_en: { source: "admin", sections: [{ kind: "aturan", items: ["USA VPN required."] }], activation: [{ title: null, steps: ["Open link."] }], notes: [] },
+        }],
+      },
+    }));
+    document.cookie = "axv_locale=en; Path=/";
+    render(<DisplayPreferencesProvider><QuickVariantModal product={enProduct} mode="checkout" onClose={vi.fn()} /></DisplayPreferencesProvider>);
+    await waitFor(() => expect(screen.getByTestId("quick-modal-copy").textContent).toContain("USA VPN required."));
+    expect(screen.getByTestId("quick-modal-copy").textContent).toContain("English product overview.");
+    expect(screen.getByRole("checkbox", { name: /I have read the description/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Continue ·/ })).toBeTruthy();
   });
 });

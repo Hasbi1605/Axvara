@@ -1832,11 +1832,32 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
   Jumlah yang sama (stepper + ketik manual clamp) + tombol aksi menampilkan
   TOTAL (qty × harga).
 - QuickVariantModal (revisi lebar desktop 2026-09-18, live): mobile dikunci
-  bottom-sheet `max-w-[480px]` (sudah pas); desktop `sm+` panel tengah
-  `sm:max-w-[620px] lg:max-w-[660px]` + `sm:p-7`, grid tetap 2 kolom dengan
-  `sm:gap-3 + sm:p-4` per kartu, list `sm:max-h-[340px]` agar 4-6 varian
-  (kasus GSuite) jarang kena scroll internal, CTA `sm:h-12`. Pola tidak
-  berubah: tetap modal fokus, bukan drawer/page baru.
+  bottom-sheet `max-w-[480px]` (sudah pas); mode `select` tetap panel tengah
+  `sm:max-w-[620px] lg:max-w-[660px]` + `sm:p-7`, grid 2 kolom, list
+  `sm:max-h-[340px]`.
+- QuickVariantModal wajib baca deskripsi/S&K/cara aktivasi (23 November 2026,
+  keputusan owner — tombol `Keranjang` dan `Checkout` pada kartu beranda tetap
+  dipertahankan):
+  - Berlaku untuk semua produk pada mode `checkout` dan `cart` (`mode="select"`
+    dari PDP mobile tetap 1 langkah ringkas tanpa panel baca/checkbox).
+  - Desktop (`lg+`): panel melebar ke `lg:max-w-[920px]` 2 kolom dalam 1 layar
+    (kiri `43%`: pilih paket/varian + jumlah + bulk tiers; kanan `57%`: panel
+    baca solid `#080C1E/85` `max-h-[410px]` terbuka langsung menampilkan
+    **Aturan pakai** beraksen amber bila ada tanpa duplikasi di `TermsBody`,
+    **Deskripsi Produk**, **Syarat & Ketentuan**, dan **Cara Aktivasi** beserta
+    shortlink klikable yang ikut berganti live sesuai varian terpilih).
+  - Mobile (`<lg`): bottom-sheet 2 langkah — `pick` (pilih paket + jumlah +
+    CTA `Lanjut · <total> →`) → `review` (tombol `← Ubah`, chip ringkas varian
+    + qty + total, 1 area scroll tunggal tanpa nested scroll, checkbox + CTA
+    final).
+  - Footer memakai 1 checkbox wajib konfirmasi membaca (`#quick-modal-agree`);
+    tombol aksi tetap dapat diklik untuk menampilkan alert + memfokuskan
+    checkbox bila belum dicentang, dan centang otomatis di-reset saat pembeli
+    berpindah ke varian yang salinannya berbeda. Header juga menyediakan tautan
+    halus `Detail produk` ke `/produk/[slug]`.
+  - Pendukung: `CartDrawer` menautkan judul item ke `/produk/[slug]` dan
+    Ringkasan Pesanan `/checkout` menampilkan tautan `Lihat S&K` (`target="_blank"`)
+    per item agar tidak menghapus isian form.
 - QuickVariantModal daftar panjang (2026-09-25): lebih dari 6 varian →
   baris ringkas satu kolom (`min-h-[48px]`, label + badge teks + harga +
   sisa stok, `gap-1.5`); lebih dari 10 → kotak "Cari di N varian" di atas

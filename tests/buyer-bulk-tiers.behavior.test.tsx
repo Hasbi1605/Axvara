@@ -299,6 +299,7 @@ describe("QuickVariantModal", () => {
   it("tambah ke keranjang: harga dasar tidak dimutasi, tier tervalidasi di-cache; mode checkout memakai qty yang sama", async () => {
     await open("cart");
     fireEvent.click(screen.getByRole("button", { name: /^Tambah 9 pcs lagi/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /sudah membaca/i }));
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Tambah ke Keranjang/ })); });
     expect(useCart.getState().items[0]).toMatchObject({ price: 10_000, qty: 10, variantId: 11, bulkTiers: tiers });
     cleanup(); nav.push.mockClear();
