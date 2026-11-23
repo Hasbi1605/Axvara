@@ -125,3 +125,27 @@ it("returning during a manual payment check shares the request lock with automat
   await advance(5000); expect(reads()).toBe(3);
   expect(urls.filter(url => url.includes("wake=1"))).toHaveLength(1);
 });
+
+it("keeps polling automatic-progress orders across the full 15-minute window before stopping", async () => {
+  current = {
+    ...current,
+    status: "lunas",
+    qris: null,
+    supplier_owned: true,
+    supplier_running: true,
+    fulfillment_status: "queued",
+    credentials_ready: false,
+    automatic_progress: [{ label: "Google AI Pro 3 Bulan — Aktivasi Langsung 3 Bulan", stage: "running", ready: 0, total: 1, queuePosition: null, estimateProfile: "short" }],
+  };
+  render(<OrderSuccessPage />); await act(async () => {});
+  expect(reads()).toBe(1);
+  // Advance 12 minutes (past old ~10.5 min cap): must still be polling cleanly.
+  await advance(12 * 60_000);
+  const at12m = reads();
+  expect(at12m).toBeGreaterThan(40);
+  await advance(20_000);
+  expect(reads()).toBe(at12m + 1);
+  // Past 17 minutes (after 9 fast + 48 slow = 57 polls): stops bounded.
+  await advance(10 * 60_000);
+  expect(reads()).toBe(1 + 9 + 48);
+});

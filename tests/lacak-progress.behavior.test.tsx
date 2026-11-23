@@ -78,3 +78,26 @@ it('shows actual multi-account progress and stops polling an attention state wit
  await act(async()=>{await vi.advanceTimersByTimeAsync(30000)});
  expect(fetcher).toHaveBeenCalledTimes(calls);
 });
+
+it('keeps polling when automatic progress is ready until credentials_ready flips true',async()=>{
+ vi.useFakeTimers();vi.stubGlobal('requestAnimationFrame',()=>1);
+ let ready=false;
+ const fetcher=vi.fn(async()=>Response.json({order:{
+  code:'AXV-20261123-PVREADY1',status:'lunas',items:[{name:'Google AI Pro 3 Bulan',price:39900,qty:1}],subtotal:39900,
+  credentials_ready:ready,supplier_running:false,fulfillment_status:ready?'delivered':'queued',
+  automatic_progress:[{label:'Google AI Pro 3 Bulan — Aktivasi Langsung 3 Bulan',stage:'ready',ready:1,total:1,queuePosition:null,estimateProfile:'short'}],
+ }}));
+ vi.stubGlobal('fetch',fetcher);render(<Page/>);
+ const contact=screen.getByLabelText(/No. WA atau email checkout/);
+ fireEvent.change(screen.getByLabelText(/Kode pesanan/),{target:{value:'AXV-20261123-PVREADY1'}});
+ fireEvent.change(contact,{target:{value:'buyer@example.test'}});
+ await act(async()=>{fireEvent.submit(contact.closest('form')!)});
+ expect(fetcher).toHaveBeenCalledTimes(1);
+ await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
+ expect(fetcher).toHaveBeenCalledTimes(2);
+ ready=true;
+ await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
+ expect(fetcher).toHaveBeenCalledTimes(3);
+ await act(async()=>{await vi.advanceTimersByTimeAsync(30000)});
+ expect(fetcher).toHaveBeenCalledTimes(3);
+});

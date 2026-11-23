@@ -544,7 +544,7 @@ route fixture dihapus, bukan bukti login atau transaksi produksi.
 
 Pembaruan 23 November 2026 (lokal): komponen yang sama juga dipakai untuk item
 Pixel Verification (urutan antrean supplier memakai baris "Urutan antrean: N"
-existing). Untuk item Pixel saja, footer "Made by order" memakai estimasi
+existing; saat `running` dengan angka langkah tersimpan tampil `Langkah X dari Y` / `Step X of Y` + bar terukur Cyan maks 95%; saat `needs_check` dengan kode error pembeli tampil kotak arahan amber whitelabel + tautan `/wa`). Untuk item Pixel saja, footer memakai label "Diproses otomatis" / "Processed automatically" dengan estimasi
 1–5 menit dan tautan admin setelah 15 menit; token visual tidak berubah. Di PDP,
 modal varian, dan checkout, item Pixel menampilkan badge kuning "Diproses otomatis"
 (EN: "Processed automatically") dengan estimasi 1–5 menit. Di admin Produk, badge

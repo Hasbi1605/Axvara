@@ -527,7 +527,7 @@ describe("Pixel Verification dispatch", () => {
     due();
     await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
     progress = await readAutomaticProgress(ORDER_CODE, db);
-    expect(progress).toMatchObject([{ stage: "running", queuePosition: null }]);
+    expect(progress).toMatchObject([{ stage: "running", queuePosition: null, step: { current: 4, total: 8 } }]);
 
     pollBody = null;
     due();
@@ -535,5 +535,55 @@ describe("Pixel Verification dispatch", () => {
     progress = await readAutomaticProgress(ORDER_CODE, db);
     expect(progress).toMatchObject([{ stage: "ready", ready: 1 }]);
     expect(JSON.stringify(progress)).not.toContain("one.google.com");
+  });
+
+  it("exposes whitelabel buyer failure guidance on needs_check without leaking internal errors", async () => {
+    const { readAutomaticProgress } = await import("@/lib/warung-rebahan/progress");
+    await seedPaidOrder();
+    const db = createDatabaseAccess(fx.db);
+    await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
+    pollBody = { success: true, order: { ...orderByEmail.order, status: "failed", error: { code: "WRONG_PASSWORD", message: "Wrong password", step: 3, user_message: `check ${EMAIL}` }, credit_refunded: true } };
+    due();
+    await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
+    const progress = await readAutomaticProgress(ORDER_CODE, db);
+    expect(progress).toMatchObject([{
+      stage: "needs_check",
+      attentionNote: {
+        id: expect.stringMatching(/Password Gmail yang dikirim salah/),
+        en: expect.stringMatching(/Gmail password submitted is incorrect/),
+      },
+    }]);
+    expect(JSON.stringify(progress)).not.toContain(EMAIL);
+    expect(JSON.stringify(progress)).not.toMatch(/pixelverif|supplier|WRONG_PASSWORD/i);
+  });
+
+  it("maybeRefreshSupplierOrder skips burning the 20s gate before next_attempt_at, then delivers immediately upon completion", async () => {
+    vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "true");
+    await seedPaidOrder();
+    fx.sql.exec(`UPDATE fulfillment_items SET recipient_channel='web', recipient_target='buyer@example.test' WHERE order_code='${ORDER_CODE}'`);
+    const db = createDatabaseAccess(fx.db);
+    // Initial POST sets status='processing' and next_attempt_at=+10s.
+    await expect(processPixelverifOrders(db, { orderCode: ORDER_CODE })).resolves.toBe(1);
+    const { maybeRefreshSupplierOrder } = await import("@/lib/orders/supplier-refresh");
+
+    // Early buyer poll at t=2s: Pixel link is not due yet -> skipped WITHOUT writing throttle gate!
+    const early = await maybeRefreshSupplierOrder(ORDER_CODE, db);
+    expect(early).toEqual({ refreshed: false, skipped: true });
+    const gateRow = fx.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(`supplier_refresh_at:${ORDER_CODE}`);
+    expect(gateRow).toBeUndefined();
+
+    // Once next_attempt_at is due, the poll completes the Pixel link AND delivers
+    // fulfillment_items to 'delivered' in the same call (zero 60s cron gap).
+    due();
+    const completed = await maybeRefreshSupplierOrder(ORDER_CODE, db);
+    expect(completed).toEqual({ refreshed: true, skipped: false });
+    const link = fx.sql.prepare("SELECT status FROM pixelverif_order_links WHERE order_code=?").get(ORDER_CODE) as { status: string };
+    expect(link.status).toBe("completed");
+    const item = fx.sql.prepare("SELECT status FROM fulfillment_items WHERE order_code=?").get(ORDER_CODE) as { status: string };
+    expect(item.status).toBe("delivered");
+    expect(sendWebDeliveryEmail).toHaveBeenCalledWith(expect.objectContaining({
+      orderCode: ORDER_CODE,
+      plaintext: "https://one.google.com/partner-eft-onboard/fixture",
+    }));
   });
 });

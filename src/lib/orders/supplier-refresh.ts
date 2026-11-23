@@ -184,7 +184,22 @@ export async function refreshSupplierOrderNow(
   // link creation, no preflight, no POST, no ambiguous-send recovery).
   try {
     const { pollKnownPixelverifLinksForOrder } = await import("@/lib/pixelverif/orders");
-    if (await pollKnownPixelverifLinksForOrder(db, code, Date.now() + 8_000)) advanced = true;
+    if (await pollKnownPixelverifLinksForOrder(db, code, Date.now() + 8_000)) {
+      advanced = true;
+      // Deliver any Pixel result completed on this poll immediately so
+      // credentials_ready flips true in the SAME buyer poll response instead
+      // of waiting up to 60s for the next lite:fulfillment cron tick.
+      const queuedPixel = await db.queryFirst(
+        `SELECT 1 AS ok FROM fulfillment_items
+         WHERE order_code=? AND pixelverif_link_id IS NOT NULL
+           AND status IN ('queued','retry') AND delivered_ciphertext IS NOT NULL`,
+        code,
+      ).catch(() => null);
+      if (queuedPixel) {
+        const { ensureFulfillmentForPaidOrder } = await import("@/lib/fulfillment/deliver");
+        await ensureFulfillmentForPaidOrder(code, Date.now() + 8_000, db).catch(() => false);
+      }
+    }
   } catch { /* cron pixelverif_orders remains the durable guarantee */ }
   return advanced;
 }
@@ -199,9 +214,31 @@ export async function maybeRefreshSupplierOrder(
   db: DatabaseAccess,
   throttleSeconds = SUPPLIER_REFRESH_THROTTLE_SECONDS,
 ): Promise<{ refreshed: boolean; skipped: boolean }> {
-  const gate = await claimSupplierRefreshGate(orderCode, db, throttleSeconds);
+  const code = String(orderCode || "").trim();
+  if (!code) return { refreshed: false, skipped: true };
+  // Do not burn the 20s refresh gate when the only running supplier work is a
+  // Pixel order whose next_attempt_at hasn't elapsed yet (e.g. t=2s poll right
+  // after POST /api/order set next_attempt_at=+10s).
+  const deferredPixel = await db.queryFirst(
+    `SELECT
+       EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=? AND status='processing' AND provider_order_id IS NOT NULL) AS has_pixel,
+       EXISTS(SELECT 1 FROM pixelverif_order_links WHERE order_code=? AND status='processing' AND provider_order_id IS NOT NULL AND datetime(next_attempt_at)<=datetime('now')) AS has_due_pixel,
+       EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL))) AS has_wr,
+       EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL))) AS has_sk`,
+    code, code, code, code,
+  ).catch(() => null);
+  if (
+    deferredPixel &&
+    Number(deferredPixel.has_pixel) === 1 &&
+    Number(deferredPixel.has_due_pixel) === 0 &&
+    Number(deferredPixel.has_wr) === 0 &&
+    Number(deferredPixel.has_sk) === 0
+  ) {
+    return { refreshed: false, skipped: true };
+  }
+  const gate = await claimSupplierRefreshGate(code, db, throttleSeconds);
   if (!gate.acquired) return { refreshed: false, skipped: true };
-  const refreshed = await refreshSupplierOrderNow(orderCode, db);
+  const refreshed = await refreshSupplierOrderNow(code, db);
   return { refreshed, skipped: false };
 }
 

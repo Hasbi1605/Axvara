@@ -20,26 +20,55 @@ export function AutomaticOrderProgress({ items, locale = "id" }: { items: Automa
     {items.map((item, index) => {
       const ready = item.stage === "ready";
       const attention = item.stage === "needs_check" || item.stage === "failed";
-      const percent = ready ? 100 : Math.min(99, Math.floor(item.ready / Math.max(1, item.total) * 100));
+      const hasStep = item.stage === "running" && item.total === 1 && Boolean(item.step && item.step.current > 0);
+      const hasStepTotal = hasStep && Boolean(item.step?.total && item.step.total > 0);
+      const stepPercent = hasStepTotal
+        ? Math.min(95, Math.max(5, Math.round((item.step!.current / item.step!.total!) * 100)))
+        : null;
+      const percent = ready
+        ? 100
+        : stepPercent !== null
+          ? stepPercent
+          : Math.min(99, Math.floor(item.ready / Math.max(1, item.total) * 100));
+      const determinate = !attention && (item.total > 1 || ready || stepPercent !== null);
+      const attentionText = attention && item.attentionNote
+        ? (en ? item.attentionNote.en : item.attentionNote.id)
+        : null;
       return <div key={index}>
         <p className="break-words text-sm font-medium text-white/90">{item.label}</p>
         <div className="mt-2 flex items-center gap-2 text-sm">
           <span className={attention ? "text-[#FFB800]" : ready ? "text-emerald-300" : "text-[#00E5FF]"}>{labels[item.stage]}</span>
+          {hasStep && (
+            <span className="ml-auto font-mono text-xs tabular-nums text-white/65">
+              {hasStepTotal
+                ? (en ? `Step ${item.step!.current} of ${item.step!.total}` : `Langkah ${item.step!.current} dari ${item.step!.total}`)
+                : (en ? `Step ${item.step!.current}` : `Langkah ${item.step!.current}`)}
+            </span>
+          )}
           {ready && <span className="ml-auto font-mono text-sm tabular-nums text-emerald-300">100%</span>}
         </div>
-        {!attention && item.total === 1 && !ready && (
+        {!attention && !determinate && (
           <div role="progressbar" aria-label={`${item.label}: ${labels[item.stage]}`} className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
             <div className="h-full w-1/3 rounded-full bg-[#00E5FF] motion-safe:animate-[order-progress_1.8s_ease-in-out_infinite_alternate]" />
           </div>
         )}
-        {!attention && (item.total > 1 || ready) && <>
+        {determinate && <>
           <div role="progressbar" aria-label={item.label} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
             <div className="h-full rounded-full bg-[#00E5FF] transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${percent}%` }} />
           </div>
           {item.total > 1 && <p className="mt-2 text-xs text-white/70">{en ? `${item.ready} of ${item.total} ready` : `${item.ready} dari ${item.total} siap`}</p>}
         </>}
         {item.stage === "queued" && item.queuePosition !== null && <p className="mt-2 text-xs text-white/70">{en ? `Queue position: ${item.queuePosition}` : `Urutan antrean: ${item.queuePosition}`}</p>}
-        {attention && <p className="mt-2 text-xs text-white/70">{en ? "You don't need to order again." : "Kamu tidak perlu memesan ulang."}</p>}
+        {attention && (
+          attentionText ? (
+            <div className="mt-2 space-y-1.5 rounded-xl border border-[#FFB800]/20 bg-[#FFB800]/[0.06] px-3 py-2.5 text-xs leading-5 text-amber-100/90">
+              <p>{attentionText}</p>
+              <p><a href="/wa" className="font-semibold text-[#00E5FF] underline-offset-2 hover:underline">{en ? "Contact admin" : "Hubungi admin"}</a></p>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-white/70">{en ? "You don't need to order again." : "Kamu tidak perlu memesan ulang."}</p>
+          )
+        )}
       </div>;
     })}
     {working && <div className="border-t border-white/10 pt-4 text-xs leading-5 text-white/70">

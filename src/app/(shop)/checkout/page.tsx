@@ -413,6 +413,14 @@ function CheckoutInner() {
       void fetchQuote(quoteRequestItems);
       return;
     }
+    // Invalidate any previously signed quote token immediately while waiting
+    // out the 400 ms debounce so a quick typo fix + Bayar click can never
+    // submit new Google credentials with a stale pv_fingerprint token (409).
+    quoteRequestId.current += 1;
+    setQuoteToken(null);
+    setQuoteAccepted(false);
+    setQuoteError(null);
+    setQuoteLoading(true);
     const timer = window.setTimeout(() => {
       void fetchQuote(quoteRequestItems);
     }, 400);

@@ -8,8 +8,7 @@
 // jalur masuk" mudah ditinjau dan agar process.ts tetap di bawah ~450 baris.
 // NOL perubahan perilaku: urutan, SQL, dan gate identik dengan versi monolit.
 
-import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
-import { createDatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { notifyTelegramBuyerPaid } from "@/lib/telegram/order-notifications";
 import type { Row } from "./types";
 import {
@@ -27,11 +26,15 @@ import { processJob } from "./process";
  * Used by callbacks, reconciliation, and manual proof approval so every
  * authoritative payment path reaches the same channel/variant-aware outbox.
  */
-export async function ensureFulfillmentForPaidOrder(orderCode: string, deadlineMs?: number): Promise<boolean> {
+export async function ensureFulfillmentForPaidOrder(
+  orderCode: string,
+  deadlineMs?: number,
+  database: DatabaseAccess = createDatabaseAccess(),
+): Promise<boolean> {
   if (deadlineMs !== undefined && Date.now() >= deadlineMs) return false;
   const autoFulfillmentEnabled = process.env.AUTO_FULFILLMENT_ENABLED === "true";
 
-  const order = await queryFirst(
+  const order = await database.queryFirst(
     `SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'`,
     orderCode,
   );
@@ -51,10 +54,10 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string, deadlineM
   }
 
   if (deadlineMs !== undefined && Date.now() >= deadlineMs) return false;
-  const result = await materializeAndDeliver(order, orderCode, autoFulfillmentEnabled, deadlineMs);
+  const result = await materializeAndDeliver(order, orderCode, autoFulfillmentEnabled, deadlineMs, database);
   if (deadlineMs !== undefined && Date.now() >= deadlineMs) return result;
-  if (String(order.sales_channel) === "web") await followUpWebOrder(orderCode);
-  if (String(order.sales_channel) === "telegram" && (deadlineMs === undefined || Date.now() < deadlineMs)) await followUpTelegramEmail(orderCode);
+  if (String(order.sales_channel) === "web") await followUpWebOrder(orderCode, database);
+  if (String(order.sales_channel) === "telegram" && (deadlineMs === undefined || Date.now() < deadlineMs)) await followUpTelegramEmail(orderCode, database);
   return result;
 }
 
@@ -71,8 +74,7 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string, deadlineM
  * (terkirim otomatis / perlu Kirim ke pembeli / diproses WR). Keputusan owner
  * 2026-09-25: order web cukup dinotif saat lunas, tanpa "Order Baru".
  */
-async function followUpWebOrder(orderCode: string): Promise<void> {
-  const database = createDatabaseAccess();
+async function followUpWebOrder(orderCode: string, database: DatabaseAccess): Promise<void> {
   try {
     const { webOrderAutoDelivered } = await import("./buyer-email");
     if (!(await webOrderAutoDelivered(orderCode, database))) {
@@ -94,8 +96,7 @@ async function followUpWebOrder(orderCode: string): Promise<void> {
  * HANYA email — pesan lunas Telegram sudah dikirim notifyTelegramBuyerPaid dan
  * ping admin web tidak berlaku. Best-effort; gagal tidak memengaruhi pengiriman.
  */
-async function followUpTelegramEmail(orderCode: string): Promise<void> {
-  const database = createDatabaseAccess();
+async function followUpTelegramEmail(orderCode: string, database: DatabaseAccess): Promise<void> {
   try {
     const { telegramEmailCopyTarget } = await import("@/lib/telegram/email-copy");
     if (!(await telegramEmailCopyTarget(orderCode, database))) return;
@@ -119,7 +120,14 @@ async function followUpTelegramEmail(orderCode: string): Promise<void> {
   } catch { /* salinan email best-effort; DM Telegram tetap otoritatif */ }
 }
 
-async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillmentEnabled: boolean, deadlineMs?: number): Promise<boolean> {
+async function materializeAndDeliver(
+  order: Row,
+  orderCode: string,
+  autoFulfillmentEnabled: boolean,
+  deadlineMs: number | undefined,
+  database: DatabaseAccess,
+): Promise<boolean> {
+  const { queryFirst, queryAll, execRun, isD1Mode } = database;
   let items: { product_id: number; variant_id?: number }[];
   try {
     items = JSON.parse(String(order.items ?? "[]"));
@@ -138,7 +146,7 @@ async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillm
   // without one row per ordered line the order must not proceed to
   // delivered, so bail out and let the next run retry (review R2).
   try {
-    await ensureFulfillmentItems(order);
+    await ensureFulfillmentItems(order, database);
   } catch {
     return false;
   }
@@ -189,6 +197,7 @@ async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillm
     fulfillmentMode,
     variantId,
     String(order.sales_channel || "telegram"),
+    database,
   );
 
   // Older manual jobs were inserted as manual_required before payment. Requeue
@@ -210,5 +219,5 @@ async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillm
   // and recovery below never sends credentials twice (claimed exactly
   // once via claimJob, settled via markJobDelivered idempotency below).
   if (!autoFulfillmentEnabled) return false;
-  return processJob(Number(job.id), order, product, undefined, deadlineMs);
+  return processJob(Number(job.id), order, product, database, deadlineMs);
 }

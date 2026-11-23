@@ -133,6 +133,18 @@ describe("checkout + grosir", () => {
     expect(bodies[0].items[0]).toMatchObject({
       buyer_fields: { pv_email: "buyer@gmail.com", pv_password: "secret-pass", pv_totp_secret: "JBSWY3DPEHPK3PXP" },
     });
+
+    // Editing a valid Google credential must immediately disable Bayar (stale
+    // quote token invalidated) during the 400ms debounce, then re-quote.
+    const payButtons = () => screen.getAllByRole("button", { name: /Buat Pesanan/i }) as HTMLButtonElement[];
+    await waitFor(() => expect(payButtons().some((btn) => !btn.disabled)).toBe(true));
+    fireEvent.change(pvPassInput, { target: { value: "secret-pass-2" } });
+    expect(payButtons().every((btn) => btn.disabled)).toBe(true);
+    await waitFor(() => expect(bodies).toHaveLength(2), { timeout: 1500 });
+    expect(bodies[1].items[0]).toMatchObject({
+      buyer_fields: { pv_email: "buyer@gmail.com", pv_password: "secret-pass-2", pv_totp_secret: "JBSWY3DPEHPK3PXP" },
+    });
+    await waitFor(() => expect(payButtons().some((btn) => !btn.disabled)).toBe(true));
   });
   it("melewati ambang tier: expected_price tetap harga DASAR, tanpa dialog harga; ringkasan memakai satuan/hemat server", async () => {
     const bodies = stubQuote((body) => {

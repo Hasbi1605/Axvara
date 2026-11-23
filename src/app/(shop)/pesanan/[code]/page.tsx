@@ -405,7 +405,8 @@ export default function OrderSuccessPage() {
   useEffect(() => {
     if (orderStatus !== "lunas" || (credentialsReady && !uniqueUnitsPending && !automaticPending)) return;
     const fast = instantSending ? INSTANT_POLL_DELAYS_MS : [];
-    const maxAttempts = fast.length + (handedToAdmin ? 3 : 30);
+    const slowCap = handedToAdmin ? 3 : automaticPending ? 48 : 30;
+    const maxAttempts = fast.length + slowCap;
     let attempts = 0;
     let cancelled = false;
     let checking = false;

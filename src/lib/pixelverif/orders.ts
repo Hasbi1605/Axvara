@@ -365,6 +365,8 @@ async function interpretPoll(
   }
   const status = parsed.status.toLowerCase();
 
+  const currentStep = numeric(parsed.progress?.current_step);
+  const totalSteps = numeric(parsed.progress?.total_steps);
   await db.execRun(
     `UPDATE pixelverif_order_links
      SET receipt_json=?, activation_status=?, queue_position=?, progress_step=?, last_error_code=?
@@ -374,10 +376,16 @@ async function interpretPoll(
       link_present: typeof parsed.result?.link === "string" && parsed.result.link.length > 0,
       activation_status: parsed.activation_status ?? null,
       credit_refunded: parsed.credit_refunded ?? null,
+      ...(currentStep !== null && Number.isSafeInteger(currentStep) && currentStep > 0 && currentStep <= 100
+        ? { current_step: currentStep }
+        : {}),
+      ...(totalSteps !== null && Number.isSafeInteger(totalSteps) && totalSteps > 0 && totalSteps <= 100
+        ? { total_steps: totalSteps }
+        : {}),
     }),
     parsed.activation_status ?? null,
     parsed.queue_position ?? null,
-    numeric(parsed.progress?.current_step) ?? null,
+    currentStep ?? null,
     providerErrorCode(r.text),
     link.id,
     link.lease_owner,
@@ -445,7 +453,7 @@ async function interpretPoll(
   await db.execRun(
     `UPDATE fulfillment_jobs
      SET status='queued', attempt_count=0, next_attempt_at=datetime('now'), locked_until=NULL
-     WHERE order_code=? AND status IN ('delivered','manual_required','failed')`,
+     WHERE order_code=? AND status IN ('queued','retry','delivered','manual_required','failed')`,
     link.order_code,
   );
   await settle(db, link, "completed", null);

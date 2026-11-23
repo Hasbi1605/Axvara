@@ -13,7 +13,7 @@ const buyerTexts = (): string[] => [
   ...Object.values(copy.variants).flatMap((v) => [v.admin_terms, v.admin_terms_en ?? "", v.admin_activation, v.admin_activation_en ?? ""]),
   PIXELVERIF_BLOCKED_EMAIL_MESSAGE,
   ...["WRONG_PASSWORD", "WRONG_2FA_CODE", "WRONG_EMAIL", "2FA_WARNING", "PAYMENT_WARNING", "CAPTCHA_DETECTED", "ACTIVATION_ITEM_NOT_AVAILABLE", "ACTIVATION_FAILED"]
-    .map((code) => pixelverifBuyerErrorMessage(code) ?? ""),
+    .flatMap((code) => [pixelverifBuyerErrorMessage(code, "id") ?? "", pixelverifBuyerErrorMessage(code, "en") ?? ""]),
 ];
 const MIGRATION_0157 = fs.readFileSync("drizzle/migrations/0157_pixelverif_whitelabel_copy.sql", "utf8");
 const MIGRATION_0162 = fs.readFileSync("drizzle/migrations/0162_pixelverif_activation_copy.sql", "utf8");

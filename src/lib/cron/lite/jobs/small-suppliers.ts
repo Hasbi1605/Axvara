@@ -83,9 +83,34 @@ async function runMiraiOrders(db: Db, deadline: number) {
 
 async function runPixelverifOrders(db: Db, deadline: number) {
   const { processPixelverifOrders } = await import("@/lib/pixelverif/orders");
+  const processed = await processPixelverifOrders(db, { deadlineMs: deadline - 5_000 });
   const out: Record<string, unknown> = {
-    pixelverif_orders_processed: await processPixelverifOrders(db, { deadlineMs: deadline - 5_000 }),
+    pixelverif_orders_processed: processed,
   };
+  if (processed > 0 && Date.now() < deadline - 3_000 && db.canSpend(6)) {
+    // lite:fulfillment runs BEFORE lite:pixelverif_orders in mcp-worker/src/cron.ts,
+    // so any order completed on this tick would otherwise wait ~60s for delivery.
+    // Enqueue supplier_settled via the metered queue producer (falls back safely
+    // to cron_deferred when queue mode is off).
+    try {
+      const readyOrders = await db.queryAll(
+        `SELECT DISTINCT fi.order_code
+         FROM fulfillment_items fi
+         JOIN pixelverif_order_links l ON l.id=fi.pixelverif_link_id
+         WHERE l.status='completed'
+           AND fi.status IN ('queued','retry')
+           AND fi.delivered_ciphertext IS NOT NULL
+         LIMIT 4`,
+      );
+      if (readyOrders.length) {
+        const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
+        for (const row of readyOrders) {
+          if (Date.now() >= deadline - 2_000 || !db.canSpend(2)) break;
+          await schedulePaidFulfillment(String(row.order_code), "apps", "cron_pixelverif", "supplier_settled", undefined, db).catch(() => undefined);
+        }
+      }
+    } catch { /* lite:fulfillment cron remains the durable backstop */ }
+  }
   await runSupplierBalanceCheck(db, out, "pixelverif", async () => {
     const { checkPixelverifLowBalance } = await import("@/lib/pixelverif/balance");
     return checkPixelverifLowBalance(db);

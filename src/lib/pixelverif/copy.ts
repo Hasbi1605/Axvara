@@ -175,6 +175,22 @@ const PIXELVERIF_BUYER_ERROR_MESSAGES: Record<string, string> = {
   ACTIVATION_FAILED: "Aktivasi otomatis di akun kamu gagal." + REFUND_NOTE,
 };
 
-export function pixelverifBuyerErrorMessage(code: string | null | undefined): string | undefined {
-  return code ? PIXELVERIF_BUYER_ERROR_MESSAGES[code] : undefined;
+const REFUND_NOTE_EN = " This order will be refunded in full; contact admin with your order code. To try again, place a new order after the refund.";
+const PIXELVERIF_BUYER_ERROR_MESSAGES_EN: Record<string, string> = {
+  WRONG_PASSWORD: "The Gmail password submitted is incorrect." + REFUND_NOTE_EN,
+  WRONG_2FA_CODE: "The 2FA setup key is invalid. Make sure you enter the setup key from your authenticator app, not the 6-digit code." + REFUND_NOTE_EN,
+  WRONG_EMAIL: "The Gmail address is invalid." + REFUND_NOTE_EN,
+  "2FA_WARNING": "2-Step Verification is not set up properly on this account; enable 2FA using an authenticator app." + REFUND_NOTE_EN,
+  PAYMENT_WARNING: "There is a Google payment profile issue on this account; close any old payment profile at payments.google.com." + REFUND_NOTE_EN,
+  CAPTCHA_DETECTED: "Google asked for a captcha on this account; sign in manually to that Gmail once." + REFUND_NOTE_EN,
+  ACTIVATION_ITEM_NOT_AVAILABLE: "This Gmail account is not eligible for this offer and cannot be ordered again; please use another Gmail. This order will be refunded in full; contact admin with your order code.",
+  ACTIVATION_FAILED: "Automatic activation on your account failed." + REFUND_NOTE_EN,
+};
+
+export function pixelverifBuyerErrorMessage(
+  code: string | null | undefined,
+  locale: "id" | "en" = "id",
+): string | undefined {
+  if (!code) return undefined;
+  return locale === "en" ? PIXELVERIF_BUYER_ERROR_MESSAGES_EN[code] : PIXELVERIF_BUYER_ERROR_MESSAGES[code];
 }

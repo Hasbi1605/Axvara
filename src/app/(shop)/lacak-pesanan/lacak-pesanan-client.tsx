@@ -350,6 +350,7 @@ export default function LacakPesananClient() {
   const awaitingSupplier = Boolean(order && order.status === "lunas" && (
     order.supplierRunning ||
     order.automaticProgress.some(item => ["preparing", "queued", "running"].includes(item.stage)) ||
+    (order.automaticProgress.some(item => item.stage === "ready") && !order.credentialsReady && order.fulfillmentStatus !== "failed") ||
     (order.deliveryProgress && order.deliveryProgress.ready < order.deliveryProgress.total)
   ));
   useEffect(() => {

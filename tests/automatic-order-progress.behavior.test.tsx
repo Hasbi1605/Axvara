@@ -60,3 +60,43 @@ it("uses the short automatic-processing profile (Diproses otomatis, 1–5 min, a
   expect(document.body.textContent).toContain("Processed automatically");
   expect(document.body.textContent).not.toContain("Made by order");
 });
+
+it("renders live step progress (capped below 100%) and whitelabel failure guidance with admin link", () => {
+  const { rerender } = render(
+    <AutomaticOrderProgress
+      items={[{ ...item, label: "Google AI Pro 3 Bulan — Aktivasi Langsung 3 Bulan", stage: "running", estimateProfile: "short", step: { current: 4, total: 8 } }]}
+    />,
+  );
+  expect(screen.getByText("Membuat produkmu")).toBeTruthy();
+  expect(screen.getByText("Langkah 4 dari 8")).toBeTruthy();
+  expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("50");
+
+  // Even at final step (8/8), never show 100% until stage === "ready".
+  rerender(
+    <AutomaticOrderProgress
+      items={[{ ...item, label: "Google AI Pro 3 Bulan — Aktivasi Langsung 3 Bulan", stage: "running", estimateProfile: "short", step: { current: 8, total: 8 } }]}
+      locale="en"
+    />,
+  );
+  expect(screen.getByText("Step 8 of 8")).toBeTruthy();
+  expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("95");
+  expect(screen.queryByText("100%")).toBeNull();
+
+  // Failure guidance surfaces safe localized message + contact admin CTA.
+  rerender(
+    <AutomaticOrderProgress
+      items={[{
+        ...item,
+        label: "Google AI Pro 3 Bulan — Aktivasi Langsung 3 Bulan",
+        stage: "needs_check",
+        estimateProfile: "short",
+        attentionNote: {
+          id: "Password Gmail yang dikirim salah. Dana pesanan ini dikembalikan penuh.",
+          en: "The Gmail password submitted is incorrect. This order will be refunded in full.",
+        },
+      }]}
+    />,
+  );
+  expect(screen.getByText(/Password Gmail yang dikirim salah/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Hubungi admin" }).getAttribute("href")).toBe("/wa");
+});

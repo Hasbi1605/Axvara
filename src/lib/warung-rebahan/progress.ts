@@ -1,4 +1,5 @@
 import type { DatabaseAccess } from "@/lib/db-access";
+import { pixelverifBuyerErrorMessage } from "@/lib/pixelverif/copy";
 import type { JaspayOrderResult } from "./client";
 import { decodeJaspayVariantId, jaspayAmount } from "./jaspay";
 
@@ -11,6 +12,10 @@ export type AutomaticProgressItem = {
   updatedAt: string | null;
   /** Neutral time-estimate profile for buyer UI ("short" = 1–5 min automatic processing; absent = Jaspay 15m–1h). */
   estimateProfile?: "short";
+  /** Optional safe numeric step progress during "running" (never raw provider text). */
+  step?: { current: number; total: number | null };
+  /** Optional allowlisted, whitelabel buyer guidance when stage is "needs_check" / "failed". */
+  attentionNote?: { id: string; en: string };
 };
 
 const count = (value: unknown, maximum: number) =>
@@ -58,20 +63,37 @@ export async function persistJaspayProgress(
  * allowlisted columns are read — never the receipt body.
  */
 async function readPixelverifProgress(code: string, db: Pick<DatabaseAccess, "queryAll">): Promise<AutomaticProgressItem[]> {
-  const rows = await db.queryAll(`SELECT l.status,l.queue_position,l.receipt_json,l.provider_order_id,l.updated_at,p.name,pv.label
+  const rows = await db.queryAll(`SELECT l.status,l.queue_position,l.progress_step,l.last_error,l.last_error_code,l.receipt_json,l.provider_order_id,l.updated_at,p.name,pv.label
     FROM pixelverif_order_links l
     LEFT JOIN product_variants pv ON pv.id=l.variant_id
     LEFT JOIN products p ON p.id=l.product_id
     WHERE l.order_code=? ORDER BY l.item_index LIMIT 20`, code).catch(() => []);
   return rows.map(row => {
-    let providerStatus = "";
-    try { providerStatus = String((JSON.parse(String(row.receipt_json ?? "{}")) ?? {}).status ?? ""); } catch { /* No poll yet. */ }
+    let receipt: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = JSON.parse(String(row.receipt_json ?? "{}"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) receipt = parsed as Record<string, unknown>;
+    } catch { /* No poll yet. */ }
+    const providerStatus = String(receipt.status ?? "");
     const status = String(row.status);
     const stage: AutomaticProgressItem["stage"] = status === "completed" ? "ready"
       : status === "needs_admin" ? "needs_check"
       : !row.provider_order_id ? "preparing"
       : providerStatus === "processing" ? "running" : "queued";
     const position = Number(row.queue_position);
+    const rawStep = Number(row.progress_step ?? receipt.current_step);
+    const rawTotal = Number(receipt.total_steps);
+    const stepCurrent = Number.isSafeInteger(rawStep) && rawStep > 0 && rawStep <= 100 ? rawStep : null;
+    const stepTotal = Number.isSafeInteger(rawTotal) && rawTotal > 0 && rawTotal <= 100 ? rawTotal : null;
+    const step = stage === "running" && stepCurrent !== null
+      ? { current: stepTotal !== null ? Math.min(stepCurrent, stepTotal) : stepCurrent, total: stepTotal }
+      : undefined;
+    const errCode = stage === "needs_check"
+      ? String(row.last_error_code || row.last_error || "").trim()
+      : "";
+    const noteId = errCode ? pixelverifBuyerErrorMessage(errCode, "id") : undefined;
+    const noteEn = errCode ? pixelverifBuyerErrorMessage(errCode, "en") : undefined;
+    const attentionNote = noteId ? { id: noteId, en: noteEn ?? noteId } : undefined;
     return {
       label: [row.name, row.label].filter(Boolean).join(" — ") || "Produk digital",
       stage,
@@ -80,6 +102,8 @@ async function readPixelverifProgress(code: string, db: Pick<DatabaseAccess, "qu
       queuePosition: stage === "queued" && Number.isSafeInteger(position) && position > 0 && position < 1_000_000 ? position : null,
       updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
       estimateProfile: "short",
+      ...(step ? { step } : {}),
+      ...(attentionNote ? { attentionNote } : {}),
     };
   });
 }
