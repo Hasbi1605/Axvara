@@ -14,6 +14,7 @@ import {
 } from "@/lib/warung-rebahan/client";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -223,6 +224,52 @@ describe("Warung Rebahan API client fetch", () => {
     // Proxy URL http ditolak (token tidak boleh lewat plaintext).
     vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "http://proxy.example");
     await expect(mod.fetchBalance()).rejects.toThrow();
+  });
+
+  it("timeout baca WR non-order (22 dtk) hanya berlaku untuk /transactions (eksplisit) & /jaspay/products; order & default /transactions tetap 12 dtk", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("WARUNG_REBAHAN_API_KEY", "");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "t");
+    const delayedFetch = (delayMs: number, payload: unknown) => vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(Response.json(payload)), delayMs);
+      init?.signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new DOMException("aborted", "AbortError"));
+      });
+    }));
+    const mod = await import("@/lib/warung-rebahan/client");
+
+    // 1) /jaspay/products default memakai WR_READ_TIMEOUT_MS (22s) → 15s berhasil.
+    vi.stubGlobal("fetch", delayedFetch(15_000, { success: true, message: "ok", data: [{ product: "zoom" }] }));
+    const jpOk = mod.fetchJaspayProducts();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await jpOk).toEqual([{ product: "zoom" }]);
+
+    // 2) /transactions default (jalur pembeli) tetap 12s → 15s timeout.
+    vi.stubGlobal("fetch", delayedFetch(15_000, { success: true, message: "ok", data: [] }));
+    const txDefault = mod.fetchTransactions().catch((err) => err);
+    await vi.advanceTimersByTimeAsync(12_100);
+    expect(await txDefault).toBeInstanceOf(WrNetworkError);
+
+    // 3) /transactions dengan timeoutMs cron (22s) → 15s berhasil, namun >22s tetap dibatasi WR_READ_TIMEOUT_MS.
+    vi.stubGlobal("fetch", delayedFetch(15_000, { success: true, message: "ok", data: [{ order_id: "RBHN-1" }] }));
+    const txCron = mod.fetchTransactions({ timeoutMs: mod.WR_READ_TIMEOUT_MS });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await txCron).toEqual([{ order_id: "RBHN-1" }]);
+
+    vi.stubGlobal("fetch", delayedFetch(25_000, { success: true, message: "ok", data: [] }));
+    const txCapped = mod.fetchTransactions({ timeoutMs: 30_000 }).catch((err) => err);
+    await vi.advanceTimersByTimeAsync(22_100);
+    expect(await txCapped).toBeInstanceOf(WrNetworkError);
+
+    // 4) Endpoint tulis (/order, /jaspay/order) TIDAK boleh melampaui 12s walau argumen ke-4 diberikan.
+    for (const endpoint of ["/order", "/jaspay/order"]) {
+      vi.stubGlobal("fetch", delayedFetch(15_000, { success: true, message: "ok", data: {} }));
+      const orderReq = mod.wrFetch(endpoint, {}, Infinity, 22_000).catch((err) => err);
+      await vi.advanceTimersByTimeAsync(12_100);
+      expect(await orderReq).toBeInstanceOf(WrNetworkError);
+    }
   });
 });
 

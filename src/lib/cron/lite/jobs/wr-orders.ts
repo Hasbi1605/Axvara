@@ -13,9 +13,9 @@ import { QueryBudgetExceeded } from "@/lib/db-access";
 import { monitorRecovery, type LiteContext } from "@/lib/cron/lite/context";
 import { supplierSaldoCheckDue } from "@/lib/cron/saldo-check";
 
-export async function run({ db, failedCore }: LiteContext): Promise<Record<string, unknown>> {
+export async function run({ db, deadline, failedCore }: LiteContext): Promise<Record<string, unknown>> {
 
-  const { isWrEnabled } = await import("@/lib/warung-rebahan/client");
+  const { isWrEnabled, fetchTransactions, WR_READ_TIMEOUT_MS } = await import("@/lib/warung-rebahan/client");
   if (!isWrEnabled()) return { skipped: "disabled" };
   const order = await import("@/lib/warung-rebahan/order");
   const out: Record<string, unknown> = {};
@@ -51,6 +51,21 @@ export async function run({ db, failedCore }: LiteContext): Promise<Record<strin
       if (processed.blocked) out.blocked = processed.blocked;
       if (processed.finalDeferred) out.final_dispatch_deferred = true;
     }
+    // Bagikan satu fetch /wr/transactions antara supplier_refresh dan stuck_links
+    // dalam tick yang sama agar WR tidak dipukul 2× berturut-turut saat ada order
+    // aktif; batas baca WR_READ_TIMEOUT_MS (22 dtk) tetap dibatasi sisa deadline.
+    let sharedWrTransactions: Promise<import("@/lib/warung-rebahan/client").WrTransaction[]> | undefined;
+    const getWrTransactions = typeof fetchTransactions === "function"
+      ? () => {
+          if (!sharedWrTransactions) {
+            const readCap = typeof WR_READ_TIMEOUT_MS === "number" ? WR_READ_TIMEOUT_MS : 22_000;
+            const timeoutMs = Math.min(readCap, deadline - Date.now() - 8_000);
+            sharedWrTransactions = fetchTransactions({ timeoutMs });
+            sharedWrTransactions.catch(() => undefined);
+          }
+          return sharedWrTransactions;
+        }
+      : undefined;
     // Penjamin status segar bersama (2026-10-13): tarik status vendor untuk
     // link yang masih berjalan (berbagi jatah dengan job sk_orders) agar WR
     // secepat SK terasa tanpa menunggu route besar per jam. Gerbang
@@ -58,12 +73,16 @@ export async function run({ db, failedCore }: LiteContext): Promise<Record<strin
     // sekali per tarikan.
     await recover("supplier_refresh", async () => {
       const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
-      const fresh = await refreshDueSupplierOrders(db, { limit: 12 });
+      const fresh = await refreshDueSupplierOrders(db, { limit: 12, getWrTransactions });
       if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
     }, undefined);
     // 2 menit, bukan 1 jam (2026-10-10): webhook WR yang hilang/terputus
     // tidak lagi menahan kredensial varian instan sampai route besar jalan.
-    out.reconciled = await recover("stuck_links", () => order.reconcileStuckWrOrders(db, { minAgeMinutes: 2, reportLookupFailure: true }), 0);
+    out.reconciled = await recover("stuck_links", () => order.reconcileStuckWrOrders(db, {
+      minAgeMinutes: 2,
+      reportLookupFailure: true,
+      getTransactions: getWrTransactions,
+    }), 0);
     // WR3 Jaspay (bounded, di job wr_orders yang sama — bukan cron baru):
     // link Jaspay ambigu => exact-ref identik / poll invoice dikenal.
     // Premium tak tersentuh; lease existing tetap.

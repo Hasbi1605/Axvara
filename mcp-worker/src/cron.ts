@@ -81,7 +81,9 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "pedia_orders", alarm: "hard", group: "orders" },
   // AXVARA Games (docs/GAMES.md §12.3): dispatch + polling; no-op tanpa kredensial.
   { phase: "lite", lite: "games_orders", alarm: "hard", group: "orders" },
-  { phase: "lite", lite: "jaspay_catalog", alarm: "soft", group: "catalog" },
+  // Jaspay: 11 produk WR (10/tick → 1 siklus penuh tiap 2 tick = 10 mnt);
+  // interval 5 mnt hemat 80% panggilan /jaspay/products dan tetap <= ambang basi 15 mnt.
+  { phase: "lite", lite: "jaspay_catalog", alarm: "soft", everyMinutes: 5, group: "catalog" },
   { phase: "lite", lite: "tunvn_catalog", alarm: "soft", group: "catalog" },
   { phase: "lite", lite: "aivault_catalog", alarm: "soft", group: "catalog" },
   { phase: "lite", lite: "storebat_catalog", alarm: "soft", group: "catalog" },

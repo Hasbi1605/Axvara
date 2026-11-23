@@ -889,8 +889,10 @@ baru ke parent aktif yang sama; tidak mengganti ID varian/item/order lama.
 Parent baru mengisi gambar/galeri kosong dari parent asal, termasuk yang nonaktif;
 gambar admin tujuan, nama/slug/foto/EN parent existing dipertahankan.
 
-Job lite `jaspay_catalog` pada cron Worker setiap menit SESUDAH job order,
-budget40 dengan cadangan2, maksimal satu produk per invocation. Cursor durable
+Job lite `jaspay_catalog` pada cron Worker setiap 5 menit (`everyMinutes: 5`,
+revisi 23 Nov 2026; sebelumnya tiap 1 menit) SESUDAH job order, budget 400
+(Workers Paid; snapshot awal 40/96), maksimal 10 produk per invocation (11 produk
+aktif berputar penuh tiap 2 tick = 10 mnt, tetap di bawah ambang basi 15 mnt). Cursor durable
 `wr_sync_state.jaspay_catalog_cursor` berputar melewati semua produk ternormalisasi;
 feed lengkap dipakai untuk zero-missing Jaspay, bukan hanya potongan cursor.
 HTTP/parser gagal tidak mengosongkan katalog. Fase heavy existing tetap cadangan.
@@ -3082,6 +3084,8 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 menitan juga menjalankan `checkCopyReviewChanges` setelah drain grup, sebelum
 refresh pasar crypto, hanya bila tersisa empat statement. Budget job tetap40;
 detail checkpoint/dedupe dan batas bukti ada di §16.52.
+
+**Tambahan lokal 23 November 2026 — ketahanan timeout baca WR & ringkasan 503 cron lite:** `src/lib/warung-rebahan/client.ts` menambah `WR_READ_TIMEOUT_MS = 22_000` khusus baca bulk non-order (`fetchJaspayProducts()` default 22 dtk dan `fetchTransactions({ timeoutMs })` dari cron `wr_orders` dibatasi `min(22 dtk, sisa deadline - 8 dtk)`); endpoint order (`/order`, `/jaspay/order`) dan jalur pembeli `fetchTransactions()` default tetap `WR_API_TIMEOUT_MS = 12_000`. `src/lib/cron/lite/jobs/wr-orders.ts` membagikan satu panggilan `/wr/transactions` antara `supplier_refresh` dan `stuck_links` dalam tick yang sama. `mcp-worker/src/cron.ts` menjadwalkan `lite:jaspay_catalog` tiap 5 menit (`everyMinutes: 5`, ambang basi tetap 15 mnt di `src/lib/sync-staleness.ts`). Respons 503 `cron/lite` (`jaspay_catalog` dan kegagalan `failedCore`/`monitorRecovery` di `src/lib/cron/lite/context.ts`) kini menyertakan field string top-level `error` tersanitasi agar alarm Telegram Worker menampilkan alasan ringkas.
 
 **Tambahan lokal 18 November 2026 — hardening observabilitas cron & watchdog basi (§16.55):** `cron/lite` mengembalikan `503` (`ok:false`, `failed_subjobs`) bila subjob inti gagal (`payments` NOWPayments/Sekalipay gateway, `pedia_orders` dispatch, `notify*` `telegram_retry`/`whatsapp_outbox`) sambil tetap menjalankan subjob lain dan tetap mengembalikan `200` untuk yield `QueryBudgetExceeded` atau subjob opsional. Penanda sukses `<sumber>_success_at` (ms epoch) terpisah dari klaim throttle dan error tersanitasi `<sumber>_last_error` (`src/lib/sync-status.ts`); `cleanup` menjalankan watchdog kebekuan `checkSyncStaleness` (`src/lib/sync-staleness.ts`) dengan guard `db.canSpend(6)`.
 

@@ -285,4 +285,80 @@ describe("/api/cron/lite A3-6 core vs optional subjobs and budget yield", () => 
       fx.close();
     }
   });
+
+  it("wr_orders berbagi satu fetch /wr/transactions antara supplier_refresh dan stuck_links serta menyertakan error ringkas pada 503", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://wr-proxy.fixture");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "secret-proxy-tok");
+      fx.sql.exec(`
+        INSERT INTO orders (code, customer_name, customer_wa, customer_email, items, subtotal, payment_method, status, payment_status, fulfillment_status)
+        VALUES
+          ('AXV-20261123-FRESH01', 'A', '628111111111', 'a@test.local', '[]', 10000, 'qris', 'lunas', 'paid', 'queued'),
+          ('AXV-20261109-STUCK01', 'B', '628222222222', 'b@test.local', '[]', 10000, 'qris', 'lunas', 'paid', 'queued');
+        INSERT INTO wr_order_links (order_code, wr_variant_id, wr_order_id, quantity, wr_cost, status, request_sent_at, updated_at)
+        VALUES
+          ('AXV-20261123-FRESH01', 'wr-var-1', 'RBHN-FRESH-1', 1, 5000, 'processing', datetime('now','-10 minutes'), datetime('now','-10 minutes')),
+          ('AXV-20261109-STUCK01', 'wr-var-2', 'RBHN-STUCK-1', 1, 5000, 'processing', datetime('now','-14 days'), datetime('now','-14 days'));
+        INSERT INTO wr_saldo_log (balance, source, created_at) VALUES (50000, 'api_check', datetime('now'));
+      `);
+
+      // 1) Sukses: kedua subjob (supplier_refresh + stuck_links) hanya memanggil /wr/transactions SEKALI.
+      const txCalls: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        txCalls.push(String(url));
+        return Response.json({ success: true, message: "ok", data: [] });
+      }));
+      const okRes = await callLite("wr_orders");
+      expect(okRes.status).toBe(200);
+      expect(txCalls.filter((u) => u.endsWith("/wr/transactions"))).toHaveLength(1);
+
+      // 2) Timeout: tetap 1× panggilan /wr/transactions + respons 503 membawa field error ringkas tersanitasi.
+      fx.sql.exec("DELETE FROM store_settings WHERE key LIKE 'supplier_refresh_at:%'");
+      txCalls.length = 0;
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        txCalls.push(String(url));
+        throw new DOMException("aborted", "AbortError");
+      }));
+      const failRes = await callLite("wr_orders");
+      expect(failRes.status).toBe(503);
+      expect(txCalls.filter((u) => u.endsWith("/wr/transactions"))).toHaveLength(1);
+      expect(failRes.body).toMatchObject({
+        ok: false,
+        job: "wr_orders",
+        recovery_failed: 1,
+        failed_subjobs: ["stuck_links"],
+        error: "stuck_links: wr_request_timeout",
+      });
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("jaspay_catalog 503 menyertakan field error ringkas tersanitasi agar alarm Telegram tidak memotong JSON mentah", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://wr-proxy.fixture");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "secret-proxy-tok");
+      vi.stubGlobal("fetch", vi.fn(async () => {
+        throw new DOMException("aborted", "AbortError");
+      }));
+      const res = await callLite("jaspay_catalog");
+      expect(res.status).toBe(503);
+      expect(res.body).toMatchObject({
+        ok: false,
+        job: "jaspay_catalog",
+        error: "wr_request_timeout",
+        errors: ["wr_request_timeout"],
+      });
+    } finally {
+      fx.close();
+    }
+  });
 });

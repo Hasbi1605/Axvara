@@ -1193,7 +1193,11 @@ export async function handleWrOrderProcessing(
 // menambah kandidat tidak menambah panggilan upstream.
 export async function reconcileStuckWrOrders(
   database?: DatabaseAccess,
-  options: { minAgeMinutes?: number; reportLookupFailure?: boolean } = {},
+  options: {
+    minAgeMinutes?: number;
+    reportLookupFailure?: boolean;
+    getTransactions?: () => Promise<WrTransaction[]>;
+  } = {},
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isWrEnabled()) return 0;
@@ -1218,7 +1222,7 @@ export async function reconcileStuckWrOrders(
       order_code: String(row.order_code || ""),
     })),
     db,
-    fetchTransactions,
+    options.getTransactions ?? fetchTransactions,
     options.reportLookupFailure,
   );
 }

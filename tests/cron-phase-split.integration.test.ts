@@ -378,6 +378,13 @@ describe("Worker runOperationsTick", () => {
       expect(calls.some((url) => url.includes("job=tunvn_orders"))).toBe(true);
       expect(calls.some((url) => url.includes("job=aivault_orders"))).toBe(true);
       expect(calls.some((url) => url.includes("job=aivault_catalog"))).toBe(true);
+      // Jaspay berjalan tiap 5 menit (:00, :05, :10, ...), bukan tiap menit.
+      expect(calls.some((url) => url.includes("job=jaspay_catalog"))).toBe(false);
+    }
+    for (const minute of [0, 5, 10]) {
+      const { fn, calls } = mockFetch(() => ({ status: 200 }));
+      await tickNoSleep(env, at(minute), { fn });
+      expect(calls.some((url) => url.includes("job=jaspay_catalog"))).toBe(true);
     }
   });
 

@@ -1,5 +1,10 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Timeout baca WR & dedupe `/wr/transactions` cron — 23 Nov 2026 (keputusan owner, lokal → publikasi via CI)
+
+- `WR_READ_TIMEOUT_MS = 22_000` di `src/lib/warung-rebahan/client.ts` berlaku khusus baca bulk non-order: `fetchJaspayProducts()` (default 22 dtk) dan `fetchTransactions({ timeoutMs })` saat dipanggil cron `wr_orders` (`min(22 dtk, sisa deadline - 8 dtk)`). Endpoint tulis `/order` dan `/jaspay/order` tetap `WR_API_TIMEOUT_MS = 12_000`, jalur pembeli `fetchTransactions()` tanpa argumen tetap 12 dtk, dan `/products-slice` tetap `min(35 dtk, sisa budget sweep)`.
+- `src/lib/cron/lite/jobs/wr-orders.ts` membagikan satu panggilan `/wr/transactions` yang sama antara `supplier_refresh` (`refreshDueSupplierOrders`) dan `stuck_links` (`reconcileStuckWrOrders`) dalam satu tick agar WR tidak dipukul dua kali berturut-turut saat ada order aktif.
+
 ## Markup SK compare-and-set — 22 Nov 2026 (lokal → publikasi via CI)
 
 - Sweep SK tidak boleh menulis `sk_products.markup_percent/markup_fixed`; markup milik admin. Registry dan `product_variants.price` hasil sweep hanya ditulis bila markup di DB masih sama dengan yang dibaca sweep (lost update 7 varian 22 Nov). Jangan hapus guard ini; regresi `tests/sekalipay/sk-sync-markup-race.test.ts`.

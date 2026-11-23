@@ -219,7 +219,7 @@ export type SupplierBatchResult = {
  */
 export async function refreshDueSupplierOrders(
   db: DatabaseAccess,
-  options: { limit?: number; throttleSeconds?: number } = {},
+  options: { limit?: number; throttleSeconds?: number; getWrTransactions?: () => Promise<WrTransaction[]> } = {},
 ): Promise<SupplierBatchResult> {
   const limit = Math.max(1, Math.min(options.limit ?? 12, 20));
   const throttleSeconds = options.throttleSeconds ?? SUPPLIER_REFRESH_THROTTLE_SECONDS;
@@ -267,7 +267,7 @@ export async function refreshDueSupplierOrders(
   for (const row of marks) markByCode.set(String(row.key).slice("supplier_refresh_at:".length), parseExpiry(row.value));
   const now = Date.now();
   let wrTransactions: Promise<WrTransaction[]> | undefined;
-  const getWrTransactions = () => wrTransactions ??= fetchTransactions();
+  const getWrTransactions = options.getWrTransactions ?? (() => wrTransactions ??= fetchTransactions());
   for (const candidate of candidates.slice(0, limit)) {
     out.examined++;
     const until = markByCode.get(candidate.orderCode);

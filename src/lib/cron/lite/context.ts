@@ -30,7 +30,9 @@ export function monitorRecovery(db: Db, job: string, out: Record<string, unknown
       failedCore.push(name);
       out.recovery_failed = Number(out.recovery_failed ?? 0) + 1;
       const { recordSyncError, sanitizeSyncError } = await import("@/lib/sync-status");
-      await recordSyncError(db, `${job}_recovery`, `${name}: ${sanitizeSyncError(error)}`);
+      const summary = `${name}: ${sanitizeSyncError(error)}`;
+      if (typeof out.error !== "string") out.error = summary;
+      await recordSyncError(db, `${job}_recovery`, summary);
       return fallback;
     }
   };

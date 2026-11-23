@@ -150,6 +150,10 @@ export class WrNetworkError extends Error {
 // D1 (wr_sync_log.duration_ms 9.587/11.886), jadi 12 s lapang untuk fetch
 // tunggal; kegagalan tetap punya retry + backoff.
 export const WR_API_TIMEOUT_MS = 12_000;
+/** Timeout baca bulk WR non-order (/transactions & /jaspay/products) untuk cron/sync;
+ * tetap di bawah batas proxy VPS (30 dtk) dan deadline cron (45 dtk). Timeout order tetap 12 dtk. */
+export const WR_READ_TIMEOUT_MS = 22_000;
+const WR_EXTENDED_READ_PATHS = new Set(["/transactions", "/jaspay/products"]);
 // Outbound langsung HANYA ke host ini — tidak ada dynamic URL dari user input
 // (SSRF-safe). Bila WARUNG_REBAHAN_PROXY_URL diset (Opsi A: proxy Heroku agar
 // lolos IP whitelist WR), request pergi ke proxy + host proxy diizinkan.
@@ -304,6 +308,7 @@ export async function wrFetch<T>(
   endpoint: string,
   payload: Record<string, unknown> = {},
   sliceBudgetMs = Infinity,
+  readTimeoutMs?: number,
 ): Promise<WrApiResponse<T>> {
   const proxyUrl = getWrProxyUrl();
   // Mode proxy: POST https://<proxy>/wr/<endpoint> + x-proxy-token; api_key
@@ -316,7 +321,12 @@ export async function wrFetch<T>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (proxyUrl) headers["x-proxy-token"] = getWrProxyToken();
   const controller = new AbortController();
-  const timeoutMs = proxyUrl && path === "/products-slice" ? Math.min(35_000, sliceBudgetMs) : WR_API_TIMEOUT_MS;
+  const timeoutMs =
+    proxyUrl && path === "/products-slice"
+      ? Math.min(35_000, sliceBudgetMs)
+      : typeof readTimeoutMs === "number" && !Number.isNaN(readTimeoutMs) && WR_EXTENDED_READ_PATHS.has(path)
+        ? Math.min(WR_READ_TIMEOUT_MS, readTimeoutMs)
+        : WR_API_TIMEOUT_MS;
   if (timeoutMs <= 0) throw new WrNetworkError("wr_request_timeout", endpoint, true);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -422,8 +432,8 @@ export async function createOrder(params: {
   return res.data;
 }
 
-export async function fetchTransactions(): Promise<WrTransaction[]> {
-  const res = await wrFetch<WrTransaction[]>("/transactions");
+export async function fetchTransactions(options?: { timeoutMs?: number }): Promise<WrTransaction[]> {
+  const res = await wrFetch<WrTransaction[]>("/transactions", {}, Infinity, options?.timeoutMs);
   return Array.isArray(res.data) ? res.data : [];
 }
 
@@ -438,8 +448,8 @@ function assertJaspayInvoice(value: unknown): string {
 }
 
 /** Katalog mentah Jaspay (validasi + normalisasi di jaspay.ts/sync). */
-export async function fetchJaspayProducts(): Promise<unknown[]> {
-  const res = await wrFetch<unknown[]>("/jaspay/products");
+export async function fetchJaspayProducts(options?: { timeoutMs?: number }): Promise<unknown[]> {
+  const res = await wrFetch<unknown[]>("/jaspay/products", {}, Infinity, options?.timeoutMs ?? WR_READ_TIMEOUT_MS);
   if (!Array.isArray(res.data)) throw new WrNetworkError("jaspay_catalog_malformed", "/jaspay/products");
   return res.data;
 }

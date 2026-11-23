@@ -106,7 +106,18 @@ export async function POST(request: NextRequest) {
       const { run } = await import("@/lib/cron/lite/jobs/jaspay-catalog");
       const { failed } = await run({ job, db, deadline, result, failedCore });
       if (failed) {
-        return NextResponse.json({ ...result, ok: false }, { status: 503 });
+        const firstError = Array.isArray(result.errors)
+          ? result.errors.find((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+          : undefined;
+        let summary: string | undefined;
+        if (firstError) {
+          const { sanitizeSyncError } = await import("@/lib/sync-status");
+          summary = sanitizeSyncError(firstError);
+        }
+        return NextResponse.json(
+          { ...result, ok: false, ...(summary ? { error: summary } : {}) },
+          { status: 503 },
+        );
       }
     }
     else if (job === "pedia_orders") {
@@ -149,7 +160,10 @@ export async function POST(request: NextRequest) {
     result.budget_exhausted = true;
   }
   if (failedCore.length > 0) {
-    return NextResponse.json({ ...result, ok: false, failed_subjobs: failedCore }, { status: 503 });
+    const error = typeof result.error === "string" && result.error.trim()
+      ? result.error
+      : failedCore.join(",");
+    return NextResponse.json({ ...result, ok: false, error, failed_subjobs: failedCore }, { status: 503 });
   }
   try {
     await db.execRun(

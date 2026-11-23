@@ -25,7 +25,7 @@ export const NEVER_SUCCEEDED_GRACE_MS = 60 * 60_000;
  *   untuk menghindari alert Telegram ganda.
  * - SK diff: VPS diff 1 menit → max(15m, 3×1m) = 15 menit; fallback sweep
  *   per jam (bila `diff_last_at` belum ada) → 90 menit.
- * - Jaspay: cron lite 1 menit → max(15m, 3×1m) = 15 menit.
+ * - Jaspay: cron lite 5 menit → max(15m, 3×5m) = 15 menit.
  * - TUNVN: cron lite 1 menit → max(15m, 3×1m) = 15 menit.
  * - AIVault: cron lite 1 menit → max(15m, 3×1m) = 15 menit.
  * - Games (SK): cron lite 10 menit → max(15m, 3×10m) = 30 menit.
@@ -35,7 +35,7 @@ export const NEVER_SUCCEEDED_GRACE_MS = 60 * 60_000;
 export const SYNC_STALENESS_THRESHOLDS_MS = {
   sk_diff: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
   sk_sweep: 90 * 60_000,
-  jaspay: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
+  jaspay: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 5 * 60_000),
   tunvn: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
   tunvn_buff: STALE_MIN_THRESHOLD_MS,
   aivault: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
