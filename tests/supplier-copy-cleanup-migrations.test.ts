@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
+import { parseAdminVariantCopy, parseProductDescription } from "@/lib/product-copy/format";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
 const M0146 = readFileSync("drizzle/migrations/0146_aivault_duolingo_copy.sql", "utf8");
@@ -105,5 +106,61 @@ it("0149 rewrites #112/#97/#98 Muse copy and leaves #114 mailbox copy untouched"
     }
     for (const sku of ["TUNVN-112", "TUNVN-97", "TUNVN-98"]) expect(Object.values(get(sku)).join("\n")).not.toMatch(/Hotmail|API mail|mail-dongvan|mailbox/);
     expect(get("TUNVN-114").admin_terms).toBe("Keep mailbox");
+  } finally { close(); }
+});
+
+it("0160 populates Microsoft Copilot Premium (#122) ID/EN description, terms, and activation on live product without overwriting admin edits", () => {
+  const { sql, close } = createD1Fixture();
+  try {
+    const m = readFileSync("drizzle/migrations/0160_tunvn_copilot_copy.sql", "utf8");
+    sql.exec(`INSERT INTO products(id,category_id,name,slug,price,stock,is_active,tunvn_family,description,description_en) VALUES
+      (51959,1,'Microsoft Copilot Premium','microsoft-copilot-tunvn',18000,9,1,'microsoft-copilot',
+       'Akses Microsoft Copilot Premium selama 1 bulan. Paket ini termasuk garansi penuh selama masa aktif.',
+       'Get Microsoft Copilot Premium for 1 month. This plan includes full warranty coverage throughout the subscription period.');
+      INSERT INTO product_variants(product_id,sku,label,price,stock,is_active,tunvn_source_product_id) VALUES
+      (51959,'TUNVN-122','Premium 1 Bulan (Full Garansi)',18000,9,1,122);`);
+    sql.exec(m);
+    const changesAfterFirst = (sql.prepare("SELECT total_changes() AS n").get() as { n: number }).n;
+    sql.exec(m);
+    expect((sql.prepare("SELECT total_changes() AS n").get() as { n: number }).n).toBe(changesAfterFirst);
+
+    const p = sql.prepare("SELECT description,description_en FROM products WHERE id=51959").get() as { description: string; description_en: string };
+    const parsedId = parseProductDescription(p.description);
+    const parsedEn = parseProductDescription(p.description_en);
+    expect(parsedId.blocks.map(b => b.type)).toEqual(["p", "list"]);
+    expect(parsedEn.blocks.map(b => b.type)).toEqual(["p", "list"]);
+    expect(p.description).toContain("Microsoft Copilot Premium");
+    expect(p.description_en).toContain("Microsoft Copilot Premium");
+
+    const v = sql.prepare("SELECT admin_terms,admin_terms_en,admin_activation,admin_activation_en FROM product_variants WHERE sku='TUNVN-122'").get() as Record<string, string>;
+    const copyId = parseAdminVariantCopy(v.admin_terms, v.admin_activation)!;
+    const copyEn = parseAdminVariantCopy(v.admin_terms_en, v.admin_activation_en)!;
+    expect(copyId.sections.map(s => s.kind)).toEqual(["paket", "proses", "garansi"]);
+    expect(copyEn.sections.map(s => s.kind)).toEqual(["paket", "proses", "garansi"]);
+    expect(copyId.activation[0].steps).toHaveLength(3);
+    expect(copyEn.activation[0].steps).toHaveLength(3);
+    expect(copyId.notes).toHaveLength(2);
+    expect(copyEn.notes).toHaveLength(2);
+    expect(v.admin_terms).toContain("5 bagian");
+    expect(v.admin_terms_en).toContain("5 parts");
+    expect(v.admin_activation).toContain("axvara.tech/go/mail-fvia");
+    expect(v.admin_activation).toContain("axvara.tech/go/mail-dongvan");
+    expect(v.admin_activation_en).toContain("axvara.tech/go/mail-fvia");
+    expect(v.admin_activation_en).toContain("axvara.tech/go/mail-dongvan");
+
+    // No raw supplier URLs or supplier brand leaked in buyer copy
+    const allCopy = [p.description, p.description_en, v.admin_terms, v.admin_terms_en, v.admin_activation, v.admin_activation_en].join("\n");
+    for (const forbidden of ["fviainboxes.com", "dongvanfb.net", "https://", "TUNVN", "tunvn"]) {
+      expect(allCopy).not.toContain(forbidden);
+    }
+    const slugs = (sql.prepare("SELECT slug FROM supplier_links WHERE slug IN ('mail-fvia','mail-dongvan') AND is_active=1").all() as { slug: string }[]).map(r => r.slug).sort();
+    expect(slugs).toEqual(["mail-dongvan", "mail-fvia"]);
+
+    // Admin edits made later survive rerun
+    sql.exec(`UPDATE products SET description='Edit admin ID', description_en='Edit admin EN' WHERE id=51959;
+      UPDATE product_variants SET admin_terms='S&K admin', admin_terms_en='Admin terms' WHERE sku='TUNVN-122';`);
+    sql.exec(m);
+    expect(sql.prepare("SELECT description,description_en FROM products WHERE id=51959").get()).toEqual({ description: "Edit admin ID", description_en: "Edit admin EN" });
+    expect(sql.prepare("SELECT admin_terms,admin_terms_en FROM product_variants WHERE sku='TUNVN-122'").get()).toEqual({ admin_terms: "S&K admin", admin_terms_en: "Admin terms" });
   } finally { close(); }
 });

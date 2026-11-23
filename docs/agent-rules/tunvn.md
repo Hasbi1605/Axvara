@@ -1,5 +1,9 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Salinan Microsoft Copilot Premium (#122) — 23 November 2026 (lokal)
+
+- Migrasi data `0160_tunvn_copilot_copy.sql` (tanpa DDL, baseline bootstrap diperbarui) melengkapi deskripsi produk ID/EN (`microsoft-copilot-tunvn`) dan S&K + cara aktivasi ID/EN varian `TUNVN-122` berdasarkan deskripsi API supplier TUNVN #122 (`Copilot Premium 1M (FW)`: masa aktif 1 bulan, full warranty) serta format hasil beli aktual 5 bagian (`Email Hotmail | Password | Token | Client ID | Email pemulihan`; login pakai bagian 1–2, recovery mail bagian terakhir via `axvara.tech/go/mail-fvia`, catatan 4 bagian pertama API mail via `axvara.tech/go/mail-dongvan`). Berlaku untuk produk yang sudah aktif (`is_active=1`), idempoten, dan tidak menimpa suntingan admin setelahnya.
+
 ## Kurasi katalog — keputusan owner 23 November 2026 (lokal)
 
 - Migrasi `0158` memindahkan `TUNVN-119` (7 hari, 200–500 kredit) dan `TUNVN-121` (6 hari, garansi penuh) ke CapCut Pro (#123). `TUNVN-120` (Muse 1B tanpa garansi) masuk produk manual #112 tanpa mengubah kepemilikannya. `TUNVN-122` menjadi Microsoft Copilot Premium (`microsoft-copilot-tunvn`), kategori AI & Chatbot, dengan foto dan deskripsi ID/EN. Fallback yang digabung masuk arsip, varian baru tetap nonaktif; cara aktivasi dan syarat varian tidak diubah.

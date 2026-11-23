@@ -3,6 +3,7 @@
 ## Kurasi katalog lintas supplier — 23 November 2026 (lokal)
 
 - Migrasi data `0158_supplier_catalog_tidy_1123.sql` tanpa DDL (baseline bootstrap diperbarui): re-key tiga fallback, pindahkan tujuh varian nonaktif berdasarkan ID/family/SKU, perbarui tautan mirror yang terkait, lalu arsipkan fallback dan lima anomali. Pengulangan tidak menulis ulang data. Produk aktif dan grup ChatGPT Plus #37 tidak diubah, kecuali family/nama/label iLovePDF #381 dengan slug, status, dan harga tetap. Penyegaran penanda dirty grup mengikuti trigger D1 yang sudah ada; tidak ada perubahan aturan winner.
+- Migrasi data `0160_tunvn_copilot_copy.sql` tanpa DDL (baseline bootstrap diperbarui): memperbarui deskripsi ID/EN produk `microsoft-copilot-tunvn` (menimpa salinan singkat 0158/default/kosong, menjaga edit admin setelahnya) dan mengisi `admin_terms`/`admin_activation` ID/EN varian `TUNVN-122` (`tunvn_source_product_id=122`) bila kosong sesuai format aktual 5 bagian (`Email Hotmail | Password | Token | Client ID | Email pemulihan`), menggunakan shortlink `axvara.tech/go/mail-fvia` dan `axvara.tech/go/mail-dongvan` (`INSERT OR IGNORE` di `supplier_links`). Berlaku untuk produk aktif (`is_active=1`) dan idempoten.
 
 ## Pixel Verification — dispatch sesuai panduan API supplier (lokal, belum dideploy)
 
