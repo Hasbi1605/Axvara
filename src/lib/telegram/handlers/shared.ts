@@ -8,6 +8,7 @@
 import { execRun, getD1, isD1Mode, queryFirst } from "@/lib/db";
 import * as tgApi from "@/lib/telegram/api";
 import { homeKeyboard, mainReplyMenu, TELEGRAM_MAX_QTY, type TgPriceCtx } from "@/lib/telegram/keyboards";
+import { readHomeTelegramCategories, type TelegramCategoryRow } from "@/lib/telegram/catalog-snapshot";
 import type { TelegramBestseller } from "@/lib/telegram/messages";
 import { welcomeMessageLocalized } from "@/lib/telegram/messages/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
@@ -487,12 +488,14 @@ export async function sendTgHome(params: {
   replaceMessageId?: number;
   sourceMeta?: ScreenSourceMeta;
   bestsellers?: TelegramBestseller[];
+  categories?: TelegramCategoryRow[];
   ctx?: TgPriceCtx;
   installMenu?: boolean;
 }): Promise<void> {
   const photoUrl = tgBannerUrl("tg-welcome.jpg", TG_WELCOME_BANNER_VERSION);
   const caption = welcomeMessageLocalized(params.locale, params.firstName);
-  const keyboard = homeKeyboard(params.locale);
+  const categories = params.categories ?? (await readHomeTelegramCategories().catch(() => []));
+  const keyboard = homeKeyboard(params.locale, categories);
 
   const canReplace = Boolean(params.replaceMessageId && !params.sourceMeta?.isProtected);
   const photoRes = await (canReplace

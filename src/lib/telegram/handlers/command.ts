@@ -14,8 +14,9 @@ import {
   cb, homeKeyboard, warrantyKeyboard, languageChooserKeyboard, settingsKeyboard,
   helpKeyboard, mainReplyMenu, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
   MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY,
-  MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_EN,
+  MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_GLOBE_LEGACY, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
+import { readHomeTelegramCategories } from "@/lib/telegram/catalog-snapshot";
 import { welcomeMessage, helpMessage, warrantyFullMessage } from "@/lib/telegram/messages";
 import {
   languageChooserMessage, welcomeMessageLocalized, settingsMessage,
@@ -155,12 +156,15 @@ export async function handleCommand(
       if (want && isValidTgLocale(want)) {
         const { saveTgLocaleOnly } = await import("@/lib/telegram/preferences");
         await saveTgLocaleOnly(String(from.id), want);
-        const { tgPrefText } = await import("@/lib/telegram/messages/preferences");
+        const [{ tgPrefText }, categories] = await Promise.all([
+          import("@/lib/telegram/messages/preferences"),
+          readHomeTelegramCategories().catch(() => []),
+        ]);
         await sendMessage({
           chat_id: chatId,
           text: tgPrefText(want, "language_saved"),
           parse_mode: "HTML",
-          reply_markup: homeKeyboard(want),
+          reply_markup: homeKeyboard(want, categories),
         });
         return;
       }
@@ -313,8 +317,10 @@ export async function handleCommand(
 
   if (
     trimmed === MENU_LABEL_SETTINGS ||
+    trimmed === MENU_LABEL_SETTINGS_GLOBE_LEGACY ||
     trimmed === MENU_LABEL_SETTINGS_LEGACY ||
     trimmed === MENU_LABEL_EN.settings ||
+    trimmed === MENU_LABEL_EN.settingsGlobeLegacy ||
     trimmed === MENU_LABEL_EN.settingsLegacy
   ) {
     await clearPendingUnlessCreating(from);
@@ -382,13 +388,16 @@ export async function handleCommand(
   if (photoFileId && !trimmed) return;
 
   // Unknown command or single-character message: show welcome in saved locale.
-  const fallbackCtx = await tgCtxFor(from?.id ?? chatId).catch(() => ({ locale: "id" as const, displayCurrency: null, fx: null }));
+  const [fallbackCtx, categories] = await Promise.all([
+    tgCtxFor(from?.id ?? chatId).catch(() => ({ locale: "id" as const, displayCurrency: null, fx: null })),
+    readHomeTelegramCategories().catch(() => []),
+  ]);
   await sendMessage({
     chat_id: chatId,
     text: fallbackCtx.locale === "en"
       ? welcomeMessageLocalized(fallbackCtx.locale, from?.first_name ?? "Pengguna")
       : welcomeMessage(from?.first_name ?? "Pengguna"),
     parse_mode: "HTML",
-    reply_markup: homeKeyboard(fallbackCtx.locale),
+    reply_markup: homeKeyboard(fallbackCtx.locale, categories),
   });
 }

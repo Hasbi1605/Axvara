@@ -1,5 +1,14 @@
 # DESIGN.md — AXVARA Design System
 
+## Beranda kategori langsung & ikon bendera Bahasa Bot Telegram (`@Axvara_bot`) — 23 November 2026 (lokal)
+
+- **Caption welcome (`/start`, `welcomeMessageLocalized`):** ID `"Halo, {name} 👋\nSelamat datang di <b>AXVARA</b>, toko aplikasi &amp; tools premium dengan pengiriman otomatis 24 jam.\n\nPilih kategori di bawah untuk mulai belanja, atau ketik nama produk untuk mencari."` dan padanan EN (`"Hi, {name} 👋\nWelcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.\n\nPick a category below to start shopping, or type a product name to search."`).
+- **Susunan inline keyboard beranda (`homeKeyboard`):**
+  1. Grid 2 kolom kategori aktif siap beli (maksimal 6 kategori / 3 baris, `cat:<id>:0`, biru `primary`), otomatis diterjemahkan ke EN lewat `marketCategoryName` (`Streaming & Entertainment`, `Productivity & Office`, `Design & Video`, `Value Bundles`, dll.) baik di beranda, layar `cats:0`, maupun judul daftar produk kategori (`cat:<id>:0`).
+  2. Satu baris penuh CTA hijau (`style: "success"`): `🛍 Lihat Semua Katalog` / `🛍 View All Catalog` (`catalog:0`) sebagai pemisah visual antara blok kategori dan utilitas.
+  3. Dua baris utilitas biru (`primary`): `[📦 Pesanan Saya | 💬 Bantuan]` (`myorders` | `${SITE.webUrl}/wa`) dan `[🇮🇩 Bahasa | 🌐 Web]` / `[🇬🇧 Language | 🌐 Web]` (`settings` | `https://axvara.tech`).
+- **Ikon bendera Bahasa:** tombol Bahasa di `homeKeyboard` dan reply menu 2×2 (`mainReplyMenu`) memakai bendera bahasa aktif (`🇮🇩 Bahasa` / `🇬🇧 Language`) agar tidak kembar dengan `🌐 Web`; label reply lama (`🌐 Bahasa`, `🌐 Language`, `⚙️ Pengaturan`, `⚙️ Settings`) tetap dirutekan ke layar Bahasa.
+
 ## Foto katalog Market — 23 November 2026 (lokal)
 
 - LangSmith Plus dan Microsoft Copilot Premium memakai foto R2 baru (gaya tile 3D katalog); Email Student UNED memakai ulang foto Email Kampus Student (permintaan owner); migrasi tidak menimpa foto yang sudah diatur admin. Varian bergaransi ChatGPT Plus memakai foto produk induk yang sudah ada. Tidak ada perubahan komponen atau tata letak.

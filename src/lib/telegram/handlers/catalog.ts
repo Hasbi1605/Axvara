@@ -7,7 +7,7 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // merender pesan — tidak menyentuh uang/order. Mengisolasinya dari jalur invoice
 // membuat perubahan tampilan aman ditinjau. Pemindahan murni dari route.ts.
 
-import { queryFirst, queryAll, isD1Mode, getD1 } from "@/lib/db";
+import { queryFirst, isD1Mode } from "@/lib/db";
 import * as tgApi from "@/lib/telegram/api";
 import { sendMessage } from "@/lib/telegram/api";
 import {
@@ -19,7 +19,7 @@ import type { Locale } from "@/lib/i18n/locale";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { tgCtxFor, tgDisplayPrice, tgUsdAlternate, type TgCtx } from "@/lib/telegram/render-prefs";
 import {
-  catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
+  catalogFlatKeyboard, categoriesKeyboard, categoryDisplayName, productsKeyboard,
   variantsKeyboard, variantButtonDuration, cb, minimalMenuKeyboard,
   qtyKeyboard, reviewKeyboard, orderStatusKeyboard, TELEGRAM_MAX_QTY,
 } from "@/lib/telegram/keyboards";
@@ -37,48 +37,13 @@ import { productDisplayName } from "@/lib/i18n/product-name";
 import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { winnerForLoserProduct } from "@/lib/supplier-pairs";
-import { getCatalogRevision } from "@/lib/catalog-cache";
-import { unwrapD1 } from "@/lib/db-access";
+import { readTelegramCategories } from "@/lib/telegram/catalog-snapshot";
 import {
   clampQty, clearPendingAction, replaceWithPhoto, replaceWithText, runInBackground,
   sendOrReplaceCatalogPhoto, setPendingActionUnlessCreating, type ScreenSourceMeta,
 } from "./shared";
 
 type CatalogProduct = { id: number; name: string; price: number; stock: number };
-type CategoryRow = { id: number; name: string };
-type CategoriesMemo = { revision: string; expiresAt: number; items: CategoryRow[] };
-
-const CATEGORIES_MEMO_TTL_MS = 10_000;
-const categoriesMemoByD1 = new WeakMap<object, CategoriesMemo>();
-
-async function readTelegramCategories(): Promise<CategoryRow[]> {
-  let hasEdgeCache = false;
-  try {
-    hasEdgeCache = Boolean((globalThis as unknown as { caches?: { default?: unknown } }).caches?.default);
-  } catch { /* ignore */ }
-  let d1Key: object | null = null;
-  if (hasEdgeCache) {
-    try {
-      const raw = typeof getD1 === "function" ? getD1() : null;
-      if (raw) d1Key = unwrapD1(raw) as object | null;
-    } catch { /* ignore */ }
-  }
-  if (hasEdgeCache && d1Key) {
-    const memo = categoriesMemoByD1.get(d1Key);
-    if (memo && Date.now() < memo.expiresAt) {
-      const rev = await getCatalogRevision("market").catch(() => null);
-      if (rev && rev === memo.revision) return memo.items;
-    }
-  }
-  const rows = (await queryAll(`SELECT id, name FROM categories ORDER BY sort_order ASC`)) as unknown as CategoryRow[];
-  if (hasEdgeCache && d1Key) {
-    const rev = await getCatalogRevision("market").catch(() => null);
-    if (rev) {
-      categoriesMemoByD1.set(d1Key, { revision: rev, expiresAt: Date.now() + CATEGORIES_MEMO_TTL_MS, items: rows });
-    }
-  }
-  return rows;
-}
 
 function safeVariantDuration(
   v: {
@@ -167,16 +132,20 @@ export async function handleShowCategoriesEdit(chatId: number, messageId: number
 export async function handleShowProducts(chatId: number, messageId: number, categoryId: number, page: number, from?: { id: number }, sourceMeta?: ScreenSourceMeta) {
   const [ctx, category] = await Promise.all([
     tgCtx(from?.id ?? chatId),
-    queryFirst(`SELECT name FROM categories WHERE id=?`, categoryId),
+    queryFirst(`SELECT name, slug FROM categories WHERE id=?`, categoryId),
   ]);
   if (!category) return;
 
   const products = await listTelegramProducts(categoryId, ctx.locale);
+  const categoryName = categoryDisplayName(
+    { name: String(category.name), slug: category.slug == null ? null : String(category.slug) },
+    ctx.locale,
+  );
 
   await sendOrReplaceCatalogPhoto({
     chatId,
     messageId,
-    caption: categoryProductsMessage(String(category.name), products.length, { locale: ctx.locale }),
+    caption: categoryProductsMessage(categoryName, products.length, { locale: ctx.locale }),
     replyMarkup: productsKeyboard(products, categoryId, page, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
     sourceMeta,
   });

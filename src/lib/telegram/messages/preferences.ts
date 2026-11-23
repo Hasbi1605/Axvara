@@ -58,14 +58,14 @@ export function welcomeMessageLocalized(
       `Hi, ${name} 👋`,
       "Welcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.",
       "",
-      "🛍 Tap <b>Catalog</b> to start shopping, or type a product name to search.",
+      "Pick a category below to start shopping, or type a product name to search.",
     ].join("\n");
   }
   return [
     `Halo, ${name} 👋`,
     "Selamat datang di <b>AXVARA</b>, toko aplikasi &amp; tools premium dengan pengiriman otomatis 24 jam.",
     "",
-    "🛍 Ketuk <b>Katalog</b> untuk mulai belanja, atau ketik nama produk untuk mencari.",
+    "Pilih kategori di bawah untuk mulai belanja, atau ketik nama produk untuk mencari.",
   ].join("\n");
 }
 

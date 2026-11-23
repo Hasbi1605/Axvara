@@ -8,6 +8,7 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import type { InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup } from "./types";
 import { supportTelegramLink, SITE } from "@/lib/site";
 import type { DisplayCurrency, Locale } from "@/lib/i18n/locale";
+import { MARKET_CATEGORY_NAMES, marketCategoryName } from "@/lib/i18n/market-categories";
 import type { FxSnapshot } from "@/lib/payments/fx";
 import { tgDisplayPrice } from "./render-prefs";
 import { formatIdr } from "@/lib/i18n/format";
@@ -47,7 +48,8 @@ export const MENU_LABEL_ORDERS = "📦 Pesanan";
 export const MENU_LABEL_WARRANTY = "🛡 Garansi";
 export const MENU_LABEL_HELP = "💬 Bantuan";
 export const MENU_LABEL_HELP_LEGACY = "❓ Bantuan";
-export const MENU_LABEL_SETTINGS = "🌐 Bahasa";
+export const MENU_LABEL_SETTINGS = "🇮🇩 Bahasa";
+export const MENU_LABEL_SETTINGS_GLOBE_LEGACY = "🌐 Bahasa";
 export const MENU_LABEL_SETTINGS_LEGACY = "⚙️ Pengaturan";
 
 /**
@@ -226,25 +228,99 @@ export const MENU_LABEL_EN = {
   warranty: "🛡 Warranty",
   help: "💬 Help",
   helpLegacy: "❓ Help",
-  settings: "🌐 Language",
+  settings: "🇬🇧 Language",
+  settingsGlobeLegacy: "🌐 Language",
   settingsLegacy: "⚙️ Settings",
 } as const;
 
+export type TelegramCategoryItem = { id: number; name: string; slug?: string | null };
+
+const HOME_MAX_CATEGORIES = 6;
+
+// Category icon mapping — taksonomi 6 kategori (migrasi 0046).
+// Kunci slug & nama lama dipertahankan agar fixture/data pra-migrasi tetap berikon.
+const CATEGORY_ICON_BY_KEY: Record<string, string> = {
+  "ai-chatbot": "⚡",
+  "streaming-hiburan": "🎬",
+  "produktivitas-office": "💼",
+  "desain-video": "🎨",
+  "developer-tools": "🛠️",
+  "bundle-hemat": "📦",
+  "AI & Chatbot": "⚡",
+  "Streaming & Hiburan": "🎬",
+  "Produktivitas & Office": "💼",
+  "Desain & Video": "🎨",
+  "Developer & Tools": "🛠️",
+  "Bundle Hemat": "📦",
+  "AI Gateway": "⚡",
+  "Akun Premium": "👑",
+  "Tools Pro": "🛡",
+  "Bundle Kucing": "📦",
+};
+
+const CATEGORY_EN_BY_ID_NAME = new Map<string, string>(
+  Object.values(MARKET_CATEGORY_NAMES).map((entry) => [entry.id.toLowerCase(), entry.en]),
+);
+
+export function categoryDisplayName(
+  category: { name: string; slug?: string | null },
+  locale: Locale = "id",
+): string {
+  const slug = category.slug?.trim();
+  if (slug) return marketCategoryName(slug, locale, category.name);
+  if (locale === "en") {
+    const mapped = CATEGORY_EN_BY_ID_NAME.get(category.name.trim().toLowerCase());
+    if (mapped) return mapped;
+  }
+  return category.name;
+}
+
+export function categoryButtonText(category: TelegramCategoryItem, locale: Locale = "id"): string {
+  const slugKey = category.slug?.trim().toLowerCase();
+  const icon = (slugKey && CATEGORY_ICON_BY_KEY[slugKey]) || CATEGORY_ICON_BY_KEY[category.name] || "📂";
+  return `${icon} ${categoryDisplayName(category, locale)}`;
+}
+
+function buildCategoryGridRows(
+  categories: TelegramCategoryItem[],
+  locale: Locale = "id",
+): InlineKeyboardButton[][] {
+  const rows: InlineKeyboardButton[][] = [];
+  for (let i = 0; i < categories.length; i += 2) {
+    const row: InlineKeyboardButton[] = [
+      {
+        text: categoryButtonText(categories[i], locale),
+        callback_data: cb.category(categories[i].id),
+      },
+    ];
+    if (categories[i + 1]) {
+      row.push({
+        text: categoryButtonText(categories[i + 1], locale),
+        callback_data: cb.category(categories[i + 1].id),
+      });
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
 export function homeKeyboard(
   locale: "id" | "en" = "id",
-  _bestsellers: { productId: number; name: string; price: number; stock?: number }[] = [],
+  categories: TelegramCategoryItem[] = [],
   _ctx?: TgPriceCtx,
 ): InlineKeyboardMarkup {
   const en = locale === "en";
+  const categoryRows = buildCategoryGridRows(categories.slice(0, HOME_MAX_CATEGORIES), locale);
   return {
     inline_keyboard: [
-      [{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog(), style: "success" }],
+      ...categoryRows,
+      [{ text: en ? "🛍 View All Catalog" : "🛍 Lihat Semua Katalog", callback_data: cb.catalog(), style: "success" }],
       [
         { text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: cb.myOrders(), style: "primary" },
         { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa`, style: "primary" },
       ],
       [
-        { text: en ? "🌐 Language" : "🌐 Bahasa", callback_data: cb.settings() },
+        { text: en ? "🇬🇧 Language" : "🇮🇩 Bahasa", callback_data: cb.settings() },
         { text: "🌐 Web", url: SITE.webUrl },
       ],
     ],
@@ -284,45 +360,17 @@ export function catalogFlatKeyboard(
 }
 
 export function categoriesKeyboard(
-  categories: { id: number; name: string }[],
+  categories: TelegramCategoryItem[],
   page = 0,
   ctx?: TgLocaleCtx,
 ): InlineKeyboardMarkup {
-  const en = ctx?.locale === "en";
+  const locale: Locale = ctx?.locale ?? "id";
+  const en = locale === "en";
   const start = page * PER_PAGE;
   const pageItems = categories.slice(start, start + PER_PAGE);
 
-  // Category icon mapping — taksonomi 6 kategori (migrasi 0046).
-  // Nama lama dipertahankan sebagai alias agar data pra-migrasi tetap berikon.
-  const catIcon: Record<string, string> = {
-    "AI & Chatbot": "⚡",
-    "Streaming & Hiburan": "🎬",
-    "Produktivitas & Office": "💼",
-    "Desain & Video": "🎨",
-    "Developer & Tools": "🛠️",
-    "Bundle Hemat": "📦",
-    "AI Gateway": "⚡",
-    "Akun Premium": "👑",
-    "Tools Pro": "🛡",
-    "Bundle Kucing": "📦",
-  };
-
   // 2-column grid for categories (short labels, fits mobile)
-  const rows: InlineKeyboardButton[][] = [];
-  for (let i = 0; i < pageItems.length; i += 2) {
-    const row: InlineKeyboardButton[] = [];
-    row.push({
-      text: `${catIcon[pageItems[i].name] ?? "📂"} ${pageItems[i].name}`,
-      callback_data: cb.category(pageItems[i].id),
-    });
-    if (pageItems[i + 1]) {
-      row.push({
-        text: `${catIcon[pageItems[i + 1].name] ?? "📂"} ${pageItems[i + 1].name}`,
-        callback_data: cb.category(pageItems[i + 1].id),
-      });
-    }
-    rows.push(row);
-  }
+  const rows = buildCategoryGridRows(pageItems, locale);
 
   // Pagination
   const nav: InlineKeyboardButton[] = [];

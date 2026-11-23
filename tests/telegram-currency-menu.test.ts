@@ -52,7 +52,7 @@ beforeEach(() => {
 afterEach(() => { fx.close(); resetCryptoMarketMemo(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("Telegram currency follows language", () => {
-  it("native menu lists /bahasa and home/reply menus use 🌐 Bahasa / 🌐 Language without currency buttons", async () => {
+  it("native menu lists /bahasa and home/reply menus use 🇮🇩 Bahasa / 🇬🇧 Language without currency buttons", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:fixture");
     const fetchMock = vi.fn(async () => ({ json: async () => ({ ok: true, result: true }) }));
     vi.stubGlobal("fetch", fetchMock);
@@ -66,8 +66,8 @@ describe("Telegram currency follows language", () => {
 
     const id = JSON.stringify(homeKeyboard("id"));
     const en = JSON.stringify(homeKeyboard("en"));
-    expect(id).toContain("🌐 Bahasa");
-    expect(en).toContain("🌐 Language");
+    expect(id).toContain("🇮🇩 Bahasa");
+    expect(en).toContain("🇬🇧 Language");
     expect(id).toContain('"settings"');
     expect(en).toContain('"settings"');
     expect(id).toContain("https://axvara.tech");

@@ -57,9 +57,9 @@ describe("Telegram language menu", () => {
     const id = JSON.stringify(homeKeyboard("id"));
     const en = JSON.stringify(homeKeyboard("en"));
     expect(id).toContain('"settings"');
-    expect(id).toContain("🌐 Bahasa");
+    expect(id).toContain("🇮🇩 Bahasa");
     expect(en).toContain('"settings"');
-    expect(en).toContain("🌐 Language");
+    expect(en).toContain("🇬🇧 Language");
   });
 
   it("/bahasa opens the language-only screen with currency labels for a returning user without changing prefs", async () => {
@@ -90,7 +90,7 @@ describe("Telegram language menu", () => {
     expect(userRow(userA.id)).toMatchObject({ locale: "id", display_currency: "USD" });
     const lastEdit = api.edit.mock.calls.at(-1)![0];
     expect(String(lastEdit.text)).toMatch(/Halo/);
-    expect(JSON.stringify(lastEdit.reply_markup)).toContain("🌐 Bahasa");
+    expect(JSON.stringify(lastEdit.reply_markup)).toContain("🇮🇩 Bahasa");
   });
 
   it("settings callback opens language-only picker without currency buttons and without clearing pending_action", async () => {

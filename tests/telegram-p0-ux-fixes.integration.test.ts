@@ -10,7 +10,8 @@ import { handleOrderStatus } from "@/lib/telegram/handlers/orders";
 import { resendTelegramCredentials } from "@/lib/telegram/credential-delivery";
 import {
   MENU_LABEL_CATALOG, MENU_LABEL_ORDERS, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY,
-  MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_SEARCH, MENU_LABEL_WARRANTY, MENU_LABEL_EN,
+  MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_GLOBE_LEGACY, MENU_LABEL_SETTINGS_LEGACY,
+  MENU_LABEL_SEARCH, MENU_LABEL_WARRANTY, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { parsePayq1State } from "@/lib/telegram/payment-quote";
 import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
@@ -333,6 +334,11 @@ describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
     expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
 
     resetLog();
+    await handleCommand(MENU_LABEL_SETTINGS_GLOBE_LEGACY, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Bahasa");
+    expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
+
+    resetLog();
     await handleCommand(MENU_LABEL_SETTINGS_LEGACY, buyer.id, "private", buyer);
     expect(String(lastMsg().text)).toContain("Bahasa");
     expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
@@ -354,6 +360,11 @@ describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
 
     resetLog();
     await handleCommand(MENU_LABEL_EN.settings, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Language");
+    expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
+
+    resetLog();
+    await handleCommand(MENU_LABEL_EN.settingsGlobeLegacy, buyer.id, "private", buyer);
     expect(String(lastMsg().text)).toContain("Language");
     expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
 

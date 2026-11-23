@@ -23,7 +23,7 @@ const tg = vi.hoisted(() => ({
     result: { message_id: 102, photo: [{ file_id: "AgAC-mock-cat-id", width: 1536, height: 1024 }] },
   })),
   deleteMessage: vi.fn(async (_chatId?: number | string, _msgId?: number) => ({ ok: true })),
-  safeEditOrSend: vi.fn(async (params: { message_id?: number; text: string }) => {
+  safeEditOrSend: vi.fn(async (params: { message_id?: number; text: string; reply_markup?: unknown }) => {
     if (!params.message_id) return tg.sendMessage();
     return tg.editMessageText();
   }),
@@ -324,7 +324,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     expect(idMenu.keyboard).toHaveLength(2);
     expect(idMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
       ["🛍 Katalog", "📦 Pesanan"],
-      ["💬 Bantuan", "🌐 Bahasa"],
+      ["💬 Bantuan", "🇮🇩 Bahasa"],
     ]);
     expect(idMenu.is_persistent).toBe(false);
     expect(idMenu.resize_keyboard).toBe(true);
@@ -332,7 +332,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     const enMenu = mainReplyMenu("en");
     expect(enMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
       ["🛍 Catalog", "📦 Orders"],
-      ["💬 Help", "🌐 Language"],
+      ["💬 Help", "🇬🇧 Language"],
     ]);
 
     await handleCommand("/start", buyer.id, "private", buyer);
@@ -342,18 +342,18 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     const photoCall = tg.sendPhoto.mock.calls[0]?.[0];
     expect(photoCall?.photo).toContain("/banners/tg-welcome.jpg");
     expect(photoCall?.caption).toBe(
-      "Halo, Tester 👋\nSelamat datang di <b>AXVARA</b>, toko aplikasi &amp; tools premium dengan pengiriman otomatis 24 jam.\n\n🛍 Ketuk <b>Katalog</b> untuk mulai belanja, atau ketik nama produk untuk mencari.",
+      "Halo, Tester 👋\nSelamat datang di <b>AXVARA</b>, toko aplikasi &amp; tools premium dengan pengiriman otomatis 24 jam.\n\nPilih kategori di bawah untuk mulai belanja, atau ketik nama produk untuk mencari.",
     );
     expect(photoCall?.caption).not.toContain("Paling laris");
     const welcomeKb = photoCall?.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string; style?: string }[][] };
     expect(welcomeKb.inline_keyboard).toEqual([
-      [{ text: "🛍 Katalog", callback_data: "catalog:0", style: "success" }],
+      [{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }],
       [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
         { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
       ],
       [
-        { text: "🌐 Bahasa", callback_data: "settings" },
+        { text: "🇮🇩 Bahasa", callback_data: "settings" },
         { text: "🌐 Web", url: "https://axvara.tech" },
       ],
     ]);
@@ -405,7 +405,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     await flushWaitUntil(waitUntilTasks.splice(0));
     expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
     expect(tg.sendPhoto.mock.calls[0]?.[0]?.caption).toBe(
-      "Hi, Tester 👋\nWelcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.\n\n🛍 Tap <b>Catalog</b> to start shopping, or type a product name to search.",
+      "Hi, Tester 👋\nWelcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.\n\nPick a category below to start shopping, or type a product name to search.",
     );
     expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 77);
     expect(tg.sendMessage).toHaveBeenCalledTimes(1);
@@ -485,7 +485,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     expect(ik.inline_keyboard.flat().find((b) => b.callback_data === "cancel:AXV-1")?.style).toBe("danger");
 
     const hk = homeKeyboard("id");
-    expect(hk.inline_keyboard[0][0]).toMatchObject({ text: "🛍 Katalog", callback_data: "catalog:0", style: "success" });
+    expect(hk.inline_keyboard[0][0]).toMatchObject({ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" });
     expect(hk.inline_keyboard[1][0]?.style).toBe("primary");
 
     const vk = variantsKeyboard(9, [
@@ -498,5 +498,98 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
 
     const methodDetails = paymentMethodOfferDetails([{ kind: "qris", label: "QRIS Dinamis" }]);
     expect(methodDetails).toEqual(["QRIS: semua e-wallet &amp; m-banking."]);
+  });
+
+  it("renders non-empty categories directly on /start above View All Catalog, auto-translates in EN, and transitions cat:* via editMessageMedia", async () => {
+    // Seed purchasable Telegram products in 5 categories (leave id=4 Bundle Hemat empty).
+    fx.sql.prepare("UPDATE products SET category_id=1 WHERE id=1").run();
+    const extraProducts: [number, number, string, string][] = [
+      [2, 2, "Spotify Premium", "spotify-premium"],
+      [3, 3, "Notion Plus", "notion-plus"],
+      [4, 5, "Canva Pro", "canva-pro"],
+      [5, 6, "Surfshark VPN", "surfshark-vpn"],
+    ];
+    for (const [id, catId, name, slug] of extraProducts) {
+      fx.sql.prepare(
+        "INSERT INTO products(id,category_id,name,slug,price,stock,is_active,telegram_enabled) VALUES(?,?,?,?,20000,10,1,1)",
+      ).run(id, catId, name, slug);
+      fx.sql.prepare(
+        "INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,is_active) VALUES(?,?,?,?,20000,10,'manual',1)",
+      ).run(id + 10, id, `SKU-CAT-${id}`, "1 Bulan");
+    }
+
+    // 1. Indonesian /start: 5 non-empty categories (3 rows) -> Lihat Semua Katalog -> Pesanan/Bantuan -> 🇮🇩 Bahasa/Web.
+    tg.sendPhoto.mockClear();
+    await handleCommand("/start", buyer.id, "private", buyer);
+    const idKb = tg.sendPhoto.mock.calls.at(-1)?.[0]?.reply_markup as {
+      inline_keyboard: { text: string; callback_data?: string; url?: string; style?: string }[][];
+    };
+    expect(idKb.inline_keyboard).toEqual([
+      [
+        { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
+        { text: "🎬 Streaming & Hiburan", callback_data: "cat:2:0" },
+      ],
+      [
+        { text: "💼 Produktivitas & Office", callback_data: "cat:3:0" },
+        { text: "🎨 Desain & Video", callback_data: "cat:5:0" },
+      ],
+      [{ text: "🛠️ Developer & Tools", callback_data: "cat:6:0" }],
+      [{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
+        { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
+      ],
+      [
+        { text: "🇮🇩 Bahasa", callback_data: "settings" },
+        { text: "🌐 Web", url: "https://axvara.tech" },
+      ],
+    ]);
+
+    // 2. Switch to English via callback: home keyboard updates with translated categories & 🇬🇧 Language.
+    tg.safeEditOrSend.mockClear();
+    tg.editMessageText.mockClear();
+    await handleCallback("lang:en", buyer.id, 55, buyer, "cb-switch-en");
+    const enEditKb = tg.safeEditOrSend.mock.calls.at(-1)?.[0]?.reply_markup as {
+      inline_keyboard: { text: string; callback_data?: string; url?: string; style?: string }[][];
+    };
+    expect(enEditKb.inline_keyboard.slice(0, 4)).toEqual([
+      [
+        { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
+        { text: "🎬 Streaming & Entertainment", callback_data: "cat:2:0" },
+      ],
+      [
+        { text: "💼 Productivity & Office", callback_data: "cat:3:0" },
+        { text: "🎨 Design & Video", callback_data: "cat:5:0" },
+      ],
+      [{ text: "🛠️ Developer & Tools", callback_data: "cat:6:0" }],
+      [{ text: "🛍 View All Catalog", callback_data: "catalog:0", style: "success" }],
+    ]);
+    expect(enEditKb.inline_keyboard[5]).toEqual([
+      { text: "🇬🇧 Language", callback_data: "settings" },
+      { text: "🌐 Web", url: "https://axvara.tech" },
+    ]);
+
+    // 3. Tapping a category directly from the welcome photo uses editMessageMedia to swap to catalog photo with localized EN category heading.
+    tg.editMessageMedia.mockClear();
+    tg.editMessageCaption.mockClear();
+    await POST(req({
+      update_id: 9099,
+      callback_query: {
+        id: "cq-home-cat-en",
+        from: buyer,
+        message: {
+          message_id: 200,
+          chat: { id: buyer.id },
+          photo: [{ file_id: "welcome-photo" }],
+          caption: "Hi, Tester 👋\nWelcome to AXVARA",
+        },
+        data: "cat:2:0",
+      },
+    }));
+    expect(tg.editMessageMedia).toHaveBeenCalledTimes(1);
+    expect(tg.editMessageCaption).not.toHaveBeenCalled();
+    const mediaCall = tg.editMessageMedia.mock.calls[0]?.[0];
+    expect(mediaCall?.media.media).toContain("/banners/tg-catalog.jpg?v=");
+    expect(mediaCall?.media.caption).toContain("<b>Streaming &amp; Entertainment</b>");
   });
 });

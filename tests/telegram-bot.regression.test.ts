@@ -131,31 +131,85 @@ describe("Telegram callback data", () => {
 });
 
 describe("Telegram keyboards", () => {
-  it("home keyboard has exact simplified 3-row layout in ID and EN without bestsellers/cart/search/warranty", () => {
-    const idKb = homeKeyboard("id");
-    expect(idKb.inline_keyboard).toEqual([
-      [{ text: "🛍 Katalog", callback_data: "catalog:0", style: "success" }],
+  it("home keyboard places categories above View All Catalog and uses flag icons for Language", () => {
+    const idEmpty = homeKeyboard("id");
+    expect(idEmpty.inline_keyboard).toEqual([
+      [{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }],
       [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
         { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
       ],
       [
-        { text: "🌐 Bahasa", callback_data: "settings" },
+        { text: "🇮🇩 Bahasa", callback_data: "settings" },
         { text: "🌐 Web", url: "https://axvara.tech" },
       ],
     ]);
 
-    const enKb = homeKeyboard("en");
-    expect(enKb.inline_keyboard).toEqual([
-      [{ text: "🛍 Catalog", callback_data: "catalog:0", style: "success" }],
+    const enEmpty = homeKeyboard("en");
+    expect(enEmpty.inline_keyboard).toEqual([
+      [{ text: "🛍 View All Catalog", callback_data: "catalog:0", style: "success" }],
       [
         { text: "📦 My Orders", callback_data: "myorders", style: "primary" },
         { text: "💬 Help", url: "https://axvara.tech/wa", style: "primary" },
       ],
       [
-        { text: "🌐 Language", callback_data: "settings" },
+        { text: "🇬🇧 Language", callback_data: "settings" },
         { text: "🌐 Web", url: "https://axvara.tech" },
       ],
+    ]);
+
+    const cats = [
+      { id: 1, name: "AI & Chatbot", slug: "ai-chatbot" },
+      { id: 2, name: "Streaming & Hiburan", slug: "streaming-hiburan" },
+      { id: 3, name: "Produktivitas & Office", slug: "produktivitas-office" },
+      { id: 5, name: "Desain & Video", slug: "desain-video" },
+      { id: 6, name: "Developer & Tools", slug: "developer-tools" },
+    ];
+    const idWithCats = homeKeyboard("id", cats);
+    expect(idWithCats.inline_keyboard).toEqual([
+      [
+        { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
+        { text: "🎬 Streaming & Hiburan", callback_data: "cat:2:0" },
+      ],
+      [
+        { text: "💼 Produktivitas & Office", callback_data: "cat:3:0" },
+        { text: "🎨 Desain & Video", callback_data: "cat:5:0" },
+      ],
+      [{ text: "🛠️ Developer & Tools", callback_data: "cat:6:0" }],
+      [{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
+        { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
+      ],
+      [
+        { text: "🇮🇩 Bahasa", callback_data: "settings" },
+        { text: "🌐 Web", url: "https://axvara.tech" },
+      ],
+    ]);
+
+    const enWithCats = homeKeyboard("en", [
+      ...cats,
+      { id: 4, name: "Bundle Hemat", slug: "bundle-hemat" },
+      { id: 7, name: "Extra Cat", slug: "extra-cat" },
+    ]);
+    // Capped at 6 categories (3 rows) + View All Catalog + 2 utility rows = 6 rows total.
+    expect(enWithCats.inline_keyboard).toHaveLength(6);
+    expect(enWithCats.inline_keyboard.slice(0, 3)).toEqual([
+      [
+        { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
+        { text: "🎬 Streaming & Entertainment", callback_data: "cat:2:0" },
+      ],
+      [
+        { text: "💼 Productivity & Office", callback_data: "cat:3:0" },
+        { text: "🎨 Design & Video", callback_data: "cat:5:0" },
+      ],
+      [
+        { text: "🛠️ Developer & Tools", callback_data: "cat:6:0" },
+        { text: "📦 Value Bundles", callback_data: "cat:4:0" },
+      ],
+    ]);
+    expect(enWithCats.inline_keyboard[3]).toEqual([
+      { text: "🛍 View All Catalog", callback_data: "catalog:0", style: "success" },
     ]);
 
     const snr = searchNoResultsKeyboard({ locale: "id" });
@@ -183,6 +237,19 @@ describe("Telegram keyboards", () => {
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
     expect(allTexts.some(t => t.includes("⚡"))).toBe(true); // AI Gateway icon
     expect(allTexts.some(t => t.includes("👑"))).toBe(true); // Akun Premium icon
+
+    const enKb = categoriesKeyboard(
+      [
+        { id: 2, name: "Streaming & Hiburan", slug: "streaming-hiburan" },
+        { id: 5, name: "Desain & Video", slug: "desain-video" },
+      ],
+      0,
+      { locale: "en" },
+    );
+    expect(enKb.inline_keyboard[0]).toEqual([
+      { text: "🎬 Streaming & Entertainment", callback_data: "cat:2:0" },
+      { text: "🎨 Design & Video", callback_data: "cat:5:0" },
+    ]);
   });
 
   it("categories keyboard paginates", () => {

@@ -24,6 +24,7 @@ import {
   readTgPreferences, saveTgLocaleChoice, saveTgLocaleOnly, isValidTgLocale,
 } from "@/lib/telegram/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
+import { readHomeTelegramCategories } from "@/lib/telegram/catalog-snapshot";
 import { clearPendingAction, installReplyMenu, replaceWithText, sendTgHome, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
 import {
   handleShowCatalogEdit, handleShowCategoriesEdit, handleShowProducts,
@@ -152,12 +153,15 @@ export async function handleCallback(
           installMenu: true,
         });
       } else {
-        const { welcomeMessageLocalized } = await import("@/lib/telegram/messages/preferences");
+        const [{ welcomeMessageLocalized }, categories] = await Promise.all([
+          import("@/lib/telegram/messages/preferences"),
+          readHomeTelegramCategories().catch(() => []),
+        ]);
         await safeEditOrSend({
           chat_id: chatId, message_id: messageId,
           text: welcomeMessageLocalized(savedLocale, from.first_name),
           parse_mode: "HTML",
-          reply_markup: homeKeyboard(savedLocale),
+          reply_markup: homeKeyboard(savedLocale, categories),
         });
         installReplyMenu(chatId, savedLocale);
       }
@@ -256,8 +260,11 @@ export async function handleCallback(
           await clearPendingAction(from);
         }
       }
-      const { welcomeMessageLocalized: homeWelcome } = await import("@/lib/telegram/messages/preferences");
-      const homeCtx = await tgCtxFor(from.id);
+      const [{ welcomeMessageLocalized: homeWelcome }, homeCtx, categories] = await Promise.all([
+        import("@/lib/telegram/messages/preferences"),
+        tgCtxFor(from.id),
+        readHomeTelegramCategories().catch(() => []),
+      ]);
       if (sourceMeta?.isPhoto || sourceMeta?.isProtected || !messageId) {
         await sendTgHome({
           chatId,
@@ -266,6 +273,7 @@ export async function handleCallback(
           userId: from.id,
           replaceMessageId: messageId,
           sourceMeta,
+          categories,
           ctx: homeCtx,
           installMenu: false,
         });
@@ -275,7 +283,7 @@ export async function handleCallback(
         chat_id: chatId, message_id: messageId,
         text: homeWelcome(homeCtx.locale, from.first_name),
         parse_mode: "HTML",
-        reply_markup: homeKeyboard(homeCtx.locale),
+        reply_markup: homeKeyboard(homeCtx.locale, categories),
       }, sourceMeta);
       break;
     }

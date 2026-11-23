@@ -180,7 +180,7 @@ export async function handleMyOrders(
     parse_mode: "HTML",
     reply_markup: orders.length > 0
       ? myOrdersKeyboard(orders.map((order) => ({ code: order.code, productId: order.productId ?? null })), { locale: ctx.locale })
-      : homeKeyboard(ctx.locale),
+      : homeKeyboard(ctx.locale, await import("@/lib/telegram/catalog-snapshot").then((m) => m.readHomeTelegramCategories()).catch(() => [])),
   }, sourceMeta);
 }
 

@@ -12,14 +12,29 @@ export type TelegramCatalogProduct = {
   stock: number;
 };
 
+export type TelegramCategoryRow = {
+  id: number;
+  name: string;
+  slug: string | null;
+};
+
+export const HOME_MAX_CATEGORIES = 6;
+
 type CatalogMemoEntry = {
   revision: string;
   expiresAt: number;
   items: TelegramCatalogProduct[];
 };
 
+type CategoriesMemoEntry = {
+  revision: string;
+  expiresAt: number;
+  items: TelegramCategoryRow[];
+};
+
 const ISOLATE_CATALOG_TTL_MS = 10_000;
 const catalogMemoByD1 = new WeakMap<object, CatalogMemoEntry>();
+const categoriesMemoByD1 = new WeakMap<object, CategoriesMemoEntry>();
 
 function edgeCachePresent(): boolean {
   try {
@@ -86,6 +101,57 @@ export async function readTelegramCatalog(): Promise<TelegramCatalogProduct[]> {
     });
   }
   return items;
+}
+
+export async function readTelegramCategories(): Promise<TelegramCategoryRow[]> {
+  const hasEdgeCache = edgeCachePresent();
+  const d1Key = hasEdgeCache ? resolveMemoD1Key() : null;
+  if (hasEdgeCache && d1Key) {
+    const memo = categoriesMemoByD1.get(d1Key);
+    if (memo && Date.now() < memo.expiresAt) {
+      const rev = await getCatalogRevision("market").catch(() => null);
+      if (rev && rev === memo.revision) return memo.items;
+    }
+  }
+  const rawRows = (await queryAll(`SELECT id, name, slug FROM categories ORDER BY sort_order ASC`)) as unknown as Record<string, unknown>[];
+  const items: TelegramCategoryRow[] = rawRows.map((row) => ({
+    id: Number(row.id),
+    name: String(row.name ?? ""),
+    slug: row.slug == null ? null : String(row.slug),
+  }));
+  if (hasEdgeCache && d1Key) {
+    const rev = await getCatalogRevision("market").catch(() => null);
+    if (rev) {
+      categoriesMemoByD1.set(d1Key, {
+        revision: rev,
+        expiresAt: Date.now() + ISOLATE_CATALOG_TTL_MS,
+        items,
+      });
+    }
+  }
+  return items;
+}
+
+/**
+ * Kategori untuk layar `/start` & beranda Telegram: hanya kategori yang punya
+ * minimal 1 produk aktif siap beli, dibatasi maks 6 agar muat rapi di HP.
+ * Jika pembacaan katalog gagal sementara, fallback ke daftar kategori mentah.
+ */
+export async function readHomeTelegramCategories(): Promise<TelegramCategoryRow[]> {
+  const [categories, catalog] = await Promise.all([
+    readTelegramCategories(),
+    readTelegramCatalog().catch(() => null),
+  ]);
+  if (!categories.length) return [];
+  if (!catalog) return categories.slice(0, HOME_MAX_CATEGORIES);
+  const activeCategoryIds = new Set<number>();
+  for (const row of catalog) {
+    if (row.price !== null && row.category_id != null) {
+      activeCategoryIds.add(row.category_id);
+    }
+  }
+  if (activeCategoryIds.size === 0) return [];
+  return categories.filter((c) => activeCategoryIds.has(c.id)).slice(0, HOME_MAX_CATEGORIES);
 }
 
 /** SQL LIKE's %/_ wildcards, without a user-controlled regex/backtracking. */

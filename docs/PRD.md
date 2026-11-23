@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Beranda kategori langsung & ikon bendera Bahasa Bot Telegram (`@Axvara_bot`) — 23 November 2026 (lokal)
+
+- **Beranda `/start` langsung menampilkan kategori:** saat pembeli mengetuk `/start` (atau kembali ke beranda / mengganti bahasa), pesan sambutan langsung menampilkan grid kategori aktif yang memiliki produk siap beli di Telegram (maksimal 6 kategori / 3 baris), diikuti tombol hijau penuh **🛍 Lihat Semua Katalog** (`🛍 View All Catalog`), lalu 2 baris utilitas (**Pesanan Saya**, **Bantuan**, **🇮🇩 Bahasa** / **🇬🇧 Language**, dan **🌐 Web**).
+- **Lokalisasi kategori otomatis (ID/EN):** nama kategori di beranda, daftar kategori (`cats:0`), dan judul halaman produk kategori (`cat:<id>:0`) diterjemahkan otomatis saat bahasa English aktif berdasarkan mapping slug `marketCategoryName`.
+- **Kompatibilitas penuh:** tombol reply keyboard lama (`🌐 Bahasa`, `🌐 Language`, `⚙️ Pengaturan`, `⚙️ Settings`) dan callback lama (`cats:0`, `catalog:0`, `home`) tetap berfungsi tanpa error.
+
 ## Penghapusan skema keranjang Bot Telegram — 23 November 2026 (lokal)
 
 - Keranjang belanja **hanya ada di storefront web**; seluruh skema, perilaku, perintah (`/cart`, `/keranjang`), callback, dan tabel `telegram_carts` di Bot Telegram (`@Axvara_bot`) telah dihapus penuh atas keputusan owner (migrasi `0161_drop_telegram_carts.sql`).

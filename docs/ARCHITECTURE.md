@@ -1,5 +1,13 @@
 # ARCHITECTURE.md — AXVARA
 
+## Beranda kategori langsung, terjemahan kategori EN & ikon bendera Bahasa Bot Telegram — 23 November 2026 (lokal)
+
+- **Loader kategori bersama (`src/lib/telegram/catalog-snapshot.ts`):** `readTelegramCategories()` (`SELECT id, name, slug FROM categories ORDER BY sort_order ASC`, memo isolate 10 detik berbasis `getCatalogRevision("market")`) dipindah dari `handlers/catalog.ts` ke `catalog-snapshot.ts` bersama `readHomeTelegramCategories()` yang menyaring hanya kategori dengan minimal 1 produk aktif siap beli di `readTelegramCatalog()` dan membatasi maks `HOME_MAX_CATEGORIES = 6` baris (fallback ke daftar kategori mentah jika pembacaan katalog gagal).
+- **Keyboard beranda & lokalisasi kategori (`src/lib/telegram/keyboards.ts`, `src/lib/telegram/handlers/{shared,callback,command,discovery,catalog}.ts`, `src/lib/telegram/messages/preferences.ts`):**
+  - `homeKeyboard(locale, categories)` merender grid kategori 2 kolom di atas `🛍 Lihat Semua Katalog` / `🛍 View All Catalog` (`catalog:0`, `style: "success"`), diikuti `[📦 Pesanan Saya | 💬 Bantuan]` dan `[🇮🇩 Bahasa | 🌐 Web]` / `[🇬🇧 Language | 🌐 Web]`.
+  - `categoryDisplayName` dan `categoryButtonText` memanfaatkan `marketCategoryName` (`src/lib/i18n/market-categories.ts`) agar nama kategori diterjemahkan otomatis di mode EN pada `homeKeyboard`, `categoriesKeyboard`, dan caption `handleShowProducts` (`cat:<id>:0`).
+  - `MENU_LABEL_SETTINGS` (`🇮🇩 Bahasa`) dan `MENU_LABEL_EN.settings` (`🇬🇧 Language`) memperbarui reply menu 2×2; konstanta legacy `MENU_LABEL_SETTINGS_GLOBE_LEGACY` (`🌐 Bahasa`) dan `MENU_LABEL_EN.settingsGlobeLegacy` (`🌐 Language`) tetap dirutekan di `handlers/command.ts`.
+
 ## Penghapusan skema keranjang Bot Telegram — 23 November 2026 (lokal)
 
 - **Keputusan owner:** keranjang belanja hanya ada di storefront **web** (`src/store/cart.ts`); seluruh skema, tabel, perintah, callback, pesan, keyboard, dan handler keranjang Bot Telegram (`@Axvara_bot`) dihapus penuh.
