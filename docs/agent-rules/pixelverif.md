@@ -1,5 +1,9 @@
 # Aturan agent — Pixel Verification (Google AI Pro 3 bulan)
 
+## Env produksi — 23 November 2026
+
+- Atas permintaan owner, empat env Pages `secret_text` dipasang: `PIXELVERIF_API_KEY`, `PIXELVERIF_API_BASE_URL` (bawaan `https://api.pixelverification.me`), `PIXELVERIF_ENABLED=true`, `PIXELVERIF_SYNC_ENABLED=true`. Sumber lokal `.pixelverification-credentials` (mode 600, git-ignored); backup di `.pages-env-backup` `[production]`. Jangan cetak/commit nilainya. Uji baca-saja saat pasang: saldo 5 kredit, harga normal 1 / full 1,5. Produk dan varian tetap nonaktif sampai admin sinkron katalog dan mengaktifkan; ini bukan bukti order nyata.
+
 ## Copy whitelabel + kebijakan refund — 23 November 2026 (lokal, belum dideploy)
 
 - Keputusan owner: semua teks pembeli 100% whitelabel — jangan sebut nama mitra (Pixel Verification, Tanvir, `pvsk_`), kata "supplier"/"pemasok"/"mitra"; proses disebut "bot otomatis". Nama internal (kode, admin, env) tetap `pixelverif`. Dijaga `tests/pixelverif-copy.test.ts`.

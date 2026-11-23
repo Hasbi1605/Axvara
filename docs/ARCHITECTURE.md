@@ -4266,6 +4266,7 @@ berkas kredensial git-ignored mode `600` di checkout utama; jangan mengutip nila
 | --- | --- | --- |
 | StoreBat | `STOREBAT_API_KEY`, `STOREBAT_BASE_URL`, `STOREBAT_ENABLED`, `STOREBAT_SYNC_ENABLED` | Konfigurasi valid + `STOREBAT_ENABLED=true` untuk dispatch; konfigurasi valid + `STOREBAT_SYNC_ENABLED=true` untuk sync. |
 | Mirai | `MIRAI_API_KEY`, `MIRAI_BASE_URL`, `MIRAI_ENABLED`, `MIRAI_SYNC_ENABLED` | Konfigurasi valid + **kedua** flag `true` untuk sync maupun dispatch. |
+| Pixel Verification | `PIXELVERIF_API_KEY`, `PIXELVERIF_API_BASE_URL`, `PIXELVERIF_ENABLED`, `PIXELVERIF_SYNC_ENABLED` | Key valid + URL HTTPS + `PIXELVERIF_ENABLED=true` untuk konfigurasi/saldo; + `PIXELVERIF_SYNC_ENABLED=true` untuk sync katalog dan dispatch. |
 
 Flag default OFF. URL punya fallback HTTPS di klien masing-masing; tanpa key
 atau dengan URL tidak valid integrasi tidak fetch. PM memasang delapan env
@@ -4273,6 +4274,14 @@ produksi setelah push (sync dan dispatch ON, produk tetap OFF); tidak ada klaim
 env telah dipasang/deploy. Lihat [aturan StoreBat](agent-rules/storebat.md) dan
 [Mirai](agent-rules/mirai.md). Pengubah ambang saldo opsional bukan bagian dari
 delapan env rollout.
+
+**Pixel Verification (23 November 2026):** empat env di tabel atas dipasang owner-approved
+sebagai `secret_text` lewat PATCH berisi empat kunci itu saja (84 → 88 nama, tidak ada kunci
+hilang); `.pages-env-backup` bagian `[production]` diperbarui (dry-run restore memuatnya).
+Sumber lokal `.pixelverification-credentials` (mode 600, git-ignored). Uji baca-saja
+`GET /api/credits` 200 (saldo 5 kredit, rate limit 20/menit) dan `/api/pricing` 200 (validity 3;
+normal 1, full 1,5). Berlaku di deployment Pages berikutnya; produk/varian tetap nonaktif sampai
+admin sinkron dan mengaktifkan. `PIXELVERIF_BALANCE_ALERT_CREDITS` tidak dipasang (default 5).
 
 #### Cadangan & pemulihan env (10 November 2026)
 
