@@ -57,7 +57,7 @@ export function HelpSheet({ onClose }: { onClose: () => void }) {
         <div className="mt-4 grid grid-cols-2 gap-2.5">
           <StoreWhatsAppLink
             message="saya butuh bantuan"
-            className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white transition hover:border-[#25D366]/50"
+            className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/[0.12] bg-gradient-to-b from-white/[0.07] to-white/[0.025] px-3 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(255,255,255,0.02)] transition hover:border-[#25D366]/45 hover:from-white/[0.11] hover:to-white/[0.045]"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /> WA Admin
@@ -67,7 +67,7 @@ export function HelpSheet({ onClose }: { onClose: () => void }) {
             target="_blank"
             rel="noreferrer"
             aria-label={`Telegram @${SITE.supportTelegram}`}
-            className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white transition hover:border-[#229ED9]/50"
+            className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/[0.12] bg-gradient-to-b from-white/[0.07] to-white/[0.025] px-3 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.12),inset_0_-1px_0_rgba(255,255,255,0.02)] transition hover:border-[#2AABEE]/45 hover:from-white/[0.11] hover:to-white/[0.045]"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /> Telegram
