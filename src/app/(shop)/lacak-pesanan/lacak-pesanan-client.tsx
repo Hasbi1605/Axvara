@@ -468,20 +468,24 @@ export default function LacakPesananClient() {
     return "upcoming";
   };
 
-  const widePaidResult = Boolean(order && isPaid && !adminView);
+  const widePaidResult = Boolean(order && isPaid);
 
   return (
     <div className={`mx-auto max-w-[720px] px-4 py-10 sm:px-6${widePaidResult ? " lg:max-w-[1080px] lg:px-8 lg:py-8" : ""}`}>
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/75">{ui.lacak.eyebrow}</p>
       <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">{ui.lacak.h1}</h1>
       {adminView ? (
-        <div className="ax-glass-card mt-5 rounded-2xl p-4" aria-label="Akses admin">
-          <p className="text-sm text-white/70">Melihat pesanan pembeli melalui sesi admin.</p>
-          {loading && <p role="status" className="mt-2 text-sm text-white/60">Memuat pesanan…</p>}
-          {(error || pollError) && <p role="alert" className="mt-2 text-sm text-red-300">{error || pollError}</p>}
-          <Link href="/admin" prefetch={false} target="_blank" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[#00E5FF]">Buka / masuk panel admin</Link>
-          {isPediaCode(code) && <a href="/admin?section=pedia&tab=orders" className="ml-4 inline-flex min-h-11 items-center text-sm font-semibold text-[#00E5FF]">Buka di Admin → Pedia → Pesanan</a>}
-          <button type="button" disabled={loading} onClick={() => void lookup(code, "")} className="ml-4 min-h-11 text-sm text-white/70">Muat ulang pesanan</button>
+        <div className={`ax-glass-card mt-5 rounded-2xl p-4${widePaidResult ? " lg:flex lg:flex-wrap lg:items-center lg:justify-between lg:gap-4 lg:px-6" : ""}`} aria-label="Akses admin">
+          <div>
+            <p className="text-sm text-white/70">Melihat pesanan pembeli melalui sesi admin.</p>
+            {loading && <p role="status" className="mt-2 text-sm text-white/60">Memuat pesanan…</p>}
+            {(error || pollError) && <p role="alert" className="mt-2 text-sm text-red-300">{error || pollError}</p>}
+          </div>
+          <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-1${widePaidResult ? " lg:mt-0" : ""}`}>
+            <Link href="/admin" prefetch={false} target="_blank" className="inline-flex min-h-11 items-center text-sm font-semibold text-[#00E5FF]">Buka / masuk panel admin</Link>
+            {isPediaCode(code) && <a href="/admin?section=pedia&tab=orders" className="inline-flex min-h-11 items-center text-sm font-semibold text-[#00E5FF]">Buka di Admin → Pedia → Pesanan</a>}
+            <button type="button" disabled={loading} onClick={() => void lookup(code, "")} className="min-h-11 text-sm text-white/70 transition hover:text-white">Muat ulang pesanan</button>
+          </div>
         </div>
       ) : <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
         {ui.lacak.lead}
@@ -866,7 +870,7 @@ export default function LacakPesananClient() {
 
           <div className={widePaidResult ? "text-center lg:mt-6 lg:border-t lg:border-white/10 lg:pt-4" : "text-center"}>
             {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className={`mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white${widePaidResult ? " lg:mt-0" : ""}`}>{ui.lacak.another}</button>}
-            <p className={`${widePaidResult ? "mt-3 lg:mt-1" : "mt-3"} text-center text-[11px] leading-5 text-white/65`}>{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
+            <p className={`${widePaidResult ? (adminView ? "mt-3 lg:mt-0" : "mt-3 lg:mt-1") : "mt-3"} text-center text-[11px] leading-5 text-white/65`}>{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
           </div>
         </div>
       )}

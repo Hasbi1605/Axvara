@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
-vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams(),usePathname:()=>'/lacak-pesanan'}));
+let mockSearchParams = new URLSearchParams();
+vi.mock('next/navigation',()=>({useSearchParams:()=>mockSearchParams,usePathname:()=>'/lacak-pesanan'}));
 vi.mock('@/components/storefront/WrCredentialsPanel',()=>({WrCredentialsPanel:({deliveryProgress}:{deliveryProgress?:{ready:number;total:number}})=><div data-testid="progress">{deliveryProgress?.ready}/{deliveryProgress?.total}</div>}));
 vi.mock('@/components/storefront/StoreWhatsAppLink',()=>({StoreWhatsAppLink:({children}:{children:React.ReactNode})=><a>{children}</a>}));
 vi.mock('@/components/storefront/DeviceOrders',()=>({DeviceOrders:()=>null}));
 import Page from '@/app/(shop)/lacak-pesanan/lacak-pesanan-client';
-afterEach(()=>{cleanup();vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals();localStorage.clear()});
+afterEach(()=>{mockSearchParams=new URLSearchParams();cleanup();vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals();localStorage.clear()});
 it('polls 1/3 through 3/3, pauses hidden, backs off 429 and never overlaps requests',async()=>{
  vi.useFakeTimers();let hidden=false;vi.spyOn(document,'hidden','get').mockImplementation(()=>hidden);
  vi.stubGlobal('requestAnimationFrame',()=>1);
@@ -139,4 +140,51 @@ it('uses the 2-column desktop layout for paid lookup results while keeping pre-l
  await act(async () => { fireEvent.submit(contact.closest('form')!); });
  expect((container.firstElementChild as HTMLElement).className).not.toContain('lg:max-w-[1080px]');
  expect(container.querySelector('[class*="lg:grid-cols-[minmax(0,1fr)_380px]"]')).toBeNull();
+});
+
+it('uses the same 1-frame 2-column desktop layout for admin=1 paid orders and stays compact for pending/401', async () => {
+ vi.stubGlobal('requestAnimationFrame', () => 1);
+ mockSearchParams = new URLSearchParams('code=AXV-20261124-ADMIN2CL&admin=1');
+ let status = 'lunas';
+ let httpStatus = 200;
+ const fetcher = vi.fn(async () => {
+  if (httpStatus !== 200) return Response.json({ error: 'Sesi admin diperlukan.' }, { status: httpStatus });
+  return Response.json({
+   order: {
+    code: 'AXV-20261124-ADMIN2CL',
+    customer_name: 'Egga Coba',
+    customer_wa: '0812****7890',
+    status,
+    items: [{ name: 'ChatGPT Plus Private — Plus 1 Bulan (Apple Pay)', price: 103100, qty: 1 }],
+    subtotal: 103100,
+    payment_method: 'qris',
+    credentials_ready: status === 'lunas',
+    buyer_pin_required: true,
+    supplier_running: false,
+    fulfillment_status: status === 'lunas' ? 'delivered' : null,
+   },
+  });
+ });
+ vi.stubGlobal('fetch', fetcher);
+ const { container } = render(<Page />);
+ await act(async () => {});
+
+ expect(screen.getByLabelText('Akses admin')).toBeTruthy();
+ expect(screen.queryByLabelText('Formulir lacak pesanan')).toBeNull();
+ expect((container.firstElementChild as HTMLElement).className).toContain('lg:max-w-[1080px]');
+ expect(container.querySelector('[class*="lg:grid-cols-[minmax(0,1fr)_380px]"]')).toBeTruthy();
+ expect(screen.getByTestId('progress').closest('[class*="lg:col-start-1"]')).toBeTruthy();
+ expect(screen.getByRole('list', { name: 'Alur status pesanan' }).closest('[class*="lg:col-start-2"]')).toBeTruthy();
+ expect(screen.getByText('Ringkasan').closest('[class*="lg:col-start-2"]')).toBeTruthy();
+ expect(screen.queryByText('Lacak pesanan lain')).toBeNull();
+
+ status = 'pending';
+ await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Muat ulang pesanan' })); });
+ expect((container.firstElementChild as HTMLElement).className).not.toContain('lg:max-w-[1080px]');
+ expect(container.querySelector('[class*="lg:grid-cols-[minmax(0,1fr)_380px]"]')).toBeNull();
+
+ httpStatus = 401;
+ await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Muat ulang pesanan' })); });
+ expect(screen.getByRole('alert').textContent).toContain('Sesi admin diperlukan.');
+ expect((container.firstElementChild as HTMLElement).className).not.toContain('lg:max-w-[1080px]');
 });
