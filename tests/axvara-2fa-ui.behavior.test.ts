@@ -124,31 +124,22 @@ describe("AXVARA 2FA UI behavior", () => {
     expect(copiedLines[0]).toMatch(/^user1@axvara\.tech\t\d{6}$/);
   });
 
-  it("toggles advanced options (8-digit/SHA-256) and closes options bar with Escape", async () => {
+  it("omits manual options UI, uses concise secret placeholder, and auto-reads custom otpauth:// params", async () => {
     await mountApp();
-    const toggle = document.getElementById("options-toggle") as HTMLButtonElement;
-    const bar = document.getElementById("options-bar")!;
-    expect(bar.hidden).toBe(true);
-
-    toggle.click();
-    expect(bar.hidden).toBe(false);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-
-    const digits = document.getElementById("opt-digits") as HTMLSelectElement;
-    digits.value = "8";
-    digits.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(document.getElementById("options-toggle")).toBeNull();
+    expect(document.getElementById("options-bar")).toBeNull();
 
     const input = document.getElementById("secret-input") as HTMLTextAreaElement;
-    input.value = SEED_SHA1;
+    expect(input.placeholder).toBe("BK5V TVQ7 D2RB...");
+
+    input.value = `otpauth://totp/Custom:user@axvara.tech?secret=${SEED_SHA1}&digits=8&period=60&algorithm=SHA256`;
     input.dispatchEvent(new Event("input", { bubbles: true }));
     await flush();
 
     expect(document.getElementById("single-code-value")!.textContent).toMatch(/^\d{4} \d{4}$/);
     expect(document.getElementById("single-spec")!.textContent).toContain("8 digit");
-
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    expect(bar.hidden).toBe(true);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.getElementById("single-spec")!.textContent).toContain("60d");
+    expect(document.getElementById("single-spec")!.textContent).toContain("SHA-256");
   });
 
   it("saves keys locally in browser storage, persists on remount, and clears cleanly", async () => {

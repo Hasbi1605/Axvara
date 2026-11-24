@@ -17,11 +17,6 @@ const els = {
   secretInput: $("secret-input"),
   pasteBtn: $("paste-btn"),
   clearBtn: $("clear-btn"),
-  optionsToggle: $("options-toggle"),
-  optionsBar: $("options-bar"),
-  optDigits: $("opt-digits"),
-  optPeriod: $("opt-period"),
-  optAlgo: $("opt-algo"),
   inputError: $("input-error"),
   stateEmpty: $("state-empty"),
   stateSingle: $("state-single"),
@@ -69,16 +64,18 @@ const lastComputedSavedCodes = new Map();
 let singleCurrentCode = "";
 let singleNextCode = "";
 
+const DEFAULT_TOTP = Object.freeze({
+  digits: 6,
+  period: 30,
+  algorithm: "SHA-1",
+});
+
 function nowMs() {
   return Date.now() + timeOffsetMs;
 }
 
 function getDefaults() {
-  return {
-    digits: Number(els.optDigits?.value || 6),
-    period: Number(els.optPeriod?.value || 30),
-    algorithm: String(els.optAlgo?.value || "SHA-1"),
-  };
+  return DEFAULT_TOTP;
 }
 
 function el(tag, text, cls) {
@@ -752,19 +749,6 @@ els.clearBtn?.addEventListener("click", () => {
   els.secretInput.focus();
 });
 
-els.optionsToggle?.addEventListener("click", () => {
-  const expanded = els.optionsToggle.getAttribute("aria-expanded") === "true";
-  els.optionsToggle.setAttribute("aria-expanded", String(!expanded));
-  els.optionsBar.hidden = expanded;
-});
-
-for (const sel of [els.optDigits, els.optPeriod, els.optAlgo]) {
-  sel?.addEventListener("change", () => {
-    renderParsedLayout();
-    void updateTick();
-  });
-}
-
 els.singleSave?.addEventListener("click", () => {
   if (parsedState.items.length !== 1 || !parsedState.items[0].ok) return;
   const item = parsedState.items[0];
@@ -829,15 +813,6 @@ document.addEventListener(
   (event) => {
     const active = document.activeElement;
     const inField = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
-
-    if (event.key === "Escape") {
-      if (els.optionsBar && !els.optionsBar.hidden) {
-        els.optionsBar.hidden = true;
-        els.optionsToggle?.setAttribute("aria-expanded", "false");
-        els.optionsToggle?.focus();
-      }
-      return;
-    }
 
     if (inField || event.metaKey || event.ctrlKey || event.altKey) return;
 

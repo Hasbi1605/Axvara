@@ -50,11 +50,16 @@
   <section class="ax-card tool-card" aria-label="Generator kode 2FA">
     <div class="input-zone">
       <div class="zone-head">
-        <label for="secret-input" class="zone-label">Kunci 2FA</label>
+        <label for="secret-input" class="zone-label">
+          <svg class="zone-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="5.5" cy="8" r="3"/>
+            <path d="M8.5 8H14M12 8v2.2M14 8v1.8"/>
+          </svg>
+          <span>2FA Secret</span>
+        </label>
         <div class="zone-actions">
           <button id="paste-btn" type="button" class="btn-subtle">Tempel</button>
           <button id="clear-btn" type="button" class="btn-subtle" hidden>Bersihkan</button>
-          <button id="options-toggle" type="button" class="btn-subtle" aria-expanded="false" aria-controls="options-bar">Opsi</button>
         </div>
       </div>
 
@@ -66,45 +71,17 @@
         autocorrect="off"
         autocapitalize="off"
         spellcheck="false"
-        placeholder="Tempel secret key, otpauth://, atau beberapa baris sekaligus"
+        placeholder="BK5V TVQ7 D2RB..."
         aria-invalid="false"
         data-error="input-error"
       ></textarea>
 
       <p id="input-error" class="input-error" hidden></p>
-
-      <div id="options-bar" class="options-bar" hidden>
-        <div class="opt-field">
-          <label for="opt-digits">Digit</label>
-          <select id="opt-digits" class="opt-select">
-            <option value="6" selected>6 digit</option>
-            <option value="7">7 digit</option>
-            <option value="8">8 digit</option>
-          </select>
-        </div>
-        <div class="opt-field">
-          <label for="opt-period">Interval</label>
-          <select id="opt-period" class="opt-select">
-            <option value="30" selected>30 detik</option>
-            <option value="60">60 detik</option>
-            <option value="15">15 detik</option>
-          </select>
-        </div>
-        <div class="opt-field">
-          <label for="opt-algo">Algoritma</label>
-          <select id="opt-algo" class="opt-select">
-            <option value="SHA-1" selected>SHA-1</option>
-            <option value="SHA-256">SHA-256</option>
-            <option value="SHA-512">SHA-512</option>
-          </select>
-        </div>
-      </div>
     </div>
 
     <div class="output-zone" aria-label="Hasil kode 2FA">
       <div id="state-empty" class="state-empty">
         <div class="code-placeholder" aria-hidden="true">--- ---</div>
-        <p class="empty-caption">Kode muncul otomatis begitu kunci ditempel.</p>
       </div>
 
       <div id="state-single" class="state-single" hidden>
