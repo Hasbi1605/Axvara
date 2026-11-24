@@ -17,7 +17,13 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { assertSameBuyerCode, buyerFieldsSchema } from "@/lib/buyer-fields";
+import {
+  assertSameBuyerCode,
+  buyerFieldsSchema,
+  computeCustomFieldsFingerprint,
+  parseCustomBuyerFieldsConfig,
+  validateCustomFieldValues,
+} from "@/lib/buyer-fields";
 import type { AtomicOrderItem } from "@/lib/db/types";
 import { queryAll } from "@/lib/db";
 import { aggregateQty } from "@/lib/security";
@@ -127,13 +133,44 @@ export async function validateCheckoutInput(data: unknown): Promise<ValidateOutc
     return { kind: "responded", response: NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 }) };
   }
   const pixelTriples = new Map<string, { pv_email: string; pv_password: string; pv_totp_secret: string }>();
+  const customValidated = new Map<string, { values: Record<string, string>; meta: { key: string; label: string; type: "text" | "email" | "password" | "textarea" }[] }>();
   try {
     assertSameBuyerCode(items);
     const { computeFingerprint } = await import("@/lib/fulfillment/crypto");
     const { parsePixelverifInput } = await import("@/lib/pixelverif/purchase");
+    const customVariantIds = [...new Set(
+      quote.items
+        .filter((q) => Boolean(q.buyer_fields?.custom_fingerprint) && q.variant_id != null)
+        .map((q) => Number(q.variant_id)),
+    )];
+    const customCfgByVariant = new Map<number, ReturnType<typeof parseCustomBuyerFieldsConfig>>();
+    if (customVariantIds.length) {
+      const cfgRows = await queryAll(
+        `SELECT id, custom_buyer_fields_json FROM product_variants WHERE id IN (${customVariantIds.map(() => "?").join(",")})`,
+        ...customVariantIds,
+      );
+      for (const r of cfgRows) {
+        customCfgByVariant.set(Number(r.id), parseCustomBuyerFieldsConfig(r.custom_buyer_fields_json));
+      }
+    }
     for (const item of canonicalItems) {
       const signed = quote.items.find(q => q.product_id === item.product_id && q.variant_id === item.variant_id);
       if ((signed?.buyer_fields?.muse_invite_code ?? "") !== (item.buyer_fields?.muse_invite_code ?? "")) throw new Error("changed");
+      if ((signed?.buyer_fields?.invite_email ?? "") !== (item.buyer_fields?.invite_email?.trim().toLowerCase() ?? "")) throw new Error("changed");
+      const signedCustomFp = signed?.buyer_fields?.custom_fingerprint ?? "";
+      if (signedCustomFp) {
+        const cfg = item.variant_id ? customCfgByVariant.get(item.variant_id) : null;
+        if (!cfg) throw new Error("changed");
+        const normalized = validateCustomFieldValues(cfg, item.buyer_fields?.custom_values);
+        const bodyFp = await computeCustomFieldsFingerprint(normalized);
+        if (bodyFp !== signedCustomFp) throw new Error("changed");
+        customValidated.set(`${item.product_id}:${item.variant_id ?? 0}`, {
+          values: normalized,
+          meta: cfg.fields.map((f) => ({ key: f.key, label: f.label, type: f.type })),
+        });
+      } else if (item.buyer_fields?.custom_values && Object.keys(item.buyer_fields.custom_values).length > 0) {
+        throw new Error("changed");
+      }
       // Pixel: token holds only a fingerprint. Recompute from the request
       // body triple; any drift (or a missing triple) fails closed.
       const signedFingerprint = signed?.buyer_fields?.pv_fingerprint ?? "";
@@ -153,10 +190,23 @@ export async function validateCheckoutInput(data: unknown): Promise<ValidateOutc
 
   let tripleMissing = false;
   const orderItems: AtomicOrderItem[] = quote.items.map((signed) => {
+    const key = `${signed.product_id}:${signed.variant_id ?? 0}`;
+    if (signed.buyer_fields?.custom_fingerprint) {
+      const resolved = customValidated.get(key);
+      if (!resolved) { tripleMissing = true; return signed as AtomicOrderItem; }
+      const { custom_fingerprint: _cfp, ...rest } = signed.buyer_fields;
+      void _cfp;
+      return {
+        ...signed,
+        buyer_fields: { ...rest, custom_values: resolved.values },
+        custom_buyer_fields_meta: resolved.meta,
+      } as AtomicOrderItem;
+    }
     if (!signed.buyer_fields?.pv_fingerprint) return signed as AtomicOrderItem;
-    const triple = pixelTriples.get(`${signed.product_id}:${signed.variant_id ?? 0}`);
+    const triple = pixelTriples.get(key);
     if (!triple) { tripleMissing = true; return signed as AtomicOrderItem; }
     const { pv_fingerprint: _fp, pv_email_masked: _masked, ...rest } = signed.buyer_fields;
+    void _fp; void _masked;
     return { ...signed, buyer_fields: { ...rest, ...triple } } as AtomicOrderItem;
   });
   if (tripleMissing) return { kind: "responded", response: NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }) };

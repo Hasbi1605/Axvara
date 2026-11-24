@@ -541,16 +541,43 @@ async function adminDeliverySummary(order: Row, database: DatabaseAccess): Promi
      LEFT JOIN wr_order_links w ON w.id=f.wr_link_id
      LEFT JOIN sk_order_links s ON s.id=f.sk_link_id
      WHERE f.order_code=?`, String(order.code));
+  const inviteLines: string[] = [];
+  const seenInviteEmails = new Set<string>();
+  for (const it of parseItems<{
+    buyer_fields?: { invite_email?: string; custom_values?: Record<string, string> };
+    custom_buyer_fields_meta?: { key: string; label: string; type: string }[];
+  }>(order.items)) {
+    const em = String(it.buyer_fields?.invite_email ?? "").trim().toLowerCase();
+    if (em && !seenInviteEmails.has(em)) {
+      seenInviteEmails.add(em);
+      inviteLines.push(`📩 Email invite: ${em}`);
+    }
+    if (it.buyer_fields?.custom_values) {
+      const metaByKey = new Map((it.custom_buyer_fields_meta ?? []).map((m) => [m.key, m]));
+      for (const [k, rawVal] of Object.entries(it.buyer_fields.custom_values)) {
+        if (!rawVal) continue;
+        const meta = metaByKey.get(k);
+        const label = meta?.label || k.replace(/_/g, " ");
+        if (meta?.type === "password") {
+          inviteLines.push(`🔒 ${label}: (lihat di Panel Admin → Detail Pesanan)`);
+        } else {
+          const preview = String(rawVal).replace(/\s+/g, " ").trim().slice(0, 120);
+          inviteLines.push(`📝 ${label}: ${preview}`);
+        }
+      }
+    }
+  }
   if (items.length) {
     for (const [index] of expandDeliveryLines(order.items).entries()) {
       if (!items.some(item => Number(item.item_index) === index)) items.push({ status: "queued" });
     }
-    return summarizeWebDelivery(items);
+    const summarized = summarizeWebDelivery(items);
+    return inviteLines.length ? { ...summarized, lines: [...summarized.lines, ...inviteLines] } : summarized;
   }
   const profile = await telegramPaidDeliveryProfile(order, database);
   return { needsAdmin: profile.hasLocalManual,
     orderStatus: profile.hasLocalManual ? "MENUNGGU PENGIRIMAN ADMIN" : "DIPROSES OTOMATIS",
-    lines: [profile.hasLocalManual ? "🛠 Pengiriman manual oleh admin" : "🤖 Pengiriman otomatis"] };
+    lines: [profile.hasLocalManual ? "🛠 Pengiriman manual oleh admin" : "🤖 Pengiriman otomatis", ...inviteLines] };
 }
 
 /** Notif admin "Lunas — Web" setelah upaya fulfillment pertama. */

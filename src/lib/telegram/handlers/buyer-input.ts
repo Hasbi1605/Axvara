@@ -144,7 +144,7 @@ async function openSinglePaymentOfferAfterInput(
   productId: number,
   variantId: number,
   qty: number,
-  extra: { museInviteCode?: string; pvFlowId?: string; buyerFields: BuyerFields },
+  extra: { museInviteCode?: string; inviteEmail?: string; pvFlowId?: string; buyerFields: BuyerFields },
 ): Promise<void> {
   const ctx = await tgCtxFor(from.id);
   const en = ctx.locale === "en";
@@ -230,6 +230,7 @@ async function openSinglePaymentOfferAfterInput(
       variantId,
       qty,
       ...(extra.museInviteCode ? { museInviteCode: extra.museInviteCode } : {}),
+      ...(extra.inviteEmail ? { inviteEmail: extra.inviteEmail } : {}),
       ...(extra.pvFlowId ? { pvFlowId: extra.pvFlowId } : {}),
     },
     contactEmail: checked.email,
@@ -259,9 +260,29 @@ export async function requestBuyerInput(chatId:number,from:{ id:number },product
   if (!variant?.buyer_field_key) return false;
   if (chatId !== from.id) return true;
   if (!Number.isSafeInteger(qty) || qty < 1 || qty > (variant.max_qty ?? 100) || variant.product_id !== productId) {
-    await sendMessage({ chat_id:chatId,text:"Jumlah tidak valid. Pilih 1–30 untuk Buff Muse.",reply_markup:minimalMenuKeyboard() }); return true;
+    const cap = variant.max_qty ?? 100;
+    const msg = variant.buyer_field_key === "muse_invite_code"
+      ? "Jumlah tidak valid. Pilih 1–30 untuk Buff Muse."
+      : `Jumlah tidak valid. Maksimal ${cap} unit per pesanan.`;
+    await sendMessage({ chat_id:chatId,text:msg,reply_markup:minimalMenuKeyboard() }); return true;
+  }
+  if (variant.buyer_field_key === "custom") {
+    const product = await queryFirst("SELECT slug, name FROM products WHERE id=?", productId);
+    const slug = String(product?.slug ?? "").trim();
+    const base = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
+    const url = slug ? `${base}/checkout?buy=${encodeURIComponent(slug)}&variant=${variantId}&qty=${qty}` : `${base}/checkout`;
+    await sendMessage({
+      chat_id: chatId,
+      text: "Produk ini membutuhkan pengisian data khusus sebelum bayar.\nLanjutkan lewat halaman checkout web AXVARA agar data terisi rapi & aman:",
+      reply_markup: { inline_keyboard: [[{ text: "🌐 Lanjut Checkout di Web", url }]] },
+    });
+    return true;
   }
   if (!await setPendingActionUnlessCreating(String(from.id),chatId,`buyerinput:${productId}:${variantId}:${qty}`)) return true;
+  if (variant.buyer_field_key === "invite_email") {
+    await sendMessage({ chat_id:chatId,text:"Kirim email yang ingin di-invite (contoh: nama@gmail.com). /batal untuk batal.",reply_markup:{ force_reply:true,input_field_placeholder:"nama@gmail.com" } });
+    return true;
+  }
   await sendMessage({ chat_id:chatId,text:"Kirim Kode Invite Muse (6 huruf/angka, case-sensitive; 1–30 = 1–30B token). /batal untuk batal.",reply_markup:{ force_reply:true,input_field_placeholder:"6 huruf/angka" } });
   return true;
 }
@@ -418,15 +439,25 @@ export async function handleBuyerInput(text:string,chatId:number,from:{ id:numbe
   const variantId = Number(match[2]);
   const qty = Number(match[3]);
   const variant = await getActiveVariant(variantId);
+  let validated: BuyerFields;
   try {
     if (!variant?.buyer_field_key || variant.pixelverif_input || variant.product_id !== productId) throw new Error("stale");
-    validateBuyerFields(variant,{ muse_invite_code:trimmed },qty);
-  } catch { await sendMessage({ chat_id:chatId,text:"Kode tidak valid atau varian berubah. Kirim 6 huruf/angka ASCII, atau /batal." }); return true; }
+    const candidate = variant.buyer_field_key === "invite_email"
+      ? { invite_email: trimmed }
+      : { muse_invite_code: trimmed };
+    validated = validateBuyerFields(variant, candidate, qty);
+  } catch {
+    const errText = variant?.buyer_field_key === "invite_email"
+      ? "Format email tidak valid atau varian berubah. Kirim email yang ingin di-invite (contoh: nama@gmail.com), atau /batal."
+      : "Kode tidak valid atau varian berubah. Kirim 6 huruf/angka ASCII, atau /batal.";
+    await sendMessage({ chat_id:chatId,text:errText }); return true;
+  }
   const claim = await execRun("UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action=?",String(from.id),user!.pending_action);
   if (!claim.changes) return true;
   await openSinglePaymentOfferAfterInput(chatId, from, productId, variantId, qty, {
-    museInviteCode: trimmed,
-    buyerFields: { muse_invite_code: trimmed },
+    ...(validated.muse_invite_code ? { museInviteCode: validated.muse_invite_code } : {}),
+    ...(validated.invite_email ? { inviteEmail: validated.invite_email } : {}),
+    buyerFields: validated,
   });
   return true;
 }

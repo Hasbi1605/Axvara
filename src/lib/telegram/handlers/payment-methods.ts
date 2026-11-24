@@ -115,6 +115,8 @@ async function startLegacyQrisFromOffer(
   let pvFlowId: string | undefined;
   if (state.source.museInviteCode) {
     buyerFields = { muse_invite_code: state.source.museInviteCode };
+  } else if (state.source.inviteEmail) {
+    buyerFields = { invite_email: state.source.inviteEmail };
   } else if (state.source.pvFlowId) {
     const { clearPixelverifStash, loadCompletedPixelverifStash } = await import("./buyer-input");
     const pv = await loadCompletedPixelverifStash(String(from.id), state.source.variantId, state.source.pvFlowId);

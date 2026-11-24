@@ -73,6 +73,188 @@ describe("checkout + grosir", () => {
     expect(localStorage.getItem("axvara-cart") ?? "").not.toContain("Ab12cD");
   });
 
+  it("invite_email input validates on blur, offers same-as-contact shortcut, debounces lowercase quote, and sends buyer_fields on order submit", async () => {
+    const quoteBodies: Array<{ items: Array<{ buyer_fields?: { invite_email?: string }; qty: number }> }> = [];
+    const orderBodies: Array<{ items: Array<{ buyer_fields?: { invite_email?: string } }> }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (target === "/api/checkout/quote") {
+        quoteBodies.push(body);
+        const emailVal = body.items[0]?.buyer_fields?.invite_email;
+        return new Response(
+          JSON.stringify(
+            ok([
+              quoted(1, 18_000, {
+                queued_delivery: true,
+                buyer_field_key: "invite_email",
+                ...(emailVal ? { buyer_fields: { invite_email: emailVal } } : {}),
+              }),
+            ]),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (target === "/api/orders") {
+        orderBodies.push(body);
+        return new Response(JSON.stringify({ ok: true, code: "AXV-20261124-INVUI01" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch ${target}`);
+    }));
+
+    useCart.setState({
+      items: [line({ qty: 1, price: 18_000, buyerFieldKey: "invite_email", bulkTiers: [] })],
+    });
+    render(<CheckoutPage />);
+
+    const inviteSection = screen.getByTestId("checkout-invite-email-section");
+    const inviteInput = document.getElementById("checkout-invite-email") as HTMLInputElement;
+    const contactEmail = document.getElementById("checkout-email") as HTMLInputElement;
+    const waInput = document.getElementById("checkout-wa") as HTMLInputElement;
+
+    // Belum kirim quote sebelum email valid
+    expect(quoteBodies).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /Samakan dengan email kontak/ })).toBeNull();
+
+    // Validasi hanya muncul saat blur setelah input tidak valid
+    fireEvent.change(inviteInput, { target: { value: "tidak-valid" } });
+    expect(within(inviteSection).queryByText(/Format email yang ingin di-invite tidak valid/i)).toBeNull();
+    fireEvent.blur(inviteInput);
+    expect(within(inviteSection).getByText(/Format email yang ingin di-invite tidak valid/i)).toBeTruthy();
+    expect(inviteInput.getAttribute("aria-invalid")).toBe("true");
+    expect(quoteBodies).toHaveLength(0);
+
+    // Isi email kontak valid -> tombol "Samakan dengan email kontak" muncul dan mengisi input
+    fireEvent.change(waInput, { target: { value: "081234567890" } });
+    fireEvent.change(contactEmail, { target: { value: "User.Invite@Gmail.COM" } });
+    const sameBtn = within(inviteSection).getByRole("button", { name: "Samakan dengan email kontak" });
+    fireEvent.click(sameBtn);
+    expect(inviteInput.value).toBe("User.Invite@Gmail.COM");
+    expect(within(inviteSection).queryByText(/Format email yang ingin di-invite tidak valid/i)).toBeNull();
+
+    // Quote dikirim (debounced) dengan lowercase invite_email
+    await waitFor(() => expect(quoteBodies).toHaveLength(1), { timeout: 1500 });
+    expect(quoteBodies[0].items[0]).toMatchObject({
+      qty: 1,
+      buyer_fields: { invite_email: "user.invite@gmail.com" },
+    });
+    expect(localStorage.getItem("axvara-cart") ?? "").not.toContain("User.Invite@Gmail.COM");
+
+    // Centang persetujuan & submit order -> POST /api/orders menyertakan buyer_fields.invite_email
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    const payButtons = screen.getAllByRole("button", { name: /Buat Pesanan/i }) as HTMLButtonElement[];
+    await waitFor(() => expect(payButtons.some((btn) => !btn.disabled)).toBe(true));
+    fireEvent.click(payButtons.find((btn) => !btn.disabled)!);
+    await waitFor(() => expect(orderBodies).toHaveLength(1), { timeout: 1500 });
+    expect(orderBodies[0].items[0]).toMatchObject({
+      buyer_fields: { invite_email: "user.invite@gmail.com" },
+    });
+  });
+
+  it("custom buyer fields render separated section like Pixel, toggle password visibility, validate on blur, and submit normalized custom_values", async () => {
+    const quoteBodies: Array<{ items: Array<{ buyer_fields?: { custom_values?: Record<string, string> } }> }> = [];
+    const orderBodies: Array<{ items: Array<{ buyer_fields?: { custom_values?: Record<string, string> } }> }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (target === "/api/checkout/quote") {
+        quoteBodies.push(body);
+        return new Response(
+          JSON.stringify(
+            ok([
+              quoted(1, 25_000, {
+                queued_delivery: true,
+                buyer_field_key: "custom",
+                buyer_fields: { custom_fingerprint: "a".repeat(64) },
+              }),
+            ]),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (target === "/api/orders") {
+        orderBodies.push(body);
+        return new Response(JSON.stringify({ ok: true, code: "AXV-20261124-CUSTUI01" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch ${target}`);
+    }));
+
+    useCart.setState({
+      items: [
+        line({
+          qty: 1,
+          price: 25_000,
+          buyerFieldKey: "custom",
+          customBuyerFields: {
+            title: "Data Akun Aktivasi",
+            note: "Dipakai sekali oleh admin untuk proses aktivasi.",
+            fields: [
+              { key: "account_email", label: "Email akun", type: "email", placeholder: "nama@gmail.com", required: true },
+              { key: "account_password", label: "Password akun", type: "password", placeholder: "Password login", required: true },
+            ],
+          },
+          bulkTiers: [],
+        }),
+      ],
+    });
+    render(<CheckoutPage />);
+
+    const section = screen.getByTestId("checkout-custom-fields-section");
+    expect(within(section).getByText("Data Akun Aktivasi")).toBeTruthy();
+    const emailInput = document.getElementById("checkout-custom-11-account_email") as HTMLInputElement;
+    const passInput = document.getElementById("checkout-custom-11-account_password") as HTMLInputElement;
+    const contactWa = document.getElementById("checkout-wa") as HTMLInputElement;
+    const contactEmail = document.getElementById("checkout-email") as HTMLInputElement;
+
+    // Contact fields appear above the separated custom section
+    expect(Boolean(contactEmail.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+
+    // Invalid email shows error on blur only
+    fireEvent.change(emailInput, { target: { value: "salah" } });
+    expect(within(section).queryByText(/Format Email akun tidak valid/i)).toBeNull();
+    fireEvent.blur(emailInput);
+    expect(within(section).getByText(/Format Email akun tidak valid/i)).toBeTruthy();
+
+    // Same-as-contact shortcut fills email
+    fireEvent.change(contactWa, { target: { value: "081234567890" } });
+    fireEvent.change(contactEmail, { target: { value: "Buyer.Custom@Gmail.COM" } });
+    fireEvent.click(within(section).getByRole("button", { name: "Samakan dengan email kontak" }));
+    expect(emailInput.value).toBe("Buyer.Custom@Gmail.COM");
+
+    // Password toggle works with aria-pressed
+    expect(passInput.type).toBe("password");
+    const toggleBtn = within(section).getByRole("button", { name: "Tampilkan Password akun" });
+    fireEvent.click(toggleBtn);
+    expect(passInput.type).toBe("text");
+    fireEvent.change(passInput, { target: { value: "PassRahasia123" } });
+
+    await waitFor(() => expect(quoteBodies).toHaveLength(1), { timeout: 1500 });
+    expect(quoteBodies[0].items[0].buyer_fields?.custom_values).toEqual({
+      account_email: "buyer.custom@gmail.com",
+      account_password: "PassRahasia123",
+    });
+
+    // Submit order includes custom_values and never leaks password to localStorage
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    const payButtons = screen.getAllByRole("button", { name: /Buat Pesanan/i }) as HTMLButtonElement[];
+    await waitFor(() => expect(payButtons.some((btn) => !btn.disabled)).toBe(true));
+    fireEvent.click(payButtons.find((btn) => !btn.disabled)!);
+    await waitFor(() => expect(orderBodies).toHaveLength(1), { timeout: 1500 });
+    expect(orderBodies[0].items[0].buyer_fields?.custom_values).toEqual({
+      account_email: "buyer.custom@gmail.com",
+      account_password: "PassRahasia123",
+    });
+    expect(localStorage.getItem("axvara-cart") ?? "").not.toContain("PassRahasia123");
+  });
+
   it("checkout Google activation separates contact fields above activation section, toggles password visibility, and validates on blur", async () => {
     const bodies = stubQuote(() => ({ body: ok([quoted(1, 39_900, { queued_delivery: true, automatic_processing: true, buyer_fields: { pv_fingerprint: "fp1" } })]) }));
     useCart.setState({ items: [line({ qty: 1, price: 39_900, pixelverifInput: true, maxQty: 1, bulkTiers: [] })] });

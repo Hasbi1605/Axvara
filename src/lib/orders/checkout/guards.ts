@@ -21,7 +21,7 @@ export type QuoteLine = {
   price?: number | null;
   base_price?: number | null;
   applied_tier_min_qty?: number | null;
-  buyer_fields?: { muse_invite_code?: string | null } | null;
+  buyer_fields?: { muse_invite_code?: string | null; invite_email?: string | null; custom_values?: Record<string, string> | null } | null;
 };
 
 export type EmailVariantRow = Record<string, unknown>;

@@ -19,6 +19,8 @@ const SETUP_STATEMENTS = [
   "CREATE TABLE product_variants (id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL, sku TEXT NOT NULL, label TEXT NOT NULL, price INTEGER NOT NULL, stock INTEGER NOT NULL DEFAULT -1, updated_at TEXT, bulk_pricing_enabled INTEGER NOT NULL DEFAULT 0, bulk_pricing_tiers TEXT NOT NULL DEFAULT '[]', min_qty INTEGER NOT NULL DEFAULT 1, fulfillment_mode TEXT NOT NULL DEFAULT 'manual', is_active INTEGER NOT NULL DEFAULT 1, shared_secret_ciphertext TEXT, shared_secret_iv TEXT, wr_variant_id TEXT, telegram_enabled INTEGER NOT NULL DEFAULT 1, duration_value INTEGER, duration_unit TEXT, duration_label TEXT, warranty_type TEXT DEFAULT 'none', warranty_value INTEGER, warranty_unit TEXT, warranty_label TEXT, terms TEXT, delivery_terms TEXT, compare_price INTEGER, manual_cost INTEGER DEFAULT 0, wr_type TEXT, wr_delivery_class TEXT, wr_delivery_terms TEXT, sk_variant_id TEXT, admin_terms TEXT, admin_activation TEXT, admin_copy_fingerprint TEXT, handover_template TEXT, tunvn_source_product_id INTEGER, created_at TEXT)",
   "ALTER TABLE product_variants ADD COLUMN tunvn_cost_usdt REAL",
   "ALTER TABLE product_variants ADD COLUMN buyer_field_key TEXT",
+  "ALTER TABLE product_variants ADD COLUMN custom_buyer_field TEXT",
+  "ALTER TABLE product_variants ADD COLUMN custom_buyer_fields_json TEXT",
   "ALTER TABLE product_variants ADD COLUMN max_qty INTEGER",
   "ALTER TABLE product_variants ADD COLUMN tunvn_buff_quantity_b INTEGER",
   "CREATE TABLE tunvn_products(supplier_product_id INTEGER PRIMARY KEY,price_usdt REAL)",

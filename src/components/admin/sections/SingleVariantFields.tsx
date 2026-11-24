@@ -21,6 +21,7 @@ import { SupplierBadge } from "../supplier-style";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { DurationFields } from "./VariantDurationFields";
 import { FULFILLMENT_OPTIONS, NonWrFulfillmentPanel } from "./ProductVariantRows";
+import { CustomBuyerFieldsEditor, defaultCustomBuyerFieldsConfig } from "./CustomBuyerFieldsEditor";
 import {
   BulkTierEditor,
   SINGLE_BULK_PREFIX,
@@ -65,7 +66,21 @@ export function SingleVariantFields({
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-admin-border bg-admin-subtle p-4">
       {managedSupplier && <div className="flex flex-wrap items-center gap-2 text-xs text-admin-muted"><SupplierBadge supplier={managedSupplier} /> Atur markup dan harga manual di tab Markup supplier.</div>}
-      <Label className="block space-y-2 text-sm font-medium">Input pembeli<NativeSelect disabled={!!managedSupplier} value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></NativeSelect></Label>
+      <Label className="block space-y-2 text-sm font-medium">Input pembeli<NativeSelect disabled={!!managedSupplier} value={form.buyer_field_key ?? ""} onChange={e => {
+        const nextKey = e.target.value === "muse_invite_code" || e.target.value === "invite_email" || e.target.value === "custom" ? e.target.value : null;
+        onSetForm({
+          ...form,
+          buyer_field_key: nextKey,
+          custom_buyer_fields: nextKey === "custom" ? (form.custom_buyer_fields ?? defaultCustomBuyerFieldsConfig()) : null,
+        });
+      }} className={openInput}><option value="">Tidak ada</option><option value="invite_email">Email yang ingin di-invite</option><option value="custom">Kolom kustom (atur sendiri)</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></NativeSelect></Label>
+      {form.buyer_field_key === "custom" && (
+        <CustomBuyerFieldsEditor
+          disabled={!!managedSupplier}
+          value={form.custom_buyer_fields}
+          onChange={(next) => onSetForm({ ...form, custom_buyer_fields: next })}
+        />
+      )}
       <Label className="block space-y-2 text-sm font-medium">Maks. beli (kosong = 100)<Input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></Label>
       {/* Min. beli (migrasi 0034, milik admin — bukan WR). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

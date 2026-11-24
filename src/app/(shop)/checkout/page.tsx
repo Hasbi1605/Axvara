@@ -26,16 +26,18 @@ import { useDisplayContext } from "@/hooks/useDisplayPrices";
 import { useModalA11y } from "@/hooks/useModalA11y";
 import { translateProductName } from "@/lib/i18n/product-name";
 import { checkoutMessage } from "@/lib/i18n/checkout-copy";
+import type { BuyerFieldKey, CustomBuyerFieldDef, CustomBuyerFieldsConfig } from "@/lib/buyer-fields";
 
 
-type QuotedItem = { buyer_fields?: { muse_invite_code?: string; pv_fingerprint?: string; pv_email_masked?: string }; product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
+type QuotedItem = { buyer_fields?: { muse_invite_code?: string; invite_email?: string; custom_fingerprint?: string; pv_fingerprint?: string; pv_email_masked?: string }; product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
 type QuoteIssue = { product_id?: number; slug?: string; variant_id?: number; min_qty?: number; type: string; message: string };
 type PriceChange = { product_id: number; variant_id?: number; name: string; previous_price: number; current_price: number; message: string; tier?: boolean };
 
 import { rowMatchesIssue } from "@/lib/checkout-line-identity";
 
 type DirectProduct = Product & {
-  buyerFieldKey?: "muse_invite_code" | null;
+  buyerFieldKey?: BuyerFieldKey | null;
+  customBuyerFields?: CustomBuyerFieldsConfig | null;
   pixelverifInput?: boolean;
   maxQty?: number | null;
   variantId?: number;
@@ -55,7 +57,8 @@ type CatalogVariant = BulkVariantFields & {
   stock: number;
   min_qty?: number;
   max_qty?: number | null;
-  buyer_field_key?: "muse_invite_code" | null;
+  buyer_field_key?: BuyerFieldKey | null;
+  custom_buyer_fields?: CustomBuyerFieldsConfig | null;
   pixelverif_input?: boolean;
   fulfillment_mode?: string;
   inventory_available?: number | null;
@@ -151,6 +154,7 @@ function CheckoutInner() {
             minQty: Math.max(1, Number(variant.min_qty ?? 1) || 1),
             maxQty: variant.max_qty,
             buyerFieldKey: variant.buyer_field_key,
+            customBuyerFields: variant.custom_buyer_fields ?? null,
             pixelverifInput: variant.pixelverif_input === true,
             bulkTiers: usableBulkTiers(variant, variant.price),
           } as DirectProduct & { minQty: number });
@@ -184,21 +188,74 @@ function CheckoutInner() {
   const [email, setEmail] = useState("");
   const [museCode, setMuseCode] = useState("");
   const needsMuseCode = items.some(item => item.buyerFieldKey === "muse_invite_code");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const needsInviteEmail = items.some(item => item.buyerFieldKey === "invite_email");
+  const customFieldGroups = useMemo(() => {
+    const seen = new Set<number>();
+    const out: { variantId: number; label: string; config: CustomBuyerFieldsConfig }[] = [];
+    for (const item of items) {
+      if (item.buyerFieldKey !== "custom" || !item.customBuyerFields?.fields?.length || !item.variantId) continue;
+      if (seen.has(item.variantId)) continue;
+      seen.add(item.variantId);
+      out.push({
+        variantId: item.variantId,
+        label: item.variantLabel ? `${item.name} — ${item.variantLabel}` : item.name,
+        config: item.customBuyerFields,
+      });
+    }
+    return out;
+  }, [items]);
+  const needsCustomFields = customFieldGroups.length > 0;
+  const [customValues, setCustomValues] = useState<Record<number, Record<string, string>>>({});
+  const [customFieldState, setCustomFieldState] = useState<Record<string, "pristine" | "dirty" | "blurred">>({});
+  const [showCustomSecret, setShowCustomSecret] = useState<Record<string, boolean>>({});
+  const setCustomValue = (variantId: number, key: string, value: string) => {
+    setQuoteToken(null);
+    setCustomValues((prev) => ({ ...prev, [variantId]: { ...(prev[variantId] ?? {}), [key]: value } }));
+    const id = `${variantId}:${key}`;
+    setCustomFieldState((prev) => (!prev[id] || prev[id] === "pristine" ? { ...prev, [id]: "dirty" } : prev));
+  };
+  const markCustomBlurred = (variantId: number, key: string) => {
+    const id = `${variantId}:${key}`;
+    setCustomFieldState((prev) => (prev[id] === "dirty" ? { ...prev, [id]: "blurred" } : prev));
+  };
+  const normalizeCustomMap = useCallback((variantId: number, config: CustomBuyerFieldsConfig) => {
+    const raw = customValues[variantId] ?? {};
+    const out: Record<string, string> = {};
+    for (const field of config.fields) {
+      const val = raw[field.key] ?? "";
+      const norm = field.type === "password" ? val : field.type === "email" ? val.trim().toLowerCase() : val.trim();
+      if (norm) out[field.key] = norm;
+    }
+    return out;
+  }, [customValues]);
+  const customFieldValid = (variantId: number, field: CustomBuyerFieldDef): boolean => {
+    const raw = customValues[variantId]?.[field.key] ?? "";
+    const val = field.type === "password" ? raw : raw.trim();
+    if (!val) return field.required === false;
+    if (field.type === "email") return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val) && val.length <= 254;
+    return val.length <= 500;
+  };
+  const customFieldsValid = customFieldGroups.every((group) =>
+    group.config.fields.every((field) => customFieldValid(group.variantId, field)),
+  );
   const [pvEmail, setPvEmail] = useState("");
   const [pvPassword, setPvPassword] = useState("");
   const [pvTotp, setPvTotp] = useState("");
   const [showPvPassword, setShowPvPassword] = useState(false);
   type FieldInteractState = "pristine" | "dirty" | "blurred";
-  const [activationFieldState, setActivationFieldState] = useState<Record<"email" | "password" | "totp" | "muse", FieldInteractState>>({
+  type ActivationFieldKey = "email" | "password" | "totp" | "muse" | "invite_email";
+  const [activationFieldState, setActivationFieldState] = useState<Record<ActivationFieldKey, FieldInteractState>>({
     email: "pristine",
     password: "pristine",
     totp: "pristine",
     muse: "pristine",
+    invite_email: "pristine",
   });
-  const markActivationDirty = (key: "email" | "password" | "totp" | "muse") => {
+  const markActivationDirty = (key: ActivationFieldKey) => {
     setActivationFieldState((prev) => (prev[key] === "pristine" ? { ...prev, [key]: "dirty" } : prev));
   };
-  const markActivationBlurred = (key: "email" | "password" | "totp" | "muse") => {
+  const markActivationBlurred = (key: ActivationFieldKey) => {
     setActivationFieldState((prev) => (prev[key] === "dirty" ? { ...prev, [key]: "blurred" } : prev));
   };
   const pixelverifCount = items.filter(item => item.pixelverifInput === true).length;
@@ -211,6 +268,8 @@ function CheckoutInner() {
   const pvTotpValid = /^[A-Z2-7]{16,64}={0,6}$/.test(pvTotpClean);
   const pvValid = !multiplePixelverif && pvEmailValid && pvPasswordValid && pvTotpValid;
   const museValid = /^[A-Za-z0-9]{6}$/.test(museCode.trim());
+  const inviteEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim()) && inviteEmail.trim().length <= 254;
+  const contactEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -254,6 +313,29 @@ function CheckoutInner() {
   const museError = activationFieldState.muse === "blurred" && !museValid
     ? text("Kode Invite Muse harus tepat 6 huruf/angka.", "Muse invite code must be exactly 6 letters or numbers.")
     : "";
+  const inviteEmailError = activationFieldState.invite_email === "blurred" && !inviteEmailValid
+    ? (inviteEmail.trim()
+        ? text("Format email yang ingin di-invite tidak valid.", "Enter a valid invitation email address.")
+        : text("Email yang ingin di-invite wajib diisi.", "Invitation email is required."))
+    : "";
+  const getCustomFieldError = (variantId: number, field: CustomBuyerFieldDef): string => {
+    const id = `${variantId}:${field.key}`;
+    if (customFieldState[id] !== "blurred" || customFieldValid(variantId, field)) return "";
+    const raw = customValues[variantId]?.[field.key] ?? "";
+    const val = field.type === "password" ? raw : raw.trim();
+    if (!val) return text(`${field.label} wajib diisi.`, `${field.label} is required.`);
+    if (field.type === "email") return text(`Format ${field.label} tidak valid.`, `Enter a valid ${field.label.toLowerCase()}.`);
+    return text(`${field.label} terlalu panjang.`, `${field.label} is too long.`);
+  };
+  const firstCustomError = (() => {
+    for (const group of customFieldGroups) {
+      for (const field of group.config.fields) {
+        const err = getCustomFieldError(group.variantId, field);
+        if (err) return `${field.label}: ${err}`;
+      }
+    }
+    return "";
+  })();
   const activationErrorAnnouncement = pvEmailError
     ? `${text("Email Gmail", "Gmail address")}: ${pvEmailError}`
     : pvPasswordError
@@ -262,7 +344,9 @@ function CheckoutInner() {
         ? `${text("Kunci Setup 2FA", "2FA setup key")}: ${pvTotpError}`
         : museError
           ? `${text("Kode Invite Muse", "Muse invite code")}: ${museError}`
-          : "";
+          : inviteEmailError
+            ? `${text("Email yang ingin di-invite", "Email to invite")}: ${inviteEmailError}`
+            : firstCustomError;
   // Email SELALU wajib (revamp 2026-09-23 ala Sekalipay): semua produk
   // Axvara digital — order tanpa email = macet. Flag server emailRequired
   // (migrasi 0033) tetap dibaca quote tapi tidak lagi mengubah validasi.
@@ -347,9 +431,11 @@ function CheckoutInner() {
       qty: Number(item.qty) || 1,
       expected_price: Number(item.price),
       ...(item.buyerFieldKey === "muse_invite_code" ? { buyer_fields: { muse_invite_code: museCode.trim() } } : {}),
+      ...(item.buyerFieldKey === "invite_email" ? { buyer_fields: { invite_email: inviteEmail.trim().toLowerCase() } } : {}),
+      ...(item.buyerFieldKey === "custom" && item.customBuyerFields && item.variantId ? { buyer_fields: { custom_values: normalizeCustomMap(item.variantId, item.customBuyerFields) } } : {}),
       ...(item.pixelverifInput === true ? { buyer_fields: { pv_email: pvEmail.trim(), pv_password: pvPassword, pv_totp_secret: pvTotp.trim() } } : {}),
     })),
-    [items, museCode, pvEmail, pvPassword, pvTotp],
+    [items, museCode, inviteEmail, normalizeCustomMap, pvEmail, pvPassword, pvTotp],
   );
   // Estimasi satuan dari tier yang tersimpan (hanya baris yang membawa cache
   // tier; baris lama tanpa cache tidak menghasilkan peringatan tier).
@@ -403,7 +489,7 @@ function CheckoutInner() {
   // Debounce Pixel Verification credential edits (400 ms) so typing never fires
   // a quote POST per keystroke while still invalidating stale tokens immediately.
   useEffect(() => {
-    if (items.length === 0 || directLoading || (needsMuseCode && !/^[A-Za-z0-9]{6}$/.test(museCode.trim())) || (needsPixelverif && !pvValid)) {
+    if (items.length === 0 || directLoading || (needsMuseCode && !/^[A-Za-z0-9]{6}$/.test(museCode.trim())) || (needsInviteEmail && !inviteEmailValid) || (needsCustomFields && !customFieldsValid) || (needsPixelverif && !pvValid)) {
       quoteRequestId.current += 1;
       setQuoteLoading(false);
       setQuoteToken(null);
@@ -414,7 +500,7 @@ function CheckoutInner() {
       setShowIssueDialog(false);
       return;
     }
-    if (!needsPixelverif) {
+    if (!needsPixelverif && !needsInviteEmail && !needsCustomFields) {
       void fetchQuote(quoteRequestItems);
       return;
     }
@@ -628,17 +714,24 @@ function CheckoutInner() {
     // dari prefix email agar kolom DB NOT NULL + notif admin tetap bernama.
     // Pixel credentials come from local form state only (quote response and
     // token carry just a fingerprint); Muse code keeps the quoted echo.
-    const payloadItems = quotedItems.map((item) => ({
-      product_id: item.product_id,
-      variant_id: item.variant_id,
-      qty: item.qty,
-      ...(item.buyer_fields?.muse_invite_code || item.buyer_fields?.pv_fingerprint ? {
-        buyer_fields: {
-          ...(item.buyer_fields?.muse_invite_code ? { muse_invite_code: item.buyer_fields.muse_invite_code } : {}),
-          ...(item.buyer_fields?.pv_fingerprint ? { pv_email: pvEmail.trim(), pv_password: pvPassword, pv_totp_secret: pvTotp.trim() } : {}),
-        },
-      } : {}),
-    }));
+    const payloadItems = quotedItems.map((item) => {
+      const customGroup = item.buyer_fields?.custom_fingerprint && item.variant_id
+        ? customFieldGroups.find((g) => g.variantId === item.variant_id)
+        : undefined;
+      return {
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        qty: item.qty,
+        ...(item.buyer_fields?.muse_invite_code || item.buyer_fields?.invite_email || customGroup || item.buyer_fields?.pv_fingerprint ? {
+          buyer_fields: {
+            ...(item.buyer_fields?.muse_invite_code ? { muse_invite_code: item.buyer_fields.muse_invite_code } : {}),
+            ...(item.buyer_fields?.invite_email ? { invite_email: item.buyer_fields.invite_email } : {}),
+            ...(customGroup ? { custom_values: normalizeCustomMap(customGroup.variantId, customGroup.config) } : {}),
+            ...(item.buyer_fields?.pv_fingerprint ? { pv_email: pvEmail.trim(), pv_password: pvPassword, pv_totp_secret: pvTotp.trim() } : {}),
+          },
+        } : {}),
+      };
+    });
     let redirected = false;
     try {
       // 60 dtk: jalur ini menunggu stok + QRIS + notifikasi admin di server.
@@ -753,6 +846,16 @@ function CheckoutInner() {
         <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] px-3.5 py-2.5 text-xs leading-5 text-white/75" role="status">
           <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-[#00E5FF]" />
           <span>{text("Isi Kode Invite Muse di bawah untuk menampilkan metode pembayaran.", "Enter your Muse invite code below to load payment methods.")}</span>
+        </div>
+      ) : needsInviteEmail && !inviteEmailValid ? (
+        <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] px-3.5 py-2.5 text-xs leading-5 text-white/75" role="status">
+          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-[#00E5FF]" />
+          <span>{text("Isi email yang ingin di-invite di bawah untuk menampilkan metode pembayaran.", "Enter the email address to invite below to load payment methods.")}</span>
+        </div>
+      ) : needsCustomFields && !customFieldsValid ? (
+        <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] px-3.5 py-2.5 text-xs leading-5 text-white/75" role="status">
+          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-[#00E5FF]" />
+          <span>{text("Lengkapi data khusus di bawah untuk menampilkan metode pembayaran.", "Complete the required details below to load payment methods.")}</span>
         </div>
       ) : quoteLoading ? (
         <div className="mt-3 text-sm text-white/50" role="status">
@@ -929,7 +1032,7 @@ function CheckoutInner() {
                   autoCorrect="off"
                   autoCapitalize="none"
                   spellCheck={false}
-                  enterKeyHint={needsPixelverif || needsMuseCode ? "next" : "done"}
+                  enterKeyHint={needsPixelverif || needsMuseCode || needsInviteEmail ? "next" : "done"}
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setFieldErrors((f) => ({ ...f, email: "" })); }}
                   placeholder={text("email@contoh.com", "email@example.com")}
@@ -972,6 +1075,183 @@ function CheckoutInner() {
                 </div>
               </div>
             )}
+
+            {needsInviteEmail && (
+              <div className="mt-5 border-t border-white/10 pt-5" data-testid="checkout-invite-email-section">
+                <h3 className="text-sm font-semibold text-white">{text("Data Invite", "Invitation Details")}</h3>
+                <p id="checkout-invite-email-hint" className="mt-1 text-xs leading-5 text-white/45">
+                  {text("Masukkan alamat email akun yang akan menerima undangan paket ini.", "Enter the email address that will receive the package invitation.")}
+                </p>
+                <div className="mt-3">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <label htmlFor="checkout-invite-email" className="block text-xs font-medium text-white/70">
+                      {text("Email yang ingin di-invite *", "Email to invite *")}
+                    </label>
+                    {contactEmailValid && inviteEmail.trim().toLowerCase() !== email.trim().toLowerCase() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuoteToken(null);
+                          setInviteEmail(email.trim());
+                          markActivationDirty("invite_email");
+                        }}
+                        className="text-xs font-medium text-[#00E5FF] hover:text-[#5CEEFF] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]/70 rounded"
+                      >
+                        {text("Samakan dengan email kontak", "Same as contact email")}
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    id="checkout-invite-email"
+                    name="invite_email"
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => { setQuoteToken(null); setInviteEmail(e.target.value); markActivationDirty("invite_email"); }}
+                    onBlur={() => markActivationBlurred("invite_email")}
+                    required
+                    maxLength={254}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    enterKeyHint={needsPixelverif ? "next" : "done"}
+                    placeholder="nama@gmail.com"
+                    aria-invalid={!!inviteEmailError}
+                    aria-describedby={inviteEmailError ? "checkout-invite-email-hint checkout-invite-email-error" : "checkout-invite-email-hint"}
+                    className={`h-11 w-full rounded-xl border bg-white/[0.06] px-3.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${inviteEmailError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                  />
+                  {inviteEmailError && <p id="checkout-invite-email-error" className="mt-1.5 text-xs text-red-300">{inviteEmailError}</p>}
+                </div>
+              </div>
+            )}
+
+            {customFieldGroups.map((group) => {
+              const hasSecret = group.config.fields.some((f) => f.type === "password");
+              return (
+                <div
+                  key={group.variantId}
+                  className="mt-5 border-t border-white/10 pt-5"
+                  data-testid="checkout-custom-fields-section"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-white">
+                      {group.config.title?.trim() || text("Data Tambahan", "Additional Details")}
+                    </h3>
+                    {customFieldGroups.length > 1 && (
+                      <span className="text-xs text-white/45">{group.label}</span>
+                    )}
+                  </div>
+                  {group.config.note?.trim() && (
+                    <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-white/45">
+                      {hasSecret && <Lock aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#00E5FF]/75" />}
+                      <span>{group.config.note.trim()}</span>
+                    </p>
+                  )}
+                  <div className="mt-3.5 grid gap-3">
+                    {group.config.fields.map((field) => {
+                      const stateKey = `${group.variantId}:${field.key}`;
+                      const inputId = `checkout-custom-${group.variantId}-${field.key}`;
+                      const errId = `${inputId}-error`;
+                      const hintId = `${inputId}-hint`;
+                      const val = customValues[group.variantId]?.[field.key] ?? "";
+                      const fieldErr = getCustomFieldError(group.variantId, field);
+                      const isSecret = field.type === "password";
+                      const revealed = Boolean(showCustomSecret[stateKey]);
+                      const isEmail = field.type === "email";
+                      const isTextarea = field.type === "textarea";
+                      const reqMark = field.required !== false ? " *" : "";
+                      return (
+                        <div key={field.key}>
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <label htmlFor={inputId} className="block text-xs font-medium text-white/70">
+                              {field.label}{reqMark}
+                            </label>
+                            {isEmail && contactEmailValid && val.trim().toLowerCase() !== email.trim().toLowerCase() && (
+                              <button
+                                type="button"
+                                onClick={() => setCustomValue(group.variantId, field.key, email.trim())}
+                                className="rounded text-xs font-medium text-[#00E5FF] hover:text-[#5CEEFF] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]/70"
+                              >
+                                {text("Samakan dengan email kontak", "Same as contact email")}
+                              </button>
+                            )}
+                          </div>
+                          {isTextarea ? (
+                            <textarea
+                              id={inputId}
+                              name={`custom_${field.key}`}
+                              rows={3}
+                              value={val}
+                              onChange={(e) => setCustomValue(group.variantId, field.key, e.target.value)}
+                              onBlur={() => markCustomBlurred(group.variantId, field.key)}
+                              required={field.required !== false}
+                              maxLength={500}
+                              placeholder={field.placeholder || ""}
+                              aria-invalid={!!fieldErr}
+                              aria-describedby={[field.helper ? hintId : "", fieldErr ? errId : ""].filter(Boolean).join(" ") || undefined}
+                              className={`w-full rounded-xl border bg-white/[0.06] px-3.5 py-2.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${fieldErr ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                            />
+                          ) : isSecret ? (
+                            <div className="relative">
+                              <input
+                                id={inputId}
+                                name={`custom_${field.key}`}
+                                type={revealed ? "text" : "password"}
+                                value={val}
+                                onChange={(e) => setCustomValue(group.variantId, field.key, e.target.value)}
+                                onBlur={() => markCustomBlurred(group.variantId, field.key)}
+                                required={field.required !== false}
+                                maxLength={500}
+                                autoComplete="new-password"
+                                autoCorrect="off"
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                placeholder={field.placeholder || ""}
+                                aria-invalid={!!fieldErr}
+                                aria-describedby={[field.helper ? hintId : "", fieldErr ? errId : ""].filter(Boolean).join(" ") || undefined}
+                                className={`h-11 w-full rounded-xl border bg-white/[0.06] pl-3.5 pr-11 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${fieldErr ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                              />
+                              <button
+                                type="button"
+                                aria-pressed={revealed}
+                                aria-label={revealed ? text(`Sembunyikan ${field.label}`, `Hide ${field.label}`) : text(`Tampilkan ${field.label}`, `Show ${field.label}`)}
+                                onClick={() => setShowCustomSecret((prev) => ({ ...prev, [stateKey]: !prev[stateKey] }))}
+                                className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-white/55 hover:bg-white/[0.08] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]/70"
+                              >
+                                {revealed ? <EyeOff aria-hidden className="h-4 w-4" /> : <Eye aria-hidden className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          ) : (
+                            <input
+                              id={inputId}
+                              name={`custom_${field.key}`}
+                              type={isEmail ? "email" : "text"}
+                              value={val}
+                              onChange={(e) => setCustomValue(group.variantId, field.key, e.target.value)}
+                              onBlur={() => markCustomBlurred(group.variantId, field.key)}
+                              required={field.required !== false}
+                              maxLength={isEmail ? 254 : 500}
+                              autoComplete="off"
+                              autoCorrect="off"
+                              autoCapitalize="none"
+                              spellCheck={false}
+                              placeholder={field.placeholder || (isEmail ? "nama@gmail.com" : "")}
+                              aria-invalid={!!fieldErr}
+                              aria-describedby={[field.helper ? hintId : "", fieldErr ? errId : ""].filter(Boolean).join(" ") || undefined}
+                              className={`h-11 w-full rounded-xl border bg-white/[0.06] px-3.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#00E5FF]/70 ${fieldErr ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/50"}`}
+                            />
+                          )}
+                          {field.helper?.trim() && (
+                            <p id={hintId} className="mt-1 text-xs leading-5 text-white/45">{field.helper.trim()}</p>
+                          )}
+                          {fieldErr && <p id={errId} className="mt-1.5 text-xs text-red-300">{fieldErr}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
 
             {needsPixelverif && (
               <div className="mt-5 border-t border-white/10 pt-5" data-testid="checkout-activation-section">

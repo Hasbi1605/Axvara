@@ -1,6 +1,8 @@
+import type { BuyerFieldKey } from "@/lib/buyer-fields";
+
 export type CheckoutApprovalLine = {
-  buyerFields?: { muse_invite_code?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
-  buyerFieldKey?: "muse_invite_code" | null;
+  buyerFields?: { muse_invite_code?: string; invite_email?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
+  buyerFieldKey?: BuyerFieldKey | null;
   pixelverifInput?: boolean;
   maxQty?: number | null;
   productId: number;
@@ -19,7 +21,10 @@ export async function checkoutApprovalTag(lines: readonly CheckoutApprovalLine[]
   }
   const canonical = [...lines].sort((a,b) => a.productId-b.productId || a.variantId-b.variantId)
     .map(async line => {
-      const base = [line.productId,line.variantId,line.qty,line.price,...(line.buyerFieldKey || line.maxQty != null ? [line.buyerFieldKey ?? null,line.maxQty ?? null,line.buyerFields?.muse_invite_code ?? null] : [])];
+      const fieldValue = line.buyerFieldKey === "invite_email"
+        ? (line.buyerFields?.invite_email?.trim().toLowerCase() ?? null)
+        : (line.buyerFields?.muse_invite_code ?? null);
+      const base = [line.productId,line.variantId,line.qty,line.price,...(line.buyerFieldKey || line.maxQty != null ? [line.buyerFieldKey ?? null,line.maxQty ?? null,fieldValue] : [])];
       if (!line.pixelverifInput) return base;
       const { computeFingerprint } = await import("@/lib/fulfillment/crypto");
       const fingerprint = await computeFingerprint(`${line.buyerFields?.pv_email ?? ""}\n${line.buyerFields?.pv_password ?? ""}\n${line.buyerFields?.pv_totp_secret ?? ""}`);

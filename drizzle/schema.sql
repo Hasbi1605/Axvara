@@ -2664,3 +2664,17 @@ CREATE TABLE IF NOT EXISTS pixelverif_blocked_emails (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (email_hash, validity)
 );
+
+-- 0165_variant_custom_buyer_field
+ALTER TABLE product_variants
+  ADD COLUMN custom_buyer_field TEXT
+  CHECK (
+    custom_buyer_field IS NULL
+    OR (length(custom_buyer_field) BETWEEN 1 AND 64 AND custom_buyer_field NOT GLOB '*[^a-z0-9_]*')
+  );
+ALTER TABLE product_variants
+  ADD COLUMN custom_buyer_fields_json TEXT
+  CHECK (
+    custom_buyer_fields_json IS NULL
+    OR (length(custom_buyer_fields_json) <= 4096 AND json_valid(custom_buyer_fields_json))
+  );

@@ -413,9 +413,10 @@ function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDe
 }
 
 function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; onClose: () => void; onAction: (kind: NonNullable<ActionState>["kind"]) => void; onChanged: () => void }) {
-  const [buyerInputs,setBuyerInputs] = useState<{ item_index:number;value:string }[]>([]);
+  const [buyerInputs,setBuyerInputs] = useState<{ item_index:number;key?:string;label?:string;secret?:boolean;value:string }[]>([]);
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
   const [inputError,setInputError] = useState(false);
-  useEffect(() => { let active=true; setBuyerInputs([]); setInputError(false); if (order.kind === "apps") void fetch(`/api/admin/orders/${encodeURIComponent(order.code)}`,{ cache:"no-store" }).then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(data => { if (active) setBuyerInputs(data.buyerInputs ?? []); }).catch(() => { if (active) setInputError(true); }); return () => { active=false; }; },[order.code,order.kind]);
+  useEffect(() => { let active=true; setBuyerInputs([]); setRevealedSecrets({}); setInputError(false); if (order.kind === "apps") void fetch(`/api/admin/orders/${encodeURIComponent(order.code)}`,{ cache:"no-store" }).then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(data => { if (active) setBuyerInputs(data.buyerInputs ?? []); }).catch(() => { if (active) setInputError(true); }); return () => { active=false; }; },[order.code,order.kind]);
   const isPedia = order.kind === "pedia";
   const isMarket = order.kind === "apps";
   const providerPayment = /^(nowpayments|sekalipay_gateway):/i.test(order.method);
@@ -434,7 +435,22 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
 <PediaChip />
 <PediaStatusChip order={order} />
 </> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}<span className="text-xs text-admin-muted">{formatDate(order.createdAt)}</span>
-</div>{!isPedia && order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} /> : null}{inputError && <p role="alert" className="text-xs text-admin-danger">Input pembeli gagal dimuat. Tutup dan buka kembali detail.</p>}{buyerInputs.map(input => <Info key={input.item_index} label={`Kode Invite Muse · item ${input.item_index+1}`} value={input.value} />)}<Separator />{isMarket && <OrderAccessAdmin key={order.code} code={order.code} />}<div className="grid grid-cols-2 gap-3 text-sm">
+</div>{!isPedia && order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} /> : null}{inputError && <p role="alert" className="text-xs text-admin-danger">Input pembeli gagal dimuat. Tutup dan buka kembali detail.</p>}{buyerInputs.map(input => {
+  const rowKey = `${input.item_index}-${input.key ?? "muse"}`;
+  const title = input.label || (input.key === "invite_email" ? "Email yang ingin di-invite" : "Kode Invite Muse");
+  const isSecret = Boolean(input.secret);
+  const shown = !isSecret || Boolean(revealedSecrets[rowKey]);
+  return <div key={rowKey} className="rounded-md border border-admin-border bg-admin-subtle/60 p-3">
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-xs font-medium text-admin-muted">{`${title} · item ${input.item_index+1}`}</p>
+      <div className="flex items-center gap-1.5">
+        {isSecret && <Button variant="ghost" size="sm" type="button" className="h-6 px-2 text-xs" onClick={() => setRevealedSecrets(prev => ({ ...prev, [rowKey]: !prev[rowKey] }))}>{shown ? "Sembunyikan" : "Tampilkan"}</Button>}
+        <Button variant="ghost" size="sm" type="button" className="h-6 px-2 text-xs" onClick={() => void navigator.clipboard?.writeText(input.value)}>Salin</Button>
+      </div>
+    </div>
+    <p className="mt-1 break-all font-mono text-xs text-admin-fg">{shown ? input.value : "************"}</p>
+  </div>;
+})}<Separator />{isMarket && <OrderAccessAdmin key={order.code} code={order.code} />}<div className="grid grid-cols-2 gap-3 text-sm">
 <Info label="Pelanggan" value={isPedia ? displayName(order) : order.name || "—"} />
 <Info label="WhatsApp" value={order.wa || "—"} />
 <Info label="Email" value={order.email || "—"} />

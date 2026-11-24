@@ -163,8 +163,8 @@ export async function claimPayq1Creating(
 }
 
 export type CartLineLike = {
-  buyerFields?: { muse_invite_code?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
-  buyerFieldKey?: "muse_invite_code" | null;
+  buyerFields?: { muse_invite_code?: string; invite_email?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
+  buyerFieldKey?: import("@/lib/buyer-fields").BuyerFieldKey | null;
   pixelverifInput?: boolean;
   maxQty?: number | null;
   productId: number; variantId: number; qty: number; productName: string; variantLabel: string;

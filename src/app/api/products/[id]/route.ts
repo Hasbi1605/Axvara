@@ -15,6 +15,7 @@ import {
   isManualProductForBulk,
 } from "@/lib/bulk-pricing";
 import { requireAdmin } from "@/lib/auth";
+import { buyerFieldKeySchema, customBuyerFieldsConfigSchema, parseCustomBuyerFieldsConfig, splitBuyerFieldKeyColumns } from "@/lib/buyer-fields";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
 import { decideDirtyWinners } from "@/lib/supplier-pairs";
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const variants = await queryAll(
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
-            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order, pv.wr_auto_managed, pv.admin_terms, pv.admin_activation,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, COALESCE(pv.buyer_field_key, pv.custom_buyer_field) AS buyer_field_key, pv.custom_buyer_fields_json, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order, pv.wr_auto_managed, pv.admin_terms, pv.admin_activation,
             pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
             CASE WHEN pv.wr_variant_id IS NOT NULL THEN wv.wr_price
                  WHEN pv.sk_variant_id IS NOT NULL THEN sp.sk_price
@@ -89,6 +90,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       } else { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
     return {
       ...row,
+      custom_buyer_fields: row.buyer_field_key === "custom" ? parseCustomBuyerFieldsConfig(row.custom_buyer_fields_json) : null,
       supplier_cost: row.supplier_cost != null ? Number(row.supplier_cost) : null,
       supplier_cost_source: row.supplier_cost_source === "WR" || row.supplier_cost_source === "SK" ? row.supplier_cost_source : null,
       bulk_pricing: { enabled, tiers },
@@ -152,7 +154,8 @@ const variantInputSchema = z.object({
   // Minimum pembelian (migrasi 0034, generik — GSuite = 50, plafon 100).
   min_qty: z.coerce.number().int().min(1).max(100).optional(),
   max_qty: z.number().int().min(1).max(100).nullable().optional(),
-  buyer_field_key: z.literal("muse_invite_code").nullable().optional(),
+  buyer_field_key: buyerFieldKeySchema.nullable().optional(),
+  custom_buyer_fields: customBuyerFieldsConfigSchema.nullable().optional(),
   // Modal manual per unit (migrasi 0058, milik admin — sync tak menyentuh).
   manual_cost: z.coerce.number().int().min(0).max(999_999_999).optional(),
   // Bulk pricing per varian (migrasi 0099, milik admin — sync tak menyentuh).
@@ -169,6 +172,14 @@ const variantInputSchema = z.object({
   fulfillment_mode: z.enum(["manual", "shared", "unique"]).default("manual"),
   is_active: z.coerce.number().int().min(0).max(1).default(1),
   sort_order: z.coerce.number().int().min(0).max(999999).default(0),
+}).superRefine((v, ctx) => {
+  if (v.buyer_field_key === "custom" && (!v.custom_buyer_fields || !v.custom_buyer_fields.fields.length)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["custom_buyer_fields"],
+      message: `Varian "${v.label}": tambahkan minimal 1 kolom khusus dengan label yang jelas.`,
+    });
+  }
 });
 
 const updateSchema = z.object({
@@ -600,7 +611,28 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
               );
             }
             const copyWrite = manualCopyUpdate(id, autoSku, v);
-            if (v.buyer_field_key !== undefined || v.max_qty !== undefined) statements.push(d1.prepare(`UPDATE product_variants SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,max_qty=CASE WHEN ? THEN ? ELSE max_qty END WHERE product_id=? AND sku=?`).bind(v.buyer_field_key !== undefined ? 1 : 0,v.buyer_field_key ?? null,v.max_qty !== undefined ? 1 : 0,v.max_qty ?? null,id,autoSku));
+            if (v.buyer_field_key !== undefined || v.custom_buyer_fields !== undefined || v.max_qty !== undefined) {
+              const effectiveKey = v.buyer_field_key !== undefined ? (v.buyer_field_key ?? null) : null;
+              const cols = v.buyer_field_key !== undefined
+                ? splitBuyerFieldKeyColumns(effectiveKey, v.custom_buyer_fields)
+                : null;
+              statements.push(
+                d1.prepare(
+                  `UPDATE product_variants
+                   SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,
+                       custom_buyer_field=CASE WHEN ? THEN ? ELSE custom_buyer_field END,
+                       custom_buyer_fields_json=CASE WHEN ? THEN ? ELSE custom_buyer_fields_json END,
+                       max_qty=CASE WHEN ? THEN ? ELSE max_qty END
+                   WHERE product_id=? AND sku=?`,
+                ).bind(
+                  cols ? 1 : 0, cols?.buyer_field_key ?? null,
+                  cols ? 1 : 0, cols?.custom_buyer_field ?? null,
+                  cols ? 1 : 0, cols?.custom_buyer_fields_json ?? null,
+                  v.max_qty !== undefined ? 1 : 0, v.max_qty ?? null,
+                  id, autoSku,
+                ),
+              );
+            }
             // Harga manual hanya ditulis bila admin BENAR-BENAR mengubah harga.
             // Form Produk selalu mengirim semua varian; menulis tanpa syarat
             // membekukan harga rumus supplier menjadi override manual sehingga

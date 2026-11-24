@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import type { Product } from "@/lib/products";
 import type { BulkTier } from "@/lib/bulk-pricing";
+import type { BuyerFieldKey, CustomBuyerFieldsConfig } from "@/lib/buyer-fields";
 import { activeTier, bulkUnitEstimate, nextReachableTier, safeBulkTiers } from "@/lib/bulk-display";
 
 /**
@@ -14,7 +15,7 @@ import { activeTier, bulkUnitEstimate, nextReachableTier, safeBulkTiers } from "
  */
 export type CartItem = CartInput & { qty: number };
 
-type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; maxQty?: number | null; buyerFieldKey?: "muse_invite_code" | null; pixelverifInput?: boolean; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
+type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; maxQty?: number | null; buyerFieldKey?: BuyerFieldKey | null; customBuyerFields?: CustomBuyerFieldsConfig | null; pixelverifInput?: boolean; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
 
 type CartStore = {
   items: CartItem[];

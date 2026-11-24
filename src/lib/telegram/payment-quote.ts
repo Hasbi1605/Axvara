@@ -10,6 +10,7 @@ import { buildMethodOptions } from "@/lib/payments/method-options";
 import { isCanonicalMethodOption } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/locale";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
+import { INVITE_EMAIL_REGEX } from "@/lib/buyer-fields";
 
 export const PAYQ1_TTL_SEC = 600;
 // Katalog crypto multi-koin (hingga 28 koin, tiap koin membawa blok kurs bertanda) membuat
@@ -26,6 +27,8 @@ export type Payq1CartSource = {
   qty: number;
   /** Optional Muse Buff invite code (6 ASCII alphanumeric chars, non-secret). */
   museInviteCode?: string;
+  /** Optional target email for invite-based manual products. */
+  inviteEmail?: string;
   /** Optional UUID referencing encrypted `telegram_pixelverif_stashes` row (never stores secret in pending_action). */
   pvFlowId?: string;
 };
@@ -139,14 +142,16 @@ export function parsePayq1State(raw: unknown): Payq1State | null {
   if (typeof v.tag !== "string" || !/^[0-9a-f]{12}$/.test(v.tag)) return null;
   if (v.locale !== "id" && v.locale !== "en") return null;
   if (!Number.isSafeInteger(v.idrSubtotal) || (v.idrSubtotal as number) <= 0) return null;
-  const source = v.source as { kind?: unknown; productId?: unknown; variantId?: unknown; qty?: unknown; museInviteCode?: unknown; pvFlowId?: unknown } | null;
+  const source = v.source as { kind?: unknown; productId?: unknown; variantId?: unknown; qty?: unknown; museInviteCode?: unknown; inviteEmail?: unknown; pvFlowId?: unknown } | null;
   if (!source || typeof source !== "object" || source.kind !== "single") return null;
   if (!Number.isSafeInteger(source.productId) || (source.productId as number) <= 0) return null;
   if (!Number.isSafeInteger(source.variantId) || (source.variantId as number) <= 0) return null;
   if (!Number.isSafeInteger(source.qty) || (source.qty as number) <= 0) return null;
   if (source.museInviteCode !== undefined && (typeof source.museInviteCode !== "string" || !/^[A-Za-z0-9]{6}$/.test(source.museInviteCode))) return null;
+  if (source.inviteEmail !== undefined && (typeof source.inviteEmail !== "string" || source.inviteEmail.length > 254 || !INVITE_EMAIL_REGEX.test(source.inviteEmail))) return null;
   if (source.pvFlowId !== undefined && (typeof source.pvFlowId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.pvFlowId))) return null;
-  if (source.museInviteCode !== undefined && source.pvFlowId !== undefined) return null;
+  const inputCount = [source.museInviteCode, source.inviteEmail, source.pvFlowId].filter(x => x !== undefined).length;
+  if (inputCount > 1) return null;
   if (!Array.isArray(v.methods)) return null;
   if (v.methods.length > PAYQ1_MAX_METHODS) return null;
   const idrSubtotal = v.idrSubtotal as number;

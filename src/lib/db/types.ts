@@ -35,8 +35,16 @@ export type D1 = {
 };
 
 export type AtomicOrderItem = {
-  buyer_field_key?: "muse_invite_code" | null;
-  buyer_fields?: { muse_invite_code?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
+  buyer_field_key?: "muse_invite_code" | "invite_email" | "custom" | null;
+  buyer_fields?: {
+    muse_invite_code?: string;
+    invite_email?: string;
+    custom_values?: Record<string, string>;
+    pv_email?: string;
+    pv_password?: string;
+    pv_totp_secret?: string;
+  };
+  custom_buyer_fields_meta?: { key: string; label: string; type: "text" | "email" | "password" | "textarea" }[];
   max_qty?: number | null;
   product_id: number;
   variant_id?: number;

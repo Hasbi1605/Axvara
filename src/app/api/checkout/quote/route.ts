@@ -1,7 +1,7 @@
 import { wrJaspayCoveredSql, wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { assertSameBuyerCode, buyerFieldsSchema, hasAutomaticSupplierDelivery, isPixelverifVariantRow, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, buyerFieldsSchema, computeCustomFieldsFingerprint, hasAutomaticSupplierDelivery, isPixelverifVariantRow, resolveBuyerFieldKey, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 import { queryAll, isD1Mode } from "@/lib/db";
 import { buyerDeliveryKind, isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken } from "@/lib/auth";
@@ -433,7 +433,7 @@ export async function POST(req: NextRequest) {
       /* helper murni — gagal impor = anggap tidak wajib, API orders tetap jaga */
     }
     quotedItems.push({
-      buyer_field_key: fieldConfig.buyer_field_key === "muse_invite_code" ? "muse_invite_code" : null,
+      buyer_field_key: resolveBuyerFieldKey(fieldConfig),
       max_qty: fieldConfig.max_qty == null ? null : Number(fieldConfig.max_qty),
       ...(Object.keys(buyerFields).length ? { buyer_fields: buyerFields } : {}),
       product_id: productId,
@@ -489,11 +489,21 @@ export async function POST(req: NextRequest) {
   const { computeFingerprint } = await import("@/lib/fulfillment/crypto");
   const { maskPixelverifEmail } = await import("@/lib/pixelverif/purchase");
   const publicQuotedItems = await Promise.all(quotedItems.map(async (item) => {
+    if (item.buyer_fields?.custom_values) {
+      const customFingerprint = await computeCustomFieldsFingerprint(item.buyer_fields.custom_values);
+      const { custom_values: _cv, ...safeFields } = item.buyer_fields;
+      void _cv;
+      const { buyer_fields: _omitCustom, ...rest } = item;
+      void _omitCustom;
+      return { ...rest, buyer_fields: { ...safeFields, custom_fingerprint: customFingerprint } };
+    }
     if (!item.buyer_fields?.pv_password && !item.buyer_fields?.pv_totp_secret) return item;
     const pv = item.buyer_fields;
     const fingerprint = await computeFingerprint(`${(pv.pv_email ?? "").trim().toLowerCase()}\n${pv.pv_password ?? ""}\n${(pv.pv_totp_secret ?? "").replace(/[\s-]/g, "").toUpperCase()}`);
     const { pv_email: _e, pv_password: _p, pv_totp_secret: _t, ...safeFields } = pv;
+    void _e; void _p; void _t;
     const { buyer_fields: _omit, ...rest } = item;
+    void _omit;
     return { ...rest, buyer_fields: { ...safeFields, pv_fingerprint: fingerprint, pv_email_masked: maskPixelverifEmail(pv.pv_email ?? "") } };
   }));
 

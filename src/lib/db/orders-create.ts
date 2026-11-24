@@ -8,7 +8,7 @@ import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 
 import { getD1, getSharedMem, getOrderMem } from "./client";
 import { StockReservationError } from "./errors";
-import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, miraiEligibility, pixelverifEligibility, storebatEligibility, tunvnEligibility, validateBuyerFields } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, miraiEligibility, pixelverifEligibility, resolveBuyerFieldKey, storebatEligibility, tunvnEligibility, validateBuyerFields } from "@/lib/buyer-fields";
 import type { D1Statement, AtomicOrderItem } from "./types";
 import { markUniqueUnitLines } from "@/lib/fulfillment/units";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
@@ -39,7 +39,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     if (owners.length !== productIds.length) throw new StockReservationError();
     const minutes = owners.some(row => isManualProductForBulk(bulkOwnerFromProductRow(row))) ? 15 : supplierMinutes;
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
-    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,pv.buyer_field_key,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,pv.storebat_product_id,p.storebat_family,pv.storebat_cost_usd,pv.storebat_fx_idr_per_usd,pv.mirai_package_code,p.mirai_family,pv.mirai_cost_usdt,pv.mirai_fx_idr_per_usdt,pv.pixelverif_flow_type,pv.pixelverif_validity,pv.pixelverif_cost_usd,pv.pixelverif_fx_idr_per_usd,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
+    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,COALESCE(pv.buyer_field_key,pv.custom_buyer_field) AS buyer_field_key,pv.custom_buyer_fields_json,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,pv.storebat_product_id,p.storebat_family,pv.storebat_cost_usd,pv.storebat_fx_idr_per_usd,pv.mirai_package_code,p.mirai_family,pv.mirai_cost_usdt,pv.mirai_fx_idr_per_usdt,pv.pixelverif_flow_type,pv.pixelverif_validity,pv.pixelverif_cost_usd,pv.pixelverif_fx_idr_per_usd,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
         p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
         p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed
       FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
@@ -61,7 +61,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         const row = item.variant_id ? bulkById.get(item.variant_id) : {};
         if (!row) throw new Error("missing");
         validateBuyerFields(row, item.buyer_fields, qtyByVariant.get(item.variant_id ?? 0) ?? item.qty);
-        if (!buyerSnapshotMatches(item, { buyer_field_key: (row.buyer_field_key ?? null) as "muse_invite_code" | null, max_qty: row.max_qty == null ? null : Number(row.max_qty), buyer_fields: item.buyer_fields })) throw new Error("stale");
+        if (!buyerSnapshotMatches(item, { buyer_field_key: resolveBuyerFieldKey(row), max_qty: row.max_qty == null ? null : Number(row.max_qty), buyer_fields: item.buyer_fields })) throw new Error("stale");
         const clean = { ...item } as typeof item & { tunvn_eligibility?: unknown; aivault_eligibility?: unknown; storebat_eligibility?: unknown; mirai_eligibility?: unknown; pixelverif_eligibility?: unknown };
         delete clean.tunvn_eligibility;
         delete clean.aivault_eligibility;
@@ -111,7 +111,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                 AND ${wrNewSaleSql("pv")}
                 AND pv.price=? AND pv.bulk_pricing_enabled=? AND pv.bulk_pricing_tiers=? AND pv.fulfillment_mode=? AND (pv.stock=-1 OR pv.stock>=?)
                 AND ? >= COALESCE(pv.min_qty,1)
-                AND pv.buyer_field_key IS ? AND pv.max_qty IS ?
+                AND COALESCE(pv.buyer_field_key,pv.custom_buyer_field) IS ? AND pv.custom_buyer_fields_json IS ? AND pv.max_qty IS ?
                 AND (pv.max_qty IS NULL OR ? <= pv.max_qty)
                  -- Supplier identity snapshot grouped in parentheses: identical AND
                  -- semantics, but a shallow tree for the D1 expression-depth limit of 100
@@ -134,7 +134,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                   SELECT 1 FROM wr_variants wv WHERE wv.wr_variant_id=pv.wr_variant_id
                     AND wv.wr_max_quantity IS NOT NULL AND wv.wr_max_quantity >= ?))) THEN 1 ELSE 0 END`,
           ).bind(guardIds[index], item.variant_id, item.product_id, Number(bulkById.get(item.variant_id)?.price), Number(bulkById.get(item.variant_id)?.bulk_pricing_enabled), String(bulkById.get(item.variant_id)?.bulk_pricing_tiers), byId.get(item.variant_id) ?? "manual", item.qty, item.qty,
-            item.buyer_field_key ?? null,item.max_qty ?? null,qtyByVariant.get(item.variant_id) ?? item.qty,
+            item.buyer_field_key ?? null,bulkById.get(item.variant_id)?.custom_buyer_fields_json ?? null,item.max_qty ?? null,qtyByVariant.get(item.variant_id) ?? item.qty,
              bulkById.get(item.variant_id)?.sku ?? null,bulkById.get(item.variant_id)?.tunvn_buff_quantity_b ?? null,bulkById.get(item.variant_id)?.product_slug ?? null,
              bulkById.get(item.variant_id)?.tunvn_source_product_id ?? null,
              bulkById.get(item.variant_id)?.aivault_service_id ?? null,bulkById.get(item.variant_id)?.aivault_family ?? null,bulkById.get(item.variant_id)?.aivault_source_cost_usd ?? null,bulkById.get(item.variant_id)?.storebat_product_id ?? null,bulkById.get(item.variant_id)?.storebat_family ?? null,bulkById.get(item.variant_id)?.storebat_cost_usd ?? null,bulkById.get(item.variant_id)?.storebat_fx_idr_per_usd ?? null,

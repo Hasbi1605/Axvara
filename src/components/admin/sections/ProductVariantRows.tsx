@@ -13,6 +13,7 @@ import type { FormVariant, ProductForm } from "../product-types";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { DurationFields } from "./VariantDurationFields";
 import { CredentialQueue } from "./CredentialQueue";
+import { CustomBuyerFieldsEditor, defaultCustomBuyerFieldsConfig } from "./CustomBuyerFieldsEditor";
 import {
   BulkTierEditor,
   emptyBulkDraft,
@@ -528,8 +529,15 @@ export function ProductVariantRows({
                 />
               </Label>
                <Label className="block min-w-0 text-sm font-medium"><span className="mb-1 block sm:min-h-[28px]">Input pembeli</span>
-                <NativeSelect disabled={managedSupplier} value={v.buyer_field_key ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null } : item))} className={openInput}>
-                  <option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option>
+                <NativeSelect disabled={managedSupplier} value={v.buyer_field_key ?? ""} onChange={e => {
+                  const nextKey = e.target.value === "muse_invite_code" || e.target.value === "invite_email" || e.target.value === "custom" ? e.target.value : null;
+                  onSetFormVariants(curr => curr.map((item,i) => i === idx ? {
+                    ...item,
+                    buyer_field_key: nextKey,
+                    custom_buyer_fields: nextKey === "custom" ? (item.custom_buyer_fields ?? defaultCustomBuyerFieldsConfig()) : null,
+                  } : item));
+                }} className={openInput}>
+                  <option value="">Tidak ada</option><option value="invite_email">Email yang ingin di-invite</option><option value="custom">Kolom kustom (atur sendiri)</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option>
                 </NativeSelect>
               </Label>
                <Label className="block min-w-0 text-sm font-medium"><span className="mb-1 block sm:min-h-[28px]">Maks. beli (kosong = 100)</span><Input disabled={v.sku === "SB-BUFF" || v.sku.startsWith("MR-")} type="number" min={1} max={100} value={v.max_qty ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,max_qty:e.target.value ? Number(e.target.value) : null } : item))} className={openInput} /></Label>
@@ -550,6 +558,14 @@ export function ProductVariantRows({
                 />}
               </Label>
             </div>
+
+            {v.buyer_field_key === "custom" && (
+              <CustomBuyerFieldsEditor
+                disabled={managedSupplier}
+                value={v.custom_buyer_fields}
+                onChange={(next) => onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, custom_buyer_fields: next } : item))}
+              />
+            )}
 
             {/* Harga grosir per varian — HANYA produk manual (owner 2026-11-08).
                 Produk supplier (WR/SK) tidak pernah menampilkan editor ini. */}

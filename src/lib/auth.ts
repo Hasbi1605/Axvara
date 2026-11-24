@@ -5,10 +5,17 @@ import { constantTimeEqual } from "@/lib/security";
 import { idrToUsdCents, parseFxTimestamp, parseRateRational, type FxSource } from "@/lib/payments/fx";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
+import { buyerFieldKeySchema, INVITE_EMAIL_REGEX, type BuyerFieldKey } from "@/lib/buyer-fields";
 
 export type CheckoutQuoteItem = {
-  buyer_field_key?: "muse_invite_code" | null;
-  buyer_fields?: { muse_invite_code?: string; pv_fingerprint?: string; pv_email_masked?: string };
+  buyer_field_key?: BuyerFieldKey | null;
+  buyer_fields?: {
+    muse_invite_code?: string;
+    invite_email?: string;
+    custom_fingerprint?: string;
+    pv_fingerprint?: string;
+    pv_email_masked?: string;
+  };
   max_qty?: number | null;
   product_id: number;
   variant_id?: number;
@@ -420,9 +427,11 @@ export async function verifyIdleToken(idle: string): Promise<AdminIdlePayload | 
 const quoteItemSchema = z.object({
   product_id: z.number().int().safe().positive(), variant_id: z.number().int().safe().positive().optional(),
   name: z.string(), price: z.number().int().safe().nonnegative(), qty: z.number().int().min(1).max(100),
-  buyer_field_key: z.literal("muse_invite_code").nullable().optional(),
+  buyer_field_key: buyerFieldKeySchema.nullable().optional(),
   buyer_fields: z.object({
     muse_invite_code: z.string().regex(/^[A-Za-z0-9]{6}$/).optional(),
+    invite_email: z.string().trim().toLowerCase().max(254).regex(INVITE_EMAIL_REGEX).optional(),
+    custom_fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     // Pixel: the signed token carries ONLY a SHA-256 fingerprint + masked
     // email. Raw credentials travel solely in the order-create request body
     // and are fingerprint-checked against this token; never readable here.

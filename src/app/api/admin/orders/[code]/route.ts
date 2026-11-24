@@ -15,8 +15,34 @@ export async function GET(req:NextRequest,{ params }:{ params:Promise<{ code:str
   if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error:"invalid_code" },{ status:400,headers });
   const row = await queryFirst("SELECT items FROM orders WHERE code=?",code);
   if (!row) return NextResponse.json({ error:"not_found" },{ status:404,headers });
-  const items = JSON.parse(String(row.items || "[]")) as { variant_id?:number;buyer_fields?:{ muse_invite_code?:string } }[];
-  return NextResponse.json({ buyerInputs:items.flatMap((item,index) => item.buyer_fields?.muse_invite_code ? [{ item_index:index,variant_id:item.variant_id,key:"muse_invite_code",value:item.buyer_fields.muse_invite_code }] : []) },{ headers });
+  const items = JSON.parse(String(row.items || "[]")) as {
+    variant_id?: number;
+    buyer_fields?: { muse_invite_code?: string; invite_email?: string; custom_values?: Record<string, string> };
+    custom_buyer_fields_meta?: { key: string; label: string; type: "text" | "email" | "password" | "textarea" }[];
+  }[];
+  return NextResponse.json({
+    buyerInputs: items.flatMap((item, index) => {
+      const out: { item_index: number; variant_id?: number; key: string; label?: string; secret?: boolean; value: string }[] = [];
+      if (item.buyer_fields?.muse_invite_code) out.push({ item_index: index, variant_id: item.variant_id, key: "muse_invite_code", label: "Kode Invite Muse", value: item.buyer_fields.muse_invite_code });
+      if (item.buyer_fields?.invite_email) out.push({ item_index: index, variant_id: item.variant_id, key: "invite_email", label: "Email yang ingin di-invite", value: item.buyer_fields.invite_email });
+      if (item.buyer_fields?.custom_values) {
+        const metaByKey = new Map((item.custom_buyer_fields_meta ?? []).map((m) => [m.key, m]));
+        for (const [k, v] of Object.entries(item.buyer_fields.custom_values)) {
+          if (v === "") continue;
+          const meta = metaByKey.get(k);
+          out.push({
+            item_index: index,
+            variant_id: item.variant_id,
+            key: `custom:${k}`,
+            label: meta?.label || k.replace(/_/g, " "),
+            ...(meta?.type === "password" ? { secret: true } : {}),
+            value: String(v),
+          });
+        }
+      }
+      return out;
+    }),
+  },{ headers });
 }
 
 const patchSchema = z.object({

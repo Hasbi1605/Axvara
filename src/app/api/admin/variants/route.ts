@@ -6,6 +6,7 @@ import { ARCHIVED_MESSAGE } from "@/lib/product-archive";
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { buyerFieldKeySchema, customBuyerFieldsConfigSchema, parseCustomBuyerFieldsConfig, splitBuyerFieldKeyColumns } from "@/lib/buyer-fields";
 import { queryAll, queryFirst, execRun, getD1, D1Statement } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
 import { readJsonBody } from "@/lib/http-body";
@@ -63,7 +64,8 @@ const SingleVariantSchema = z.object({
   // Batas 100 = plafon channel (web/Telegram) agar aturan tetap bisa dibeli.
   min_qty: z.number().int().min(1).max(100).default(1),
   max_qty: z.number().int().min(1).max(100).nullable().optional(),
-  buyer_field_key: z.literal("muse_invite_code").nullable().optional(),
+  buyer_field_key: buyerFieldKeySchema.nullable().optional(),
+  custom_buyer_fields: customBuyerFieldsConfigSchema.nullable().optional(),
   // Modal manual per unit (migrasi 0058, milik admin — sync tak menyentuh).
   manual_cost: z.number().int().min(0).max(999_999_999).default(0),
   // Bulk pricing per varian (migrasi 0099, milik admin — sync tak menyentuh,
@@ -99,6 +101,9 @@ function validateCrossFields(v: z.infer<typeof SingleVariantSchema>): string | n
   if (v.warranty_type === "custom" && !v.warranty_label) {
     return `Varian "${v.label}": label garansi wajib diisi jika tipe garansi custom.`;
   }
+  if (v.buyer_field_key === "custom" && (!v.custom_buyer_fields || !v.custom_buyer_fields.fields?.length)) {
+    return `Varian "${v.label}": tambahkan minimal 1 kolom khusus dengan label yang jelas.`;
+  }
   return null;
 }
 
@@ -116,7 +121,7 @@ export async function GET(request: NextRequest) {
     `SELECT pv.id, pv.product_id, pv.sku, pv.label,
             pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
-            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.manual_cost, pv.fulfillment_mode, pv.admin_terms, pv.admin_activation,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, COALESCE(pv.buyer_field_key, pv.custom_buyer_field) AS buyer_field_key, pv.custom_buyer_fields_json, pv.manual_cost, pv.fulfillment_mode, pv.admin_terms, pv.admin_activation,
             pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
             CASE WHEN pv.wr_variant_id IS NOT NULL THEN wv.wr_price
                  WHEN pv.sk_variant_id IS NOT NULL THEN sp.sk_price
@@ -153,6 +158,7 @@ export async function GET(request: NextRequest) {
     } else { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
     return {
       ...row,
+      custom_buyer_fields: row.buyer_field_key === "custom" ? parseCustomBuyerFieldsConfig(row.custom_buyer_fields_json) : null,
       supplier_cost: row.supplier_cost != null ? Number(row.supplier_cost) : null,
       supplier_cost_source: row.supplier_cost_source === "WR" || row.supplier_cost_source === "SK" ? row.supplier_cost_source : null,
       bulk_pricing: { enabled, tiers },
@@ -389,7 +395,27 @@ async function POSTImpl(request: NextRequest) {
       }
 
       for (const v of variants) {
-        if (v.buyer_field_key !== undefined || v.max_qty !== undefined) statements.push(d1.prepare(`UPDATE product_variants SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,max_qty=CASE WHEN ? THEN ? ELSE max_qty END WHERE product_id=? AND sku=?`).bind(v.buyer_field_key !== undefined ? 1 : 0,v.buyer_field_key ?? null,v.max_qty !== undefined ? 1 : 0,v.max_qty ?? null,product_id,v.sku));
+        if (v.buyer_field_key !== undefined || v.custom_buyer_fields !== undefined || v.max_qty !== undefined) {
+          const cols = v.buyer_field_key !== undefined
+            ? splitBuyerFieldKeyColumns(v.buyer_field_key ?? null, v.custom_buyer_fields)
+            : null;
+          statements.push(
+            d1.prepare(
+              `UPDATE product_variants
+               SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,
+                   custom_buyer_field=CASE WHEN ? THEN ? ELSE custom_buyer_field END,
+                   custom_buyer_fields_json=CASE WHEN ? THEN ? ELSE custom_buyer_fields_json END,
+                   max_qty=CASE WHEN ? THEN ? ELSE max_qty END
+               WHERE product_id=? AND sku=?`,
+            ).bind(
+              cols ? 1 : 0, cols?.buyer_field_key ?? null,
+              cols ? 1 : 0, cols?.custom_buyer_field ?? null,
+              cols ? 1 : 0, cols?.custom_buyer_fields_json ?? null,
+              v.max_qty !== undefined ? 1 : 0, v.max_qty ?? null,
+              product_id, v.sku,
+            ),
+          );
+        }
         // Harga manual hanya ditulis bila harganya BERUBAH dari baris tersimpan:
         // batch dari panel Produk selalu membawa semua varian, jadi menulis
         // tanpa syarat membekukan harga rumus supplier menjadi override manual.
@@ -533,17 +559,18 @@ async function POSTImpl(request: NextRequest) {
   }
 
   const now = new Date().toISOString();
+  const buyerCols = splitBuyerFieldKeyColumns(v.buyer_field_key ?? null, v.custom_buyer_fields);
   const result = await execRun(
     `INSERT INTO product_variants (product_id, sku, label, duration_value, duration_unit, duration_label,
        warranty_type, warranty_value, warranty_unit, warranty_label,
        price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order,
-       bulk_pricing_enabled, bulk_pricing_tiers, created_at, updated_at,buyer_field_key,max_qty)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       bulk_pricing_enabled, bulk_pricing_tiers, created_at, updated_at,buyer_field_key,custom_buyer_field,custom_buyer_fields_json,max_qty)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     v.product_id, v.sku, v.label,
     v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
     v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
     v.price, v.compare_price ?? null, v.stock, v.min_qty ?? 1, v.manual_cost ?? 0, v.fulfillment_mode,
-    v.is_active, v.sort_order, bulkEnabled, bulkTiersJson, now, now,v.buyer_field_key ?? null,v.max_qty ?? null,
+    v.is_active, v.sort_order, bulkEnabled, bulkTiersJson, now, now,buyerCols.buyer_field_key,buyerCols.custom_buyer_field,buyerCols.custom_buyer_fields_json,v.max_qty ?? null,
   );
 
   const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
@@ -689,12 +716,24 @@ async function PUTImpl(request: NextRequest) {
     params.push(v.price);
   }
   const isSupplierLinked = existing.wr_variant_id != null || existing.sk_variant_id != null;
+  const effectivePutBuyerKey = v.buyer_field_key !== undefined
+    ? (v.buyer_field_key ?? null)
+    : ((existing.buyer_field_key ?? existing.custom_buyer_field ?? null) as "muse_invite_code" | "invite_email" | "custom" | null);
+  const effectivePutCustomFields = v.custom_buyer_fields !== undefined
+    ? v.custom_buyer_fields
+    : parseCustomBuyerFieldsConfig(existing.custom_buyer_fields_json);
+  const putBuyerCols = v.buyer_field_key === undefined && v.custom_buyer_fields === undefined
+    ? null
+    : splitBuyerFieldKeyColumns(effectivePutBuyerKey, effectivePutCustomFields);
   const fields: [string, unknown][] = [
     ["sku", v.sku], ["label", v.label],
     ["duration_value", v.duration_value], ["duration_unit", v.duration_unit], ["duration_label", v.duration_label],
     ["warranty_type", v.warranty_type], ["warranty_value", v.warranty_value], ["warranty_unit", v.warranty_unit], ["warranty_label", v.warranty_label],
     ["price", v.price], ["compare_price", v.compare_price], ["stock", v.stock],
-    ["min_qty", v.min_qty], ["manual_cost", isSupplierLinked ? undefined : v.manual_cost], ["max_qty",v.max_qty], ["buyer_field_key",v.buyer_field_key],
+    ["min_qty", v.min_qty], ["manual_cost", isSupplierLinked ? undefined : v.manual_cost], ["max_qty",v.max_qty],
+    ["buyer_field_key", putBuyerCols ? putBuyerCols.buyer_field_key : undefined],
+    ["custom_buyer_field", putBuyerCols ? putBuyerCols.custom_buyer_field : undefined],
+    ["custom_buyer_fields_json", putBuyerCols ? putBuyerCols.custom_buyer_fields_json : undefined],
     ["fulfillment_mode", v.fulfillment_mode], ["is_active", v.is_active], ["sort_order", v.sort_order],
   ];
   for (const [col, val] of fields) {

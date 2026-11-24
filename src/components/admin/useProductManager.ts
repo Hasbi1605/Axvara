@@ -276,7 +276,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         comparePrice: v.comparePrice ?? (v as Record<string, unknown>).compare_price as number | null ?? null,
         stock: v.stock ?? -1,
         min_qty: Number((v as Record<string, unknown>).min_qty ?? 1) || 1,
-        buyer_field_key: v.buyer_field_key === "muse_invite_code" ? "muse_invite_code" as const : null,
+        buyer_field_key: v.buyer_field_key === "muse_invite_code" || v.buyer_field_key === "invite_email" || v.buyer_field_key === "custom" ? v.buyer_field_key : null,
+        custom_buyer_fields: v.buyer_field_key === "custom" ? ((raw.custom_buyer_fields as FormVariant["custom_buyer_fields"]) ?? null) : null,
         max_qty: v.max_qty == null ? null : Number(v.max_qty),
         manual_cost: Math.max(0, Math.floor(Number((v as Record<string, unknown>).manual_cost ?? 0) || 0)),
         supplier_cost: v.supplier_cost,
@@ -307,6 +308,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         const v0 = mapped[0];
         nextForm.min_qty = v0.min_qty ?? 1;
         nextForm.buyer_field_key = v0.buyer_field_key;
+        nextForm.custom_buyer_fields = v0.custom_buyer_fields ?? null;
         nextForm.max_qty = v0.max_qty;
         nextForm.manual_cost = v0.manual_cost ?? 0;
         nextForm.supplier_cost = v0.supplier_cost;
@@ -520,6 +522,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       stock: form.stock != null ? Number(form.stock) : -1,
       min_qty: Math.max(1, Math.min(100, Number(form.min_qty ?? 1) || 1)),
       buyer_field_key: form.buyer_field_key,
+      custom_buyer_fields: form.buyer_field_key === "custom" ? (form.custom_buyer_fields ?? null) : null,
       max_qty: form.max_qty,
       manual_cost: form.supplier_cost_source != null ? undefined : Math.max(0, Math.floor(Number(form.manual_cost ?? 0) || 0)),
       duration_value: form.duration_value ?? null,
@@ -602,6 +605,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
             stock: vr.stock != null ? Number(vr.stock) : -1,
             min_qty: Math.max(1, Math.min(100, Number(vr.min_qty ?? 1) || 1)),
             buyer_field_key: vr.buyer_field_key,
+            custom_buyer_fields: vr.buyer_field_key === "custom" ? (vr.custom_buyer_fields ?? null) : null,
             max_qty: vr.max_qty,
             manual_cost: vr.supplier_cost_source != null ? undefined : Math.max(0, Math.floor(Number(vr.manual_cost ?? 0) || 0)),
             duration_value: vr.duration_value,

@@ -11,9 +11,12 @@ export type Cat = { id:number; slug:string; name:string; sort_order?:number; ico
 
 /** Draft harga grosir (editor admin). Lihat `BulkTierEditor`. */
 type BulkDraft = import("./BulkTierEditor").BulkDraft;
+type BuyerFieldKey = import("@/lib/buyer-fields").BuyerFieldKey;
+type CustomBuyerFieldsConfig = import("@/lib/buyer-fields").CustomBuyerFieldsConfig;
 
 export type FormVariant = {
-  buyer_field_key?: "muse_invite_code" | null;
+  buyer_field_key?: BuyerFieldKey | null;
+  custom_buyer_fields?: CustomBuyerFieldsConfig | null;
   max_qty?: number | null;
   admin_terms?: string;
   admin_activation?: string;
@@ -58,7 +61,8 @@ export type FormVariant = {
 };
 
 export type ProductForm = Partial<Prod> & Pick<FormVariant, "supplier_cost" | "supplier_cost_source"> & {
-  buyer_field_key?: "muse_invite_code" | null;
+  buyer_field_key?: BuyerFieldKey | null;
+  custom_buyer_fields?: CustomBuyerFieldsConfig | null;
   max_qty?: number | null;
   admin_terms?: string;
   admin_activation?: string;

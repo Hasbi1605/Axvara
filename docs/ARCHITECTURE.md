@@ -813,6 +813,37 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
     `listActiveProducts`, `getProductDetail`, SEO PDP `produk/[slug]/page.tsx`,
     `listIndexableProducts`, `readTelegramCatalog`, `loadPromoProducts`, dan
     `daily-admin-summary`.
+- Migrasi0165 (24 Nov 2026, lokal): `drizzle/migrations/0165_variant_custom_buyer_field.sql`
+  (selaras `drizzle/schema.sql` & `drizzle/bootstrap-baseline.json`) menambah dua kolom
+  pada `product_variants` tanpa menyentuh CHECK legacy `buyer_field_key` (`0115`):
+  `custom_buyer_field TEXT` (`NULL` atau snake_case 1–64 char, saat ini dipakai
+  `'invite_email'` dan `'custom'`) serta `custom_buyer_fields_json TEXT` (`NULL` atau
+  JSON valid `<= 4096` char berisi `{ title?, note?, fields: [{ key, label, type, placeholder?, helper?, required? }] }`, 1–6 field). Migrasi juga otomatis mengaktifkan
+  `custom_buyer_field='invite_email'` untuk `SKU='GOOGLE-AI-PRO-ANTIGRAVITY-INVITE-12M'`.
+  - Kontrak baca/tulis terpadu (`src/lib/buyer-fields.ts`): pembacaan memakai
+    `COALESCE(pv.buyer_field_key, pv.custom_buyer_field)` + `resolveBuyerFieldKey()`,
+    penulisan admin memakai `splitBuyerFieldKeyColumns()` agar Muse tetap di kolom
+    `buyer_field_key` dan field baru di `custom_buyer_field`/`custom_buyer_fields_json`.
+  - Allowlist katalog (`src/lib/catalog.ts`, `src/lib/product-copy/resolve.ts`)
+    meneruskan `buyer_field_key` & `custom_buyer_fields` (hanya definisi form) ke PDP,
+    `QuickVariantModal`, `cart.ts`, dan `/checkout`.
+  - Privasi & integritas quote/order: `/api/checkout/quote` memvalidasi `buyer_fields`
+    (`invite_email` atau `custom_values`) dan untuk mode `custom` hanya menandatangani
+    SHA-256 `custom_fingerprint` di respons & `quoteToken` (nilai mentah/password
+    tidak pernah kembali di quote); `validateCheckoutInput` (`src/lib/orders/checkout/validate.ts`)
+    memverifikasi ulang `custom_fingerprint` dari body `/api/orders` dan menyematkan
+    `custom_buyer_fields_meta` historis; `orders-create.ts` & `commerce.ts` memagari
+    `COALESCE(pv.buyer_field_key, pv.custom_buyer_field) IS ? AND pv.custom_buyer_fields_json IS ?`
+    dalam `operation_guards`; `withoutPrivateBuyerData` menghapus `buyer_fields` &
+    `custom_buyer_fields_meta` dari respons publik/daftar.
+  - Admin & Telegram: `GET /api/admin/orders/[code]` (`no-store`) mengembalikan
+    `buyerInputs` berlabel + flag `secret: true` untuk field `password`;
+    `adminDeliverySummary` (`src/lib/telegram/order-notifications.ts`) menyertakan
+    `📩 Email invite:` / `📝 <Label>:` dan selalu memask field `password` menjadi
+    `🔒 <Label>: (lihat di Panel Admin → Detail Pesanan)`; di bot Telegram
+    (`src/lib/telegram/handlers/buyer-input.ts`), `invite_email` dikumpulkan di DM
+    privat (`payq1` `inviteEmail`), sedangkan `custom` mengarahkan ke URL
+    `/checkout?buy=<slug>&variant=<id>&qty=<qty>`.
   - API admin `PUT /api/admin/product-groups/[id]/slots` (`replaceGroupSlots`)
     mengganti slot secara atomik dalam satu `d1.batch` (validasi kepemilikan
     varian dalam grup, 2–20 varian unik per slot, tanpa duplikasi lintas slot).

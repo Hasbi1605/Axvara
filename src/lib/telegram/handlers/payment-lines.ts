@@ -36,7 +36,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
 
   let buyerFields: BuyerFields | undefined;
   if (variant.pixelverif_input) {
-    if (source.qty !== 1 || !source.pvFlowId || source.museInviteCode) return { ok: false, reason: "variant_changed" };
+    if (source.qty !== 1 || !source.pvFlowId || source.museInviteCode || source.inviteEmail) return { ok: false, reason: "variant_changed" };
     const { loadCompletedPixelverifStash } = await import("./buyer-input");
     const pv = await loadCompletedPixelverifStash(ownerUserId, source.variantId, source.pvFlowId);
     if (!pv) return { ok: false, reason: "variant_changed" };
@@ -44,7 +44,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
     if (await isPixelverifEmailBlocked(pv.pv_email, 3)) return { ok: false, reason: "variant_changed" };
     buyerFields = pv;
   } else if (variant.buyer_field_key === "muse_invite_code") {
-    if (!source.museInviteCode || source.pvFlowId) return { ok: false, reason: "variant_changed" };
+    if (!source.museInviteCode || source.inviteEmail || source.pvFlowId) return { ok: false, reason: "variant_changed" };
     try {
       buyerFields = validateBuyerFields(
         { buyer_field_key: variant.buyer_field_key, max_qty: variant.max_qty },
@@ -54,7 +54,18 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
     } catch {
       return { ok: false, reason: "variant_changed" };
     }
-  } else if (source.museInviteCode || source.pvFlowId) {
+  } else if (variant.buyer_field_key === "invite_email") {
+    if (!source.inviteEmail || source.museInviteCode || source.pvFlowId) return { ok: false, reason: "variant_changed" };
+    try {
+      buyerFields = validateBuyerFields(
+        { buyer_field_key: variant.buyer_field_key, max_qty: variant.max_qty },
+        { invite_email: source.inviteEmail },
+        source.qty,
+      );
+    } catch {
+      return { ok: false, reason: "variant_changed" };
+    }
+  } else if (source.museInviteCode || source.inviteEmail || source.pvFlowId) {
     return { ok: false, reason: "variant_changed" };
   }
 
