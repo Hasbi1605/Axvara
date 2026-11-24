@@ -179,4 +179,14 @@ describe("account details auto-scroll", () => {
     expect(screen.queryByText("Email: first@example.test")).toBeNull();
     expect(scroll).toHaveBeenLastCalledWith({ top: 644, behavior: "smooth" });
   });
+
+  it("skips auto-scroll when the account panel is already visible near the top of a desktop viewport", async () => {
+    vi.stubGlobal("innerHeight", 900);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: 220 } as DOMRect);
+    vi.stubGlobal("fetch", vi.fn(async () => response(credentials())));
+    render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact="buyer@example.test" />);
+    await screen.findByRole("region", { name: "Detail akun digital" });
+    await act(async () => { await new Promise(requestAnimationFrame); });
+    expect(scroll).not.toHaveBeenCalled();
+  });
 });

@@ -331,4 +331,33 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     await advance(2_000);
     expect(gets).toHaveLength(2);
   });
+
+  it("order lunas memakai tata letak 2 kolom di desktop (lg+) sambil mempertahankan 1 kolom mobile; pending tetap compact", async () => {
+    vi.useRealTimers();
+    const paidFetch = vi.fn(async (url: string) => {
+      if (String(url).endsWith("/pin")) return { ok: true, status: 200, json: async () => ({ pin: "0F8QMZ" }) };
+      if (String(url).endsWith("/credentials")) return { ok: true, status: 200, json: async () => ({ credentials: [{ label: "Canva Pro", details: "Link: https://example.test/join", completed_at: null }], capability_token: null }) };
+      return { ok: true, status: 200, json: async () => orderPayload({ buyer_pin_required: true, credentials_ready: true, fulfillment_status: "delivered" }) };
+    });
+    vi.stubGlobal("fetch", paidFetch);
+    const { container } = render(<OrderStatusPage />);
+    const account = await screen.findByRole("region", { name: "Detail akun digital" });
+    const pin = await screen.findByRole("region", { name: "PIN pesanan" });
+    const outer = container.firstElementChild as HTMLElement;
+    expect(outer.className).toContain("max-w-[640px]");
+    expect(outer.className).toContain("lg:max-w-[1080px]");
+    const grid = container.querySelector('[class*="lg:grid-cols-[minmax(0,1fr)_380px]"]');
+    expect(grid).toBeTruthy();
+    expect(account.closest('[class*="lg:col-start-1"]')).toBeTruthy();
+    expect(pin.closest('[class*="lg:col-start-2"]')).toBeTruthy();
+    expect(screen.getByText("Ringkasan").closest('[class*="lg:col-start-2"]')).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Lacak Status" }).closest('[class*="lg:col-start-2"]')).toBeTruthy();
+
+    cleanup();
+    mockFetch(orderPayload({ status: "pending", expires_at: new Date(Date.now() + 30 * 60_000).toISOString() }));
+    const pendingView = render(<OrderStatusPage />);
+    await screen.findByText("Ringkasan");
+    expect((pendingView.container.firstElementChild as HTMLElement).className).not.toContain("lg:max-w-[1080px]");
+    expect(pendingView.container.querySelector('[class*="lg:grid-cols-[minmax(0,1fr)_380px]"]')).toBeNull();
+  });
 });

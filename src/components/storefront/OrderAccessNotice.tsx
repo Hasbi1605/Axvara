@@ -5,7 +5,7 @@ import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { orderCopy } from "@/lib/i18n/order-copy";
 import type { Locale } from "@/lib/i18n/locale";
 
-export function OrderAccessNotice({ accessCode, locale }: { accessCode: string; locale?: Locale }) {
+export function OrderAccessNotice({ accessCode, locale, className = "" }: { accessCode: string; locale?: Locale; className?: string }) {
   const displayLocale = useDisplayLocale();
   const t = orderCopy(locale ?? displayLocale);
   const [copied, setCopied] = useState(false);
@@ -16,7 +16,7 @@ export function OrderAccessNotice({ accessCode, locale }: { accessCode: string; 
   }
   if (!accessCode) return null;
   const isPin = accessCode.length === 6;
-  return <section aria-label={isPin ? t.accessNotice.pinLabel : t.accessNotice.codeLabel} className="ax-glass-card my-4 rounded-2xl px-4 py-2 text-left">
+  return <section aria-label={isPin ? t.accessNotice.pinLabel : t.accessNotice.codeLabel} className={`ax-glass-card my-4 rounded-2xl px-4 py-2 text-left${className ? ` ${className}` : ""}`}>
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <h2 className="text-xs font-medium text-white/60">{isPin ? t.accessNotice.pinLabel : t.accessNotice.codeLabel}</h2>
       {isPin && <p className="select-all font-mono text-base font-semibold tracking-[0.12em] text-white">{accessCode}</p>}

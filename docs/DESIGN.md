@@ -1,5 +1,14 @@
 # DESIGN.md — AXVARA Design System
 
+## Tata letak desktop halaman pesanan setelah bayar (`/pesanan/[code]`) — 24 November 2026 (lokal)
+
+- **Khusus status `lunas` (`isPaid`) pada breakpoint desktop (`lg:` ≥1024px):** container melebar dari `max-w-[640px]` ke `lg:max-w-[1080px]` tanpa mengubah tampilan mobile/tablet (`<lg` tetap satu kartu `max-w-[640px]` terpusat dengan urutan blok identik).
+- **Permukaan kaca bebas nested-glass di desktop (`.ax-glass-card-mobile` & `.ax-glass-card-desktop` di `src/app/globals.css`):** di `<1024px` kartu pembungkus luar tetap memakai permukaan kaca tunggal; di `≥1024px` pembungkus luar menjadi transparan dan permukaan kaca pindah ke header horizontal (`lg:rounded-[24px] lg:px-7 lg:py-5`, ikon + judul + lead di kiri, kode `AXV-…` + badge status di kanan) serta panel-panel 2 kolom di bawahnya.
+- **Grid 2 kolom asimetris (`lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_1fr]`, selaras `/checkout` & PDP):**
+  - **Kolom kiri (`1fr`, `lg:row-span-2`):** fokus produk/pengiriman (`Detail Akun Digital` + 3 accordion terlipat `Syarat & Ketentuan`, `Cara Penggunaan / Aktivasi`, `Syarat klaim garansi`; atau `AutomaticOrderProgress`, form verifikasi Kontak+PIN, status pengiriman / skeleton, atau notis `Pengiriman bermasalah`).
+  - **Kolom kanan (`380px`):** baris 1 berisi `Ringkasan` (nominal tabular + `× qty` tidak terpisah baris) dan kartu `PIN pesanan` (via slot opsional `renderLayout` pada `WrCredentialsPanel` tanpa memecah state atau memengaruhi `/lacak-pesanan`); baris 2 (`lg:self-start`) berisi tombol `Lacak Status` / `Lanjut Belanja`, blok `Butuh bantuan?` (`WA Admin` / `Telegram`), dan catatan garansi agar menempel rapat di bawah PIN walau kolom kiri memanjang.
+- **Auto-scroll `WrCredentialsPanel`:** dilewati bila bagian atas panel akun sudah nyaman terlihat di viewport (`rect.top` dalam `88..min(360, 45% innerHeight)`) agar header konfirmasi desktop tidak terpotong; mobile tetap menggulir mulus ke panel akun. Status non-lunas (`pending` QRIS/gateway/crypto, `kadaluarsa`, `dibatalkan`) tidak berubah.
+
 ## Beranda kategori langsung & ikon bendera Bahasa Bot Telegram (`@Axvara_bot`) — 23 November 2026 (lokal)
 
 - **Caption welcome (`/start`, `welcomeMessageLocalized`):** ID `"Halo, {name} 👋\nSelamat datang di <b>AXVARA</b>, toko aplikasi &amp; tools premium dengan pengiriman otomatis 24 jam.\n\nPilih kategori di bawah untuk mulai belanja, atau ketik nama produk untuk mencari."` dan padanan EN (`"Hi, {name} 👋\nWelcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.\n\nPick a category below to start shopping, or type a product name to search."`).

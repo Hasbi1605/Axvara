@@ -6,7 +6,7 @@
 // PIN tampil sesudah paid hanya dengan proof kuat; tidak disimpan di storage/URL.
 // Setelah verifikasi hanya capability token yang disimpan (GET polling).
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatWibDateTime } from "@/lib/utils";
 import { CredentialText, ActivationBody, MobileCollapsible, TermsBody } from "@/components/storefront/ProductCopy";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
@@ -41,7 +41,24 @@ function normalizePin(raw: string): string {
   return [6, 26].includes(normalized.length) ? normalized : "";
 }
 
-export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "", buyerPinRequired = true, credentialsReady = true, contactHint = "", deliveryProgress, adminView = false, locale = "id" }: { code: string; prefillContact?: string; prefillPin?: string; buyerPinRequired?: boolean; credentialsReady?: boolean; contactHint?: string; deliveryProgress?: {ready:number;total:number}; adminView?: boolean; locale?: Locale }) {
+export function WrCredentialsPanel({
+  code, prefillContact = "", prefillPin = "", buyerPinRequired = true, credentialsReady = true, contactHint = "", deliveryProgress, adminView = false, locale = "id",
+  renderLayout, panelClassName = "", pinClassName = "", pinStatusClassName = "",
+}: {
+  code: string;
+  prefillContact?: string;
+  prefillPin?: string;
+  buyerPinRequired?: boolean;
+  credentialsReady?: boolean;
+  contactHint?: string;
+  deliveryProgress?: { ready: number; total: number };
+  adminView?: boolean;
+  locale?: Locale;
+  renderLayout?: (parts: { pin: ReactNode; panel: ReactNode }) => ReactNode;
+  panelClassName?: string;
+  pinClassName?: string;
+  pinStatusClassName?: string;
+}) {
   const text = orderCopy(locale).credentials;
   const [contact, setContact] = useState(prefillContact);
   const [pin, setPin] = useState(prefillPin);
@@ -76,9 +93,17 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
     const frame = requestAnimationFrame(() => {
       const account = accountRef.current;
       if (!account) return;
+      const rect = account.getBoundingClientRect();
+      // Di layout 2 kolom desktop, panel akun sudah berada tepat di bawah header
+      // konfirmasi: lewati auto-scroll agar header tidak ikut terpotong ke atas.
+      const viewportHeight = window.innerHeight || 0;
+      if (viewportHeight > 0 && rect.top >= 88 && rect.top <= Math.min(360, viewportHeight * 0.45)) {
+        scrolledForCode.current = code;
+        return;
+      }
       const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       // `auto` masih mengikuti html { scroll-behavior: smooth }.
-      const top = Math.max(0, window.scrollY + account.getBoundingClientRect().top - 96);
+      const top = Math.max(0, window.scrollY + rect.top - 96);
       window.scrollTo({ top, behavior: reducedMotion ? "instant" : "smooth" });
       scrolledForCode.current = code;
     });
@@ -260,16 +285,17 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
 
   function renderPanel() {
   if (!credentialsReady) return null;
+  const panelExtra = panelClassName ? ` ${panelClassName}` : "";
   if (creds?.length) {
     return (
-      <section ref={accountRef} className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={text.headingAria}>
+      <section ref={accountRef} className={`ax-glass-card mt-6 rounded-2xl p-4 text-left${panelExtra}`} aria-label={text.headingAria}>
         <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{text.heading}</p>
         {deliveryProgress && <p className="mt-2 text-xs text-white/60" role="status">{text.ready(deliveryProgress.ready, deliveryProgress.total)}</p>}
         {error && <p className="mt-2 text-xs text-red-300" role="alert">{error}</p>}
         <div className="mt-3 space-y-3">
           {creds.map((c, i) => (
             <div key={i} className="space-y-3">
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-3">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-3 lg:p-4">
                 {c.label && <p className="mb-1.5 text-[11px] font-semibold text-emerald-200/80">{c.label}</p>}
                 <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-emerald-100"><CredentialText text={c.details} /></pre>
                 <button type="button" className="mt-2 min-h-9 whitespace-nowrap rounded-lg border border-emerald-400/20 px-3 text-xs text-emerald-200" onClick={() => {
@@ -300,20 +326,20 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
     );
   }
 
-  if (adminView) return <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={text.adminHeading}>
+  if (adminView) return <section className={`ax-glass-card mt-6 rounded-2xl p-4 text-left${panelExtra}`} aria-label={text.adminHeading}>
     <p role="status" className="text-sm text-white/65">{loading ? text.loadingAdmin : text.unavailable}</p>
     {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
   </section>;
 
-  if (automaticPending) return <p role="status" className="mt-4 text-xs text-white/65">{text.checking}</p>;
-  if (automaticError) return <section className="mt-4 text-left text-xs text-white/65">
+  if (automaticPending) return <p role="status" className={`mt-4 text-xs text-white/65${panelClassName ? ` ax-glass-card-desktop text-left${panelExtra}` : ""}`}>{text.checking}</p>;
+  if (automaticError) return <section className={`mt-4 text-left text-xs text-white/65${panelClassName ? ` ax-glass-card-desktop${panelExtra}` : ""}`}>
     <p role="alert">{text.networkRetry}</p>
     <button type="button" onClick={() => { triedPrefill.current = false; triedDevice.current = ""; setRetry(n => n + 1); }} className="min-h-11 px-3 font-semibold text-[#00E5FF] underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">{orderCopy(locale).common.retry}</button>
   </section>;
 
   const pinRequired = buyerPinRequired;
   return (
-    <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={text.openTitle}>
+    <section className={`ax-glass-card mt-6 rounded-2xl p-4 text-left${panelExtra}`} aria-label={text.openTitle}>
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{text.heading}</p>
       <p className="mt-2 text-xs leading-5 text-white/65">{buyerPinRequired ? text.pinIntro : text.legacyIntro}</p>
       {contactHint && <p className="mt-1 text-[11px] text-white/40">{text.registered(contactHint)}</p>}
@@ -372,8 +398,12 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
     </section>
   );
   }
-  return <>
-    {!adminView && buyerPinRequired && (verifiedPin ? <OrderAccessNotice accessCode={verifiedPin} locale={locale} /> : <BuyerOrderPin code={code} credentialToken={token} locale={locale} />)}
-    {renderPanel()}
-  </>;
+  const pinNode = !adminView && buyerPinRequired
+    ? (verifiedPin
+      ? <OrderAccessNotice accessCode={verifiedPin} locale={locale} className={pinClassName} />
+      : <BuyerOrderPin code={code} credentialToken={token} locale={locale} noticeClassName={pinClassName} statusClassName={pinStatusClassName} />)
+    : null;
+  const panelNode = renderPanel();
+  if (renderLayout) return <>{renderLayout({ pin: pinNode, panel: panelNode })}</>;
+  return <>{pinNode}{panelNode}</>;
 }

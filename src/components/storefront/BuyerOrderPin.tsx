@@ -6,7 +6,7 @@ import { orderCopy } from "@/lib/i18n/order-copy";
 import type { Locale } from "@/lib/i18n/locale";
 import { OrderAccessNotice } from "./OrderAccessNotice";
 
-export function BuyerOrderPin({ code, credentialToken, locale }: { code: string; credentialToken: string | null; locale: Locale }) {
+export function BuyerOrderPin({ code, credentialToken, locale, noticeClassName = "", statusClassName = "" }: { code: string; credentialToken: string | null; locale: Locale; noticeClassName?: string; statusClassName?: string }) {
   const [pin, setPin] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "denied" | "error">("idle");
   const [retry, setRetry] = useState(0);
@@ -30,9 +30,9 @@ export function BuyerOrderPin({ code, credentialToken, locale }: { code: string;
     }).catch(() => { if (!controller.signal.aborted) setState("error"); });
     return () => controller.abort();
   }, [code, credentialToken, retry]);
-  if (pin) return <OrderAccessNotice accessCode={pin} locale={locale} />;
+  if (pin) return <OrderAccessNotice accessCode={pin} locale={locale} className={noticeClassName} />;
   if (state === "idle") return null;
-  return <div className="mt-4 text-left text-xs text-white/65" role="status">
+  return <div className={`mt-4 text-left text-xs text-white/65${statusClassName ? ` ${statusClassName}` : ""}`} role="status">
     {state === "loading" ? t.accessNotice.loading : t.accessNotice.loadFailed}
     {state === "error" && <> <button type="button" onClick={() => setRetry(n => n + 1)} className="min-h-11 px-3 font-semibold text-[#00E5FF] underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">{t.common.retry}</button></>}
   </div>;

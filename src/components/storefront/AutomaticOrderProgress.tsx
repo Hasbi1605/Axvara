@@ -2,7 +2,7 @@ import type { AutomaticProgressItem } from "@/lib/warung-rebahan/progress";
 
 const IN_PROGRESS = new Set<AutomaticProgressItem["stage"]>(["preparing", "queued", "running"]);
 
-export function AutomaticOrderProgress({ items, locale = "id" }: { items: AutomaticProgressItem[]; locale?: "id" | "en" }) {
+export function AutomaticOrderProgress({ items, locale = "id", className = "" }: { items: AutomaticProgressItem[]; locale?: "id" | "en"; className?: string }) {
   const en = locale === "en";
   const labels = en ? {
     preparing: "Preparing your product", queued: "Waiting in the queue", running: "Creating your product",
@@ -16,7 +16,7 @@ export function AutomaticOrderProgress({ items, locale = "id" }: { items: Automa
   const working = items.some((item) => IN_PROGRESS.has(item.stage));
   // Short automatic-processing profile (1–5 min; admin after 15 min) vs Made by order (15 min–1 hr; admin after 1 hr).
   const shortEstimate = working && items.filter((item) => IN_PROGRESS.has(item.stage)).every((item) => item.estimateProfile === "short");
-  return <section className="mt-6 space-y-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left" aria-label={en ? "Product progress" : "Progres produk"} aria-live="polite">
+  return <section className={`mt-6 space-y-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left${className ? ` ${className}` : ""}`} aria-label={en ? "Product progress" : "Progres produk"} aria-live="polite">
     {items.map((item, index) => {
       const ready = item.stage === "ready";
       const attention = item.stage === "needs_check" || item.stage === "failed";

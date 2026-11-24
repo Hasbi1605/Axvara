@@ -628,13 +628,149 @@ export default function OrderSuccessPage() {
   const oc = ui.delivery;
 
   const summaryContent = <>
-    <div className="space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{translateProductName(item.name, order.locale)} × {item.qty}</span><span className="shrink-0 whitespace-nowrap font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
-    <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">{pay?.kind === "crypto" ? oc.orderTotal : oc.total} • {pay?.label || order.method.toUpperCase()}</span><span className="shrink-0 font-bold text-white">{formatRupiah(payableAmount)}</span></div>
+    <div className="space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{translateProductName(item.name, order.locale)}{" "}<span className="whitespace-nowrap">× {item.qty}</span></span><span className="shrink-0 whitespace-nowrap font-medium tabular-nums text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
+    <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">{pay?.kind === "crypto" ? oc.orderTotal : oc.total} • {pay?.label || order.method.toUpperCase()}</span><span className="shrink-0 font-bold tabular-nums text-white">{formatRupiah(payableAmount)}</span></div>
   </>;
 
+  const deliveryFallbackBlock = !order.credentialsReady && !isDeliveryFailed && !order.automaticProgress?.length ? (
+    // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
+    // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
+    // janji menit untuk baris antrean — plafonnya 12 jam (keputusan owner
+    // 2026-09-18). Teksnya dipilih di `delivery` di atas.
+    <section className={`ax-glass-card mt-6 rounded-2xl p-4 text-left${isPaid ? " lg:mt-0 lg:rounded-[24px] lg:p-6" : ""}`} aria-label={delivery.title} aria-live="polite" aria-busy={delivery.skeleton === true}>
+      {delivery.skeleton ? (
+        <>
+          <span role="status" className="sr-only">{delivery.title}…</span>
+          <div aria-hidden className="ax-skeleton h-3 w-40 rounded-full" />
+          <div aria-hidden className="mt-3 space-y-2">
+            <div className="ax-skeleton h-4 w-full rounded-full" />
+            <div className="ax-skeleton h-4 w-[85%] rounded-full" />
+            <div className="ax-skeleton h-10 w-full rounded-xl" />
+          </div>
+          <p className="mt-3 flex items-center gap-2 text-[11px] text-white/65"><InlineSpinner className="h-3 w-3" />{ui.delivery.preparingStatus}</p>
+        </>
+      ) : (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{delivery.title}</p>
+          <p className="mt-2 text-xs leading-5 text-white/55">{delivery.lead}</p>
+          <p className="mt-2 text-[11px] leading-5 text-white/65">{delivery.note}</p>
+        </>
+      )}
+    </section>
+  ) : null;
+
+  const helpAndNoteBlock = (
+    <>
+      <div className={compactPayment ? "mt-4 border-t border-white/10 pt-3" : "mt-3"}>
+        <p className="text-center text-[11px] text-white/65">{oc.help}</p>
+        <div className={compactPayment ? "mt-2 flex items-center justify-center gap-3" : "mt-2 grid grid-cols-2 gap-2.5"}>
+          <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
+          <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
+        </div>
+      </div>
+
+      <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : "mt-4 text-[11px] leading-5"} text-center text-white/65`}>{oc.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.terms}</Link>.</p>
+    </>
+  );
+
+  const renderPaidBody = (pinNode: ReactNode, credPanel: ReactNode) => (
+    <div className="lg:mt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-5">
+      {/* Mobile urutan 1 / Desktop kanan atas: Ringkasan + PIN */}
+      <div className="min-w-0 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-4">
+        <div className="ax-glass-card mt-6 rounded-2xl p-4 text-left lg:mt-0 lg:p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{oc.summary}</p>
+          <div className="mt-3">{summaryContent}</div>
+        </div>
+        {pinNode}
+      </div>
+
+      {/* Mobile urutan 2 / Desktop kiri penuh: Detail Akun / Progres / Status Pengiriman / Garansi */}
+      <div className="min-w-0 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:flex lg:flex-col lg:gap-4">
+        {isDeliveryFailed && (
+          <section className="mt-6 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left lg:mt-0 lg:rounded-[24px] lg:p-6" aria-label="Pengiriman bermasalah">
+            <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
+            <p className="mt-1 text-xs leading-5 text-white/60">
+              {ui.delivery.failedBody}
+            </p>
+          </section>
+        )}
+
+        {Boolean(order.automaticProgress?.length) && (
+          <AutomaticOrderProgress
+            items={order.automaticProgress!}
+            locale={order.locale}
+            className="ax-glass-card-desktop lg:mt-0 lg:rounded-[24px] lg:p-6"
+          />
+        )}
+
+        {credPanel}
+        {deliveryFallbackBlock}
+
+        {!order.credentialsReady && (
+          <WarrantyClaimAccordion code={code} locale={order.locale} className="mt-6 text-left lg:mt-0" />
+        )}
+      </div>
+
+      {/* Mobile urutan 3 / Desktop kanan bawah: Aksi, Bantuan, Disclaimer */}
+      <div className="min-w-0 lg:col-start-2 lg:row-start-2 lg:self-start">
+        <div className="mt-6 grid grid-cols-2 gap-2.5 lg:mt-0">
+          <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.track}</Link>
+          <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.shop}</Link>
+        </div>
+        {helpAndNoteBlock}
+      </div>
+    </div>
+  );
+
   return (
-    <div className={`mx-auto px-4 sm:px-6 ${compactPayment ? "max-w-[760px] py-4 sm:py-6" : "max-w-[640px] py-10"}`}>
-      <div className={`ax-glass-card text-center ${compactPayment ? "rounded-2xl p-4 sm:p-5" : "rounded-[28px] p-6 sm:p-8"}`}>
+    <div className={`mx-auto px-4 sm:px-6 ${compactPayment ? "max-w-[760px] py-4 sm:py-6" : isPaid ? "max-w-[640px] py-10 lg:max-w-[1080px] lg:px-8 lg:py-8" : "max-w-[640px] py-10"}`}>
+      <div className={isPaid ? "ax-glass-card-mobile rounded-[28px] p-6 text-center sm:p-8 lg:rounded-none lg:p-0 lg:text-left" : `ax-glass-card text-center ${compactPayment ? "rounded-2xl p-4 sm:p-5" : "rounded-[28px] p-6 sm:p-8"}`}>
+        {isPaid ? (
+          <>
+            <div className="ax-glass-card-desktop lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 lg:gap-y-1 lg:rounded-[24px] lg:px-7 lg:py-5">
+              <div className={`mx-auto flex h-16 w-16 shrink-0 items-center justify-center rounded-full lg:col-start-1 lg:row-span-2 lg:mx-0 lg:h-12 lg:w-12 ${statusVisual.shell}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain lg:h-6 lg:w-6" style={{ filter: statusVisual.filter }} draggable={false} />
+              </div>
+              <h1 className="mt-4 font-display text-2xl font-bold text-white lg:col-start-2 lg:row-start-1 lg:mt-0 lg:text-[22px] lg:leading-7">
+                {isDeliveryFailed ? ui.status.deliveryFailedTitle : ui.status.paidTitle}
+              </h1>
+              <p className="mt-2 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF] lg:col-start-3 lg:row-start-1 lg:mt-0 lg:whitespace-nowrap lg:text-right">
+                {order.code}
+              </p>
+              <div className="mt-3 lg:col-start-3 lg:row-start-2 lg:mt-0.5 lg:flex lg:justify-end">
+                {isDeliveryFailed ? (
+                  <span className="inline-flex whitespace-nowrap rounded-full border border-red-500/25 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300 lg:py-1">{ui.status.deliveryFailedBadge}</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#22C55E]/20 bg-[#22C55E]/15 px-3 py-1.5 text-xs font-semibold text-[#22C55E] lg:py-1">{ui.status.paidBadge}</span>
+                )}
+              </div>
+              <p className="mt-4 text-sm leading-6 text-white/60 lg:col-start-2 lg:row-start-2 lg:mt-0 lg:text-[13px] lg:leading-5">
+                {isDeliveryFailed ? ui.status.deliveryFailedLead(order.name) : ui.status.paidLead(order.name)}
+              </p>
+            </div>
+
+            {fetchError && <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left text-xs text-amber-200">Status terbaru belum dapat diperiksa: {fetchError}</div>}
+
+            {(order.buyerPinRequired || order.credentialsReady) ? (
+              <WrCredentialsPanel
+                key={order.code}
+                code={order.code}
+                prefillContact={verifiedContact}
+                buyerPinRequired={order.buyerPinRequired}
+                credentialsReady={order.credentialsReady}
+                deliveryProgress={order.uniqueUnitsProgress}
+                contactHint={[order.wa, order.email].filter(Boolean).join(" · ")}
+                locale={order.locale}
+                pinClassName="lg:my-0"
+                pinStatusClassName="lg:mt-0"
+                panelClassName="lg:mt-0 lg:rounded-[24px] lg:p-6"
+                renderLayout={({ pin, panel }) => renderPaidBody(pin, panel)}
+              />
+            ) : renderPaidBody(null, null)}
+          </>
+        ) : (
+        <>
         {compactPayment ? (
           <div className="grid grid-cols-[32px_minmax(0,1fr)_32px] items-center gap-2 text-center sm:grid-cols-[40px_auto_40px] sm:justify-center sm:gap-3">
             <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${statusVisual.shell}`}>
@@ -661,13 +797,9 @@ export default function OrderSuccessPage() {
             <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
           )}
         </div>
-        <h1 className="mt-4 font-display text-2xl font-bold text-white">{payHeading ? payHeading.h1 : isDeliveryFailed ? ui.status.deliveryFailedTitle : isPaid ? ui.status.paidTitle : isCancelled ? ui.status.cancelledTitle : isExpired ? ui.status.expiredTitle : isPreparingQris ? ui.qris.notReady : order.qris ? ui.qris.heading : ui.status.receivedTitle}</h1>
+        <h1 className="mt-4 font-display text-2xl font-bold text-white">{payHeading ? payHeading.h1 : isCancelled ? ui.status.cancelledTitle : isExpired ? ui.status.expiredTitle : isPreparingQris ? ui.qris.notReady : order.qris ? ui.qris.heading : ui.status.receivedTitle}</h1>
         <p className="mt-2 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</p>
-        {isDeliveryFailed ? (
-          <span className="mt-3 inline-flex rounded-full border border-red-500/25 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">{ui.status.deliveryFailedBadge}</span>
-        ) : isPaid ? (
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#22C55E]/20 bg-[#22C55E]/15 px-3 py-1.5 text-xs font-semibold text-[#22C55E]">{ui.status.paidBadge}</span>
-        ) : isCancelled ? (
+        {isCancelled ? (
           <span className="mt-3 inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">{ui.status.cancelledBadge}</span>
         ) : payHeading ? (
           <span className={`mt-3 inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${payHeading.tone === "pending" ? "border-[#FFB800]/20 bg-[#FFB800]/15 text-[#FFB800]" : payHeading.tone === "review" ? "border-[#FFB800]/30 bg-[#FFB800]/10 text-[#FFD66B]" : payHeading.tone === "info" ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/10 bg-white/10 text-white/60"}`}>{payHeading.badge}</span>
@@ -678,23 +810,19 @@ export default function OrderSuccessPage() {
         )}
 
         <p className="mt-4 text-sm leading-6 text-white/60">
-          {isDeliveryFailed
-            ? ui.status.deliveryFailedLead(order.name)
-            : isPaid
-            ? ui.status.paidLead(order.name)
-            : isCancelled
-              ? <>{ui.status.cancelledLead}</>
-              : payHeading
-                ? <>{payHeading.lead}</>
-              : isExpired
-                ? <>{ui.status.expiredLead}</>
-                : isPreparingQris
-                  ? <>{ui.qris.preparingLead}</>
-                : order.qris && qrisExpired
-                  ? <>{ui.status.qrisExpiredLead}</>
-                  : order.qris
-                  ? ui.status.qrisLead()
-                  : ui.status.receivedLead(order.name)}
+          {isCancelled
+            ? <>{ui.status.cancelledLead}</>
+            : payHeading
+              ? <>{payHeading.lead}</>
+            : isExpired
+              ? <>{ui.status.expiredLead}</>
+              : isPreparingQris
+                ? <>{ui.qris.preparingLead}</>
+              : order.qris && qrisExpired
+                ? <>{ui.status.qrisExpiredLead}</>
+                : order.qris
+                ? ui.status.qrisLead()
+                : ui.status.receivedLead(order.name)}
         </p>
         </>}
 
@@ -797,47 +925,6 @@ export default function OrderSuccessPage() {
           <div className="mt-3">{summaryContent}</div>
         </div>}
 
-        {isDeliveryFailed && (
-          <section className="mt-6 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left" aria-label="Pengiriman bermasalah">
-            <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
-            <p className="mt-1 text-xs leading-5 text-white/60">
-              {ui.delivery.failedBody}
-            </p>
-          </section>
-        )}
-
-        {isPaid && Boolean(order.automaticProgress?.length) && <AutomaticOrderProgress items={order.automaticProgress!} locale={order.locale} />}
-
-        {isPaid && (order.buyerPinRequired || order.credentialsReady) && <WrCredentialsPanel key={order.code} code={order.code} prefillContact={verifiedContact} buyerPinRequired={order.buyerPinRequired} credentialsReady={order.credentialsReady} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} locale={order.locale} />}
-        {isPaid && !order.credentialsReady && !isDeliveryFailed && !order.automaticProgress?.length && (
-          // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
-          // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
-          // janji menit untuk baris antrean — plafonnya 12 jam (keputusan owner
-          // 2026-09-18). Teksnya dipilih di `delivery` di atas.
-          <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={delivery.title} aria-live="polite" aria-busy={delivery.skeleton === true}>
-            {delivery.skeleton ? (
-              <>
-                <span role="status" className="sr-only">{delivery.title}…</span>
-                <div aria-hidden className="ax-skeleton h-3 w-40 rounded-full" />
-                <div aria-hidden className="mt-3 space-y-2">
-                  <div className="ax-skeleton h-4 w-full rounded-full" />
-                  <div className="ax-skeleton h-4 w-[85%] rounded-full" />
-                  <div className="ax-skeleton h-10 w-full rounded-xl" />
-                </div>
-                <p className="mt-3 flex items-center gap-2 text-[11px] text-white/65"><InlineSpinner className="h-3 w-3" />{ui.delivery.preparingStatus}</p>
-              </>
-            ) : (
-              <>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{delivery.title}</p>
-                <p className="mt-2 text-xs leading-5 text-white/55">{delivery.lead}</p>
-                <p className="mt-2 text-[11px] leading-5 text-white/65">{delivery.note}</p>
-              </>
-            )}
-          </section>
-        )}
-
-        {isPaid && !order.credentialsReady && <WarrantyClaimAccordion code={code} locale={order.locale} />}
-
         {!compactPayment && <div className="mt-6 grid grid-cols-2 gap-2.5">
           <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.track}</Link>
           <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.shop}</Link>
@@ -897,15 +984,9 @@ export default function OrderSuccessPage() {
             )}
           </div>
         )}
-        <div className={compactPayment ? "mt-4 border-t border-white/10 pt-3" : "mt-3"}>
-          <p className="text-center text-[11px] text-white/65">{oc.help}</p>
-          <div className={compactPayment ? "mt-2 flex items-center justify-center gap-3" : "mt-2 grid grid-cols-2 gap-2.5"}>
-            <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
-            <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
-          </div>
-        </div>
-
-        <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : "mt-4 text-[11px] leading-5"} text-center text-white/65`}>{oc.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.terms}</Link>.</p>
+        {helpAndNoteBlock}
+        </>
+        )}
       </div>
     </div>
   );

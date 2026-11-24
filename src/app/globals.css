@@ -109,6 +109,29 @@ body {
     inset 0 -1px 0 rgba(255,255,255,0.03);
 }
 
+/* Kartu kaca responsif (pesanan lunas): mobile tetap 1 kartu utuh, desktop (lg+)
+   memindah permukaan kartu ke header & panel 2 kolom tanpa nested glass. */
+@media (max-width: 1023px) {
+  .ax-glass-card-mobile {
+    background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow:
+      0 6px 24px rgba(0,0,0,0.32),
+      inset 0 1px 0 rgba(255,255,255,0.12),
+      inset 0 -1px 0 rgba(255,255,255,0.03);
+  }
+}
+@media (min-width: 1024px) {
+  .ax-glass-card-desktop {
+    background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow:
+      0 6px 24px rgba(0,0,0,0.32),
+      inset 0 1px 0 rgba(255,255,255,0.12),
+      inset 0 -1px 0 rgba(255,255,255,0.03);
+  }
+}
+
 .ax-glass-subtle {
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.10);
