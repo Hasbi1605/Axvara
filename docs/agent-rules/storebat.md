@@ -1,5 +1,11 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Aktivasi ExpressVPN StoreBat (`express-vpn-sb`, `#402` / `SB-132`) — 24 November 2026
+
+- Atas instruksi owner, produk StoreBat `express-vpn-sb` (`products.id=402`, `storebat_family='express-vpn'`, kategori 6) dan varian `SB-132` (`product_variants.id=34618`, `storebat_product_id=132`, label `1 Bulan`, markup rumus `35%` = `Rp24.700`, stok `5`, `duration=1 month`, `warranty=limited 25 day` sesuai `warranty_days=25` upstream) diaktifkan langsung di D1 produksi.
+- Foto memakai aset R2 ExpressVPN yang sudah ada (`/r2/products/a090528420a29db51351c5e64e52d75e.webp`, diselaraskan pada `image_url` & `images`); salinan ID/EN dan shortlink `axvara.tech/go/mail-tempmail-plus` → `https://tempmail.plus/en/#!` sudah lengkap.
+- Produk `#402` dimasukkan ke Grup Produk `#8` (`Express VPN`, `position=2`, slot diselaraskan `category_id=6`, `sort_order=1230`) bersama `#121` (`express-vpn-wr`) dan `#74` (`express-vpn-sk`). Pemenang grup tetap `#74` (`modal/30 hari SK Rp5.350 < StoreBat Rp18.229`; `#402` otomatis naik menjadi wakil sebelum WR `Rp30.000` bila stok SK habis), dan `catalog_revision_market` disegarkan.
+
 ## Penyesuaian tukar ID CDK Google AI Pro (`SB-137` ↔ `SB-144`) — 23 November 2026
 
 - Di sisi StoreBat upstream, `id=137` (`SB-137`) menjadi **`CDK GOOGLE AI PRO 12M V2`** (situs `https://www.geminipass.si/`, aktif & berstok) sedangkan `id=144` (`SB-144`) diubah menjadi **`CDK google ia pro 12M V1`** dan hilang dari feed (`disappeared=1`, stok 0 sejak 23 Nov `01:44 WIB`).
