@@ -758,6 +758,39 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
   tidak pernah menulis ulang `category_id`/`sort_order` produk existing (hanya saat INSERT baru).
 - Migrasi0153 (21 Nov 2026, audit AU-G2-3): `drizzle/migrations/0153_product_group_member_update_guard.sql`
   (selaras `drizzle/schema.sql`) menambah trigger `pg_member_valid_update`
+- Migrasi0163 (24 Nov 2026, lokal): `drizzle/migrations/0163_product_group_merge_variants.sql`
+  (selaras `drizzle/schema.sql` & `drizzle/bootstrap-baseline.json`) menambah kolom
+  `product_groups.mode TEXT NOT NULL DEFAULT 'winner' CHECK (mode IN ('winner','merge_variants'))`
+  serta indeks `idx_product_groups_mode_winner(mode, winner_product_id)`.
+  - Default `'winner'` menjaga perilaku 1 wakil termurah pada seluruh grup existing.
+  - Pada mode `'merge_variants'`, `notLoserProductSql` tetap menjaga 1 kartu per
+    grup (`winner_product_id` = kartu kanonis), sedangkan helper bersama di
+    `src/lib/product-groups.ts` (`mergedGroupCardJoinSql` berbasis `UNION ALL`
+    bebas Cartesian scan + `mergedGroupVariantOwnerSql`) menggabungkan varian
+    aktif milik seluruh anggota aktif non-arsip ke kartu wakil pada
+    `GET /api/products?active=1`, `listActiveProducts`, `getProductDetail`
+    (`merged_variants: true`, varian beli diurutkan lebih dulu, tetap patuh
+    allowlist AU-C1-1 tanpa membocorkan slug anggota), SEO PDP `produk/[slug]/page.tsx`,
+    `listIndexableProducts`, serta kanal Telegram (`readTelegramCatalog`,
+    `handleShowProduct`, `handleProductTerms`, `discovery`, `restock-alerts`,
+    `promo-digest` — memfilter `COALESCE(mp.telegram_enabled,1)=1`) dan
+    `daily-admin-summary`.
+  - Checkout & kepemilikan supplier tetap ketat 1 `products.id` = 1 supplier:
+    `QuickVariantModal`, `product-detail-client`, dan direct-buy `checkout/page.tsx`
+    mempertahankan slug kartu wakil untuk tautan/URL bersih dan memakai
+    `variant.product_id` sebagai ID baris, sementara `POST /api/checkout/quote`
+    memverifikasi keanggotaan grup `mode='merge_variants'` secara batch & fail-closed
+    (menolak mode `winner`, varian produk luar grup, anggota nonaktif/arsip, atau
+    `product_id` bentrok) lalu menjangkarkan item quote/token ke pemilik asli
+    `variant.product_id` sehingga `validateCheckoutInput`, `/api/orders`, eligibility,
+    send-fence, dan auto-dispatch semua supplier berjalan tanpa perubahan.
+  - API admin `POST /api/admin/product-groups` & `PATCH /api/admin/product-groups/[id]`
+    menerima `mode?: "winner" | "merge_variants"` (`updateProductGroup` selalu
+    mem-bump `catalog_revision_market` saat `mode` berubah walau `winner_product_id`
+    tetap). `src/lib/product-live-status.ts` + `warung/markup` + `sekalipay/markup`
+    menandai varian aktif siap beli anggota `merge_variants` sebagai `live`
+    (`Gabung di <wakil> #<id>`) sambil menjaga status kartu 1:1 di
+    `computeProductLiveStatusMap` (`Varian digabung di <wakil> #<id>`).
   (`BEFORE UPDATE OF product_id`, `WHEN NEW.product_id IS NOT OLD.product_id`)
   yang mencerminkan guard INSERT: produk arsip/tidak ada → `invalid_group_product`.
   Sebelumnya hanya INSERT yang dijaga sehingga UPDATE anggota bisa menunjuk

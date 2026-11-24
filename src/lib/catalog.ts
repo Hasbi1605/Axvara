@@ -9,7 +9,7 @@ import type { Locale } from "@/lib/i18n/locale";
 import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 import { hasAutomaticSupplierDelivery } from "@/lib/buyer-fields";
 import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
-import { displaySoldCountSql, notLoserProductSql } from "@/lib/product-groups";
+import { displaySoldCountSql, mergedGroupCardJoinSql, mergedGroupVariantOwnerSql, notLoserProductSql } from "@/lib/product-groups";
 import { purchasableStockSql } from "@/lib/catalog-availability";
 import { deriveSkDuration, durationFromSupplierText, labelContainsDuration } from "@/lib/catalog-duration";
 export { effectiveVariantStock } from "@/lib/catalog-availability";
@@ -143,6 +143,7 @@ export type ProductDetail = {
   sold_count: number | null;
   category_id: number | null;
   is_active: number;
+  merged_variants?: true;
   variants: VariantSummary[];
 };
 
@@ -172,7 +173,8 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
       COUNT(pv.id) as variant_count,
       CASE WHEN SUM(CASE WHEN ${purchasableStockSql("pv")} THEN 1 ELSE 0 END) > 0 THEN 'available' ELSE 'out_of_stock' END as availability
     FROM products p
-    INNER JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
+    ${mergedGroupCardJoinSql("p", "gmap")}
+    INNER JOIN product_variants pv ON pv.product_id = gmap.member_id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
     WHERE p.is_active = 1 AND ${notLoserProductSql("p")}
     GROUP BY p.id
     HAVING variant_count > 0
@@ -225,17 +227,40 @@ async function listActiveProductsLegacy(): Promise<ProductSummary[]> {
 
 // ---- Product detail (all channels) ----
 
-export async function getProductDetail(slugOrId: string | number): Promise<ProductDetail | null> {
+export async function getProductDetail(
+  slugOrId: string | number,
+  options?: { telegramOnly?: boolean },
+): Promise<ProductDetail | null> {
   if (!isD1Mode() || !isVariantsReadEnabled()) {
     return getProductDetailLegacy(slugOrId);
   }
 
   const isNumeric = typeof slugOrId === "number" || /^\d+$/.test(String(slugOrId));
   const product = isNumeric
-    ? await queryFirst(`SELECT p.*, ${displaySoldCountSql("p")} AS display_sold_count FROM products p WHERE p.id=? AND p.is_active=1`, Number(slugOrId))
-    : await queryFirst(`SELECT p.*, ${displaySoldCountSql("p")} AS display_sold_count FROM products p WHERE p.slug=? AND p.is_active=1`, String(slugOrId));
+    ? await queryFirst(
+        `SELECT p.*, ${displaySoldCountSql("p")} AS display_sold_count,
+                EXISTS(SELECT 1 FROM product_groups mg WHERE mg.winner_product_id=p.id AND mg.mode='merge_variants') AS is_merged_winner
+         FROM products p WHERE p.id=? AND p.is_active=1`,
+        Number(slugOrId),
+      )
+    : await queryFirst(
+        `SELECT p.*, ${displaySoldCountSql("p")} AS display_sold_count,
+                EXISTS(SELECT 1 FROM product_groups mg WHERE mg.winner_product_id=p.id AND mg.mode='merge_variants') AS is_merged_winner
+         FROM products p WHERE p.slug=? AND p.is_active=1`,
+        String(slugOrId),
+      );
 
   if (!product) return null;
+
+  const productId = Number(product.id);
+  const isMergedWinner = Number(product.is_merged_winner ?? 0) === 1;
+  const variantWhere = isMergedWinner
+    ? `${mergedGroupVariantOwnerSql("?", "pv", { telegramOnly: options?.telegramOnly })} AND pv.is_active=1 AND ${wrNewSaleSql("pv")}`
+    : `pv.product_id=? AND pv.is_active=1 AND ${wrNewSaleSql("pv")}`;
+  const variantOrder = isMergedWinner
+    ? `CASE WHEN ${purchasableStockSql("pv")} THEN 0 ELSE 1 END ASC, pv.sort_order ASC, pv.price ASC, pv.id ASC`
+    : `pv.sort_order ASC, pv.price ASC, pv.id ASC`;
+  const variantParams = isMergedWinner ? [productId, productId] : [productId];
 
   const variants = await queryAll(
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
@@ -265,13 +290,13 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
      JOIN products p ON p.id = pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
      LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
-     WHERE pv.product_id=? AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
-     ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
-    Number(product.id)
+     WHERE ${variantWhere}
+     ORDER BY ${variantOrder}`,
+    ...variantParams,
   );
 
   return {
-    id: Number(product.id),
+    id: productId,
     slug: String(product.slug),
     name: String(product.name),
     nameEn: nullableText(product.name_en),
@@ -285,6 +310,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     sold_count: (product.display_sold_count ?? product.sold_count) ? Number(product.display_sold_count ?? product.sold_count) : null,
     category_id: product.category_id ? Number(product.category_id) : null,
     is_active: Number(product.is_active ?? 1),
+    ...(isMergedWinner ? { merged_variants: true as const } : {}),
     variants: variants.map(mapVariant),
   };
 }

@@ -7,6 +7,7 @@
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { purchasableStockSql } from "@/lib/catalog-availability";
+import { mergedGroupVariantOwnerSql } from "@/lib/product-groups";
 import { notLoserProductSql } from "@/lib/supplier-pairs";
 import { escapeHtml } from "@/lib/telegram/messages/format";
 
@@ -22,7 +23,7 @@ export type RestockSubscribeResult = { ok: boolean; status: "subscribed" | "alre
 async function productPurchasable(db: DatabaseAccess, productId: number): Promise<{ exists: boolean; telegramEnabled: boolean; purchasable: boolean }> {
   const row = await db.queryFirst(
     `SELECT p.id, p.is_active, p.telegram_enabled,
-            EXISTS(SELECT 1 FROM product_variants pv WHERE pv.product_id=p.id AND pv.is_active=1 AND ${purchasableStockSql("pv")}) AS purchasable
+            EXISTS(SELECT 1 FROM product_variants pv WHERE ${mergedGroupVariantOwnerSql("p.id", "pv", { telegramOnly: true })} AND pv.is_active=1 AND ${purchasableStockSql("pv")}) AS purchasable
        FROM products p LEFT JOIN product_variants pv0 ON pv0.product_id=p.id
       WHERE p.id=? AND ${notLoserProductSql("p")} LIMIT 1`,
     productId,
@@ -115,7 +116,7 @@ export async function processDueRestockAlerts(
        JOIN products p ON p.id=a.product_id
        LEFT JOIN telegram_users tu ON tu.user_id=a.user_id
       WHERE a.status='pending' AND p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}
-        AND EXISTS(SELECT 1 FROM product_variants pv WHERE pv.product_id=p.id AND pv.is_active=1 AND ${purchasableStockSql("pv")})
+        AND EXISTS(SELECT 1 FROM product_variants pv WHERE ${mergedGroupVariantOwnerSql("p.id", "pv", { telegramOnly: true })} AND pv.is_active=1 AND ${purchasableStockSql("pv")})
       ORDER BY a.created_at ASC, a.id ASC
       LIMIT ?`,
     Math.max(1, Math.min(RESTOCK_ALERTS_PER_TICK, Math.floor(Number(limit) || 0))),

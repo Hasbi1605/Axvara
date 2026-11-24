@@ -5,7 +5,7 @@ import { effectiveVariantStockSql, purchasableStockSql } from "@/lib/catalog-ava
 import { isNowpaymentsReadable } from "@/lib/payments/rails";
 import { isPediaProxyConfigured } from "@/lib/pedia/proxy";
 import { pediaBalanceAlertRp } from "@/lib/pedia/ops-config";
-import { notLoserProductSql } from "@/lib/product-groups";
+import { mergedGroupCardJoinSql, notLoserProductSql } from "@/lib/product-groups";
 import { isSkSyncEnabled } from "@/lib/sekalipay/client";
 import { skSaldoAlertThreshold } from "@/lib/sekalipay/saldo";
 import { aivaultBalanceAlertThreshold, miraiBalanceAlertThreshold, pixelverifBalanceAlertThreshold, storebatBalanceAlertThreshold, tunvnBalanceAlertThreshold } from "@/lib/supplier-balance-alert";
@@ -709,7 +709,8 @@ export async function collectDailyAdminSummaryData(
        END AS effective_stock
      FROM sales_30d s
      JOIN products p ON p.id = s.product_id
-     JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
+     ${mergedGroupCardJoinSql("p", "gmap")}
+     JOIN product_variants pv ON pv.product_id = gmap.member_id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
      WHERE s.product_id IS NOT NULL
        AND p.is_active = 1
        AND p.archived_at IS NULL

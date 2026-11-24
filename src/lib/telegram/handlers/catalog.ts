@@ -164,7 +164,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
 
   // Collapse telegram_enabled + compare_price + badge + sold_count into ONE query alongside getProductDetail.
   const [detail, productRow] = await Promise.all([
-    getProductDetail(productId),
+    getProductDetail(productId, { telegramOnly: true }),
     queryFirst(
       `SELECT telegram_enabled, pixelverif_family, compare_price, badge, ${displaySoldCountSql("products")} AS sold_count FROM products WHERE id=? AND is_active=1`,
       productId,
@@ -731,7 +731,7 @@ export async function handleProductTerms(
 ) {
   const [ctx, detail, enabled] = await Promise.all([
     tgCtx(from?.id ?? chatId),
-    getProductDetail(productId),
+    getProductDetail(productId, { telegramOnly: true }),
     queryFirst("SELECT telegram_enabled FROM products WHERE id=? AND is_active=1", productId),
   ]);
   if (!detail || Number(enabled?.telegram_enabled) !== 1) return;

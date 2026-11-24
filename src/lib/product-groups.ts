@@ -24,6 +24,11 @@ import { effectiveVariantStockSql } from "@/lib/catalog-availability";
 
 type Row = Record<string, unknown>;
 export type ProductGroupSupplier = "WR" | "SK" | "TUNVN" | "AIVault" | "StoreBat" | "Mirai" | "Pixel" | "Manual";
+export type ProductGroupMode = "winner" | "merge_variants";
+
+export function normalizeProductGroupMode(raw: unknown): ProductGroupMode {
+  return raw === "merge_variants" ? "merge_variants" : "winner";
+}
 
 export type GroupMemberStats = {
   productId: number;
@@ -42,6 +47,7 @@ export type GroupMemberStats = {
 export type GroupStats = {
   id: number;
   name: string;
+  mode: ProductGroupMode;
   preferProductId: number | null;
   preferMargin: number;
   winnerProductId: number | null;
@@ -69,6 +75,7 @@ export type GroupMemberView = {
 export type GroupView = {
   id: number;
   name: string;
+  mode: ProductGroupMode;
   prefer_product_id: number | null;
   prefer_margin: number;
   winner_product_id: number | null;
@@ -114,7 +121,7 @@ const MEMBER_MODAL_SQL = `(SELECT MIN((${VARIANT_COST}) * (${NORMALIZE_30D}))
   ${VARIANT_FROM}
   WHERE v.product_id=m.product_id AND v.is_active=1 AND ${BUYABLE_VARIANT})`;
 
-const GROUP_STATS_SELECT = `SELECT g.id AS group_id, g.name AS group_name, g.prefer_product_id, g.prefer_margin,
+const GROUP_STATS_SELECT = `SELECT g.id AS group_id, g.name AS group_name, COALESCE(g.mode, 'winner') AS group_mode, g.prefer_product_id, g.prefer_margin,
     g.winner_product_id, g.reason AS group_reason, g.decided_at, m.product_id, m.position,
     p.id AS p_id, p.name AS p_name, p.slug AS p_slug, p.image_url AS p_image,
     p.is_active AS p_active, p.archived_at AS p_archived,
@@ -165,6 +172,7 @@ function groupFromRows(rows: Row[]): GroupStats[] {
       group = {
         id,
         name: String(row.group_name ?? `Grup ${id}`),
+        mode: normalizeProductGroupMode(row.group_mode),
         preferProductId: row.prefer_product_id == null ? null : Number(row.prefer_product_id),
         preferMargin: Number(row.prefer_margin ?? 2000),
         winnerProductId: row.winner_product_id == null ? null : Number(row.winner_product_id),
@@ -400,6 +408,7 @@ export async function listProductGroups(database?: DatabaseAccess, groupId?: num
   return groups.map((group) => ({
     id: group.id,
     name: group.name,
+    mode: group.mode,
     prefer_product_id: group.preferProductId,
     prefer_margin: group.preferMargin,
     winner_product_id: group.winnerProductId,
@@ -432,9 +441,13 @@ async function assertProducts(db: DatabaseAccess, productIds: number[]): Promise
   if (grouped.length) throw new ProductGroupError("already_grouped", "Produk sudah ada di grup lain", 409, Number(grouped[0].group_id));
 }
 
-export async function createProductGroup(input: { name: string; productIds: number[] }, database?: DatabaseAccess): Promise<GroupView> {
+export async function createProductGroup(input: { name: string; productIds: number[]; mode?: ProductGroupMode }, database?: DatabaseAccess): Promise<GroupView> {
   const db = database ?? createDatabaseAccess();
   const name = input.name.trim();
+  const mode: ProductGroupMode = input.mode ?? "winner";
+  if (mode !== "winner" && mode !== "merge_variants") {
+    throw new ProductGroupError("invalid_mode", "Mode grup tidak valid", 400);
+  }
   const ids = [...new Set(input.productIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
   if (!name || name.length > 120) throw new ProductGroupError("invalid_name", "Nama grup wajib 1..120 karakter", 400);
   if (ids.length < 2 || ids.length > 10 || ids.length !== input.productIds.length) throw new ProductGroupError("invalid_products", "Grup berisi 2..10 produk unik", 400);
@@ -444,7 +457,7 @@ export async function createProductGroup(input: { name: string; productIds: numb
   // D1 batch rolls the header AND all members back together on conflict.
   // MAX(id) refers to this batch's header: no other writer can interleave.
   const inserted = await d1.batch([
-    d1.prepare("INSERT INTO product_groups(name) VALUES(?)").bind(name),
+    d1.prepare("INSERT INTO product_groups(name,mode) VALUES(?,?)").bind(name, mode),
     ...ids.map((productId, position) => d1.prepare("INSERT INTO product_group_members(group_id,product_id,position) VALUES((SELECT MAX(id) FROM product_groups),?,?)").bind(productId, position)),
   ]).catch(async error => {
     await assertProducts(db, ids);
@@ -485,16 +498,24 @@ export async function createProductGroup(input: { name: string; productIds: numb
   return (await listProductGroups(db, groupId))[0];
 }
 
-export async function updateProductGroup(id: number, input: { name?: string; prefer_product_id?: number | null; prefer_margin?: number }, database?: DatabaseAccess): Promise<GroupView> {
+export async function updateProductGroup(id: number, input: { name?: string; mode?: ProductGroupMode; prefer_product_id?: number | null; prefer_margin?: number }, database?: DatabaseAccess): Promise<GroupView> {
   const db = database ?? createDatabaseAccess();
   const group = (await listProductGroups(db, id))[0];
   if (!group) throw new ProductGroupError("not_found", "Grup tidak ditemukan", 404);
   const sets: string[] = [];
   const params: unknown[] = [];
+  let modeChanged = false;
   if (input.name !== undefined) {
     const name = input.name.trim();
     if (!name || name.length > 120) throw new ProductGroupError("invalid_name", "Nama grup wajib 1..120 karakter", 400);
     sets.push("name=?"); params.push(name);
+  }
+  if (input.mode !== undefined) {
+    if (input.mode !== "winner" && input.mode !== "merge_variants") {
+      throw new ProductGroupError("invalid_mode", "Mode grup tidak valid", 400);
+    }
+    sets.push("mode=?"); params.push(input.mode);
+    modeChanged = input.mode !== group.mode;
   }
   if (input.prefer_product_id !== undefined) {
     const prefer = input.prefer_product_id == null ? null : Number(input.prefer_product_id);
@@ -511,6 +532,10 @@ export async function updateProductGroup(id: number, input: { name?: string; pre
     await db.execRun(`UPDATE product_groups SET ${sets.join(", ")}, updated_at=datetime('now') WHERE id=?`, ...params);
   }
   await decideGroup(id, db);
+  if (modeChanged) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
+  }
   return (await listProductGroups(db, id))[0];
 }
 
@@ -608,4 +633,65 @@ export async function removeGroupMember(id: number, productId: number, database?
 export function displaySoldCountSql(alias = "p"): string {
   if (!/^[a-z_][a-z0-9_]*$/i.test(alias)) throw new Error("invalid_sql_alias");
   return `COALESCE((SELECT SUM(COALESCE(x.sold_count,0)) FROM product_group_members gm JOIN product_group_members om ON om.group_id=gm.group_id JOIN products x ON x.id=om.product_id WHERE gm.product_id=${alias}.id), ${alias}.sold_count)`;
+}
+
+function assertSqlAlias(alias: string): string {
+  if (!/^[a-z_][a-z0-9_]*$/i.test(alias)) throw new Error("invalid_sql_alias");
+  return alias;
+}
+
+/**
+ * JOIN SQL untuk peta (card_id -> member_id) pada daftar katalog publik.
+ * - Setiap produk selalu memetakan dirinya sendiri (p.id -> p.id).
+ * - Jika p.id adalah winner grup bermode 'merge_variants', seluruh anggota
+ *   aktif non-arsip lain di grup yang sama ikut dipetakan ke p.id sehingga
+ *   harga/stok/jumlah varian kartu teragregasi tanpa Cartesian scan.
+ * - Mode 'winner' tidak menambah baris apa pun (100% perilaku lama).
+ */
+export function mergedGroupCardJoinSql(
+  productAlias = "p",
+  mapAlias = "gmap",
+  options?: { telegramOnly?: boolean },
+): string {
+  const p = assertSqlAlias(productAlias);
+  const m = assertSqlAlias(mapAlias);
+  const tgFilter = options?.telegramOnly ? " AND COALESCE(mp.telegram_enabled, 1)=1" : "";
+  return `INNER JOIN (
+    SELECT p0.id AS card_id, p0.id AS member_id FROM products p0
+    UNION ALL
+    SELECT mg.winner_product_id AS card_id, mm.product_id AS member_id
+    FROM product_groups mg
+    JOIN product_group_members mm ON mm.group_id=mg.id
+    JOIN products mp ON mp.id=mm.product_id
+    WHERE mg.mode='merge_variants'
+      AND mg.winner_product_id IS NOT NULL
+      AND mm.product_id<>mg.winner_product_id
+      AND mp.is_active=1 AND mp.archived_at IS NULL${tgFilter}
+  ) ${m} ON ${m}.card_id=${p}.id`;
+}
+
+/**
+ * Predikat SQL: varian `variantAlias` milik kartu `productExpr` — baik milik
+ * produk itu sendiri maupun anggota aktif non-arsip dari grup `merge_variants`
+ * yang winner-nya adalah `productExpr`.
+ */
+export function mergedGroupVariantOwnerSql(
+  productExpr = "p.id",
+  variantAlias = "pv",
+  options?: { telegramOnly?: boolean },
+): string {
+  const v = assertSqlAlias(variantAlias);
+  if (productExpr !== "?" && !/^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$/i.test(productExpr)) {
+    throw new Error("invalid_sql_expr");
+  }
+  const tgFilter = options?.telegramOnly ? " AND COALESCE(mp.telegram_enabled, 1)=1" : "";
+  return `(${v}.product_id=${productExpr} OR ${v}.product_id IN (
+    SELECT mm.product_id
+    FROM product_groups mg
+    JOIN product_group_members mm ON mm.group_id=mg.id
+    JOIN products mp ON mp.id=mm.product_id
+    WHERE mg.winner_product_id=${productExpr}
+      AND mg.mode='merge_variants'
+      AND mp.is_active=1 AND mp.archived_at IS NULL${tgFilter}
+  ))`;
 }

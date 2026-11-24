@@ -15,7 +15,7 @@ export type VariantLiveStatusInfo = {
   reason: string;
 };
 
-export type GroupLoserInfo = { winnerId: number; winner: string };
+export type GroupLoserInfo = { winnerId: number; winner: string; merged?: boolean };
 
 export type VariantLiveStatusInput = {
   supplier_active?: unknown;
@@ -38,7 +38,8 @@ export type LiveStatusProductInput = {
   stock?: unknown;
 };
 
-const PRODUCT_GROUP_LOSERS_SQL = `SELECT gm.product_id AS loser, g.winner_product_id AS winner_id, wp.name AS winner_name
+const PRODUCT_GROUP_LOSERS_SQL = `SELECT gm.product_id AS loser, g.winner_product_id AS winner_id, wp.name AS winner_name,
+         COALESCE(g.mode, 'winner') AS group_mode
   FROM product_group_members gm
   JOIN product_groups g ON g.id=gm.group_id
   LEFT JOIN products wp ON wp.id=g.winner_product_id
@@ -56,7 +57,12 @@ export async function loadProductGroupLosers(
     const loser = Number(r.loser ?? 0);
     const winnerId = Number(r.winner_id ?? 0);
     if (Number.isInteger(loser) && loser > 0 && Number.isInteger(winnerId) && winnerId > 0) {
-      loserToWinner.set(loser, { winnerId, winner: String(r.winner_name ?? `produk #${winnerId}`) });
+      const merged = String(r.group_mode ?? "winner") === "merge_variants";
+      loserToWinner.set(loser, {
+        winnerId,
+        winner: String(r.winner_name ?? `produk #${winnerId}`),
+        ...(merged ? { merged: true } : {}),
+      });
     }
   }
   return loserToWinner;
@@ -96,13 +102,13 @@ export function computeVariantLiveStatus(
 
   const pid = Number(input.axvara_product_id ?? 0);
   const loseInfo = Number.isInteger(pid) && pid > 0 ? loserToWinner.get(pid) : undefined;
-  if (loseInfo) {
+  if (loseInfo && !loseInfo.merged) {
     return {
       status: "hidden_loser",
       reason: `Kalah vs ${loseInfo.winner} #${loseInfo.winnerId}`,
     };
   }
-  if (Number(input.parent_is_loser ?? 0) === 1) {
+  if (!loseInfo && Number(input.parent_is_loser ?? 0) === 1) {
     return { status: "hidden_loser", reason: "Kalah di grup produk" };
   }
 
@@ -137,6 +143,10 @@ export function computeVariantLiveStatus(
     };
   }
 
+  if (loseInfo?.merged) {
+    return { status: "live", reason: `Gabung di ${loseInfo.winner} #${loseInfo.winnerId}` };
+  }
+
   return { status: "live", reason: "Tampil di storefront" };
 }
 
@@ -154,24 +164,39 @@ export async function computeProductLiveStatusMap(
   const result = new Map<string, ProductLiveStatusInfo>();
   if (rows.length === 0) return result;
 
-  const loserToWinner = new Map<number, { winnerId: number; winner: string }>();
+  const loserToWinner = new Map<number, GroupLoserInfo>();
+  const mergedMembersByWinner = new Map<number, number[]>();
   const hasBuyable = new Set<number>();
 
   if (isD1Mode()) {
-    // Anggota grup yang bukan winner = pecundang. Alasan admin memakai nama
+    // Anggota grup yang bukan winner = pecundang (mode winner) atau varian
+    // digabung ke kartu winner (mode merge_variants). Alasan admin memakai nama
     // produk winner (grup lintas supplier).
     const pairRows = await queryAll(
-      `SELECT gm.product_id AS loser, g.winner_product_id AS winner_id, wp.name AS winner_name
+      `SELECT gm.product_id AS loser, g.winner_product_id AS winner_id, wp.name AS winner_name,
+              COALESCE(g.mode, 'winner') AS group_mode,
+              mp.is_active AS loser_active, mp.archived_at AS loser_archived
        FROM product_group_members gm
        JOIN product_groups g ON g.id=gm.group_id
        LEFT JOIN products wp ON wp.id=g.winner_product_id
+       LEFT JOIN products mp ON mp.id=gm.product_id
        WHERE g.winner_product_id IS NOT NULL AND gm.product_id<>g.winner_product_id`,
     ).catch(() => [] as Record<string, unknown>[]);
     for (const r of pairRows) {
       const loser = Number(r.loser ?? 0);
       const winnerId = Number(r.winner_id ?? 0);
       if (Number.isInteger(loser) && loser > 0 && Number.isInteger(winnerId) && winnerId > 0) {
-        loserToWinner.set(loser, { winnerId, winner: String(r.winner_name ?? `produk #${winnerId}`) });
+        const merged = String(r.group_mode ?? "winner") === "merge_variants";
+        loserToWinner.set(loser, {
+          winnerId,
+          winner: String(r.winner_name ?? `produk #${winnerId}`),
+          ...(merged ? { merged: true } : {}),
+        });
+        if (merged && Number(r.loser_active ?? 0) === 1 && r.loser_archived == null) {
+          const list = mergedMembersByWinner.get(winnerId) ?? [];
+          list.push(loser);
+          mergedMembersByWinner.set(winnerId, list);
+        }
       }
     }
 
@@ -182,6 +207,11 @@ export async function computeProductLiveStatusMap(
     for (const r of buyableRows) {
       const pid = Number(r.product_id ?? 0);
       if (Number.isInteger(pid) && pid > 0) hasBuyable.add(pid);
+    }
+    for (const [winnerId, memberIds] of mergedMembersByWinner) {
+      if (memberIds.some((memberId) => hasBuyable.has(memberId))) {
+        hasBuyable.add(winnerId);
+      }
     }
   } else {
     // Dev fallback tanpa D1: tidak ada tabel varian/grup; nilai dari kolom stok produk.
@@ -206,7 +236,9 @@ export async function computeProductLiveStatusMap(
     if (loseInfo) {
       result.set(key, {
         status: "hidden_loser",
-        reason: `Kalah vs ${loseInfo.winner} #${loseInfo.winnerId}`,
+        reason: loseInfo.merged
+          ? `Varian digabung di ${loseInfo.winner} #${loseInfo.winnerId}`
+          : `Kalah vs ${loseInfo.winner} #${loseInfo.winnerId}`,
       });
       continue;
     }

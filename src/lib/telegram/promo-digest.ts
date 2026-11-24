@@ -2,7 +2,7 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import { SITE } from "@/lib/site";
 import { siteOrigin } from "@/lib/site-url";
 import { escapeHtml, formatRupiah } from "@/lib/telegram/messages/format";
-import { notLoserProductSql } from "@/lib/product-groups";
+import { mergedGroupCardJoinSql, notLoserProductSql } from "@/lib/product-groups";
 
 export type PromoSlot = "morning" | "evening";
 
@@ -162,7 +162,8 @@ export async function loadPromoProducts(database: DatabaseAccess): Promise<Promo
     `SELECT p.id, p.name, COALESCE(c.name, 'Produk Premium') AS category,
             MIN(CASE WHEN pv.stock = -1 OR pv.stock >= MAX(1, COALESCE(pv.min_qty, 1)) THEN pv.price END) AS promo_price
        FROM products p
-       JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
+       ${mergedGroupCardJoinSql("p", "gmap", { telegramOnly: true })}
+       JOIN product_variants pv ON pv.product_id=gmap.member_id AND pv.is_active=1
        LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.is_active=1 AND COALESCE(p.telegram_enabled, 1)=1
         AND ${notLoserProductSql("p")}

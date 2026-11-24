@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
             CASE WHEN p.archived_at IS NOT NULL THEN 1 ELSE 0 END AS product_archived,
             CASE WHEN EXISTS(SELECT 1 FROM product_group_members gm JOIN product_groups gp ON gp.id=gm.group_id
                    WHERE gm.product_id=COALESCE(pv.product_id, sp.axvara_product_id) AND gp.winner_product_id IS NOT NULL
-                     AND gp.winner_product_id<>gm.product_id)
+                     AND gp.winner_product_id<>gm.product_id AND COALESCE(gp.mode,'winner')='winner')
                  THEN 1 ELSE 0 END AS parent_is_loser
      FROM sk_products sp
      LEFT JOIN product_variants pv ON pv.id=sp.axvara_variant_id

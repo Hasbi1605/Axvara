@@ -13,7 +13,7 @@ import { requireAdmin } from "@/lib/auth";
 import { readJsonBody } from "@/lib/http-body";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
-import { displaySoldCountSql, notLoserProductSql } from "@/lib/product-groups";
+import { displaySoldCountSql, mergedGroupCardJoinSql, mergedGroupVariantOwnerSql, notLoserProductSql } from "@/lib/product-groups";
 import { computeProductLiveStatusMap, type ProductLiveStatusInfo } from "@/lib/product-live-status";
 
 export const runtime = "edge";
@@ -78,16 +78,17 @@ async function readProducts(req: NextRequest) {
               -- (harga tampilnya pun fallback ke min_price — pasangan konsisten).
               COALESCE(
                 (SELECT pv2.compare_price FROM product_variants pv2
-                  WHERE pv2.product_id=p.id AND pv2.is_active=1 AND ${wrNewSaleSql("pv2")}
+                  WHERE ${mergedGroupVariantOwnerSql("p.id", "pv2")} AND pv2.is_active=1 AND ${wrNewSaleSql("pv2")}
                     AND ${purchasableStockSql("pv2")}
                   ORDER BY pv2.price ASC, pv2.id ASC LIMIT 1),
                 (SELECT pv3.compare_price FROM product_variants pv3
-                  WHERE pv3.product_id=p.id AND pv3.is_active=1 AND ${wrNewSaleSql("pv3")}
+                  WHERE ${mergedGroupVariantOwnerSql("p.id", "pv3")} AND pv3.is_active=1 AND ${wrNewSaleSql("pv3")}
                   ORDER BY pv3.price ASC, pv3.id ASC LIMIT 1)
               ) as variant_compare_price
        FROM products p
        LEFT JOIN categories c ON c.id=p.category_id
-       INNER JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
+       ${mergedGroupCardJoinSql("p", "gmap")}
+       INNER JOIN product_variants pv ON pv.product_id=gmap.member_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
        WHERE 1=1`
     : `SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1`;
   if (isAdminRequest && isD1Mode()) sql = sql.replace("SELECT p.*", `SELECT CASE WHEN p.archived_at IS NOT NULL THEN (${hardDeleteReasonSql}) ELSE 'Arsipkan produk dulu.' END AS hard_delete_reason, p.*`);

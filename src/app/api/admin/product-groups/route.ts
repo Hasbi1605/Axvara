@@ -14,6 +14,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
   product_ids: z.array(z.number().int().positive().max(Number.MAX_SAFE_INTEGER)).min(2).max(10),
+  mode: z.enum(["winner", "merge_variants"]).optional(),
 }).strict();
 
 function failure(error: unknown) {
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   const ids = parsed.data.product_ids;
   if (new Set(ids).size !== ids.length) return NextResponse.json({ error: "Produk duplikat dalam grup" }, { status: 400, headers: NO_STORE });
   try {
-    const group = await createProductGroup({ name: parsed.data.name, productIds: ids });
+    const group = await createProductGroup({ name: parsed.data.name, productIds: ids, mode: parsed.data.mode });
     return NextResponse.json({ group }, { status: 201, headers: NO_STORE });
   } catch (error) {
     return failure(error);

@@ -106,12 +106,16 @@ function CheckoutInner() {
           }
           const catRes = await catalogRequest;
           if (!catRes.ok) throw new Error("Pilihan varian gagal dimuat.");
-          const catData = await catRes.json() as { product?: { id?: number; slug?: string; variants?: (CatalogVariant & { product_id?: number })[] } };
+          const catData = await catRes.json() as { product?: { id?: number; slug?: string; merged_variants?: boolean; variants?: (CatalogVariant & { product_id?: number })[] } };
           // Identitas varian diikat ke produk katalog (temuan audit: URL lama
           // ?buy=slug-lama&variant=<id-produk-lain> memakai varian produk lain
           // karena find() hanya mencocokkan id tanpa memastikan product_id).
+          // Pada grup bermode `merge_variants`, /api/catalog mengembalikan
+          // varian anggota aktif grup yang sama (`merged_variants: true`);
+          // server /api/checkout/quote tetap memverifikasi keanggotaan grupnya.
           const catSlug = String(catData.product?.slug ?? "");
           const catProductId = Number(catData.product?.id ?? 0);
+          const isMergedGroup = catData.product?.merged_variants === true;
           const variant = (catData.product?.variants || []).find((v) => String(v.id) === buyVariantId);
           const variantProductId = Number(variant?.product_id ?? 0);
           if (catSlug && catSlug !== buySlug) {
@@ -120,7 +124,7 @@ function CheckoutInner() {
           if (variant && found.id && catProductId && String(found.id) !== String(catProductId)) {
             throw new Error("Varian tidak cocok dengan produk. Pilih ulang dari halaman produk.");
           }
-          if (variant && variantProductId && found.id && String(variantProductId) !== String(found.id)) {
+          if (variant && variantProductId && found.id && String(variantProductId) !== String(found.id) && !isMergedGroup) {
             throw new Error("Varian tidak cocok dengan produk. Pilih ulang dari halaman produk.");
           }
           // Varian stok di bawah minimum (stock < min, stock !== -1) tidak
@@ -139,6 +143,7 @@ function CheckoutInner() {
           }
           setDirectProduct({
             ...found,
+            id: isMergedGroup && variantProductId > 0 ? String(variantProductId) : found.id,
             price: variant.price,
             stock: variantEff === -1 ? undefined : variantEff,
             variantId: variant.id,

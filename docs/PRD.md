@@ -455,6 +455,23 @@ JUMLAH `sold_count` seluruh anggota grup, termasuk anggota nonaktif/Arsip, sehin
 tidak berubah saat winner berganti. `products.sold_count` per anggota tidak
 diubah; admin tetap menyunting angka per anggota dan melihat total grup sebagai info.
 
+Revisi owner 24 November 2026 (implementasi lokal — mode tampilan `merge_variants`):
+tiap grup kini memiliki pengaturan **Mode tampilan** (`winner` default vs
+`merge_variants` / **Gabung semua varian di 1 kartu**). Pada mode `winner`,
+perilaku 1 wakil termurah tetap 100% sama. Pada mode `merge_variants`, toko tetap
+menampilkan **1 kartu produk** (nama, gambar, slug, kategori, dan urutan ikut
+wakil `winner_product_id`), namun seluruh varian aktif dari semua anggota aktif
+non-arsip dalam grup tersebut digabung ke dalam satu kartu/PDP/modal/Telegram
+(varian tersedia diurutkan di atas varian habis; kanal Telegram hanya memuat
+anggota dengan `telegram_enabled=1`). Kepemilikan `products.id` per varian tetap
+eksklusif 1 induk = 1 supplier sehingga sync katalog, markup, kelayakan checkout,
+send-fence, auto-dispatch, dan laporan keuangan tidak tercampur; saat pembeli
+memesan varian milik anggota non-winner melalui slug kartu wakil, `/api/checkout/quote`
+menjangkarkannya kembali ke produk pemilik asli varian secara fail-closed (menolak
+mode `winner`, produk lintas grup, atau anggota nonaktif/arsip). Publikasi via CI
+`main` (migrasi `0163` + deployment Pages belum diverifikasi di produksi sampai CI
+selesai).
+
 ## Harga supplier & salinan TUNVN (15 November 2026, implementasi lokal)
 
 - Admin mengatur markup/harga manual varian TUNVN/AIVault per baris dengan

@@ -418,6 +418,24 @@ deployment atau transaksi produksi.
 
 Verifikasi lanjutan16November: Chromium Paseo1280×900/light dan390×844/light/dark,
 komponen asli+API tiruan: buat grup (termasuk409 mempertahankan draft), prefer
+
+Revisi 24 November 2026 (lokal — mode **Gabung varian** di Admin Grup Produk,
+Daftar Produk, dan Markup Supplier):
+- `ProductGroupsManager`: dialog buat & kelola grup menambah pemilih **Mode tampilan**
+  (`Pilih 1 termurah (otomatis)` vs `Gabung semua varian di 1 kartu`) dengan teks
+  penjelas ringkas. Kartu grup bermode `merge_variants` menampilkan badge hijau
+  outline **Gabung varian** di header; anggota wakil berbadge **Kartu utama**,
+  anggota aktif non-arsip lain berbadge **Varian digabung** (bukan `Disembunyikan`),
+  sedangkan anggota nonaktif/arsip tetap **Disembunyikan**.
+- `ProductsSection` (`LiveStatusBadge`): anggota aktif non-winner dalam grup
+  `merge_variants` tetap menjaga hitungan kartu 1:1 di tab Live & reorder, namun
+  menampilkan badge **Gabung varian** beserta alasan `Varian digabung di <wakil> #<id>`.
+- `MarkupTab` (semua panel supplier WR/SK/AIVault/StoreBat/TUNVN/Mirai/Pixel):
+  varian aktif siap beli dari anggota non-winner grup `merge_variants` tampil
+  berstatus **Live** dengan keterangan `· Gabung di <wakil> #<id>` (bukan `Kalah grup`).
+- Tanpa token/aset/dependensi baru; verifikasi Chrome nyata lokal desktop `1440×900`
+  dan mobile `390×844` (Admin `ProductGroupsManager` + Checkout varian gabungan)
+  lulus dengan 0 overflow dan 0 error console/page memakai fixture lokal.
 dan margin2500, tambah/keluarkan, auto-delete, hapus, hitung ulang; nama/slug
 arsip tidak ditawarkan, kandidat grup lain disabled. Tanpa overflow horizontal,
 dialog scroll internal, fokus tetap di dialog, Escape mengembalikan fokus ke

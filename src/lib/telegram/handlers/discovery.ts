@@ -316,7 +316,7 @@ export async function handlePendingQtyInput(
 
 export async function handleBuyConfirm(chatId: number, messageId: number, productId: number, from?: { id: number }) {
   // Use catalog.ts for variant-level stock (synced with web/WA)
-  const detail = await getProductDetail(productId);
+  const detail = await getProductDetail(productId, { telegramOnly: true });
   if (!detail || detail.variants.length === 0) return;
   const ctx = from ? await tgCtxFor(from.id) : undefined;
 
@@ -332,7 +332,7 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
   // For unique fulfillment, check inventory on first active variant
   const firstVariant = activeVariants.find(v => v.stock !== 0);
   if (firstVariant && firstVariant.fulfillment_mode === "unique") {
-    const counts = await countInventory(productId, firstVariant.id);
+    const counts = await countInventory(firstVariant.product_id || productId, firstVariant.id);
     if (counts.available < 1) {
       await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx?.locale }) });
       return;
@@ -364,7 +364,7 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
 
   // Single variant — straight to qty step (bulk-aware)
   if (activeVariants.length === 1 && firstVariant) {
-    await handleShowQty(chatId, messageId, productId, firstVariant.id, 1, from);
+    await handleShowQty(chatId, messageId, firstVariant.product_id || productId, firstVariant.id, 1, from);
     return;
   }
 
@@ -382,7 +382,7 @@ export async function handleConfirmPurchase(
   const ctx = from ? await tgCtxFor(from.id) : undefined;
   await sendChatAction(chatId, "typing");
 
-  const detail = await getProductDetail(productId);
+  const detail = await getProductDetail(productId, { telegramOnly: true });
   if (!detail || detail.variants.length === 0) {
     await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx?.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx?.locale }) });
     return;
@@ -395,7 +395,7 @@ export async function handleConfirmPurchase(
   }
 
   if (activeVariants.length === 1) {
-    await handleShowQty(chatId, messageId, productId, activeVariants[0].id, 1, from);
+    await handleShowQty(chatId, messageId, activeVariants[0].product_id || productId, activeVariants[0].id, 1, from);
     return;
   }
   await handleShowVariants(chatId, messageId, productId, from);

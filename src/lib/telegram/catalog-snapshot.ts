@@ -1,4 +1,4 @@
-import { displaySoldCountSql } from "@/lib/product-groups";
+import { displaySoldCountSql, mergedGroupCardJoinSql } from "@/lib/product-groups";
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 import { getD1, queryAll } from "@/lib/db";
 import { cachePublicCatalog, getCatalogRevision } from "@/lib/catalog-cache";
@@ -76,7 +76,9 @@ export async function readTelegramCatalog(): Promise<TelegramCatalogProduct[]> {
         WHEN MAX(CASE WHEN pv.id IS NOT NULL AND ${purchasableStockSql("pv")} AND ${effectiveVariantStockSql("pv")} = -1 THEN 1 ELSE 0 END) = 1 THEN -1
         ELSE COALESCE(SUM(CASE WHEN pv.id IS NOT NULL AND ${purchasableStockSql("pv")} THEN ${effectiveVariantStockSql("pv")} ELSE 0 END), 0)
       END AS total_stock
-      FROM products p LEFT JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
+      FROM products p
+      ${mergedGroupCardJoinSql("p", "gmap", { telegramOnly: true })}
+      LEFT JOIN product_variants pv ON pv.product_id=gmap.member_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
       WHERE p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}
       GROUP BY p.id ORDER BY p.sort_order ASC,p.name ASC`);
     return Response.json(rows);

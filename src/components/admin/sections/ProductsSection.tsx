@@ -41,6 +41,9 @@ function LiveStatusBadge({ status, reason }: { status?: Prod["liveStatus"]; reas
     return <Badge title={reason || "Tampil di storefront"} className="rounded-md border border-admin-success/30 bg-admin-success/10 px-2 py-0.5 text-xs font-semibold text-admin-success">Live</Badge>;
   }
   if (s === "hidden_loser") {
+    if (reason?.startsWith("Varian digabung")) {
+      return <Badge variant="outline" title={reason} className="rounded-md border border-admin-success/35 bg-admin-success/5 px-2 py-0.5 text-xs font-medium text-admin-success">Gabung varian</Badge>;
+    }
     return <Badge variant="secondary" title={reason || "Anggota grup lain dipilih — disembunyikan otomatis"}>Disembunyikan</Badge>;
   }
   if (s === "hidden_soldout") {

@@ -15,8 +15,9 @@ type Member = {
   supplier: Prod["supplier"]; is_active: boolean; archived: boolean; live: boolean;
   stock: number; modal_per_30d: number | null; position: number;
 };
+type ProductGroupMode = "winner" | "merge_variants";
 type ProductGroup = {
-  id: number; name: string; prefer_product_id: number | null; prefer_margin: number;
+  id: number; name: string; mode?: ProductGroupMode; prefer_product_id: number | null; prefer_margin: number;
   winner_product_id: number | null; reason: string | null; decided_at: string | null; members: Member[];
 };
 const endpoint = "/api/admin/product-groups";
@@ -79,18 +80,25 @@ export function ProductGroupsManager() {
     <Card className="p-4 text-sm text-admin-muted">
       <p className="font-medium text-admin-fg">Urutan pemilihan otomatis</p>
       <ol className="mt-2 list-decimal space-y-1 pl-5"><li>Produk Manual yang live selalu menang.</li><li>Utamakan produk yang punya stok.</li><li>Pilih modal per 30 hari termurah.</li><li>Ikuti preferensi admin bila selisih modal ≤ margin Rupiah.</li></ol>
-      <p className="mt-2">Produk nonaktif atau arsip selalu dikeluarkan dari pemilihan. Semua habis? Satu anggota aktif tetap menjadi wakil kartu habis.</p>
+      <p className="mt-2">Produk nonaktif atau arsip selalu dikeluarkan dari pemilihan. Semua habis? Satu anggota aktif tetap menjadi wakil kartu habis. Mode <span className="font-medium text-admin-fg">Gabung varian</span> tetap memakai 1 kartu wakil namun menggabungkan seluruh varian aktif dari semua anggota aktif.</p>
     </Card>
     <Input aria-label="Cari grup produk" placeholder="Cari grup, produk, atau slug…" value={query} onChange={event => setQuery(event.target.value)} className="sm:max-w-sm" />
     {error && <div role="alert" className="rounded-xl border border-admin-danger/30 bg-admin-danger/10 p-4 text-sm text-admin-danger">{error}<Button className="ml-2" variant="outline" onClick={() => void load()} disabled={busy || loading}>Coba lagi</Button></div>}
-    {loading ? <Skeleton className="h-40 w-full" /> : !groups.length && !error ? <Card className="p-10 text-center text-admin-muted">Belum ada grup</Card> : !filtered.length && !error ? <p className="text-sm text-admin-muted">Tidak ada grup yang cocok.</p> : filtered.map(group => <Card key={group.id} className="min-w-0 overflow-hidden" aria-label={`Grup ${group.name}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-admin-border p-4"><div className="min-w-0"><h3 className="break-words font-semibold text-admin-fg">{group.name}</h3><p className="text-xs text-admin-muted">{group.members.length} anggota</p></div><Button variant="outline" size="sm" disabled={busy} onClick={() => setEditor(group)} aria-label={`Kelola grup ${group.name}`}>Kelola grup</Button></div>
-      <ul className="divide-y divide-admin-border">{group.members.map(member => <li key={member.product_id} className="flex min-w-0 flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0"><p className="break-words text-sm font-medium text-admin-fg">{member.name}</p><div className="mt-1 flex flex-wrap gap-1.5"><SupplierBadge supplier={member.supplier} /><Badge variant="secondary">{member.archived ? "Arsip" : member.is_active ? "Aktif" : "Nonaktif"}</Badge><Badge variant={member.product_id === group.winner_product_id ? "success" : "secondary"}>{member.product_id === group.winner_product_id ? "Tampil di toko" : "Disembunyikan"}</Badge></div></div>
+    {loading ? <Skeleton className="h-40 w-full" /> : !groups.length && !error ? <Card className="p-10 text-center text-admin-muted">Belum ada grup</Card> : !filtered.length && !error ? <p className="text-sm text-admin-muted">Tidak ada grup yang cocok.</p> : filtered.map(group => {
+      const merged = group.mode === "merge_variants";
+      return <Card key={group.id} className="min-w-0 overflow-hidden" aria-label={`Grup ${group.name}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-admin-border p-4"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-semibold text-admin-fg">{group.name}</h3>{merged && <Badge variant="outline" className="border-admin-success/40 bg-admin-success/10 text-admin-success">Gabung varian</Badge>}</div><p className="text-xs text-admin-muted">{group.members.length} anggota</p></div><Button variant="outline" size="sm" disabled={busy} onClick={() => setEditor(group)} aria-label={`Kelola grup ${group.name}`}>Kelola grup</Button></div>
+      <ul className="divide-y divide-admin-border">{group.members.map(member => {
+        const isWinner = member.product_id === group.winner_product_id;
+        const isMergedActive = merged && !isWinner && member.is_active && !member.archived && group.winner_product_id != null;
+        return <li key={member.product_id} className="flex min-w-0 flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0"><p className="break-words text-sm font-medium text-admin-fg">{member.name}</p><div className="mt-1 flex flex-wrap gap-1.5"><SupplierBadge supplier={member.supplier} /><Badge variant="secondary">{member.archived ? "Arsip" : member.is_active ? "Aktif" : "Nonaktif"}</Badge>{isWinner ? <Badge variant="success">{merged ? "Kartu utama" : "Tampil di toko"}</Badge> : isMergedActive ? <Badge variant="outline" className="border-admin-success/35 bg-admin-success/5 text-admin-success">Varian digabung</Badge> : <Badge variant="secondary">Disembunyikan</Badge>}</div></div>
         <div className="shrink-0 text-xs text-admin-muted"><p>Stok {member.stock === -1 ? "∞" : member.stock}</p><p>Modal/30 hari {member.modal_per_30d == null ? "—" : formatRupiah(member.modal_per_30d)}</p></div>
-      </li>)}</ul>
+      </li>;
+      })}</ul>
       <div className="border-t border-admin-border p-4 text-xs text-admin-muted"><p className="break-words">{group.reason || "Belum ada keputusan"}</p><p className="mt-1">{decisionTime(group.decided_at)}</p></div>
-    </Card>)}
+    </Card>;
+    })}
     {editor && <GroupEditor key={editor === "new" ? "new" : editor.id} group={editor === "new" ? null : editor} groups={groups} busy={busy} onClose={() => setEditor(null)}
       onSave={(data) => mutate(editor === "new" ? endpoint : `${endpoint}/${editor.id}`, editor === "new" ? "POST" : "PATCH", data, "Grup disimpan.")}
       onAdd={productId => editor !== "new" ? mutate(`${endpoint}/${editor.id}/members`, "POST", { product_id: productId }, "Anggota ditambahkan.") : Promise.resolve(false)}
@@ -105,9 +113,11 @@ function GroupEditor({ group, groups, busy, onClose, onSave, onAdd, onRemove, on
   onRemove: (member: Member) => void; onDelete: () => void;
 }) {
   const [name, setName] = useState(group?.name ?? "");
+  const [mode, setMode] = useState<ProductGroupMode>(group?.mode ?? "winner");
   const [prefer, setPrefer] = useState(String(group?.prefer_product_id ?? ""));
   const [margin, setMargin] = useState(group?.prefer_margin ?? 0);
   useEffect(() => { setName(group?.name ?? ""); }, [group?.name]);
+  useEffect(() => { setMode(group?.mode ?? "winner"); }, [group?.mode]);
   useEffect(() => { setPrefer(String(group?.prefer_product_id ?? "")); }, [group?.prefer_product_id]);
   useEffect(() => { setMargin(group?.prefer_margin ?? 0); }, [group?.prefer_margin]);
   const [selected, setSelected] = useState<number[]>([]);
@@ -124,19 +134,22 @@ function GroupEditor({ group, groups, busy, onClose, onSave, onAdd, onRemove, on
   useEffect(() => { void loadProducts(); }, [loadProducts]);
   const validName = name.trim().length > 0 && name.trim().length <= 120;
   const validMargin = Number.isSafeInteger(margin) && margin >= 0 && margin <= 1_000_000;
-  const dirty = name !== group?.name || prefer !== String(group?.prefer_product_id ?? "") || margin !== (group?.prefer_margin ?? 0);
+  const initialMode: ProductGroupMode = group?.mode ?? "winner";
+  const dirty = name !== group?.name || mode !== initialMode || prefer !== String(group?.prefer_product_id ?? "") || margin !== (group?.prefer_margin ?? 0);
   const candidates = products.filter(product => !product.archivedAt && !group?.members.some(member => member.product_id === Number(product.id)) && `${product.name} ${product.slug}`.toLowerCase().includes(query.trim().toLowerCase()));
   return <Dialog title={group ? "Kelola grup produk" : "Grup produk baru"} onClose={onClose} busy={busy} className="w-[640px]">
     <h3 className="text-lg font-semibold text-admin-fg">{group ? "Kelola grup produk" : "Grup produk baru"}</h3>
     <fieldset disabled={busy} className="min-w-0 space-y-4">
       <Label className="block space-y-1.5">Nama grup<Input value={name} maxLength={120} onChange={event => setName(event.target.value)} /></Label>
+      <Label className="block space-y-1.5">Mode tampilan<NativeSelect value={mode} onChange={event => setMode(event.target.value === "merge_variants" ? "merge_variants" : "winner")}><option value="winner">Pilih 1 termurah (otomatis)</option><option value="merge_variants">Gabung semua varian di 1 kartu</option></NativeSelect></Label>
+      <p className="text-xs text-admin-muted">{mode === "merge_variants" ? "1 kartu di toko (nama & gambar ikut wakil), seluruh varian aktif dari semua anggota aktif digabung. Transaksi & stok tetap ke supplier masing-masing." : "Hanya 1 wakil pemenang yang tampil di toko; anggota lain disembunyikan otomatis."}</p>
       {group && <>
         <ul className="divide-y divide-admin-border">{group.members.map(member => <li key={member.product_id} className="flex items-center justify-between gap-2 py-2"><div className="min-w-0"><p className="break-words text-sm text-admin-fg">{member.name}</p><SupplierBadge supplier={member.supplier} /></div><Button className="shrink-0" size="sm" variant="outline" onClick={() => onRemove(member)} aria-label={`Keluarkan ${member.name}`}>Keluarkan</Button></li>)}</ul>
         <Label className="block space-y-1.5">Preferensi anggota<NativeSelect value={prefer} onChange={event => setPrefer(event.target.value)}><option value="">Otomatis (tanpa preferensi)</option>{group.members.map(member => <option key={member.product_id} value={member.product_id}>{member.name} · {member.supplier}</option>)}</NativeSelect></Label>
         <Label className="block space-y-1.5">Margin preferensi (Rupiah)<MoneyInput value={margin} onChange={value => setMargin(value ?? 0)} className="w-full rounded-md border border-admin-input bg-admin-card px-3 py-2 text-sm text-admin-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-ring" /></Label>
         {!validMargin && <p role="alert" className="text-xs text-admin-danger">Margin harus bilangan bulat Rp0–1.000.000.</p>}
         <p className="text-xs text-admin-muted">Preferensi hanya berlaku bila selisih modal dalam margin; tidak mengalahkan aturan Manual live dan stok.</p>
-        <Button variant="outline" disabled={!validName || !validMargin || !dirty} onClick={() => void onSave({ name: name.trim(), prefer_product_id: prefer ? Number(prefer) : null, prefer_margin: margin })}>Simpan pengaturan</Button>
+        <Button variant="outline" disabled={!validName || !validMargin || !dirty} onClick={() => void onSave({ name: name.trim(), prefer_product_id: prefer ? Number(prefer) : null, prefer_margin: margin, ...(mode !== initialMode ? { mode } : {}) })}>Simpan pengaturan</Button>
       </>}
       <div className="space-y-2 border-t border-admin-border pt-4">
         <p className="text-sm font-medium text-admin-fg">{group ? "Tambah anggota" : `Pilih anggota (${selected.length}/10) — minimal 2`}</p>
@@ -161,7 +174,7 @@ function GroupEditor({ group, groups, busy, onClose, onSave, onAdd, onRemove, on
     <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">
       {group && <Button variant="outline" className="mr-auto text-admin-danger" disabled={busy} onClick={onDelete}>Hapus grup</Button>}
       <Button variant="outline" disabled={busy} onClick={onClose}>Tutup</Button>
-      {!group && <Button disabled={busy || loading || !validName || selected.length < 2 || selected.length > 10} onClick={() => void onSave({ name: name.trim(), product_ids: selected })}>{busy ? "Menyimpan…" : "Buat grup"}</Button>}
+      {!group && <Button disabled={busy || loading || !validName || selected.length < 2 || selected.length > 10} onClick={() => void onSave({ name: name.trim(), product_ids: selected, ...(mode !== "winner" ? { mode } : {}) })}>{busy ? "Menyimpan…" : "Buat grup"}</Button>}
     </div>
   </Dialog>;
 }

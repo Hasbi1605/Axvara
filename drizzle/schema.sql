@@ -2038,8 +2038,10 @@ CREATE TABLE IF NOT EXISTS product_groups (
   reason            TEXT,
   decided_at        TEXT,
   created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  mode              TEXT NOT NULL DEFAULT 'winner' CHECK (mode IN ('winner', 'merge_variants'))
 );
+CREATE INDEX IF NOT EXISTS idx_product_groups_mode_winner ON product_groups(mode, winner_product_id);
 CREATE TABLE IF NOT EXISTS product_group_members (
   group_id   INTEGER NOT NULL REFERENCES product_groups(id) ON DELETE CASCADE,
   product_id INTEGER NOT NULL UNIQUE,

@@ -398,6 +398,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     if (!variant) return product;
     return {
       ...product,
+      id: Number.isInteger(variant.product_id) && variant.product_id > 0 && /^\d+$/.test(String(product.id))
+        ? String(variant.product_id)
+        : product.id,
       price: variant.price,
       stock: effectiveStockSnapshotOf(variant),
       variantId: variant.id,

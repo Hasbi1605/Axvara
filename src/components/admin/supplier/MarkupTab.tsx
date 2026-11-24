@@ -181,7 +181,7 @@ export function MarkupTab() {
         if (isWrSk) {
           const canEdit = item.product_archived !== 1;
           const stockText = item.stock === -1 ? "∞" : String(item.stock);
-          const extraReason = item.variantStatus === "hidden_loser" && item.variantReason ? ` · ${item.variantReason}` : "";
+          const extraReason = (item.variantStatus === "hidden_loser" || (item.variantStatus === "live" && item.variantReason?.startsWith("Gabung di "))) && item.variantReason ? ` · ${item.variantReason}` : "";
           return priceRow({
             key: `${supplier}-${item.id}`,
             id: `${supplier}-${item.id}`,
@@ -220,7 +220,7 @@ export function MarkupTab() {
           title: label,
           meta: <>{item.name && item.name !== label ? `${item.name} · ` : ""}Modal {costWithIdr(supplierMoney(currency, cost), cost, fx)}{item.delivery_type === "muse_buff" ? " per 1 miliar token" : ""} · stok {item.stock === -1 ? "∞" : item.stock}
             {config.bulk && !!item.bulk_tiers_preview?.length && <span className="mt-1 block">Grosir: {item.bulk_tiers_preview.map(t => `${t.min_qty}+ ${formatRupiah(t.unit_price)}`).join(" · ")}</span>}
-            {item.variantStatus === "hidden_loser" && item.variantReason ? ` · ${item.variantReason}` : ""}
+            {(item.variantStatus === "hidden_loser" || (item.variantStatus === "live" && item.variantReason?.startsWith("Gabung di "))) && item.variantReason ? ` · ${item.variantReason}` : ""}
           </>,
           badges: <>
             <VariantStatusBadge status={item.variantStatus} reason={item.variantReason} />
@@ -249,7 +249,7 @@ export function MarkupTab() {
         bulkId: variant.sku,
         path: `buff/${encodeURIComponent(variant.sku)}`,
         title: variant.label,
-        meta: <>Per {variant.tunvn_buff_quantity_b} miliar token · modal {costWithIdr(supplierMoney("USDT", variant.tunvn_cost_usdt), variant.tunvn_cost_usdt, variant.tunvn_fx_idr_per_usdt)}{status === "hidden_loser" && reason ? ` · ${reason}` : ""}</>,
+        meta: <>Per {variant.tunvn_buff_quantity_b} miliar token · modal {costWithIdr(supplierMoney("USDT", variant.tunvn_cost_usdt), variant.tunvn_cost_usdt, variant.tunvn_fx_idr_per_usdt)}{(status === "hidden_loser" || (status === "live" && reason?.startsWith("Gabung di "))) && reason ? ` · ${reason}` : ""}</>,
         badges: <VariantStatusBadge status={status} reason={reason} />,
         markup: Number(variant.tunvn_markup_percent ?? TUNVN_BUFF_MARKUP_PERCENT),
         manual: variant.tunvn_admin_price_idr,

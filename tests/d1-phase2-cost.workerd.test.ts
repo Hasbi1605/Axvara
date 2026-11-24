@@ -18,7 +18,7 @@ it("D1 runs group loser filter and product_group dirty triggers on workerd", asy
       "CREATE TABLE tunvn_products(supplier_product_id INTEGER,price_usdt REAL,fx_idr_per_usdt REAL)",
       "CREATE TABLE aivault_products(service_id TEXT,unit_price_usd REAL,fx_idr_per_usd REAL)",
       "CREATE TABLE crypto_market_snapshot(id INTEGER PRIMARY KEY,fx_rate_text TEXT)",
-      "CREATE TABLE product_groups(id INTEGER PRIMARY KEY,name TEXT,prefer_product_id INTEGER,prefer_margin INTEGER DEFAULT 2000,winner_product_id INTEGER,reason TEXT,decided_at TEXT,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')))",
+      "CREATE TABLE product_groups(id INTEGER PRIMARY KEY,name TEXT,prefer_product_id INTEGER,prefer_margin INTEGER DEFAULT 2000,winner_product_id INTEGER,reason TEXT,decided_at TEXT,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')),mode TEXT NOT NULL DEFAULT 'winner')",
       "CREATE TABLE product_group_members(group_id INTEGER,product_id INTEGER UNIQUE,position INTEGER DEFAULT 0,created_at TEXT DEFAULT (datetime('now')),PRIMARY KEY(group_id,product_id))",
       "CREATE TABLE product_group_dirty(group_id INTEGER PRIMARY KEY,version TEXT,pending INTEGER DEFAULT 1)",
     ].map(sql => db.prepare(sql)));

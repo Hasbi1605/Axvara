@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" };
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
+  mode: z.enum(["winner", "merge_variants"]).optional(),
   prefer_product_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
   prefer_margin: z.number().int().min(0).max(1_000_000).optional(),
 }).strict();

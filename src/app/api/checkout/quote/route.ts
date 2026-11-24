@@ -142,17 +142,91 @@ export async function POST(req: NextRequest) {
     );
     for (const row of rows) variantById.set(Number(row.id), row);
   }
+  // Resolve merged-group variants (product_groups.mode='merge_variants'):
+  // when a buyer submits the canonical group card slug/id paired with a
+  // variant owned by another active non-archived member of the SAME
+  // merge_variants group, re-anchor the line to the variant's true owning
+  // product so supplier eligibility, send-fence, stock, and fulfillment stay
+  // 100% single-owner. Only runs a single batch query when a mismatch occurs.
+  const mergedCardIds = new Set<number>();
+  const mergedOwnerIds = new Set<number>();
+  for (const item of aggregate.values()) {
+    if (!item.variant_id) continue;
+    const product = item.slug ? productBySlug.get(item.slug) : productById.get(Number(item.product_id));
+    const variant = variantById.get(item.variant_id);
+    if (!product || !variant) continue;
+    const cardId = Number(product.id);
+    const ownerId = Number(variant.product_id);
+    if (
+      ownerId > 0
+      && ownerId !== cardId
+      && Number(product.is_active) === 1
+      && product.archived_at == null
+      && (!item.product_id || item.product_id === cardId || item.product_id === ownerId)
+    ) {
+      mergedCardIds.add(cardId);
+      mergedOwnerIds.add(ownerId);
+    }
+  }
+  const mergedOwnerByPair = new Map<string, Record<string, unknown>>();
+  const mergedDisplayCardByOwner = new Map<number, Record<string, unknown>>();
+  if (mergedCardIds.size > 0 && mergedOwnerIds.size > 0) {
+    const cardList = [...mergedCardIds];
+    const ownerList = [...mergedOwnerIds];
+    const mergedRows = await queryAll(
+      `SELECT m1.product_id AS card_id, m2.product_id AS owner_id, p.*, c.slug AS cat_slug
+       FROM product_groups g
+       JOIN product_group_members m1 ON m1.group_id=g.id
+       JOIN product_group_members m2 ON m2.group_id=g.id
+       JOIN products p ON p.id=m2.product_id
+       LEFT JOIN categories c ON c.id=p.category_id
+       WHERE g.mode='merge_variants'
+         AND g.winner_product_id IS NOT NULL
+         AND m1.product_id IN (${cardList.map(() => "?").join(",")})
+         AND m2.product_id IN (${ownerList.map(() => "?").join(",")})
+         AND p.is_active=1 AND p.archived_at IS NULL`,
+      ...cardList,
+      ...ownerList,
+    ).catch(() => [] as Record<string, unknown>[]);
+    for (const row of mergedRows) {
+      const pairKey = `${Number(row.card_id)}:${Number(row.owner_id)}`;
+      mergedOwnerByPair.set(pairKey, row);
+      productById.set(Number(row.id), row);
+    }
+  }
+
   // Resolve aliases before aggregation; a foreign product/variant pair never contributes to a tier.
   const canonical = new Map<string, z.infer<typeof itemSchema>>();
   for (const item of aggregate.values()) {
     const product = item.slug ? productBySlug.get(item.slug) : productById.get(Number(item.product_id));
-    if (!product || (item.product_id && Number(product.id) !== item.product_id) || (item.variant_id && Number(variantById.get(item.variant_id)?.product_id) !== Number(product.id))) {
+    const variantOwnerId = item.variant_id ? Number(variantById.get(item.variant_id)?.product_id ?? 0) : 0;
+    let resolvedProduct = product;
+    if (
+      product
+      && item.variant_id
+      && variantOwnerId > 0
+      && variantOwnerId !== Number(product.id)
+      && (!item.product_id || Number(product.id) === item.product_id || variantOwnerId === item.product_id)
+    ) {
+      const mergedOwner = mergedOwnerByPair.get(`${Number(product.id)}:${variantOwnerId}`);
+      if (mergedOwner) {
+        resolvedProduct = mergedOwner;
+        mergedDisplayCardByOwner.set(variantOwnerId, product);
+      }
+    }
+    if (
+      !resolvedProduct
+      || (item.product_id && Number(resolvedProduct.id) !== item.product_id && (!product || Number(product.id) !== item.product_id))
+      || (item.variant_id && variantOwnerId !== Number(resolvedProduct.id))
+    ) {
       issues.push({ product_id: item.product_id, slug: item.slug, variant_id: item.variant_id, type: "missing", message: "Produk atau varian tidak cocok." });
       continue;
     }
-    const key = `${product.id}:${item.variant_id ?? 0}`;
+    const canonicalId = Number(resolvedProduct.id);
+    productById.set(canonicalId, resolvedProduct);
+    const key = `${canonicalId}:${item.variant_id ?? 0}`;
     const previous = canonical.get(key);
-    canonical.set(key, previous ? { ...previous, qty: previous.qty + item.qty } : { ...item, product_id: Number(product.id) });
+    canonical.set(key, previous ? { ...previous, qty: previous.qty + item.qty } : { ...item, product_id: canonicalId });
   }
   aggregate.clear(); for (const [key, value] of canonical) aggregate.set(key, value);
   // Cache min_qty per varian (migrasi 0034): baris fixture lama tanpa kolom
@@ -175,7 +249,7 @@ export async function POST(req: NextRequest) {
       issues.push({ product_id: item.product_id, slug: item.slug, variant_id: item.variant_id, type: "invalid_quantity", message: "Maksimal 100 unit per produk." });
       continue;
     }
-    const row = item.slug ? productBySlug.get(item.slug) : item.product_id ? productById.get(item.product_id) : undefined;
+    const row = item.product_id ? productById.get(item.product_id) : item.slug ? productBySlug.get(item.slug) : undefined;
 
     if (!row) {
       issues.push({ product_id: item.product_id, slug: item.slug, variant_id: item.variant_id, type: "missing", message: "Produk tidak ditemukan." });
@@ -369,7 +443,7 @@ export async function POST(req: NextRequest) {
       ...(tierMin ? { base_price: basePrice, applied_tier_min_qty: tierMin } : {}),
       qty: item.qty,
       stock: effectiveStock,
-      image: String(row.image_url ?? ""),
+      image: String(row.image_url || mergedDisplayCardByOwner.get(productId)?.image_url || ""),
       // Kelas pengiriman per baris: checkout WAJIB memberi tahu pembeli
       // sebelum bayar kalau ada varian antrean (bukan kirim otomatis).
       // Identitas supplier sama dengan katalog walau fulfillment_mode lokalnya manual.

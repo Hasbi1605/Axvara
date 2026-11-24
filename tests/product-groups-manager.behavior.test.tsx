@@ -33,7 +33,7 @@ function setup({ empty = false, writeError = "", status = 409, catalog = product
     if (writeError) return result({ error: writeError, group_id: 9 }, status);
     if (url === `${endpoint}/decide`) return result({ decided: groups.length, changed: 1 });
     if (url === endpoint && method === "POST") {
-      const group = { ...initialGroup, id: 8, name: body.name, members: body.product_ids.map(member) };
+      const group = { ...initialGroup, id: 8, name: body.name, mode: body.mode ?? "winner", members: body.product_ids.map(member) };
       groups = [...groups, group];
       return result({ group });
     }
@@ -197,5 +197,42 @@ describe("ProductGroupsManager", () => {
     await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Hapus grup" }));
     await screen.findByText("Belum ada grup");
     expect(fetchMock).toHaveBeenCalledWith(`${endpoint}/7`, expect.objectContaining({ method: "DELETE" }));
+  });
+
+  it("supports creating and toggling merge_variants mode with merged member badges", async () => {
+    const fetchMock = setup();
+    await userEvent.click(await screen.findByRole("button", { name: "Grup baru" }));
+    let dialog = screen.getByRole("dialog", { name: "Grup produk baru" });
+    await within(dialog).findByRole("checkbox", { name: "Pilih Netflix TUNVN" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Nama grup" }), { target: { value: "Netflix Gabung" } });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Mode tampilan" }), { target: { value: "merge_variants" } });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Pilih Netflix TUNVN" }));
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Pilih Netflix Manual" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Buat grup" }));
+    expect(fetchMock).toHaveBeenCalledWith(endpoint, expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ name: "Netflix Gabung", product_ids: [3, 4], mode: "merge_variants" }),
+    }));
+    await screen.findByLabelText("Grup Netflix Gabung");
+
+    // Toggle existing group #7 from winner -> merge_variants via PATCH
+    dialog = await manage();
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Mode tampilan" }), { target: { value: "merge_variants" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Simpan pengaturan" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(`${endpoint}/7`, expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ name: "Netflix", prefer_product_id: null, prefer_margin: 0, mode: "merge_variants" }),
+    })));
+    const groupCard = await screen.findByLabelText("Grup Netflix");
+    expect(within(groupCard).getByText("Gabung varian")).toBeTruthy();
+    const winnerRow = within(groupCard).getByText("Netflix WR").closest("li")!;
+    expect(within(winnerRow).getByText("Kartu utama")).toBeTruthy();
+    // Member #2 is inactive -> still Disembunyikan, NOT Varian digabung
+    const inactiveRow = within(groupCard).getByText("Netflix SK").closest("li")!;
+    expect(within(inactiveRow).getByText("Disembunyikan")).toBeTruthy();
+    // Adding active member #5 shows Varian digabung
+    await userEvent.click(within(dialog).getByRole("button", { name: "Tambahkan Netflix AIVault" }));
+    const mergedRow = (await within(groupCard).findByText("Netflix AIVault")).closest("li")!;
+    expect(within(mergedRow).getByText("Varian digabung")).toBeTruthy();
   });
 });

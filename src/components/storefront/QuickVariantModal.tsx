@@ -257,6 +257,9 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
     if (mode === "cart") {
       add({
         ...product,
+        id: Number.isInteger(selected.product_id) && selected.product_id > 0 && /^\d+$/.test(String(product.id))
+          ? String(selected.product_id)
+          : product.id,
         price: selected.price,
         comparePrice: selected.compare_price ?? undefined,
         // Stok EFEKTIF (bukan kolom mentah): keranjang ikut menolak unique

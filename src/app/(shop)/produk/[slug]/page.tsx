@@ -1,4 +1,4 @@
-import { displaySoldCountSql } from "@/lib/product-groups";
+import { displaySoldCountSql, mergedGroupVariantOwnerSql } from "@/lib/product-groups";
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 
 import type { Metadata } from "next";
@@ -31,7 +31,7 @@ type SeoRow = Record<string, unknown>;
 // Next's RSC renderer provides React.cache; plain React 18 unit tests do not.
 const getSeoProduct = (React.cache ?? ((fn) => fn))(async (slug: string): Promise<SeoProduct | null> => {
   const product = (await queryFirst(
-    `SELECT p.slug, p.name, p.name_en, p.description, p.admin_description_override, p.description_en,
+    `SELECT p.slug, p.name, p.id, p.name_en, p.description, p.admin_description_override, p.description_en,
             p.image_url, p.images, p.badge,
             ${displaySoldCountSql("p")} AS sold_count, p.updated_at
      FROM products p
@@ -39,14 +39,24 @@ const getSeoProduct = (React.cache ?? ((fn) => fn))(async (slug: string): Promis
     slug,
   )) as SeoRow | undefined;
   if (!product) return null;
-  const variants = (await queryAll(
-    `SELECT pv.price, pv.compare_price, pv.stock, pv.min_qty
-     FROM product_variants pv
-     JOIN products p ON p.id=pv.product_id
-     WHERE p.slug=? AND p.is_active=1 AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
-     ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
-    slug,
-  )) as SeoRow[];
+  const productId = product.id == null ? null : Number(product.id);
+  const variants = (productId != null && Number.isInteger(productId) && productId > 0
+    ? await queryAll(
+        `SELECT pv.price, pv.compare_price, pv.stock, pv.min_qty
+         FROM product_variants pv
+         WHERE ${mergedGroupVariantOwnerSql("?", "pv")} AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
+         ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
+        productId,
+        productId,
+      )
+    : await queryAll(
+        `SELECT pv.price, pv.compare_price, pv.stock, pv.min_qty
+         FROM product_variants pv
+         JOIN products p ON p.id=pv.product_id
+         WHERE p.slug=? AND p.is_active=1 AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
+         ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
+        slug,
+      )) as SeoRow[];
   if (variants.length === 0) return null;
   return {
     slug: String(product.slug),
