@@ -1,5 +1,10 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Aktivasi induk Microsoft 365 (`#132`) & Grup Claude API (`#47`) — 24 November 2026 (D1 produksi)
+
+- Atas instruksi owner (Paket A): induk `#132` `microsoft-365-tunvn` (`TUNVN-73` Admin 12 Bulan, stok 27, `duration=12 month`, `warranty=full 12 month`, `images` diselaraskan) diaktifkan sebagai backup di Grup `#38` (`Microsoft 365`, runner-up di bawah `#422` StoreBat).
+- `#124` `claude-api-tunvn` dimasukkan ke Grup baru `#47` (`Claude API Credit`) bersama `#395` `claude-api-sb` (`#124` tetap pemenang grup). `TUNVN-120` (Muse 1B NW) tetap nonaktif (duplikat fungsional dengan `TUNVN-97` & stok 0).
+
 ## Salinan Microsoft Copilot Premium (#122) — 23 November 2026 (lokal)
 
 - Migrasi data `0160_tunvn_copilot_copy.sql` (tanpa DDL, baseline bootstrap diperbarui) melengkapi deskripsi produk ID/EN (`microsoft-copilot-tunvn`) dan S&K + cara aktivasi ID/EN varian `TUNVN-122` berdasarkan deskripsi API supplier TUNVN #122 (`Copilot Premium 1M (FW)`: masa aktif 1 bulan, full warranty) serta format hasil beli aktual 5 bagian (`Email Hotmail | Password | Token | Client ID | Email pemulihan`; login pakai bagian 1–2, recovery mail bagian terakhir via `axvara.tech/go/mail-fvia`, catatan 4 bagian pertama API mail via `axvara.tech/go/mail-dongvan`). Berlaku untuk produk yang sudah aktif (`is_active=1`), idempoten, dan tidak menimpa suntingan admin setelahnya.

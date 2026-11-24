@@ -1,5 +1,13 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Aktivasi Paket A & tambal copy live — 24 November 2026 (D1 produksi)
+
+- Atas instruksi owner, tiga layanan baru AIVault diaktifkan langsung di D1 produksi dengan foto R2 existing, deskripsi/S&K/cara aktivasi ID+EN (berdasarkan deskripsi resmi API `/api/v1/products`), durasi & garansi terstruktur, serta digabung ke Grup Produk (tanpa mengubah `aivault_family` fallback `service:*` agar sync cron tetap cocok):
+  - `#51965` `AV-service_elevenlabs_creator_3m` (`ElevenLabs`, `Creator 3 Bulan`, stok 4, `duration=3 month`, `warranty=limited 3 day`, OTP `go/mail-dongvan`) → masuk Grup `#40` (`ElevenLabs`, langsung menjadi pemenang menggantikan TUNVN yang stok 0).
+  - `#51966` `AV-service_proton_vpn_1m` (`Proton VPN`, `Plus 1 Bulan (Full Garansi)`, stok 4, `duration=1 month`, `warranty=full 30 day`) → masuk Grup `#44` (`Proton VPN`).
+  - `#51967` `AV-service_express_vpn_1m` (`ExpressVPN`, `1 Bulan (Full Garansi)`, stok 3, `duration=1 month`, `warranty=full 30 day`, OTP `go/mail-mailto-plus`) → masuk Grup `#8` (`Express VPN`).
+- Tambal copy 3 varian AIVault yang sudah live: `AV-service_ilovepdf_nw` (`#381`, S&K + Cara Aktivasi ID/EN), `AV-service_chatgpt_plus_1m_fw` (`#174`, S&K + Cara Aktivasi ID/EN via `go/otp-2fa`, `warranty=full 30 day`), dan `AV-service_duolingo_12m` (`#51946`, memisahkan langkah `Cara aktivasi` / `How to activate` dari `admin_terms*` ke `admin_activation*`, `warranty=limited 5 day`). `AV-service_notion_plus` (`#138`) disetel `duration=12 month` dan masuk Grup baru `#46` (`Notion`); `#139` (`udemy-av`) masuk Grup baru `#45` (`Udemy`). Shortlink `mail-mailto-plus` → `https://mailto.plus/` ditambahkan di `supplier_links`.
+
 ## Foto produk Adobe Express — 23 November 2026 (prod + repo)
 
 - Atas permintaan owner, produk `#135` Adobe Express (`adobe-express-av`) diganti dari foto bersama Adobe Creative Cloud ke foto R2 baru `/r2/products/7da3d7c35b0ffcc8d0c2c5fbbf62ff7c.webp` (`1600×900` WebP, logo "A" pelangi baru bergaya tile 3D AXVARA) di bucket `axvara-assets` & D1 prod (+ bump `catalog_revision_market`); objek lama `41131d84f9c7dbd56a756caaf452cf0a.webp` dipertahankan karena masih dipakai `#45` Adobe Creative Cloud.

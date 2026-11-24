@@ -1,5 +1,12 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Aktivasi Paket A + Paket B & Grup Produk — 24 November 2026 (D1 produksi)
+
+- Atas instruksi owner, produk/varian StoreBat berikut diaktifkan di D1 produksi (disertai `images`, durasi/garansi terstruktur, dan penyegaran `catalog_revision_market`):
+  - **Produk baru (`#51964`, `SB-145`, `storebat_family='product:145'` tetap utuh):** `ChatGPT Business (Email Sendiri)`, slug `chatgpt-business-cdk-sb`, varian `Business 1 Bulan (Email Sendiri · CDK)` (stok 7, `duration=1 month`, `warranty=limited 28 day`), foto R2 ChatGPT, copy ID/EN + S&K/aktivasi lengkap via shortlink baru `axvara.tech/go/chatgpt-business-cdk` → `https://sesame-activation-production.up.railway.app/suivi`.
+  - **Backup grup produk (7 produk):** `#448` `udemy-sb` (`SB-128`, stok 7) → Grup baru `#45` (`Udemy`, pemenang menggantikan `#139` AV stok 0); `#428` `notion-sb` (`SB-66` Plus 12M & `SB-12` Business 12M saja; `SB-62`/`SB-90` tetap OFF) → Grup baru `#46` (`Notion`, pemenang di atas `#138` AV); `#392` `capcut-sb` (`SB-97` 6–7M FW saja) → Grup `#5` (`Capcut Pro`); `#395` `claude-api-sb` (`SB-35` $500 30H saja) → Grup baru `#47` (`Claude API Credit` bersama `#124` TUNVN); `#431` `picsart-sb` (`SB-118`) → Grup `#15`; `#441` `scribd-sb` (`SB-30`) → Grup `#18`; `#453` `zoom-sb` (`SB-46..49`) → Grup `#27`.
+  - **Katalog baru (Paket B, 3 produk):** `#397` `coursera-sb` (`SB-19` 12M, stok 93), `#401` `elevenreader-sb` (`SB-119` 12M, stok 85), dan `#406` `gamma-sb` (`SB-59` Plus 1M saja, stok 3; `SB-79` tetap OFF).
+
 ## Aktivasi ExpressVPN StoreBat (`express-vpn-sb`, `#402` / `SB-132`) — 24 November 2026
 
 - Atas instruksi owner, produk StoreBat `express-vpn-sb` (`products.id=402`, `storebat_family='express-vpn'`, kategori 6) dan varian `SB-132` (`product_variants.id=34618`, `storebat_product_id=132`, label `1 Bulan`, markup rumus `35%` = `Rp24.700`, stok `5`, `duration=1 month`, `warranty=limited 25 day` sesuai `warranty_days=25` upstream) diaktifkan langsung di D1 produksi.
