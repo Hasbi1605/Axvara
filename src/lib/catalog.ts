@@ -9,7 +9,7 @@ import type { Locale } from "@/lib/i18n/locale";
 import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 import { hasAutomaticSupplierDelivery } from "@/lib/buyer-fields";
 import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
-import { displaySoldCountSql, mergedGroupCardJoinSql, mergedGroupVariantOwnerSql, notLoserProductSql } from "@/lib/product-groups";
+import { displaySoldCountSql, mergedGroupCardJoinSql, mergedGroupVariantOwnerSql, notLoserProductSql, notLoserSlotVariantSql } from "@/lib/product-groups";
 import { purchasableStockSql } from "@/lib/catalog-availability";
 import { deriveSkDuration, durationFromSupplierText, labelContainsDuration } from "@/lib/catalog-duration";
 export { effectiveVariantStock } from "@/lib/catalog-availability";
@@ -174,7 +174,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
       CASE WHEN SUM(CASE WHEN ${purchasableStockSql("pv")} THEN 1 ELSE 0 END) > 0 THEN 'available' ELSE 'out_of_stock' END as availability
     FROM products p
     ${mergedGroupCardJoinSql("p", "gmap")}
-    INNER JOIN product_variants pv ON pv.product_id = gmap.member_id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
+    INNER JOIN product_variants pv ON pv.product_id = gmap.member_id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")} AND ${notLoserSlotVariantSql("pv")}
     WHERE p.is_active = 1 AND ${notLoserProductSql("p")}
     GROUP BY p.id
     HAVING variant_count > 0
@@ -255,7 +255,7 @@ export async function getProductDetail(
   const productId = Number(product.id);
   const isMergedWinner = Number(product.is_merged_winner ?? 0) === 1;
   const variantWhere = isMergedWinner
-    ? `${mergedGroupVariantOwnerSql("?", "pv", { telegramOnly: options?.telegramOnly })} AND pv.is_active=1 AND ${wrNewSaleSql("pv")}`
+    ? `${mergedGroupVariantOwnerSql("?", "pv", { telegramOnly: options?.telegramOnly })} AND pv.is_active=1 AND ${wrNewSaleSql("pv")} AND ${notLoserSlotVariantSql("pv")}`
     : `pv.product_id=? AND pv.is_active=1 AND ${wrNewSaleSql("pv")}`;
   const variantOrder = isMergedWinner
     ? `CASE WHEN ${purchasableStockSql("pv")} THEN 0 ELSE 1 END ASC, pv.sort_order ASC, pv.price ASC, pv.id ASC`

@@ -436,6 +436,23 @@ Daftar Produk, dan Markup Supplier):
 - Tanpa token/aset/dependensi baru; verifikasi Chrome nyata lokal desktop `1440×900`
   dan mobile `390×844` (Admin `ProductGroupsManager` + Checkout varian gabungan)
   lulus dengan 0 overflow dan 0 error console/page memakai fixture lokal.
+
+Tambahan 24 November 2026 (lokal — **Slot varian** gaya ringkas AXVARA, bebas bloat):
+- `ProductGroupsManager` (kartu grup): bila grup bermode `merge_variants` memiliki
+  slot, header menampilkan jumlah `· N slot` dan strip ringkas di bawah daftar
+  anggota menampilkan tiap slot dalam 1 baris (nama slot, `SupplierBadge` + label
+  pemenang, jumlah varian, dan alasan keputusan).
+- `ProductGroupsManager` (dialog Kelola grup saat `mode = merge_variants`): seksi
+  datar **Slot varian** tanpa kartu bersarang atau teks instruksi panjang — tombol
+  **Samakan otomatis**, daftar ringkas slot (ubah nama / hapus), serta daftar varian
+  aktif dengan badge `Menang` dan pemilih dropdown per baris (`Tampil terpisah`,
+  slot yang ada, atau `+ Buat slot baru…`), disimpan bersama pengaturan grup lewat
+  satu tombol **Simpan pengaturan**.
+- `SupplierTabs` (`VariantStatusBadge`): varian yang kalah di dalam slotnya
+  menampilkan badge **`Kalah slot`** dengan tooltip alasan slot dan pemenangnya.
+- Verifikasi Chrome nyata lokal desktop `1440×900` & mobile `390×844` (`Samakan
+  otomatis`, `PUT /slots`, strip ringkasan slot, badge `Menang`) lulus dengan
+  0 overflow dan 0 error console/page memakai fixture lokal.
 dan margin2500, tambah/keluarkan, auto-delete, hapus, hitung ulang; nama/slug
 arsip tidak ditawarkan, kandidat grup lain disabled. Tanpa overflow horizontal,
 dialog scroll internal, fokus tetap di dialog, Escape mengembalikan fokus ke

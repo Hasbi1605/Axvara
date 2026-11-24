@@ -472,6 +472,22 @@ mode `winner`, produk lintas grup, atau anggota nonaktif/arsip). Publikasi via C
 `main` (migrasi `0163` + deployment Pages belum diverifikasi di produksi sampai CI
 selesai).
 
+Tambahan 24 November 2026 (implementasi lokal — **Slot Varian** di dalam grup
+`merge_variants`, migrasi `0164`): varian sejenis lintas supplier dalam satu grup
+`merge_variants` (contoh: `Plus 1 Bulan` Standar dari StoreBat/AIVault/TUNVN)
+dapat dikelompokkan ke dalam **Slot Varian** (`product_group_slots` +
+`product_group_slot_members`). Tiap slot otomatis memilih tepat **1 varian
+pemenang** dengan urutan aturan yang sama seperti grup produk (Manual live →
+stok siap beli → modal per 30 hari termurah + preferensi/margin grup → fallback
+harga jual bila modal tak terbaca → 1 wakil saat semua habis), sehingga varian
+pemenang otomatis maju/mundur saat stok habis, restok, atau harga/modal berubah,
+sedangkan varian di luar slot (contoh: `Plus 1 Bulan (Full Garansi)`) tetap
+tampil berdampingan di kartu yang sama. Dialog kelola grup menyediakan tombol
+**Samakan otomatis** berbasis pencocokan deterministik `(tier akses, durasi,
+garansi)` tanpa mencampur Full Garansi vs Non-Garansi atau Sharing vs Private,
+dan admin tetap memegang kendali akhir sebelum disimpan. Publikasi via CI `main`
+(migrasi `0164` + deployment Pages belum diverifikasi di produksi sampai CI selesai).
+
 ## Harga supplier & salinan TUNVN (15 November 2026, implementasi lokal)
 
 - Admin mengatur markup/harga manual varian TUNVN/AIVault per baris dengan

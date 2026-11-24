@@ -21,6 +21,7 @@
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { effectiveVariantStockSql } from "@/lib/catalog-availability";
+import { decideSlotFromStats, type SlotVariantStats } from "@/lib/product-group-slots";
 
 type Row = Record<string, unknown>;
 export type ProductGroupSupplier = "WR" | "SK" | "TUNVN" | "AIVault" | "StoreBat" | "Mirai" | "Pixel" | "Manual";
@@ -72,6 +73,37 @@ export type GroupMemberView = {
   position: number;
 };
 
+export type GroupSlotView = {
+  id: number;
+  name: string;
+  winner_variant_id: number | null;
+  reason: string | null;
+  decided_at: string | null;
+  sort_order: number;
+  variant_ids: number[];
+};
+
+export type GroupVariantView = {
+  variant_id: number;
+  product_id: number;
+  supplier: ProductGroupSupplier;
+  label: string;
+  price: number;
+  stock: number;
+  min_qty: number;
+  modal_per_30d: number | null;
+  is_active: boolean;
+  parent_active: boolean;
+  parent_archived: boolean;
+  duration_value: number | null;
+  duration_unit: string | null;
+  duration_label: string | null;
+  warranty_type: string;
+  warranty_value: number | null;
+  warranty_unit: string | null;
+  slot_id: number | null;
+};
+
 export type GroupView = {
   id: number;
   name: string;
@@ -82,6 +114,8 @@ export type GroupView = {
   reason: string | null;
   decided_at: string | null;
   members: GroupMemberView[];
+  slots?: GroupSlotView[];
+  variants?: GroupVariantView[];
 };
 
 const FX = "CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END";
@@ -318,12 +352,104 @@ async function updateGroupDecision(db: DatabaseAccess, group: GroupStats, dirtyV
   return winnerChanged;
 }
 
+async function decideSlotsForGroups(db: DatabaseAccess, groups: GroupStats[]): Promise<number> {
+  const mergeGroups = groups.filter((g) => g.mode === "merge_variants");
+  if (!mergeGroups.length) return 0;
+  const groupIds = mergeGroups.map((g) => g.id);
+  const groupById = new Map(mergeGroups.map((g) => [g.id, g]));
+  const placeholders = groupIds.map(() => "?").join(",");
+  const rows = await db.queryAll(
+    `SELECT gs.id AS slot_id, gs.group_id, gs.name AS slot_name,
+            gs.winner_variant_id, gs.reason AS slot_reason,
+            sm.variant_id, sm.position AS slot_position,
+            v.product_id, v.label, v.price, v.min_qty, v.is_active AS v_active,
+            CASE WHEN ${wrNewSaleSql("v")} THEN 1 ELSE 0 END AS v_new_sale,
+            p.is_active AS p_active, p.archived_at AS p_archived,
+            p.source AS p_source, p.wr_product_id AS p_wr, p.sk_product_id AS p_sk,
+            p.tunvn_family AS p_tunvn, p.aivault_family AS p_aivault, p.storebat_family AS p_storebat, p.mirai_family AS p_mirai, p.pixelverif_family AS p_pixelverif,
+            ${EFFECTIVE_STOCK} AS eff_stock,
+            (${VARIANT_COST}) * (${NORMALIZE_30D}) AS norm_modal
+     FROM product_group_slots gs
+     LEFT JOIN product_group_slot_members sm ON sm.slot_id=gs.id
+     LEFT JOIN product_variants v ON v.id=sm.variant_id
+     LEFT JOIN products p ON p.id=v.product_id
+     LEFT JOIN wr_variants wr ON wr.wr_variant_id=v.wr_variant_id
+     LEFT JOIN sk_products sk ON sk.sk_variant_id=v.sk_variant_id
+     LEFT JOIN tunvn_products tp ON tp.supplier_product_id=COALESCE(v.tunvn_source_product_id, CASE WHEN v.sku LIKE 'TUNVN-%' THEN CAST(substr(v.sku,7) AS INTEGER) END)
+     LEFT JOIN aivault_products av ON av.service_id=v.aivault_service_id
+     LEFT JOIN crypto_market_snapshot cm ON cm.id=1
+     WHERE gs.group_id IN (${placeholders})
+     ORDER BY gs.group_id, gs.sort_order, gs.id, sm.position, sm.variant_id`,
+    ...groupIds,
+  ).catch(() => [] as Row[]);
+  if (!rows.length) return 0;
+
+  type SlotAgg = {
+    id: number;
+    groupId: number;
+    winnerVariantId: number | null;
+    reason: string | null;
+    members: SlotVariantStats[];
+  };
+  const slots = new Map<number, SlotAgg>();
+  for (const row of rows) {
+    const slotId = Number(row.slot_id);
+    let slot = slots.get(slotId);
+    if (!slot) {
+      slot = {
+        id: slotId,
+        groupId: Number(row.group_id),
+        winnerVariantId: row.winner_variant_id == null ? null : Number(row.winner_variant_id),
+        reason: row.slot_reason == null ? null : String(row.slot_reason),
+        members: [],
+      };
+      slots.set(slotId, slot);
+    }
+    if (row.variant_id != null && row.product_id != null) {
+      const stockNum = Number(row.eff_stock ?? 0);
+      slot.members.push({
+        variantId: Number(row.variant_id),
+        productId: Number(row.product_id),
+        supplier: supplierOf(row),
+        label: String(row.label ?? `Varian #${row.variant_id}`),
+        price: Number(row.price ?? 0),
+        stock: stockNum === -1 ? -1 : stockNum,
+        minQty: Math.max(1, Number(row.min_qty ?? 1) || 1),
+        modal: row.norm_modal == null ? null : Number(row.norm_modal),
+        position: Number(row.slot_position ?? 0),
+        isActive: Number(row.v_active ?? 0) !== 0,
+        parentActive: Number(row.p_active ?? 0) !== 0,
+        parentArchived: row.p_archived != null,
+        newSaleAllowed: Number(row.v_new_sale ?? 1) !== 0,
+      });
+    }
+  }
+
+  let changed = 0;
+  const now = new Date().toISOString();
+  for (const slot of slots.values()) {
+    const parentGroup = groupById.get(slot.groupId);
+    if (!parentGroup) continue;
+    const decision = decideSlotFromStats(parentGroup, slot.members);
+    if (decision.winnerVariantId !== slot.winnerVariantId || decision.reason !== slot.reason) {
+      const res = await db.execRun(
+        `UPDATE product_group_slots SET winner_variant_id=?, reason=?, decided_at=?, updated_at=?
+         WHERE id=? AND (winner_variant_id IS NOT ? OR reason IS NOT ?)`,
+        decision.winnerVariantId, decision.reason, now, now, slot.id, decision.winnerVariantId, decision.reason,
+      );
+      if (res.changes && decision.winnerVariantId !== slot.winnerVariantId) changed++;
+    }
+  }
+  return changed;
+}
+
 /** Hitung ulang seluruh grup (endpoint admin + cron sweep). */
 export async function decideAllGroups(database?: DatabaseAccess): Promise<{ decided: number; changed: number }> {
   const db = database ?? createDatabaseAccess();
   const { groups, dirty } = await loadGroupStats(db);
   let changed = 0;
   for (const group of groups) if (await updateGroupDecision(db, group, dirty.get(group.id) ?? null, false)) changed++;
+  changed += await decideSlotsForGroups(db, groups);
   if (changed > 0) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("market", db);
@@ -337,11 +463,16 @@ export async function decideDirtyGroups(database?: DatabaseAccess, productId?: n
   const { groups, dirty } = await loadGroupStats(db, { dirtyOnly: true, productId, limit: 10 });
   let decided = 0;
   let changed = 0;
+  const processed: GroupStats[] = [];
   for (const group of groups) {
     // A changed decision must still be able to invalidate the catalog rev.
     if (!db.canSpend(3)) break;
     if (await updateGroupDecision(db, group, dirty.get(group.id) ?? null, true)) changed++;
+    processed.push(group);
     decided++;
+  }
+  if (processed.some((g) => g.mode === "merge_variants") && db.canSpend(3)) {
+    changed += await decideSlotsForGroups(db, processed);
   }
   if (changed > 0) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
@@ -358,7 +489,8 @@ export async function decideGroup(groupId: number, database?: DatabaseAccess): P
   if (!group) return { winnerProductId: null, reason: "grup tidak ditemukan" };
   const decision = decideGroupFromStats(group, group.members);
   const winnerChanged = await updateGroupDecision(db, group, dirty.get(group.id) ?? null, true);
-  if (winnerChanged) {
+  const slotChanged = await decideSlotsForGroups(db, [group]);
+  if (winnerChanged || slotChanged > 0) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("market", db);
   }
@@ -405,6 +537,98 @@ export class ProductGroupError extends Error {
 export async function listProductGroups(database?: DatabaseAccess, groupId?: number): Promise<GroupView[]> {
   const db = database ?? createDatabaseAccess();
   const { groups } = await loadGroupStats(db, groupId === undefined ? {} : { groupId });
+  if (!groups.length) return [];
+
+  const groupIds = groups.map((g) => g.id);
+  const placeholders = groupIds.map(() => "?").join(",");
+
+  const [slotRows, variantRows] = await Promise.all([
+    db.queryAll(
+      `SELECT gs.id, gs.group_id, gs.name, gs.winner_variant_id, gs.reason, gs.decided_at, gs.sort_order,
+              sm.variant_id
+       FROM product_group_slots gs
+       LEFT JOIN product_group_slot_members sm ON sm.slot_id=gs.id
+       WHERE gs.group_id IN (${placeholders})
+       ORDER BY gs.group_id, gs.sort_order ASC, gs.id ASC, sm.position ASC, sm.variant_id ASC`,
+      ...groupIds,
+    ).catch(() => [] as Row[]),
+    db.queryAll(
+      `SELECT m.group_id, v.id AS variant_id, v.product_id, v.label, v.price, v.min_qty, v.is_active AS v_active,
+              v.duration_value, v.duration_unit, v.duration_label,
+              v.warranty_type, v.warranty_value, v.warranty_unit,
+              p.is_active AS p_active, p.archived_at AS p_archived,
+              p.source AS p_source, p.wr_product_id AS p_wr, p.sk_product_id AS p_sk,
+              p.tunvn_family AS p_tunvn, p.aivault_family AS p_aivault, p.storebat_family AS p_storebat, p.mirai_family AS p_mirai, p.pixelverif_family AS p_pixelverif,
+              ${EFFECTIVE_STOCK} AS eff_stock,
+              (${VARIANT_COST}) * (${NORMALIZE_30D}) AS norm_modal,
+              sm.slot_id AS slot_id
+       FROM product_group_members m
+       JOIN products p ON p.id=m.product_id
+       JOIN product_variants v ON v.product_id=m.product_id
+       LEFT JOIN product_group_slot_members sm ON sm.variant_id=v.id
+       LEFT JOIN wr_variants wr ON wr.wr_variant_id=v.wr_variant_id
+       LEFT JOIN sk_products sk ON sk.sk_variant_id=v.sk_variant_id
+       LEFT JOIN tunvn_products tp ON tp.supplier_product_id=COALESCE(v.tunvn_source_product_id, CASE WHEN v.sku LIKE 'TUNVN-%' THEN CAST(substr(v.sku,7) AS INTEGER) END)
+       LEFT JOIN aivault_products av ON av.service_id=v.aivault_service_id
+       LEFT JOIN crypto_market_snapshot cm ON cm.id=1
+       WHERE m.group_id IN (${placeholders}) AND ${wrNewSaleSql("v")}
+       ORDER BY m.group_id, m.position ASC, v.sort_order ASC, v.price ASC, v.id ASC`,
+      ...groupIds,
+    ).catch(() => [] as Row[]),
+  ]);
+
+  const slotsByGroup = new Map<number, GroupSlotView[]>();
+  const slotById = new Map<number, GroupSlotView>();
+  for (const row of slotRows) {
+    const sid = Number(row.id);
+    const gid = Number(row.group_id);
+    let slot = slotById.get(sid);
+    if (!slot) {
+      slot = {
+        id: sid,
+        name: String(row.name ?? ""),
+        winner_variant_id: row.winner_variant_id == null ? null : Number(row.winner_variant_id),
+        reason: row.reason == null ? null : String(row.reason),
+        decided_at: row.decided_at == null ? null : String(row.decided_at),
+        sort_order: Number(row.sort_order ?? 0),
+        variant_ids: [],
+      };
+      slotById.set(sid, slot);
+      const list = slotsByGroup.get(gid) ?? [];
+      list.push(slot);
+      slotsByGroup.set(gid, list);
+    }
+    if (row.variant_id != null) slot.variant_ids.push(Number(row.variant_id));
+  }
+
+  const variantsByGroup = new Map<number, GroupVariantView[]>();
+  for (const row of variantRows) {
+    const gid = Number(row.group_id);
+    const list = variantsByGroup.get(gid) ?? [];
+    const stockNum = Number(row.eff_stock ?? 0);
+    list.push({
+      variant_id: Number(row.variant_id),
+      product_id: Number(row.product_id),
+      supplier: supplierOf(row),
+      label: String(row.label ?? ""),
+      price: Number(row.price ?? 0),
+      stock: stockNum === -1 ? -1 : stockNum,
+      min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),
+      modal_per_30d: row.norm_modal == null ? null : Number(row.norm_modal),
+      is_active: Number(row.v_active ?? 0) !== 0,
+      parent_active: Number(row.p_active ?? 0) !== 0,
+      parent_archived: row.p_archived != null,
+      duration_value: row.duration_value == null ? null : Number(row.duration_value),
+      duration_unit: row.duration_unit == null ? null : String(row.duration_unit),
+      duration_label: row.duration_label == null ? null : String(row.duration_label),
+      warranty_type: String(row.warranty_type ?? "none"),
+      warranty_value: row.warranty_value == null ? null : Number(row.warranty_value),
+      warranty_unit: row.warranty_unit == null ? null : String(row.warranty_unit),
+      slot_id: row.slot_id == null ? null : Number(row.slot_id),
+    });
+    variantsByGroup.set(gid, list);
+  }
+
   return groups.map((group) => ({
     id: group.id,
     name: group.name,
@@ -427,6 +651,8 @@ export async function listProductGroups(database?: DatabaseAccess, groupId?: num
       modal_per_30d: m.modal,
       position: m.position,
     })),
+    slots: slotsByGroup.get(group.id) ?? [],
+    variants: variantsByGroup.get(group.id) ?? [],
   }));
 }
 
@@ -610,6 +836,8 @@ export async function removeGroupMember(id: number, productId: number, database?
   const d1 = db.getD1();
   if (!d1) throw new ProductGroupError("database_unavailable", "Butuh database D1", 503);
   await d1.batch([
+    d1.prepare("DELETE FROM product_group_slot_members WHERE slot_id IN (SELECT id FROM product_group_slots WHERE group_id=?) AND variant_id IN (SELECT id FROM product_variants WHERE product_id=?)").bind(id, productId),
+    d1.prepare("DELETE FROM product_group_slots WHERE group_id=? AND (SELECT COUNT(*) FROM product_group_slot_members WHERE slot_id=product_group_slots.id)<2").bind(id),
     d1.prepare("DELETE FROM product_group_members WHERE group_id=? AND product_id=?").bind(id, productId),
     d1.prepare("DELETE FROM product_groups WHERE id=? AND (SELECT COUNT(*) FROM product_group_members WHERE group_id=?)<2").bind(id, id),
   ]);
@@ -622,6 +850,87 @@ export async function removeGroupMember(id: number, productId: number, database?
   const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
   await bumpCatalogRevision("market", db);
   return { group: (await listProductGroups(db, id))[0], deleted: false };
+}
+
+export async function replaceGroupSlots(
+  groupId: number,
+  slotsInput: { name: string; variant_ids: number[] }[],
+  database?: DatabaseAccess,
+): Promise<GroupView> {
+  const db = database ?? createDatabaseAccess();
+  const group = (await listProductGroups(db, groupId))[0];
+  if (!group) throw new ProductGroupError("not_found", "Grup tidak ditemukan", 404);
+  if (slotsInput.length > 20) throw new ProductGroupError("too_many_slots", "Maksimal 20 slot per grup", 400);
+
+  const memberIds = new Set(group.members.map((m) => m.product_id));
+  const seenNames = new Set<string>();
+  const seenVariants = new Set<number>();
+  const normalized: { name: string; variant_ids: number[] }[] = [];
+
+  for (const raw of slotsInput) {
+    const name = String(raw.name ?? "").trim();
+    if (!name || name.length > 80) {
+      throw new ProductGroupError("invalid_slot_name", "Nama slot wajib 1..80 karakter", 400);
+    }
+    const lower = name.toLowerCase();
+    if (seenNames.has(lower)) {
+      throw new ProductGroupError("duplicate_slot_name", `Nama slot "${name}" duplikat`, 400);
+    }
+    seenNames.add(lower);
+    const ids = [...new Set(raw.variant_ids.map(Number))].filter((v) => Number.isInteger(v) && v > 0);
+    if (ids.length < 2 || ids.length > 20 || ids.length !== raw.variant_ids.length) {
+      throw new ProductGroupError("invalid_slot_variants", `Slot "${name}" wajib berisi 2..20 varian unik`, 400);
+    }
+    for (const vid of ids) {
+      if (seenVariants.has(vid)) {
+        throw new ProductGroupError("duplicate_slot_variant", "Satu varian hanya boleh masuk satu slot", 400);
+      }
+      seenVariants.add(vid);
+    }
+    normalized.push({ name, variant_ids: ids });
+  }
+
+  if (seenVariants.size > 0) {
+    const allIds = [...seenVariants];
+    const placeholders = allIds.map(() => "?").join(",");
+    const rows = await db.queryAll(
+      `SELECT id, product_id FROM product_variants WHERE id IN (${placeholders})`,
+      ...allIds,
+    );
+    const ownerById = new Map(rows.map((r) => [Number(r.id), Number(r.product_id)]));
+    for (const vid of allIds) {
+      const owner = ownerById.get(vid);
+      if (owner == null || !memberIds.has(owner)) {
+        throw new ProductGroupError("invalid_slot_variants", "Semua varian slot harus milik anggota grup ini", 400);
+      }
+    }
+  }
+
+  const d1 = db.getD1();
+  if (!d1) throw new ProductGroupError("database_unavailable", "Butuh database D1", 503);
+
+  const stmts = [
+    d1.prepare("DELETE FROM product_group_slots WHERE group_id=?").bind(groupId),
+  ];
+  for (let i = 0; i < normalized.length; i++) {
+    const slot = normalized[i];
+    stmts.push(
+      d1.prepare("INSERT INTO product_group_slots(group_id,name,sort_order) VALUES(?,?,?)").bind(groupId, slot.name, i),
+    );
+    for (let pos = 0; pos < slot.variant_ids.length; pos++) {
+      stmts.push(
+        d1.prepare(
+          `INSERT INTO product_group_slot_members(slot_id,variant_id,position)
+           VALUES((SELECT id FROM product_group_slots WHERE group_id=? AND lower(name)=lower(?)),?,?)`,
+        ).bind(groupId, slot.name, slot.variant_ids[pos], pos),
+      );
+    }
+  }
+  await d1.batch(stmts);
+  await decideGroup(groupId, db);
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market", db);
+  return (await listProductGroups(db, groupId))[0];
 }
 
 /**
@@ -694,4 +1003,21 @@ export function mergedGroupVariantOwnerSql(
       AND mg.mode='merge_variants'
       AND mp.is_active=1 AND mp.archived_at IS NULL${tgFilter}
   ))`;
+}
+
+/**
+ * Predikat SQL: varian bukan pecundang slot di grup `merge_variants`.
+ * - Varian di luar slot (atau pada grup mode 'winner') selalu lolos.
+ * - Varian di dalam slot pada grup 'merge_variants' lolos hanya jika menjadi
+ *   `winner_variant_id` (atau slot belum punya winner).
+ */
+export function notLoserSlotVariantSql(variantAlias = "pv"): string {
+  const v = assertSqlAlias(variantAlias);
+  return `NOT EXISTS (SELECT 1 FROM product_group_slot_members sm
+    JOIN product_group_slots gs ON gs.id=sm.slot_id
+    JOIN product_groups sg ON sg.id=gs.group_id
+    WHERE sm.variant_id=${v}.id
+      AND sg.mode='merge_variants'
+      AND gs.winner_variant_id IS NOT NULL
+      AND gs.winner_variant_id<>sm.variant_id)`;
 }

@@ -2049,6 +2049,27 @@ CREATE TABLE IF NOT EXISTS product_group_members (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (group_id, product_id)
 );
+CREATE TABLE IF NOT EXISTS product_group_slots (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id          INTEGER NOT NULL REFERENCES product_groups(id) ON DELETE CASCADE,
+  name              TEXT NOT NULL,
+  winner_variant_id INTEGER,
+  reason            TEXT,
+  decided_at        TEXT,
+  sort_order        INTEGER NOT NULL DEFAULT 0,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_product_group_slots_group ON product_group_slots(group_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_group_slots_group_name ON product_group_slots(group_id, lower(name));
+CREATE TABLE IF NOT EXISTS product_group_slot_members (
+  slot_id    INTEGER NOT NULL REFERENCES product_group_slots(id) ON DELETE CASCADE,
+  variant_id INTEGER NOT NULL UNIQUE REFERENCES product_variants(id) ON DELETE CASCADE,
+  position   INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (slot_id, variant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pg_slot_members_slot ON product_group_slot_members(slot_id);
 CREATE TABLE IF NOT EXISTS product_group_dirty (
   group_id INTEGER PRIMARY KEY REFERENCES product_groups(id) ON DELETE CASCADE,
   version  TEXT NOT NULL,

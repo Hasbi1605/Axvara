@@ -1,6 +1,6 @@
 import { purchasableStockSql } from "@/lib/catalog-availability";
 import { getD1, queryAll } from "@/lib/db";
-import { mergedGroupCardJoinSql } from "@/lib/product-groups";
+import { mergedGroupCardJoinSql, notLoserSlotVariantSql } from "@/lib/product-groups";
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 
 /** Sitemap keeps visible sold-out PDPs; the AI price list only includes offers buyers can order. */
@@ -10,7 +10,7 @@ export async function listIndexableProducts(availableOnly = false) {
     `SELECT p.slug, p.updated_at, p.name, MIN(pv.price) AS price, c.name AS category
      FROM products p
      ${mergedGroupCardJoinSql("p", "gmap")}
-     JOIN product_variants pv ON pv.product_id=gmap.member_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
+     JOIN product_variants pv ON pv.product_id=gmap.member_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")} AND ${notLoserSlotVariantSql("pv")}
        ${availableOnly ? `AND ${purchasableStockSql("pv")}` : ""}
      LEFT JOIN categories c ON c.id=p.category_id
      WHERE p.is_active=1 AND p.archived_at IS NULL

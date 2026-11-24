@@ -1,4 +1,4 @@
-import { displaySoldCountSql, mergedGroupCardJoinSql } from "@/lib/product-groups";
+import { displaySoldCountSql, mergedGroupCardJoinSql, notLoserSlotVariantSql } from "@/lib/product-groups";
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 import { getD1, queryAll } from "@/lib/db";
 import { cachePublicCatalog, getCatalogRevision } from "@/lib/catalog-cache";
@@ -78,7 +78,7 @@ export async function readTelegramCatalog(): Promise<TelegramCatalogProduct[]> {
       END AS total_stock
       FROM products p
       ${mergedGroupCardJoinSql("p", "gmap", { telegramOnly: true })}
-      LEFT JOIN product_variants pv ON pv.product_id=gmap.member_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
+      LEFT JOIN product_variants pv ON pv.product_id=gmap.member_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")} AND ${notLoserSlotVariantSql("pv")}
       WHERE p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}
       GROUP BY p.id ORDER BY p.sort_order ASC,p.name ASC`);
     return Response.json(rows);

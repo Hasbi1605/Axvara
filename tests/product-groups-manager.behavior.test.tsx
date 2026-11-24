@@ -21,7 +21,7 @@ const member = (id: number) => {
   const product = products.find(item => item.id === id)!;
   return { product_id: id, name: product.name, slug: product.slug, image: "", supplier: product.supplier, is_active: product.isActive, archived: !!product.archivedAt, live: id === 1, stock: product.stock, modal_per_30d: id === 2 ? null : 12000, position: id };
 };
-const initialGroup = { id: 7, name: "Netflix", prefer_product_id: null as number | null, prefer_margin: 0, winner_product_id: 1, reason: "Produk dengan stok tersedia", decided_at: "2026-11-16T07:00:00Z", members: [member(1), member(2)] };
+const initialGroup = { id: 7, name: "Netflix", prefer_product_id: null as number | null, prefer_margin: 0, winner_product_id: 1, reason: "Produk dengan stok tersedia", decided_at: "2026-11-16T07:00:00Z", members: [member(1), member(2)], slots: [] as { id: number; name: string; winner_variant_id: number | null; reason: string | null; decided_at: string | null; sort_order: number; variant_ids: number[] }[] };
 
 function setup({ empty = false, writeError = "", status = 409, catalog = products } = {}) {
   let groups = empty ? [] : [structuredClone(initialGroup)];
@@ -38,6 +38,18 @@ function setup({ empty = false, writeError = "", status = 409, catalog = product
       return result({ group });
     }
     const group = groups.find(item => item.id === 7)!;
+    if (url.endsWith("/slots") && method === "PUT") {
+      group.slots = body.slots.map((s: { name: string; variant_ids: number[] }, idx: number) => ({
+        id: idx + 1,
+        name: s.name,
+        winner_variant_id: s.variant_ids[0] ?? null,
+        reason: "modal/30 hari StoreBat Rp69.300 < AIVault Rp72.600",
+        decided_at: "2026-11-24T09:00:00Z",
+        sort_order: idx,
+        variant_ids: s.variant_ids,
+      }));
+      return result({ group: structuredClone(group) });
+    }
     if (method === "PATCH") {
       Object.assign(group, body);
       return result({ group: structuredClone(group) });
@@ -234,5 +246,61 @@ describe("ProductGroupsManager", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Tambahkan Netflix AIVault" }));
     const mergedRow = (await within(groupCard).findByText("Netflix AIVault")).closest("li")!;
     expect(within(mergedRow).getByText("Varian digabung")).toBeTruthy();
+  });
+
+  it("auto-suggests and saves variant slots in merge_variants mode and validates underfilled slots", async () => {
+    const groupWithVariants = {
+      ...initialGroup,
+      mode: "merge_variants" as const,
+      members: [member(1), member(5)],
+      slots: [] as { id: number; name: string; winner_variant_id: number | null; reason: string | null; decided_at: string | null; sort_order: number; variant_ids: number[] }[],
+      variants: [
+        { variant_id: 101, product_id: 1, supplier: "WR" as const, label: "Plus 1 Bulan (Standar)", price: 103400, stock: 32, min_qty: 1, modal_per_30d: 69300, is_active: true, parent_active: true, parent_archived: false, duration_value: 1, duration_unit: "month", duration_label: null, warranty_type: "none", warranty_value: null, warranty_unit: null, slot_id: null },
+        { variant_id: 501, product_id: 5, supplier: "AIVault" as const, label: "Plus 1 Bulan", price: 108000, stock: 10, min_qty: 1, modal_per_30d: 72600, is_active: true, parent_active: true, parent_archived: false, duration_value: 1, duration_unit: "month", duration_label: null, warranty_type: "none", warranty_value: null, warranty_unit: null, slot_id: null },
+        { variant_id: 502, product_id: 5, supplier: "AIVault" as const, label: "Plus 1 Bulan (Full Garansi)", price: 128000, stock: 15, min_qty: 1, modal_per_30d: 85800, is_active: true, parent_active: true, parent_archived: false, duration_value: 1, duration_unit: "month", duration_label: null, warranty_type: "full", warranty_value: 30, warranty_unit: "day", slot_id: null },
+      ],
+    };
+    let groups = [structuredClone(groupWithVariants)];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      const result = (data: unknown, code = 200) => ({ ok: code < 400, status: code, json: async () => data });
+      if (method === "GET") return result(url === "/api/products" ? { products } : { groups });
+      if (url === `${endpoint}/7/slots` && method === "PUT") {
+        groups[0].slots = body.slots.map((s: { name: string; variant_ids: number[] }, idx: number) => ({
+          id: idx + 1,
+          name: s.name,
+          winner_variant_id: s.variant_ids[0] ?? null,
+          reason: "modal/30 hari WR Rp69.300 < AIVault Rp72.600",
+          decided_at: "2026-11-24T09:00:00Z",
+          sort_order: idx,
+          variant_ids: s.variant_ids,
+        }));
+        return result({ group: structuredClone(groups[0]) });
+      }
+      throw new Error(`Unhandled ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AdminPortalContext.Provider value={document.body}><ToastProvider><ProductGroupsManager /></ToastProvider></AdminPortalContext.Provider>);
+
+    const dialog = await manage();
+    // Creating a single-variant slot manually triggers inline validation and disables Simpan
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Slot untuk Plus 1 Bulan (Full Garansi) (AIVault)" }), { target: { value: "__new__" } });
+    expect(within(dialog).getByRole("alert").textContent).toContain("butuh minimal 2 varian");
+    expect(within(dialog).getByRole("button", { name: "Simpan pengaturan" })).toHaveProperty("disabled", true);
+
+    // Clicking "Samakan otomatis" cleanly pairs 101 + 501 while leaving Full Garansi (502) separate
+    await userEvent.click(within(dialog).getByRole("button", { name: "Samakan otomatis" }));
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(within(dialog).getByRole("combobox", { name: "Slot untuk Plus 1 Bulan (Full Garansi) (AIVault)" })).toHaveProperty("value", "");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Simpan pengaturan" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(`${endpoint}/7/slots`, expect.objectContaining({
+      method: "PUT",
+      body: JSON.stringify({ slots: [{ name: "Plus 1 Bulan", variant_ids: [101, 501] }] }),
+    })));
+    const groupCard = await screen.findByLabelText("Grup Netflix");
+    expect(within(groupCard).getByText(/1 slot/)).toBeTruthy();
+    expect(within(groupCard).getByText(/modal\/30 hari WR Rp69\.300/)).toBeTruthy();
   });
 });

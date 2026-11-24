@@ -791,6 +791,33 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
     menandai varian aktif siap beli anggota `merge_variants` sebagai `live`
     (`Gabung di <wakil> #<id>`) sambil menjaga status kartu 1:1 di
     `computeProductLiveStatusMap` (`Varian digabung di <wakil> #<id>`).
+- Migrasi0164 (24 Nov 2026, lokal): `drizzle/migrations/0164_product_group_variant_slots.sql`
+  (selaras `drizzle/schema.sql` & `drizzle/bootstrap-baseline.json`) menambah tabel
+  `product_group_slots(id, group_id, name, winner_variant_id, reason, decided_at, sort_order, timestamps)`
+  (indeks `group_id` + unik `(group_id, lower(name))`) dan
+  `product_group_slot_members(slot_id, variant_id UNIQUE, position, created_at)`
+  dengan `ON DELETE CASCADE` ke `product_groups` dan `product_variants`.
+  - Modul murni `src/lib/product-group-slots.ts` menyediakan `decideSlotFromStats`
+    (Manual live → stok siap beli → modal/30 hari termurah + prefer/margin grup →
+    fallback harga jual → 1 wakil saat semua habis) dan `suggestVariantSlots`
+    (pencocokan deterministik `(tier akses, durasi, garansi)` lintas `>= 2` produk
+    anggota aktif tanpa mencampur Full Garansi vs Non-Garansi atau Sharing vs Private).
+  - `decideGroup` / `decideDirtyGroups` / `decideAllGroups` di `src/lib/product-groups.ts`
+    turut menghitung pemenang tiap slot untuk grup `merge_variants` (memanfaatkan
+    trigger `product_group_dirty` existing saat stok/harga/sync berubah) dan mem-bump
+    `catalog_revision_market` bila pemenang slot berubah. `removeGroupMember`
+    membersihkan keanggotaan slot produk yang dikeluarkan dan menghapus otomatis
+    slot dengan `< 2` varian.
+  - Predikat SQL `notLoserSlotVariantSql(alias)` menyembunyikan varian pecundang
+    slot (hanya pada grup `merge_variants`) secara seragam di `GET /api/products?active=1`,
+    `listActiveProducts`, `getProductDetail`, SEO PDP `produk/[slug]/page.tsx`,
+    `listIndexableProducts`, `readTelegramCatalog`, `loadPromoProducts`, dan
+    `daily-admin-summary`.
+  - API admin `PUT /api/admin/product-groups/[id]/slots` (`replaceGroupSlots`)
+    mengganti slot secara atomik dalam satu `d1.batch` (validasi kepemilikan
+    varian dalam grup, 2–20 varian unik per slot, tanpa duplikasi lintas slot).
+    `loadProductGroupLosers` turut memuat `slotLosers` sehingga seluruh panel
+    supplier menandai pecundang slot sebagai `hidden_loser` (`Kalah slot`).
   (`BEFORE UPDATE OF product_id`, `WHEN NEW.product_id IS NOT OLD.product_id`)
   yang mencerminkan guard INSERT: produk arsip/tidak ada → `invalid_group_product`.
   Sebelumnya hanya INSERT yang dijaga sehingga UPDATE anggota bisa menunjuk

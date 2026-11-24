@@ -17,6 +17,17 @@ export type VariantLiveStatusInfo = {
 
 export type GroupLoserInfo = { winnerId: number; winner: string; merged?: boolean };
 
+export type SlotLoserInfo = {
+  slotName: string;
+  winnerVariantId: number;
+  winnerLabel: string;
+  winnerProductId: number;
+};
+
+export type GroupLoserMap = Map<number, GroupLoserInfo> & {
+  slotLosers?: Map<number, SlotLoserInfo>;
+};
+
 export type VariantLiveStatusInput = {
   supplier_active?: unknown;
   axvara_product_id?: unknown;
@@ -45,14 +56,25 @@ const PRODUCT_GROUP_LOSERS_SQL = `SELECT gm.product_id AS loser, g.winner_produc
   LEFT JOIN products wp ON wp.id=g.winner_product_id
   WHERE g.winner_product_id IS NOT NULL AND gm.product_id<>g.winner_product_id`;
 
-/** Load product-group loser -> winner map using the caller's query runner or D1. */
+const PRODUCT_GROUP_SLOT_LOSERS_SQL = `SELECT sm.variant_id AS loser_vid, gs.name AS slot_name,
+         gs.winner_variant_id AS winner_vid, wv.label AS winner_label, wv.product_id AS winner_pid
+  FROM product_group_slot_members sm
+  JOIN product_group_slots gs ON gs.id=sm.slot_id
+  JOIN product_groups g ON g.id=gs.group_id
+  LEFT JOIN product_variants wv ON wv.id=gs.winner_variant_id
+  WHERE g.mode='merge_variants'
+    AND gs.winner_variant_id IS NOT NULL
+    AND sm.variant_id<>gs.winner_variant_id`;
+
+/** Load product-group loser -> winner map (plus variant-slot losers) using the caller's query runner or D1. */
 export async function loadProductGroupLosers(
   runQueryAll: (sql: string, ...params: unknown[]) => Promise<Record<string, unknown>[]> = queryAll,
-): Promise<Map<number, GroupLoserInfo>> {
-  const loserToWinner = new Map<number, GroupLoserInfo>();
-  const pairRows = await runQueryAll(PRODUCT_GROUP_LOSERS_SQL).catch(
-    () => [] as Record<string, unknown>[],
-  );
+): Promise<GroupLoserMap> {
+  const loserToWinner: GroupLoserMap = new Map<number, GroupLoserInfo>();
+  const [pairRows, slotRows] = await Promise.all([
+    runQueryAll(PRODUCT_GROUP_LOSERS_SQL).catch(() => [] as Record<string, unknown>[]),
+    runQueryAll(PRODUCT_GROUP_SLOT_LOSERS_SQL).catch(() => [] as Record<string, unknown>[]),
+  ]);
   for (const r of pairRows) {
     const loser = Number(r.loser ?? 0);
     const winnerId = Number(r.winner_id ?? 0);
@@ -65,6 +87,20 @@ export async function loadProductGroupLosers(
       });
     }
   }
+  const slotLosers = new Map<number, SlotLoserInfo>();
+  for (const r of slotRows) {
+    const loserVid = Number(r.loser_vid ?? 0);
+    const winnerVid = Number(r.winner_vid ?? 0);
+    if (Number.isInteger(loserVid) && loserVid > 0 && Number.isInteger(winnerVid) && winnerVid > 0) {
+      slotLosers.set(loserVid, {
+        slotName: String(r.slot_name ?? "Slot"),
+        winnerVariantId: winnerVid,
+        winnerLabel: String(r.winner_label ?? `varian #${winnerVid}`),
+        winnerProductId: Number(r.winner_pid ?? 0),
+      });
+    }
+  }
+  if (slotLosers.size > 0) loserToWinner.slotLosers = slotLosers;
   return loserToWinner;
 }
 
@@ -110,6 +146,17 @@ export function computeVariantLiveStatus(
   }
   if (!loseInfo && Number(input.parent_is_loser ?? 0) === 1) {
     return { status: "hidden_loser", reason: "Kalah di grup produk" };
+  }
+
+  const vid = Number(input.variant_id ?? 0);
+  const slotLose = Number.isInteger(vid) && vid > 0
+    ? (loserToWinner as GroupLoserMap).slotLosers?.get(vid)
+    : undefined;
+  if (slotLose) {
+    return {
+      status: "hidden_loser",
+      reason: `Kalah slot "${slotLose.slotName}" vs ${slotLose.winnerLabel}`,
+    };
   }
 
   if (!hasVariant) {

@@ -1,4 +1,4 @@
-import { displaySoldCountSql, mergedGroupVariantOwnerSql } from "@/lib/product-groups";
+import { displaySoldCountSql, mergedGroupVariantOwnerSql, notLoserSlotVariantSql } from "@/lib/product-groups";
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 
 import type { Metadata } from "next";
@@ -44,7 +44,7 @@ const getSeoProduct = (React.cache ?? ((fn) => fn))(async (slug: string): Promis
     ? await queryAll(
         `SELECT pv.price, pv.compare_price, pv.stock, pv.min_qty
          FROM product_variants pv
-         WHERE ${mergedGroupVariantOwnerSql("?", "pv")} AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
+         WHERE ${mergedGroupVariantOwnerSql("?", "pv")} AND pv.is_active=1 AND ${wrNewSaleSql("pv")} AND ${notLoserSlotVariantSql("pv")}
          ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
         productId,
         productId,

@@ -13,7 +13,7 @@ export function SupplierTabs({ tabs, active, onChange, children }: { tabs: { id:
 }
 export function VariantStatusBadge({ status = "live", reason }: { status?: string; reason?: string }) {
   if (status === "live") return <Badge variant="success" title={reason || "Tampil di storefront"}>Live</Badge>;
-  if (status === "hidden_loser") return <Badge variant="secondary" title={reason || "Anggota grup lain dipilih"}>Kalah grup</Badge>;
+  if (status === "hidden_loser") return <Badge variant="secondary" title={reason || "Anggota grup lain dipilih"}>{reason?.startsWith("Kalah slot") ? "Kalah slot" : "Kalah grup"}</Badge>;
   if (status === "hidden_nocatalog") return <Badge variant="secondary" title={reason || "Tanpa pasangan katalog"}>Belum dipetakan</Badge>;
   if (status === "hidden_soldout") return <Badge variant="warning" title={reason || "Stok kurang"}>Stok kurang</Badge>;
   return <Badge variant="secondary" title={reason || "Nonaktif manual"}>Nonaktif</Badge>;
