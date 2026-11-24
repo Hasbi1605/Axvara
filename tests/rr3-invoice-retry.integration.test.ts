@@ -58,11 +58,11 @@ async function cron() {
 }
 
 // ─── RR3-05: foto invoice gagal → satu order, retry kirim foto yang sama ───
-it("sold-out variants show as red ❌ buttons plus one restock button; soldout callback alerts without a purchase", async () => {
+it("all-sold-out variants show red ❌ buttons without restock button; soldout callback alerts without a purchase", async () => {
   const { variantsKeyboard } = await import("@/lib/telegram/keyboards");
   const keyboard = variantsKeyboard(1, [{ id: 1, label: "1 Bulan Private", price: 10000, stock: 0 }]);
   expect(keyboard.inline_keyboard[0][0]).toMatchObject({ text: "❌ 1 Bulan Private · Habis", callback_data: "soldout", style: "danger" });
-  expect(keyboard.inline_keyboard[1][0]).toMatchObject({ text: "🔔 Kabari saat restok", callback_data: "rst:1" });
+  expect(keyboard.inline_keyboard.flat().some((b) => b.callback_data === "rst:1")).toBe(false);
   // Old keyboards already in buyers' chats still carry callback "soldout".
   const { answerCallbackQuery } = await import("@/lib/telegram/api");
   vi.mocked(answerCallbackQuery).mockClear();
@@ -72,7 +72,7 @@ it("sold-out variants show as red ❌ buttons plus one restock button; soldout c
     message: { message_id: 77, chat: { id: 777, type: "private" } }, data: "soldout",
   } }));
   expect(result.status).toBe(200);
-  expect(answerCallbackQuery).toHaveBeenCalledExactlyOnceWith("soldout-fixture", "Varian ini habis. Ketuk 🔔 Kabari saat restok untuk dikabari saat stok tersedia.", true);
+  expect(answerCallbackQuery).toHaveBeenCalledExactlyOnceWith("soldout-fixture", "Varian ini sedang habis.", true);
   expect(SEND).not.toHaveBeenCalled();
   expect(PHOTO).not.toHaveBeenCalled();
   expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()?.n).toBe(0);

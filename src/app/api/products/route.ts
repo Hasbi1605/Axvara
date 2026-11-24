@@ -59,8 +59,12 @@ async function readProducts(req: NextRequest) {
   let sql = variantCatalog
     ? `SELECT p.*, c.slug as cat_slug,
               MIN(pv.price) as min_price,
-              MAX(pv.price) as max_price,
-              COUNT(pv.id) as variant_count,
+              COALESCE(MAX(CASE WHEN ${buyable} THEN pv.price END), MAX(pv.price)) as max_price,
+              CASE
+                WHEN SUM(CASE WHEN ${buyable} THEN 1 ELSE 0 END) > 0
+                THEN SUM(CASE WHEN ${buyable} THEN 1 ELSE 0 END)
+                ELSE COUNT(pv.id)
+              END as variant_count,
               CASE
                 WHEN MAX(CASE WHEN ${effective}=-1 THEN 1 ELSE 0 END)=1 THEN -1
                 ELSE SUM(CASE WHEN ${buyable} THEN ${effective} ELSE 0 END)
@@ -76,14 +80,9 @@ async function readProducts(req: NextRequest) {
               -- Prioritas: varian TERSEDIA termurah; bila semua habis, jatuh ke
               -- varian termurah keseluruhan agar kartu tetap menampilkan coret
               -- (harga tampilnya pun fallback ke min_price — pasangan konsisten).
-              COALESCE(
-                (SELECT pv2.compare_price FROM product_variants pv2
+              (SELECT pv2.compare_price FROM product_variants pv2
                   WHERE ${mergedGroupVariantOwnerSql("p.id", "pv2")} AND pv2.is_active=1 AND ${wrNewSaleSql("pv2")} AND ${notLoserSlotVariantSql("pv2")}
-                    AND ${purchasableStockSql("pv2")}
-                  ORDER BY pv2.price ASC, pv2.id ASC LIMIT 1),
-                (SELECT pv3.compare_price FROM product_variants pv3
-                  WHERE ${mergedGroupVariantOwnerSql("p.id", "pv3")} AND pv3.is_active=1 AND ${wrNewSaleSql("pv3")} AND ${notLoserSlotVariantSql("pv3")}
-                  ORDER BY pv3.price ASC, pv3.id ASC LIMIT 1)
+                  ORDER BY ${purchasableStockSql("pv2")} DESC, pv2.price ASC, pv2.id ASC LIMIT 1
               ) as variant_compare_price
        FROM products p
        LEFT JOIN categories c ON c.id=p.category_id
@@ -145,21 +144,108 @@ async function readProducts(req: NextRequest) {
   // hanya melihat nama bersih; WR/SK/Manual hanya dibedakan di admin + slug).
   // SK = sk_product_id NOT NULL (source tetap 'manual' karena CHECK D1 lama);
   // WR = source warung_rebahan ATAU wr_product_id NOT NULL; selainnya Manual.
-  const supplierByProduct = new Map<string, "WR" | "SK" | "TUNVN" | "AIVault" | "StoreBat" | "Mirai" | "Pixel" | "Manual">();
+  type AdminSupplier = "WR" | "SK" | "TUNVN" | "AIVault" | "StoreBat" | "Mirai" | "Pixel" | "Manual";
+  const supplierOfRow = (row: Record<string, unknown>): AdminSupplier => {
+    if (row.tunvn_family != null) return "TUNVN";
+    if (row.storebat_family != null) return "StoreBat";
+    if (row.mirai_family != null) return "Mirai";
+    if (row.aivault_family != null) return "AIVault";
+    if (row.pixelverif_family != null) return "Pixel";
+    if (row.sk_product_id != null) return "SK";
+    if (String(row.source ?? "") === "warung_rebahan" || row.wr_product_id != null) return "WR";
+    return "Manual";
+  };
+  const supplierByProduct = new Map<string, AdminSupplier>();
+  type MergedCardSummary = {
+    groupId: number;
+    groupName: string;
+    suppliers: AdminSupplier[];
+    minPrice?: number;
+    stock?: number;
+    variantCount: number;
+  };
+  const mergedSummaryByWinner = new Map<string, MergedCardSummary>();
   if (isAdminRequest) {
     const supRows = await queryAll(
       `SELECT id, source, wr_product_id, sk_product_id, tunvn_family, aivault_family, storebat_family, mirai_family, pixelverif_family FROM products`,
     ).catch(() => [] as Record<string, unknown>[]);
     for (const row of supRows) {
-      const key = String(row.id);
-      if (row.tunvn_family != null) supplierByProduct.set(key, "TUNVN");
-      else if (row.storebat_family != null) supplierByProduct.set(key,"StoreBat");
-      else if (row.mirai_family != null) supplierByProduct.set(key, "Mirai");
-      else if (row.aivault_family != null) supplierByProduct.set(key,"AIVault");
-      else if (row.pixelverif_family != null) supplierByProduct.set(key, "Pixel");
-      else if (row.sk_product_id != null) supplierByProduct.set(key, "SK");
-      else if (String(row.source ?? "") === "warung_rebahan" || row.wr_product_id != null) supplierByProduct.set(key, "WR");
-      else supplierByProduct.set(key, "Manual");
+      supplierByProduct.set(String(row.id), supplierOfRow(row));
+    }
+    if (isD1Mode()) {
+      const mergedRows = await queryAll(
+        `SELECT g.winner_product_id AS winner_id, g.id AS group_id, g.name AS group_name,
+                p.id AS member_id, p.source, p.wr_product_id, p.sk_product_id,
+                p.tunvn_family, p.aivault_family, p.storebat_family, p.mirai_family, p.pixelverif_family,
+                pv.price, ${effective} AS eff_stock,
+                CASE WHEN ${buyable} THEN 1 ELSE 0 END AS is_buyable
+         FROM product_groups g
+         JOIN product_group_members gm ON gm.group_id = g.id
+         JOIN products p ON p.id = gm.product_id AND p.is_active = 1 AND p.archived_at IS NULL
+         JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")} AND ${notLoserSlotVariantSql("pv")}
+         WHERE g.mode = 'merge_variants' AND g.winner_product_id IS NOT NULL`,
+      ).catch(() => [] as Record<string, unknown>[]);
+      const byWinner = new Map<string, {
+        groupId: number;
+        groupName: string;
+        buyableSuppliers: Set<AdminSupplier>;
+        allSuppliers: Set<AdminSupplier>;
+        buyableMinPrice: number | null;
+        allMinPrice: number | null;
+        unlimited: boolean;
+        buyableStock: number;
+        buyableCount: number;
+        totalCount: number;
+      }>();
+      for (const mr of mergedRows) {
+        const wKey = String(mr.winner_id ?? "");
+        if (!wKey) continue;
+        let agg = byWinner.get(wKey);
+        if (!agg) {
+          agg = {
+            groupId: Number(mr.group_id),
+            groupName: String(mr.group_name ?? ""),
+            buyableSuppliers: new Set(),
+            allSuppliers: new Set(),
+            buyableMinPrice: null,
+            allMinPrice: null,
+            unlimited: false,
+            buyableStock: 0,
+            buyableCount: 0,
+            totalCount: 0,
+          };
+          byWinner.set(wKey, agg);
+        }
+        const sup = supplierOfRow(mr);
+        const priceNum = Number(mr.price ?? 0);
+        const effStock = Number(mr.eff_stock ?? 0);
+        const isBuyable = Number(mr.is_buyable ?? 0) === 1;
+        agg.allSuppliers.add(sup);
+        agg.totalCount += 1;
+        if (agg.allMinPrice === null || priceNum < agg.allMinPrice) agg.allMinPrice = priceNum;
+        if (isBuyable) {
+          agg.buyableSuppliers.add(sup);
+          agg.buyableCount += 1;
+          if (agg.buyableMinPrice === null || priceNum < agg.buyableMinPrice) agg.buyableMinPrice = priceNum;
+          if (effStock === -1) agg.unlimited = true;
+          else if (effStock > 0) agg.buyableStock += effStock;
+        }
+      }
+      for (const [wKey, agg] of byWinner) {
+        const primary = supplierByProduct.get(wKey);
+        const pool = agg.buyableSuppliers.size > 0 ? agg.buyableSuppliers : agg.allSuppliers;
+        const ordered: AdminSupplier[] = [];
+        if (primary) ordered.push(primary);
+        for (const s of pool) if (!ordered.includes(s)) ordered.push(s);
+        mergedSummaryByWinner.set(wKey, {
+          groupId: agg.groupId,
+          groupName: agg.groupName,
+          suppliers: ordered,
+          minPrice: agg.buyableMinPrice ?? agg.allMinPrice ?? undefined,
+          stock: agg.unlimited ? -1 : agg.buyableStock,
+          variantCount: agg.buyableCount > 0 ? agg.buyableCount : agg.totalCount,
+        });
+      }
     }
   }
   // Status toko per produk — HANYA admin (keputusan owner 2026-10-01):
@@ -258,6 +344,19 @@ async function readProducts(req: NextRequest) {
       // Badge asal supplier — HANYA admin (keputusan owner 2026-09-30).
       // Storefront tidak menerima field ini sehingga tidak bisa bocor ke pembeli.
       supplier: isAdminRequest ? (supplierByProduct.get(String(r.id)) ?? "Manual") : undefined,
+      ...(isAdminRequest && mergedSummaryByWinner.has(String(r.id))
+        ? (() => {
+            const ms = mergedSummaryByWinner.get(String(r.id))!;
+            return {
+              mergedSuppliers: ms.suppliers,
+              mergedGroupId: ms.groupId,
+              mergedGroupName: ms.groupName,
+              ...(ms.minPrice !== undefined ? { mergedMinPrice: ms.minPrice } : {}),
+              ...(ms.stock !== undefined ? { mergedStock: ms.stock } : {}),
+              mergedVariantCount: ms.variantCount,
+            };
+          })()
+        : {}),
       // Status toko — HANYA admin (keputusan owner 2026-10-01). Storefront
       // tidak menerima field ini.
       liveStatus: isAdminRequest ? (liveStatusByProduct.get(String(r.id))?.status ?? "live") : undefined,

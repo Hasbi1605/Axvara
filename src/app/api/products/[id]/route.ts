@@ -19,6 +19,8 @@ import { buyerFieldKeySchema, customBuyerFieldsConfigSchema, parseCustomBuyerFie
 import { checkRateLimit } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
 import { decideDirtyWinners } from "@/lib/supplier-pairs";
+import { effectiveVariantStockSql, purchasableStockSql } from "@/lib/catalog-availability";
+import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 import {
   WR_OWNED_PRODUCT_FIELDS,
   WR_OWNED_VARIANT_FIELDS,
@@ -98,6 +100,101 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     };
   });
 
+  type AdminSupplier = "WR" | "SK" | "TUNVN" | "AIVault" | "StoreBat" | "Mirai" | "Pixel" | "Manual";
+  type MergedGroupMember = {
+    productId: number;
+    productName: string;
+    productSlug: string;
+    supplier: AdminSupplier;
+    variants: {
+      id: number;
+      label: string;
+      price: number;
+      stock: number;
+      isBuyable: boolean;
+      slotName: string | null;
+      slotStatus: "winner" | "loser" | null;
+    }[];
+  };
+  let mergedGroup: {
+    groupId: number;
+    groupName: string;
+    isWinner: boolean;
+    members: MergedGroupMember[];
+  } | null = null;
+  if (isD1Mode()) {
+    const groupRow = await queryFirst(
+      `SELECT g.id AS group_id, g.name AS group_name, g.winner_product_id
+       FROM product_group_members gm
+       JOIN product_groups g ON g.id = gm.group_id
+       WHERE gm.product_id = ? AND g.mode = 'merge_variants'
+       LIMIT 1`,
+      Number(id),
+    ).catch(() => null);
+    if (groupRow) {
+      const memberRows = await queryAll(
+        `SELECT p.id AS product_id, p.name AS product_name, p.slug AS product_slug,
+                p.source, p.wr_product_id, p.sk_product_id,
+                p.tunvn_family, p.aivault_family, p.storebat_family, p.mirai_family, p.pixelverif_family,
+                pv.id AS variant_id, pv.label AS variant_label, pv.price,
+                ${effectiveVariantStockSql("pv")} AS eff_stock,
+                CASE WHEN ${purchasableStockSql("pv")} THEN 1 ELSE 0 END AS is_buyable,
+                s.name AS slot_name,
+                CASE WHEN s.id IS NULL THEN NULL WHEN s.winner_variant_id = pv.id THEN 'winner' ELSE 'loser' END AS slot_status
+         FROM product_group_members gm
+         JOIN products p ON p.id = gm.product_id AND p.is_active = 1 AND p.archived_at IS NULL
+         JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
+         LEFT JOIN product_group_slot_members sm ON sm.variant_id = pv.id
+         LEFT JOIN product_group_slots s ON s.id = sm.slot_id AND s.group_id = gm.group_id
+         WHERE gm.group_id = ? AND gm.product_id <> ?
+         ORDER BY gm.position ASC, p.id ASC, is_buyable DESC, pv.sort_order ASC, pv.price ASC, pv.id ASC`,
+        Number(groupRow.group_id),
+        Number(id),
+      ).catch(() => [] as Record<string, unknown>[]);
+      const byMember = new Map<number, MergedGroupMember>();
+      for (const mr of memberRows) {
+        const pid = Number(mr.product_id);
+        let entry = byMember.get(pid);
+        if (!entry) {
+          const sup: AdminSupplier =
+            mr.tunvn_family != null ? "TUNVN"
+              : mr.storebat_family != null ? "StoreBat"
+                : mr.mirai_family != null ? "Mirai"
+                  : mr.aivault_family != null ? "AIVault"
+                    : mr.pixelverif_family != null ? "Pixel"
+                      : mr.sk_product_id != null ? "SK"
+                        : String(mr.source ?? "") === "warung_rebahan" || mr.wr_product_id != null ? "WR"
+                          : "Manual";
+          entry = {
+            productId: pid,
+            productName: String(mr.product_name ?? ""),
+            productSlug: String(mr.product_slug ?? ""),
+            supplier: sup,
+            variants: [],
+          };
+          byMember.set(pid, entry);
+        }
+        entry.variants.push({
+          id: Number(mr.variant_id),
+          label: String(mr.variant_label ?? ""),
+          price: Number(mr.price ?? 0),
+          stock: Number(mr.eff_stock ?? 0),
+          isBuyable: Number(mr.is_buyable ?? 0) === 1,
+          slotName: mr.slot_name != null ? String(mr.slot_name) : null,
+          slotStatus: mr.slot_status === "winner" || mr.slot_status === "loser" ? mr.slot_status : null,
+        });
+      }
+      if (byMember.size > 0) {
+        mergedGroup = {
+          groupId: Number(groupRow.group_id),
+          groupName: String(groupRow.group_name ?? ""),
+          isWinner: Number(groupRow.winner_product_id ?? 0) === Number(id),
+          members: [...byMember.values()],
+        };
+      }
+    }
+  }
+
   return NextResponse.json({
     product: {
       id: String(row.id),
@@ -128,6 +225,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       sortOrder: row.sort_order,
       requireEmail: (row.require_email as number) === 1,
       variants: rawBulkVariants,
+      ...(mergedGroup ? { mergedGroup } : {}),
     },
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

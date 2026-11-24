@@ -123,7 +123,7 @@ describe("product_groups mode = merge_variants", () => {
       price: 103400, // cheapest BUYABLE (excludes sold-out 98000 and inactive parent 95000)
       minPrice: 103400,
       maxPrice: 128000, // includes merged AIVault variant 128000
-      variantCount: 3, // 39401 + 39402 (sold out) + 17401 (AIVault); excludes 39403 (off), 17402 (off), 11701 (parent off)
+      variantCount: 2, // 39401 + 17401 (buyable; hides sold-out 39402 while buyable variants exist)
       stock: 47, // 32 + 15
       comparePrice: 150000, // compare_price of cheapest buyable (39401)
       soldCount: 20, // group sold_count: 10 + 7 + 3
@@ -149,10 +149,10 @@ describe("product_groups mode = merge_variants", () => {
       expect(v).not.toHaveProperty("storebat_product_id");
     }
 
-    // 3. listActiveProducts & listIndexableProducts reflect merged range
+    // 3. listActiveProducts & listIndexableProducts reflect merged buyable range
     const activeList = await listActiveProducts();
     const gptSummary = activeList.find((p) => p.id === 394);
-    expect(gptSummary).toMatchObject({ minPrice: 98000, maxPrice: 128000, variantCount: 3, availability: "available" });
+    expect(gptSummary).toMatchObject({ minPrice: 103400, maxPrice: 128000, variantCount: 2, availability: "available" });
     const indexable = await listIndexableProducts(true);
     expect(indexable.filter((r) => String(r.name) === "ChatGPT Plus")).toHaveLength(1);
     expect(indexable.find((r) => String(r.slug) === "chatgpt-plus-sb")?.price).toBe(103400);
@@ -166,7 +166,7 @@ describe("product_groups mode = merge_variants", () => {
 
     const { GET: getProducts } = await import("@/app/api/products/route");
     const prodJson = await (await getProducts(new NextRequest("https://axvara.tech/api/products?active=1&slug=chatgpt-plus-sb"))).json() as { products: Record<string, unknown>[] };
-    expect(prodJson.products[0]).toMatchObject({ variantCount: 2, maxPrice: 103400, stock: 32 });
+    expect(prodJson.products[0]).toMatchObject({ variantCount: 1, maxPrice: 103400, stock: 32 });
   });
 
   it("checkout quote re-anchors merged variant to true owning supplier product and fails closed on foreign/winner-mode/inactive pairs", async () => {

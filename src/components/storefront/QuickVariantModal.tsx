@@ -143,9 +143,21 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
     document.getElementById(`quick-variant-${selectedId}`)?.scrollIntoView?.({ block: "nearest" });
   }, [loading, selectedId]);
 
+  const variantMinQtyOf = (v: VariantOption): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
+  const effOf = (v: VariantOption): number => effectiveVariantStock(v);
+  const isBelowMinimum = (v: VariantOption): boolean => {
+    const eff = effOf(v);
+    return eff !== -1 && eff < variantMinQtyOf(v);
+  };
+  const isBuyable = (v: VariantOption): boolean => effOf(v) !== 0 && !isBelowMinimum(v);
+  // Owner 2026-11-24: sembunyikan varian habis saat masih ada varian siap beli
+  // agar daftar pilih paket tetap ringkas; jika semua habis, tetap tampil.
+  const buyablePool = variants.filter(isBuyable);
+  const displayPool = buyablePool.length > 0 ? buyablePool : variants;
+
   const isReviewable = mode !== "select";
-  const compact = variants.length > COMPACT_VARIANTS_AFTER;
-  const searchable = variants.length > SEARCH_VARIANTS_AFTER;
+  const compact = displayPool.length > COMPACT_VARIANTS_AFTER;
+  const searchable = displayPool.length > SEARCH_VARIANTS_AFTER;
   const needle = query.trim().toLowerCase();
   const displayLocale = useDisplayLocale();
   const displayName = productDisplayName(product, displayLocale);
@@ -168,25 +180,12 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
     if (mode === "select") onClose();
   };
   const visibleVariants = searchable && needle
-    ? variants.filter((v) => `${formatVariantLabel(v)} ${formatVariantLabel(v, displayLocale)}`.toLowerCase().includes(needle))
-    : variants;
+    ? displayPool.filter((v) => `${formatVariantLabel(v)} ${formatVariantLabel(v, displayLocale)}`.toLowerCase().includes(needle))
+    : displayPool;
 
   const selected = variants.find((v) => v.id === selectedId) || null;
   const currentPrice = selected ? selected.price : (product.minPrice ?? product.price);
   const currentCompare = selected ? selected.compare_price : product.comparePrice;
-  // Varian yang stoknya di bawah minimum (stock < min, stock !== -1) TIDAK
-  // BISA dibeli dalam jumlah berapa pun: qty berapa pun pasti gagal di quote
-  // (insufficient_stock bila >= min, below_minimum bila < min). Perlakukan
-  // sama dengan habis agar tidak jadi dead-end di checkout.
-  //
-  // Semua memakai stok EFEKTIF (unique = min kolom vs inventory) — paritas
-  // PDP desktop (revisi sore 2026-10-02, laporan owner mobile "Sisa 1").
-  const variantMinQtyOf = (v: VariantOption): number => Math.max(1, Number(v.min_qty ?? 1) || 1);
-  const effOf = (v: VariantOption): number => effectiveVariantStock(v);
-  const isBelowMinimum = (v: VariantOption): boolean => {
-    const eff = effOf(v);
-    return eff !== -1 && eff < variantMinQtyOf(v);
-  };
   const isOutOfStock = selected ? effOf(selected) === 0 || isBelowMinimum(selected) : false;
   // Minimum pembelian varian terpilih (migrasi 0034): stepper dibuka di min.
   const selectedMinQty = selected ? Math.max(1, Number(selected.min_qty ?? 1) || 1) : 1;

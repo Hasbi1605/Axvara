@@ -813,6 +813,11 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
     `listActiveProducts`, `getProductDetail`, SEO PDP `produk/[slug]/page.tsx`,
     `listIndexableProducts`, `readTelegramCatalog`, `loadPromoProducts`, dan
     `daily-admin-summary`.
+  - API admin `PUT /api/admin/product-groups/[id]/slots` (`replaceGroupSlots`)
+    mengganti slot secara atomik dalam satu `d1.batch` (validasi kepemilikan
+    varian dalam grup, 2–20 varian unik per slot, tanpa duplikasi lintas slot).
+    `loadProductGroupLosers` turut memuat `slotLosers` sehingga seluruh panel
+    supplier menandai pecundang slot sebagai `hidden_loser` (`Kalah slot`).
 - Migrasi0165 (24 Nov 2026, lokal): `drizzle/migrations/0165_variant_custom_buyer_field.sql`
   (selaras `drizzle/schema.sql` & `drizzle/bootstrap-baseline.json`) menambah dua kolom
   pada `product_variants` tanpa menyentuh CHECK legacy `buyer_field_key` (`0115`):
@@ -844,11 +849,28 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
     (`src/lib/telegram/handlers/buyer-input.ts`), `invite_email` dikumpulkan di DM
     privat (`payq1` `inviteEmail`), sedangkan `custom` mengarahkan ke URL
     `/checkout?buy=<slug>&variant=<id>&qty=<qty>`.
-  - API admin `PUT /api/admin/product-groups/[id]/slots` (`replaceGroupSlots`)
-    mengganti slot secara atomik dalam satu `d1.batch` (validasi kepemilikan
-    varian dalam grup, 2–20 varian unik per slot, tanpa duplikasi lintas slot).
-    `loadProductGroupLosers` turut memuat `slotLosers` sehingga seluruh panel
-    supplier menandai pecundang slot sebagai `hidden_loser` (`Kalah slot`).
+- Pembaruan Admin Grup Gabung, Storefront Varian Habis, & Pensiun Restok Telegram (24 Nov 2026, lokal):
+  - `GET /api/products` (admin only, 1 query tambahan untuk semua grup) mengembalikan
+    `mergedSuppliers`, `mergedGroupId`, `mergedGroupName`, `mergedMinPrice`,
+    `mergedStock`, `mergedVariantCount` pada pemenang grup `merge_variants`; tidak
+    pernah dikirim ke jalur publik `?active=1`. Jalur publik `?active=1` dan
+    `listActiveProducts()` menghitung `variant_count` dan `min_price`/`max_price`
+    dari varian siap beli bila tersedia (fallback semua varian aktif saat semua habis).
+    Harga coret hanya dari varian yang menyumbang harga minimum, termasuk bila nilainya `NULL`.
+  - `GET /api/products/[id]` menyertakan `mergedGroup` (`groupId`, `groupName`,
+    `isWinner`, `members[]` dengan varian aktif anggota lain & status slot) untuk
+    ditampilkan baca-saja di `ProductEditorModal` + tombol pintas `openEditById`
+    (`useProductManager.ts`) dan `navigateAdmin("pairs")`.
+  - Storefront (`product-detail-client.tsx`, `QuickVariantModal.tsx`) dan Telegram
+    (`variantsKeyboard` di `src/lib/telegram/keyboards.ts`) menyembunyikan varian
+    habis otomatis selama masih ada `>= 1` varian siap beli (tanpa mengubah `is_active`
+    di DB agar auto-restok supplier tetap bekerja). Bila varian terpilih hilang dari
+    daftar setelah penyegaran stok, pembeli memilih ulang; SKU tidak ditukar diam-diam.
+  - Fitur pengingat restok Telegram (`🔔 Kabari saat restok`) dipensiunkan: tombol
+    dihapus dari `variantsKeyboard`, job `restock_alerts` dihapus dari
+    `src/lib/cron/lite/jobs/notify.ts`, callback `soldout` menjawab `"Varian ini sedang habis."`,
+    dan `rst:*` / `/start restock_*` di `src/lib/telegram/handlers/extras.ts` memberi
+    balasan informatif tanpa menulis ke `telegram_restock_alerts` (tabel lama tidak di-drop).
   (`BEFORE UPDATE OF product_id`, `WHEN NEW.product_id IS NOT OLD.product_id`)
   yang mencerminkan guard INSERT: produk arsip/tidak ada → `invalid_group_product`.
   Sebelumnya hanya INSERT yang dijaga sehingga UPDATE anggota bisa menunjuk
@@ -7034,7 +7056,7 @@ Implementasi paket W-B `@Axvara_bot` (basis `main@84b42fd4`), belum publikasi/de
 - **Router extras (`src/lib/telegram/handlers/extras.ts`, W-B real implementation):** menangani prefix callback `mo:*`, `claim:*`, `claimstart:*`, `rst:*`, input teks/foto klaim, dan deep-link `/start restock_<id>`. Setiap handler memeriksa chat pribadi + kepemilikan (`orders.telegram_user_id = from.id AND sales_channel='telegram'`), aksi tak dikenal → `false`, dan error ditelan → pesan ramah dengan tombol 🏠 Menu (tak pernah melempar ke pemanggil). Webhook sudah menjawab callback query sebelum extras berjalan; extras mengonfirmasi lewat pesan/edit, bukan alert.
 - **Item 11 — Pesanan Saya (`src/lib/telegram/handlers/orders.ts`):** daftar `mo:<tab a|s|g>:<page>` dengan label tab berisi jumlah (satu query `GROUP BY`), 5 order/halaman, paging ◀️/▶️, tiap baris `order:<code>` (callback lama). Tab default `a` bila ada, selain itu `s`; `mo` tanpa param = default. Diedit in-place via `safeEditOrSend` (impor saja; `api.ts` milik W-A tak disentuh). Detail `handleOrderStatus` kini menampilkan tanggal dibuat (WIB), tanggal lunas bila lunas, dan sisa garansi dari `readEstimate` (`src/lib/refund/server.ts`): "Sisa garansi: N hari" / "Masa garansi habis" / "Menunggu serah terima" / dihilangkan bila tak ada snapshot atau `no_warranty`. Tombol existing tetap; ditambah "🛡 Klaim Garansi" (`claim:<code>`) hanya untuk order lunas dengan garansi aktif, plus "◀️ Daftar Pesanan" (`mo`).
 - **Klaim garansi (tanpa migrasi baru):** `claim:<code>` menampilkan eligibilitas + sisa garansi + aturan singkat (`src/lib/warranty-policy.ts`) dan tombol `[📝 Ajukan Klaim di Sini → claimstart:<code>]`, `[💬 WhatsApp Admin: SITE.webUrl/wa?pesan=…]`, `[◀️ Detail Pesanan]`. `claimstart:<code>` menulis `pending_action="wclaim:<code>"` lewat `setPendingActionUnlessCreating` (tak menimpa anchor `payq1` "creating"). `handlePendingWarrantyClaimInput` mengonsumsi teks/foto BERIKUTNYA hanya saat `pending_action` dimulai `wclaim:`: diteruskan ke `TELEGRAM_ADMIN_CHAT_ID` (kode order, produk, sisa garansi, @username/id, teks; foto via `file_id` + caption), state dibersihkan, pembeli menerima referensi "KLAIM-<code>" + `[📦 Pesanan Saya][🏠 Menu]`. `/batal` membatalkan. Rate-limit 3 klaim/order/24 jam dihitung dari baris `buyer_notice_log` (namespace `tg-wclaim:<code>:`, `LIKE` pola ≤50 byte) — tak ada tabel baru.
-- **Item 13 — notifikasi restok per produk:** migrasi `0144_telegram_restock_alerts.sql` (forward-only `CREATE TABLE IF NOT EXISTS telegram_restock_alerts (id, user_id, product_id, status CHECK('pending','sent','cancelled'), created_at, notified_at, UNIQUE(user_id,product_id))` + 2 indeks), dicerminkan di `drizzle/schema.sql`. `src/lib/telegram/restock-alerts.ts`: `subscribeRestockAlert(userId, productId)` (maks 20 aktif/user, idempoten, tolak produk in-stock/tak dikenal), `rst:<pid>` callback dan `/start restock_<id>` → konfirmasi + `[🛍 Katalog][🏠 Menu]`; `processDueRestockAlerts(db, limit 50)` di-hook ke `cron/lite` `notify_b`. Klaim baris atomik sebelum kirim (status `sent`), kirim "✅ <Produk> tersedia lagi" + `[🛒 Lihat Produk → prd:<pid>]`, 403 → `cancelled`, 429 → klaim di-rollback + batch berhenti untuk tick berikutnya; menghormati winner grup (`notLoserProductSql`) dan `telegram_enabled`/`is_active`.
+- **Item 13 — notifikasi restok per produk (pensiun, 24 November 2026):** migrasi historis `0144_telegram_restock_alerts.sql` dan tabelnya tetap dipertahankan. `notify_b` tidak menjalankan `processDueRestockAlerts`; `rst:<pid>` dan `/start restock_<id>` hanya memberi balasan dengan tautan katalog/menu, tanpa membuat atau mengirim langganan.
 - **Item 14 — kredensial multi-unit sebagai .txt:** `src/lib/telegram/send-document.ts` (multipart `sendDocument` via `fetch`+`FormData`+`Blob`, token sama dengan `api.ts`, konten tak pernah di-log) + `buildCredentialsTxtFile`/`credentialsTxtFilename` di `messages/credential.ts`. HANYA di `resendTelegramCredentials` (Ambil Ulang) saat >1 unit atau total teks >1500 karakter: satu `AXVARA-<code>.txt` + caption singkat; fallback ke pesan per-unit existing bila upload gagal. **Pengiriman fulfillment awal (`fulfillment/delivery/send.ts`) sengaja TIDAK diubah** (jalur live).
 - **Bersih-bersih hemat Free (Workers Paid):** `showLoadingBar`/`withLoadingIndicator` dihapus dari `handlers/invoice.ts` & `handlers/cart-invoice.ts` (invoice tetap idempoten, tanpa sleep 1,6 dtk). Batas Telegram: `retryPendingTelegramNotifications`/`sendPendingOrderReminders` 20→50 (batas `TELEGRAM_REMINDER_MAX=2` + interval 60 mnt tetap), `retryInvoicePendingTelegramInvoices` 12→25 (`attempts<5` + backoff claim 60 dtk tetap), `cron/operations` `TIME_TELEGRAM_BATCH` 12→4 dtk dan gerbang `1+4×units` dihapus saat antrean tak diketahui (per-item `hasTime`/`canSpend` tetap jadi batas), `TELEGRAM_RECIPIENT_PACE_MS` 250→100 (pace chat sama 300 ms & 429 tetap). Komentar "40-statement" yang basi diperbaiki. Guard `canSpend` runaway dipertahankan.
 

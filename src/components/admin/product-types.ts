@@ -5,7 +5,29 @@
 /** `lowStockVariants` & `copyReview` & `supplier` & `liveStatus`/`liveReason` hanya dikirim untuk admin. */
 export type Supplier = keyof typeof import("./supplier-style").SUPPLIER_STYLES;
 export type SupplierFilter = "all" | Supplier;
-export type Prod = { archivedAt?: string|null; canHardDelete?: boolean; hardDeleteReason?: string|null; id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; descriptionEn?:string|null; nameEn?:string|null; wrManaged?:boolean; supplier?: Supplier; aivault_family?: string | null; storebat_family?: string | null; mirai_family?: string | null; pixelverif_family?: string | null; liveStatus?: "live" | "hidden_loser" | "hidden_soldout" | "off"; liveReason?: string; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; lowStockVariants?:number; copyReview?:number; copyReviewChanged?:number; copyReviewRaw?:number; comparePrice?:number; categorySlug:string; categoryName?:string; image:string; images:string[]; badge?:string; soldCount:number; groupSoldCount?:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
+export type MergedGroupVariantSummary = {
+  id: number;
+  label: string;
+  price: number;
+  stock: number;
+  isBuyable: boolean;
+  slotName: string | null;
+  slotStatus: "winner" | "loser" | null;
+};
+export type MergedGroupMemberSummary = {
+  productId: number;
+  productName: string;
+  productSlug: string;
+  supplier: Supplier;
+  variants: MergedGroupVariantSummary[];
+};
+export type MergedGroupSummary = {
+  groupId: number;
+  groupName: string;
+  isWinner: boolean;
+  members: MergedGroupMemberSummary[];
+};
+export type Prod = { archivedAt?: string|null; canHardDelete?: boolean; hardDeleteReason?: string|null; id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; descriptionEn?:string|null; nameEn?:string|null; wrManaged?:boolean; supplier?: Supplier; mergedSuppliers?: Supplier[]; mergedGroupId?: number; mergedGroupName?: string; mergedMinPrice?: number; mergedStock?: number; mergedVariantCount?: number; aivault_family?: string | null; storebat_family?: string | null; mirai_family?: string | null; pixelverif_family?: string | null; liveStatus?: "live" | "hidden_loser" | "hidden_soldout" | "off"; liveReason?: string; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; lowStockVariants?:number; copyReview?:number; copyReviewChanged?:number; copyReviewRaw?:number; comparePrice?:number; categorySlug:string; categoryName?:string; image:string; images:string[]; badge?:string; soldCount:number; groupSoldCount?:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
 
 export type Cat = { id:number; slug:string; name:string; sort_order?:number; icon?:string|null };
 
@@ -61,6 +83,7 @@ export type FormVariant = {
 };
 
 export type ProductForm = Partial<Prod> & Pick<FormVariant, "supplier_cost" | "supplier_cost_source"> & {
+  mergedGroup?: MergedGroupSummary | null;
   buyer_field_key?: BuyerFieldKey | null;
   custom_buyer_fields?: CustomBuyerFieldsConfig | null;
   max_qty?: number | null;

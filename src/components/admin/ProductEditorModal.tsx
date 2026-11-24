@@ -7,6 +7,8 @@ import { useAdminDraft } from "./AdminWorkspace";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/admin/AdminIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
+import { formatRupiah } from "@/lib/utils";
+import { SupplierBadge } from "./supplier-style";
 import type { Cat, FormVariant, ProductForm } from "./product-types";
 import { emptyBulkDraft } from "./BulkTierEditor";
 import { ProductVariantRows } from "./sections/ProductVariantRows";
@@ -39,6 +41,8 @@ export function ProductEditorModal({
   onSetFormVariants,
   onUpload,
   onSave,
+  onEditLinkedProduct,
+  onOpenProductGroups,
 }: {
   editing: boolean;
   /** ID produk numerik saat mode edit (untuk panel fulfillment per varian). */
@@ -61,6 +65,8 @@ export function ProductEditorModal({
   onSetFormVariants: (updater: (prev: FormVariant[]) => FormVariant[]) => void;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSave: () => void;
+  onEditLinkedProduct?: (productId: number) => void;
+  onOpenProductGroups?: () => void;
 }) {
   // Modal ini memuat 4 pekerjaan berbeda (identitas, varian, teks, media). Untuk
   // produk 5 varian isinya ~3100px / 46 kontrol, sehingga tombol Simpan ada
@@ -282,6 +288,73 @@ export function ProductEditorModal({
                   variantId={typeof formVariants[0]?.id === "number" ? formVariants[0].id : undefined}
                 />
                 </>
+              )}
+
+              {!loadingVariants && form.mergedGroup && form.mergedGroup.members.length > 0 && (
+                <div className="mt-5 space-y-3 rounded-xl border border-admin-border bg-admin-subtle/40 p-4" data-testid="merged-group-variants-panel">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-admin-fg">Varian gabungan dari supplier lain</p>
+                      <p className="mt-0.5 text-xs text-admin-muted">
+                        Grup &ldquo;{form.mergedGroup.groupName}&rdquo; · ikut tampil dalam 1 kartu produk di toko. Edit per produk supplier untuk menjaga isolasi stok &amp; sync.
+                      </p>
+                    </div>
+                    {onOpenProductGroups && (
+                      <Button variant="outline" size="sm" type="button" onClick={onOpenProductGroups}>
+                        Atur Grup &amp; Slot
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2.5">
+                    {form.mergedGroup.members.map((member) => (
+                      <div key={member.productId} className="rounded-lg border border-admin-border bg-admin-card p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0 flex flex-wrap items-center gap-2">
+                            <SupplierBadge supplier={member.supplier} />
+                            <span className="text-xs font-semibold text-admin-fg">{member.productName}</span>
+                            <span className="font-mono text-[11px] text-admin-muted">/{member.productSlug}</span>
+                          </div>
+                          {onEditLinkedProduct && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              onClick={() => onEditLinkedProduct(member.productId)}
+                              className="h-7 px-2.5 text-xs"
+                            >
+                              Edit produk ini
+                            </Button>
+                          )}
+                        </div>
+                        <div className="mt-2 divide-y divide-admin-border/70">
+                          {member.variants.map((v) => (
+                            <div key={v.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-xs first:pt-1 last:pb-0">
+                              <div className="min-w-0 flex flex-wrap items-center gap-1.5">
+                                <span className="font-medium text-admin-fg">{v.label}</span>
+                                {v.slotStatus === "winner" && (
+                                  <Badge variant="success" title={v.slotName ? `Menang slot ${v.slotName}` : "Menang slot"}>
+                                    Menang slot
+                                  </Badge>
+                                )}
+                                {v.slotStatus === "loser" && (
+                                  <Badge variant="secondary" title={v.slotName ? `Cadangan slot ${v.slotName}` : "Cadangan slot"}>
+                                    Cadangan slot
+                                  </Badge>
+                                )}
+                                {!v.isBuyable && (
+                                  <Badge variant="warning">Habis</Badge>
+                                )}
+                              </div>
+                              <span className="shrink-0 tabular-nums text-admin-muted">
+                                {formatRupiah(v.price)} · Stok {v.stock === -1 ? "∞" : v.stock}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 

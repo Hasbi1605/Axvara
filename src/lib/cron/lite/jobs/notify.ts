@@ -9,7 +9,7 @@
 // shape (§3.6) and adds no static heavy imports: this module's own static
 // imports are only db-access (budget throw) and the `LiteContext` type —
 // every payload (invoice-retry, order-notifications, access-email,
-// whatsapp promo/promo-bot/outbox, qris-expiry, restock-alerts) stays behind
+// whatsapp promo/promo-bot/outbox, qris-expiry) stays behind
 // the original `await import()`s, in the same order. `ctx` carries db,
 // deadline, result, failedCore. Ordering inside notify_b is verbatim
 // (notably `checkout_pin_emails` BEFORE `whatsapp_outbox`), as are the
@@ -117,10 +117,6 @@ async function runNotifyBInternal(db: Db, deadline: number, failedCore: string[]
   await guard("pending_reminders", async () => {
     const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
     return sendPendingOrderReminders(50, db, hasTime);
-  });
-  await guard("restock_alerts", async () => {
-    const { processDueRestockAlerts } = await import("@/lib/telegram/restock-alerts");
-    return processDueRestockAlerts(db, 50, hasTime);
   });
   return out;
 }

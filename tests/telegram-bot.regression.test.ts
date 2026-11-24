@@ -316,7 +316,7 @@ describe("Telegram keyboards", () => {
     });
   });
 
-  it("variant keyboard keeps label and price compact, with sold-out choices last and no Detail & Ketentuan button", () => {
+  it("variant keyboard hides sold-out choices when available variants exist, omits restock alert button, and falls back to sold-out rows when all are out", () => {
     const kb = variantsKeyboard(7, [
       { id: 1, label: "Legal", price: 36500, stock: 0, duration_label: "28 Hari", warranty_label: "Garansi 25 Hari" },
       { id: 2, label: "Anti Limit", price: 26000, stock: 4, duration_label: "28 Hari", warranty_label: "Garansi 20 Hari" },
@@ -324,9 +324,8 @@ describe("Telegram keyboards", () => {
     const buttons = kb.inline_keyboard.flat();
     expect(buttons[0].text).toBe("Anti Limit · 28 Hari · Rp26.000 · stok 4");
     expect(buttons[0].callback_data).toBe("var:2");
-    expect(buttons[1]).toMatchObject({ text: "❌ Legal · 28 Hari · Habis", callback_data: "soldout", style: "danger" });
-    expect(buttons[2].text).toBe("🔔 Kabari saat restok");
-    expect(buttons[2].callback_data).toBe("rst:7");
+    expect(buttons.some((b) => b.callback_data === "soldout")).toBe(false);
+    expect(buttons.some((b) => b.callback_data === "rst:7")).toBe(false);
     expect(buttons.some((b) => String(b.callback_data ?? "").startsWith("terms:"))).toBe(false);
     expect(buttons.some((b) => b.text.includes("Detail & Ketentuan"))).toBe(false);
     expect(kb.inline_keyboard.at(-1)).toEqual([
@@ -334,6 +333,13 @@ describe("Telegram keyboards", () => {
       { text: "🏠 Menu", callback_data: "home" },
     ]);
     expect(buttons.some((b) => b.callback_data === "cart")).toBe(false);
+
+    // When ALL variants are sold out, show red ❌ rows without restock button.
+    const allOut = variantsKeyboard(7, [
+      { id: 1, label: "Legal", price: 36500, stock: 0, duration_label: "28 Hari", warranty_label: "Garansi 25 Hari" },
+    ]);
+    expect(allOut.inline_keyboard[0][0]).toMatchObject({ text: "❌ Legal · 28 Hari · Habis", callback_data: "soldout", style: "danger" });
+    expect(allOut.inline_keyboard.flat().some((b) => b.callback_data === "rst:7")).toBe(false);
   });
 
   it("qty keyboard uses filtered presets without stepper, direct pay, or cart button", () => {

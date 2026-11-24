@@ -172,7 +172,7 @@ describe("HomeClient silent live catalog refresh", () => {
 });
 
 describe("ProductDetailClient silent live refresh", () => {
-  it("silently updates variant stock without skeleton and preserves selected variant (or falls back when removed)", async () => {
+  it("hides the selected variant when it sells out without silently switching SKU", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0);
     stubBrowserGlobals();
@@ -234,7 +234,7 @@ describe("ProductDetailClient silent live refresh", () => {
     fireEvent.click(getDesktopVariantBtn(/3 Bulan/));
     expect(getDesktopVariantBtn(/3 Bulan/).className).toContain("border-[#00E5FF]/50");
 
-    // 1. Revision changes: variant 12 stock drops to 0 (still present) -> stays selected, no skeleton
+    // 1. Variant 12 is still active but now sold out: hide it without auto-picking variant 11.
     rev = "rev-2";
     productStock = 5;
     variantsPayload = [
@@ -247,11 +247,14 @@ describe("ProductDetailClient silent live refresh", () => {
     });
 
     expect(screen.queryByText("Memuat detail produk…")).toBeNull();
-    const var3mAfter = getDesktopVariantBtn(/3 Bulan/);
-    expect(var3mAfter.className).toContain("border-[#00E5FF]/50");
-    expect(var3mAfter.textContent).toMatch(/Habis/i);
+    expect(screen.queryByRole("button", { name: /3 Bulan/ })).toBeNull();
+    expect(getDesktopVariantBtn(/1 Bulan/).className).not.toContain("border-[#00E5FF]/50");
+    const buy = () => screen.getAllByRole("button", { name: /Beli Langsung/i }).find((button) => button.textContent?.includes("Beli Langsung")) as HTMLButtonElement;
+    expect(buy().disabled).toBe(true);
+    fireEvent.click(getDesktopVariantBtn(/1 Bulan/));
+    expect(buy().disabled).toBe(false);
 
-    // 2. Revision changes: variant 12 removed -> auto-falls back to sole buyable variant 11 ("1 Bulan")
+    // 2. A subsequent revision preserves the buyer's new selection.
     rev = "rev-3";
     variantsPayload = [
       { id: 11, label: "1 Bulan", price: 26_000, compare_price: null, stock: 4, min_qty: 1, is_active: 1, warranty_type: "none", fulfillment_mode: "manual" },

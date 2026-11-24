@@ -7,6 +7,7 @@ import type { Product } from "@/lib/products";
 import { productIsBuyable } from "@/lib/product-order";
 import type { StorefrontVariant } from "@/lib/product-copy/resolve";
 import { effectiveVariantStock, formatVariantLabel } from "@/lib/catalog";
+import { isPurchasableStock } from "@/lib/catalog-availability";
 import { buyerDeliveryKind } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
 import { ProductCard, productCardAmounts } from "@/components/storefront/ProductCard";
@@ -69,8 +70,12 @@ function galleryOf(list: Product[], slug: string): string[] {
     efektif (unique = min kolom vs inventory) agar varian satu-satunya yang
     kredensialnya habis tidak terpilih otomatis. */
 function soleBuyableVariantId(detail: CatalogDetail | null | undefined): number | null {
-  const activeVars = (detail?.variants || []).filter((v: VariantItem) => v.is_active && effectiveVariantStock(v) !== 0 && !(effectiveVariantStock(v) !== -1 && effectiveVariantStock(v) < Math.max(1, Number(v.min_qty ?? 1) || 1)));
+  const activeVars = (detail?.variants ?? []).filter((v) => v.is_active && isPurchasable(v));
   return activeVars.length === 1 ? activeVars[0].id : null;
+}
+
+function isPurchasable(v: VariantItem): boolean {
+  return isPurchasableStock(v.stock, v.min_qty, v.inventory_available, v.fulfillment_mode);
 }
 
 // Interaktivitas PDP (varian/keranjang/checkout). Dipisah dari page.tsx
@@ -202,12 +207,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       setActiveImg((prev) => (imgs.length === 0 ? 0 : Math.min(prev, imgs.length - 1)));
       setCatalogDetail(nextDetail);
       setVariantsEnabled(catalogData.variantsEnabled === true);
-      setSelectedVariantId((prev) => {
-        if (prev !== null && nextDetail.variants.some((v) => v.is_active && v.id === prev)) {
-          return prev;
-        }
-        return soleBuyableVariantId(nextDetail);
-      });
+      // Jangan mengganti SKU yang sudah dipilih pembeli diam-diam saat stok
+      // berubah. Pilihan yang tak lagi tampil harus dipilih ulang.
+      setSelectedVariantId((prev) => prev ?? soleBuyableVariantId(nextDetail));
     },
   });
 
@@ -266,7 +268,13 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     setPdpQtyDraft(null);
   }, [selectedVariantId, slug]);
 
-  const priceVariant = catalogDetail?.variants.find((v) => v.is_active && v.id === selectedVariantId);
+  const activeVariants = (catalogDetail?.variants ?? []).filter((v) => v.is_active);
+  const buyableVariants = activeVariants.filter(isPurchasable);
+  // Varian habis tetap aktif di D1 untuk restok otomatis. Tampilkan sebagai
+  // fallback hanya ketika seluruh varian habis.
+  const displayVariants = buyableVariants.length ? buyableVariants : activeVariants;
+  const selectedVariant = displayVariants.find((v) => v.id === selectedVariantId) ?? null;
+  const priceVariant = selectedVariant;
   const priceBase = priceVariant?.price ?? product?.price ?? 0;
   const priceMin = Math.max(1, Number(priceVariant?.min_qty ?? 1) || 1);
   const priceStock = priceVariant ? effectiveVariantStock(priceVariant) : -1;
@@ -333,8 +341,6 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     && product.stock <= 0;
 
   // Variant-aware derived values
-  const variants = catalogDetail?.variants || [];
-  const activeVariants = variants.filter((v: VariantItem) => v.is_active);
   // Varian yang stoknya di bawah minimum (stock < min, stock !== -1) TIDAK
   // BISA dibeli dalam jumlah berapa pun (lihat QuickVariantModal + cart):
   // qty berapa pun pasti gagal di quote. Perlakukan sama dengan habis agar
@@ -354,8 +360,6 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     const eff = effectiveStockOf(v);
     return eff !== -1 && eff < variantMinQtyOf(v);
   };
-  const isPurchasable = (v: VariantItem): boolean => effectiveStockOf(v) !== 0 && !isBelowMinimum(v);
-  const selectedVariant = selectedVariantId ? activeVariants.find((v: VariantItem) => v.id === selectedVariantId) : null;
   const displayPrice = selectedVariant ? selectedVariant.price : product.price;
   const displayComparePrice = selectedVariant ? selectedVariant.compare_price : product.comparePrice;
   // Minimum pembelian varian terpilih (migrasi 0034): GSuite = 50.
@@ -378,15 +382,15 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   const lineTotal = effectiveUnit * safePdpQty;
   const lineSavings = (displayPrice - effectiveUnit) * safePdpQty;
   const variantOutOfStock = variantsEnabled && activeVariants.length > 0
-    ? activeVariants.every((variant) => !isPurchasable(variant))
+    ? buyableVariants.length === 0
     : selectedVariant ? !isPurchasable(selectedVariant) : false;
   const needsVariantSelection = variantsEnabled && !selectedVariant;
   const variantCatalogUnavailable = variantLoading || Boolean(variantError) || (variantsEnabled && activeVariants.length === 0);
   // Varian gagal dimuat untuk produk bervarian: jangan checkout tanpa varian
   // (dulu buntu di "Pilih varian dari halaman detail"); modal memuat ulang.
   const mustPickInModal = needsVariantSelection || (Boolean(variantError) && Boolean(product.variantCount));
-  const buyUrl = selectedVariantId
-    ? `/checkout?buy=${product.slug}&variant=${selectedVariantId}&qty=${safePdpQty}`
+  const buyUrl = selectedVariant
+    ? `/checkout?buy=${product.slug}&variant=${selectedVariant.id}&qty=${safePdpQty}`
     : `/checkout?buy=${product.slug}`;
 
   // Payload keranjang membawa stok EFEKTIF + inventory + min + mode
@@ -426,9 +430,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // checkout DAN salinan varian. Tidak ada fallback ke varian aktif pertama:
   // sebelum pembeli memilih, produk multi-varian menampilkan ajakan memilih,
   // bukan S&K milik varian yang tidak sedang dibeli.
-  const choosableVariants = variantsEnabled && activeVariants.length > 1;
+  const choosableVariants = variantsEnabled && displayVariants.length > 1;
   // Varian tunggal tidak ambigu → salinannya boleh tampil tanpa memilih.
-  const copyVariant = selectedVariant ?? (activeVariants.length === 1 ? activeVariants[0] : null);
+  const copyVariant = selectedVariant ?? (displayVariants.length === 1 ? displayVariants[0] : null);
   // Deskripsi + S&K + cara aktivasi dalam satu format untuk WR dan non-WR:
   // S&K varian (WR) digabung dengan bagian "Syarat & Ketentuan:" / "Cara
   // Aktivasi:" di deskripsi (produk non-WR); tiap baris tampil sekali.
@@ -441,15 +445,15 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     if (!variant) return null;
     return prices.locale === "en" ? variant.copy_en ?? variant.copy ?? null : variant.copy ?? null;
   };
-  const variantCopiesDiffer = activeVariants.length > 1
-    && new Set(activeVariants.map((v: VariantItem) => JSON.stringify(copyOf(v)))).size > 1;
-  const sharedVariantCopy = choosableVariants && !variantCopiesDiffer && copyOf(activeVariants[0]) != null;
+  const variantCopiesDiffer = displayVariants.length > 1
+    && new Set(displayVariants.map((v: VariantItem) => JSON.stringify(copyOf(v)))).size > 1;
+  const sharedVariantCopy = choosableVariants && !variantCopiesDiffer && copyOf(displayVariants[0]) != null;
   // Produk multi-varian: satu S&K dan satu cara aktivasi mengikuti varian
   // terpilih (digabung dengan ketentuan/aktivasi tingkat produk dari deskripsi).
   // Produk varian tunggal / tanpa varian: perilaku lama tetap.
   const separated = choosableVariants;
   const variantPending = separated && !selectedVariant && !sharedVariantCopy;
-  const variantCopySource = selectedVariant ? copyOf(selectedVariant) : sharedVariantCopy ? copyOf(activeVariants[0]) : null;
+  const variantCopySource = selectedVariant ? copyOf(selectedVariant) : sharedVariantCopy ? copyOf(displayVariants[0]) : null;
   const productCopy = separated
     ? mergeProductCopy(variantPending ? null : variantCopySource, parsedDescription)
     : mergeProductCopy(copyOf(copyVariant), parsedDescription);
@@ -757,13 +761,13 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           )}
 
           {/* Variant selector — Desktop: inline picker. Mobile: hint only (Shopee-style). */}
-          {variantsEnabled && activeVariants.length > 0 && (
+          {variantsEnabled && displayVariants.length > 0 && (
             <>
               {/* Desktop inline variant picker */}
               <div className="mt-4 space-y-2 hidden lg:block">
                 <h3 className="text-sm font-medium text-white/60">{t.chooseVariantHeading}</h3>
                 <div className="grid gap-2">
-                  {activeVariants.map((v: VariantItem) => (
+                  {displayVariants.map((v: VariantItem) => (
                     <button
                       key={v.id}
                       onClick={() => setSelectedVariantId(v.id)}
@@ -827,7 +831,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 onClick={() => setVariantModal("select")}
                 aria-label={selectedVariant
                   ? t.variantRowAria(formatVariantLabel(selectedVariant, prices.locale), prices.text(selectedVariant.price))
-                  : t.chooseVariantAria(activeVariants.length)}
+                  : t.chooseVariantAria(displayVariants.length)}
                 className="mt-4 lg:hidden w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition text-left"
               >
                 <span className="min-w-0 flex-1">
@@ -845,11 +849,11 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                       </span>
                     </>
                   ) : (
-                    <span className="mt-0.5 block text-sm font-semibold text-[#00E5FF]">{t.chooseVariantCount(activeVariants.length)}</span>
+                    <span className="mt-0.5 block text-sm font-semibold text-[#00E5FF]">{t.chooseVariantCount(displayVariants.length)}</span>
                   )}
                 </span>
                 <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-white/55">
-                  {selectedVariant && activeVariants.length > 1 ? t.change : null}
+                  {selectedVariant && displayVariants.length > 1 ? t.change : null}
                   <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6"/></svg>
                 </span>
               </button>

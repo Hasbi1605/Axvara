@@ -569,22 +569,18 @@ export function variantsKeyboard(
       callback_data: cb.variant(v.id),
     }];
   });
-  // Owner 2026-11-20: varian habis tetap tampil namanya sebagai tombol merah ❌
-  // (callback "soldout" → popup "habis", tidak memulai pembelian), lalu satu
-  // tombol restok untuk berlangganan notifikasi produk.
-  for (const v of unavailable) {
-    const dur = variantButtonDuration(v, locale);
-    rows.push([{
-      text: `❌ ${v.label}${dur ? ` · ${dur}` : ""} · ${en ? "Sold out" : "Habis"}`,
-      callback_data: "soldout",
-      style: "danger",
-    }]);
-  }
-  if (unavailable.length > 0) {
-    rows.push([{
-      text: en ? "🔔 Notify when restocked" : "🔔 Kabari saat restok",
-      callback_data: cb.restockNotify(productId),
-    }]);
+  // Owner 2026-11-24: sembunyikan varian habis saat masih ada varian tersedia
+  // agar kartu produk tidak ramai, dan hapus fitur "Kabari saat restok".
+  // Jika SEMUA varian habis, tetap tampilkan daftar ❌ Habis agar jelas.
+  if (available.length === 0) {
+    for (const v of unavailable) {
+      const dur = variantButtonDuration(v, locale);
+      rows.push([{
+        text: `❌ ${v.label}${dur ? ` · ${dur}` : ""} · ${en ? "Sold out" : "Habis"}`,
+        callback_data: "soldout",
+        style: "danger",
+      }]);
+    }
   }
 
   rows.push([{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() }, { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }]);

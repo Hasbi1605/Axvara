@@ -43,7 +43,7 @@ describe("pasangan harga-diskon berasal dari varian yang sama", () => {
   it("query mengambil compare dari varian harga-terendah, bukan MAX lintas varian", () => {
     const api = read("src/app/api/products/route.ts");
     expect(api).not.toContain("MAX(pv.compare_price)");
-    expect(api).toContain("ORDER BY pv2.price ASC");
+    expect(api).toContain('ORDER BY ${purchasableStockSql("pv2")} DESC, pv2.price ASC, pv2.id ASC');
     expect(api).toContain("variant_compare_price");
   });
 
@@ -99,7 +99,7 @@ describe("pasangan harga-diskon berasal dari varian yang sama", () => {
   it("harga 'mulai dari' tetap MIN(price) dan rentang min–max utuh", () => {
     const api = read("src/app/api/products/route.ts");
     expect(api).toContain("MIN(pv.price) as min_price");
-    expect(api).toContain("MAX(pv.price) as max_price");
+    expect(api).toContain("COALESCE(MAX(CASE WHEN ${buyable} THEN pv.price END), MAX(pv.price)) as max_price");
     expect(api).toContain("Number(r.min_price)");
   });
 

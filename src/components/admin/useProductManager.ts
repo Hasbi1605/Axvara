@@ -1,6 +1,6 @@
 "use client";
 import { productStatus, productTabCounts } from "@/lib/product-lifecycle";
-import { useAdminDraft } from "./AdminWorkspace";
+import { navigateWithDraftGuard, useAdminDraft } from "./AdminWorkspace";
 import { useCallback, useMemo, useState } from "react";
 import { toWebp16x9, toWebpOriginalRatio } from "@/components/admin/ImageDropzone";
 import {
@@ -54,8 +54,10 @@ export type AdminToast = {
   error: (msg: string) => void;
 };
 
-export function productFormSignature(form: Partial<Prod>, images: string[], multi: boolean = false, vars: FormVariant[] = []) {
-  return JSON.stringify({ form, images, multi, vars });
+export function productFormSignature(form: Partial<Prod> & { mergedGroup?: unknown }, images: string[], multi: boolean = false, vars: FormVariant[] = []) {
+  const { mergedGroup: _ignoredMerged, ...rest } = form;
+  void _ignoredMerged;
+  return JSON.stringify({ form: rest, images, multi, vars });
 }
 
 /** Konteks validasi harga grosir untuk satu varian form. */
@@ -220,7 +222,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       const prodRes = await fetch(`/api/products/${p.id}`);
       if (prodRes.ok) {
         const prodData = (await prodRes.json().catch(() => ({}))) as {
-          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean; aivault_family?: unknown; storebat_family?: unknown; mirai_family?: unknown; pixelverif_family?: unknown };
+          product?: { variants?: FormVariant[]; mergedGroup?: ProductForm["mergedGroup"]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean; aivault_family?: unknown; storebat_family?: unknown; mirai_family?: unknown; pixelverif_family?: unknown };
         };
         if (Array.isArray(prodData.product?.variants) && prodData.product.variants.length > 0) {
           rawVars = prodData.product.variants;
@@ -246,6 +248,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
           // Daftar produk tidak membawa require_email; tanpa baris ini
           // centang selalu tampil mati dan Simpan menulis 0 ke database.
           if (typeof prodData.product.requireEmail === "boolean") nextForm.requireEmail = prodData.product.requireEmail;
+          nextForm.mergedGroup = prodData.product.mergedGroup ?? null;
           setForm({ ...nextForm });
         }
       }
@@ -571,6 +574,13 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       admin_activation: undefined,
       // Hanya state presentasi modal, bukan kontrak API/kolom DB.
       displayPosition: undefined,
+      mergedGroup: undefined,
+      mergedSuppliers: undefined,
+      mergedGroupId: undefined,
+      mergedGroupName: undefined,
+      mergedMinPrice: undefined,
+      mergedStock: undefined,
+      mergedVariantCount: undefined,
       // Draft harga grosir mode single ikut ke `variants`, bukan top-level.
       bulk: undefined,
       // FIX Canva 409: mode MULTI jangan kirim kolom legacy sama sekali.
@@ -783,7 +793,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         if (liveTab === "archive" ? !p.archivedAt : !!p.archivedAt) return false;
         if (q && !`${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())) return false;
         if (onlyLowStock && !((p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)) > 0)) return false;
-        if (supplierFilter !== "all" && (p.supplier ?? "Manual") !== supplierFilter) return false;
+        if (supplierFilter !== "all" && (p.supplier ?? "Manual") !== supplierFilter && !(p.mergedSuppliers ?? []).includes(supplierFilter)) return false;
         // Tab status toko: hidden = kalah + habis; off = nonaktif manual.
         if (liveTab === "live" && productStatus(p) !== "live") return false;
         if (liveTab === "hidden" && !(productStatus(p) === "hidden_loser" || productStatus(p) === "hidden_soldout")) return false;
@@ -809,10 +819,21 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     else closeModal();
   }, [saving, productDirty]);
 
+  const openEditById = (productId: number) => {
+    if (saving || uploading || loadingVariants) return;
+    const found = prods.find((item) => Number(item.id) === Number(productId));
+    if (found) {
+      navigateWithDraftGuard(() => { void openEdit(found); });
+      return;
+    }
+    toast.error("Produk anggota grup belum ditemukan di daftar.");
+  };
+
   return {
     // data & daftar
     prods, cats, q, page, loadingList, listError, load,
     setQ, setPage, onlyLowStock, setOnlyLowStock,
+    openEditById,
     supplierFilter, setSupplierFilter,
     liveTab, setLiveTab, perPageAdmin, setPerPageAdmin,
     activeProducts, liveProducts, hiddenProducts, offProducts, lowStock, soldProducts, filtered, paged, safePage, totalPages, perPage: perPageAdmin,

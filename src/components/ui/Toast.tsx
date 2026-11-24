@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useMemo, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import { toast as sonner } from "sonner";
 import { Toaster } from "@/components/admin/ui/sonner";
 
@@ -23,12 +23,24 @@ let nid = 1;
 
 export function ToastProvider({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const timer of pending) clearTimeout(timer);
+      pending.clear();
+    };
+  }, []);
   const actions = useMemo<Ctx>(() => {
     const push = (msg: string, kind: Toast["kind"] = "info") => {
       if (admin) { sonner[kind](kind === "error" ? <span role="alert">{msg}</span> : msg); return; }
       const id = nid++;
       setToasts((t) => [...t, { id, msg, kind }]);
-      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3800);
+      const timer = setTimeout(() => {
+        timers.current.delete(timer);
+        setToasts((t) => t.filter((x) => x.id !== id));
+      }, 3800);
+      timers.current.add(timer);
     };
     return { push, error: (m: string) => push(m, "error"), success: (m: string) => push(m, "success"), info: (m: string) => push(m, "info") };
   }, [admin]);

@@ -88,11 +88,13 @@ describe("QuickVariantModal — kontrak aksesibilitas", () => {
     expect(document.body.style.overflow).toBe("hidden");
   });
 
-  it("daftar varian memakai semantik radiogroup", async () => {
+  it("daftar varian memakai semantik radiogroup dan menyembunyikan varian habis saat ada varian tersedia", async () => {
     await renderModal();
     const group = screen.getByRole("radiogroup", { name: "Pilih paket atau varian" });
     expect(group).toBeTruthy();
-    expect(screen.getAllByRole("radio")).toHaveLength(3);
+    // Hanya 2 varian tersedia (1 Bulan, 3 Bulan) yang tampil; varian Habis disembunyikan otomatis.
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(screen.queryByRole("radio", { name: /stok habis/ })).toBeNull();
   });
 
   it("varian terpilih ditandai aria-checked, bukan hanya warna", async () => {
@@ -105,9 +107,12 @@ describe("QuickVariantModal — kontrak aksesibilitas", () => {
     expect(first.getAttribute("aria-checked")).toBe("false");
   });
 
-  it("varian habis diberi tahu lewat nama aksesibel dan tidak bisa dipilih", async () => {
-    await renderModal();
-    const sold = screen.getByRole("radio", { name: /stok habis/ });
+  it("ketika semua varian habis, varian habis tetap tampil disabled dengan nama aksesibel", async () => {
+    vi.stubGlobal("fetch", mockCatalog({
+      product: { variants: [{ id: 13, label: "Habis", price: 99_000, compare_price: null, stock: 0, is_active: 1, warranty_type: "none" }] },
+    }));
+    render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);
+    const sold = await screen.findByRole("radio", { name: /stok habis/ });
     expect((sold as HTMLButtonElement).disabled).toBe(true);
   });
 });
@@ -200,12 +205,13 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
       product: { variants: [...variants, { id: 99, label: "Arsip", price: 1_000, stock: 5, is_active: 0, warranty_type: "none" }] },
     }));
     render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);
-    await waitFor(() => expect(screen.getAllByRole("radio")).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByRole("radio")).toHaveLength(2));
     expect(screen.queryByRole("radio", { name: /Arsip/ })).toBeNull();
   });
 
-  it.each([["id", /stok di bawah minimum/, "Stok < min"], ["en", /stock below minimum/, "Stock < min"]] as const)("varian stok di bawah min tidak bisa dipilih (%s)", async (locale, aria, notice) => {
+  it.each([["id", /stok di bawah minimum/, "Stok < min"], ["en", /stock below minimum/, "Stock < min"]] as const)("varian stok di bawah min disembunyikan saat ada varian normal, dan tetap disabled saat semua di bawah min (%s)", async (locale, aria, notice) => {
     // Temuan review: stok 3/min 50 — qty berapa pun pasti gagal di quote.
+    // Saat ada varian normal, varian < min disembunyikan otomatis.
     vi.stubGlobal("fetch", mockCatalog({
       product: { variants: [
         { id: 31, label: "Kecil", price: 10_000, stock: 3, is_active: 1, warranty_type: "none", min_qty: 50 },
@@ -213,15 +219,23 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
       ] },
     }));
     document.cookie = `axv_locale=${locale}; Path=/`;
-    render(<DisplayPreferencesProvider><QuickVariantModal product={product} mode="cart" onClose={vi.fn()} /></DisplayPreferencesProvider>);
+    const firstRender = render(<DisplayPreferencesProvider><QuickVariantModal product={product} mode="cart" onClose={vi.fn()} /></DisplayPreferencesProvider>);
     await waitFor(() => expect(screen.getByRole("radio", { name: /Normal/ })).toBeTruthy());
-    const kecil = screen.getByRole("radio", { name: /Kecil/ }) as HTMLButtonElement;
+    expect(screen.queryByRole("radio", { name: /Kecil/ })).toBeNull();
+    expect(screen.getByRole("radio", { name: /Normal/ }).getAttribute("aria-checked")).toBe("true");
+    firstRender.unmount();
+
+    // Bila hanya ada varian di bawah min, tetap tampil disabled + aksesibel.
+    vi.stubGlobal("fetch", mockCatalog({
+      product: { variants: [
+        { id: 31, label: "Kecil", price: 10_000, stock: 3, is_active: 1, warranty_type: "none", min_qty: 50 },
+      ] },
+    }));
+    render(<DisplayPreferencesProvider><QuickVariantModal product={product} mode="cart" onClose={vi.fn()} /></DisplayPreferencesProvider>);
+    const kecil = await screen.findByRole("radio", { name: /Kecil/ }) as HTMLButtonElement;
     expect(kecil.disabled).toBe(true);
     await waitFor(() => expect(kecil.getAttribute("aria-label")).toMatch(aria));
     expect(screen.getByText(notice)).toBeTruthy();
-    fireEvent.click(kecil);
-    // Auto-select melewati yang tak bisa dibeli → Normal yang terpilih.
-    expect(screen.getByRole("radio", { name: /Normal/ }).getAttribute("aria-checked")).toBe("true");
   });
 
   it("kegagalan fetch varian menampilkan pesan error, bukan modal kosong senyap", async () => {

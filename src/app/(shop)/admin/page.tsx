@@ -100,8 +100,9 @@ export default function AdminPage() {
   const pm = useProductManager(toast, onUnauthorized);
   const { load, setOnlyLowStock, setPage: setProductPage } = pm;
 
-  const navigateAdmin = useCallback((section: AdminSection, params: Record<string,string> = {}) => {
+  const navigateAdmin = useCallback((section: AdminSection, params: Record<string,string> = {}, beforeNavigate?: () => void) => {
     navigateWithDraftGuard(() => {
+    beforeNavigate?.();
     setTab(section);
     // Filter yang dibawa antar-section harus ikut berpindah, bukan hanya
     // tersimpan di URL: pushState tidak memicu popstate.
@@ -262,6 +263,8 @@ export default function AdminPage() {
           onSetFormVariants={pm.setFormVariants}
           onUpload={pm.handleUpload}
           onSave={pm.save}
+          onEditLinkedProduct={pm.openEditById}
+          onOpenProductGroups={() => navigateAdmin("pairs", {}, pm.closeModal)}
         />
         </Suspense>
       )}

@@ -169,9 +169,13 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
     SELECT
       p.id, p.slug, p.name, p.name_en, p.whatsapp_alias, p.aliases, p.image_url, p.badge, p.description,
       p.admin_description_override, p.description_en, p.category_id,
-      MIN(pv.price) as min_price,
-      MAX(pv.price) as max_price,
-      COUNT(pv.id) as variant_count,
+      COALESCE(MIN(CASE WHEN ${purchasableStockSql("pv")} THEN pv.price END), MIN(pv.price)) as min_price,
+      COALESCE(MAX(CASE WHEN ${purchasableStockSql("pv")} THEN pv.price END), MAX(pv.price)) as max_price,
+      CASE
+        WHEN SUM(CASE WHEN ${purchasableStockSql("pv")} THEN 1 ELSE 0 END) > 0
+        THEN SUM(CASE WHEN ${purchasableStockSql("pv")} THEN 1 ELSE 0 END)
+        ELSE COUNT(pv.id)
+      END as variant_count,
       CASE WHEN SUM(CASE WHEN ${purchasableStockSql("pv")} THEN 1 ELSE 0 END) > 0 THEN 'available' ELSE 'out_of_stock' END as availability
     FROM products p
     ${mergedGroupCardJoinSql("p", "gmap")}

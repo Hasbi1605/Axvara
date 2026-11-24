@@ -45,24 +45,25 @@ describe("handleExtraCallback", () => {
     expect(api.edit).toHaveBeenCalled();
   });
 
-  it("routes rst to a restock subscription confirmation", async () => {
+  it("routes legacy rst callback gracefully without creating a subscription", async () => {
     const { handleExtraCallback } = await import("@/lib/telegram/handlers/extras");
     fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,is_active,telegram_enabled) VALUES(9,'Prod 9','p9',10000,0,1,1)").run();
     fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,is_active) VALUES(9,9,'SKU-9','1B',10000,0,'manual',1)").run();
     expect(await handleExtraCallback("rst", ["9"], buyer, 1, { id: buyer, first_name: "B" })).toBe(true);
     expect(api.send).toHaveBeenCalled();
     const text = String(api.send.mock.calls.at(-1)?.[0].text ?? "");
-    expect(text).toContain("Notifikasi restok aktif");
-    expect(fx.sql.prepare("SELECT status FROM telegram_restock_alerts WHERE user_id=? AND product_id=9").get(String(buyer))?.status).toBe("pending");
+    expect(text).toContain("Pengingat restok sudah tidak tersedia");
+    expect(fx.sql.prepare("SELECT status FROM telegram_restock_alerts WHERE user_id=? AND product_id=9").get(String(buyer))).toBeUndefined();
   });
 });
 
 describe("handleExtraStartPayload", () => {
-  it("opens a restock subscription for restock_<id> and rejects other payloads", async () => {
+  it("handles legacy restock_<id> deep link gracefully without subscribing and rejects other payloads", async () => {
     const { handleExtraStartPayload } = await import("@/lib/telegram/handlers/extras");
     fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,is_active,telegram_enabled) VALUES(7,'Prod 7','p7',10000,0,1,1)").run();
     fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,is_active) VALUES(7,7,'SKU-7','1B',10000,0,'manual',1)").run();
     expect(await handleExtraStartPayload("restock_7", buyer, { id: buyer, first_name: "B" })).toBe(true);
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM telegram_restock_alerts").get()).toEqual({ n: 0 });
     expect(await handleExtraStartPayload("prd_7", buyer, { id: buyer, first_name: "B" })).toBe(false);
   });
 });

@@ -67,7 +67,7 @@ export async function handleExtraCallback(
     if (action === "rst") {
       const productId = Number(params[0] ?? 0);
       if (!Number.isSafeInteger(productId) || productId <= 0) return false;
-      await confirmRestockSubscription(productId, chatId, from);
+      await replyRestockRetired(chatId, from);
       return true;
     }
 
@@ -78,31 +78,16 @@ export async function handleExtraCallback(
   }
 }
 
-/** `rst:<pid>` / `/start restock_<id>` — subscribe then confirm in one message. */
-async function confirmRestockSubscription(productId: number, chatId: number, from: ExtraFrom): Promise<void> {
+/** `rst:<pid>` / `/start restock_<id>` — retired (owner 2026-11-24).
+ *  Keep graceful reply for old buttons in chat history without subscribing. */
+async function replyRestockRetired(chatId: number, from: ExtraFrom): Promise<void> {
   const { sendMessage } = await import("@/lib/telegram/api");
   const { tgCtxFor } = await import("@/lib/telegram/render-prefs");
-  const { subscribeRestockAlert } = await import("@/lib/telegram/restock-alerts");
   const locale: Locale = await tgCtxFor(from.id).then((ctx) => ctx.locale).catch(() => "id");
   const en = locale === "en";
-  const result = await subscribeRestockAlert(String(from.id), productId);
-  const text = (() => {
-    switch (result.status) {
-      case "subscribed":
-      case "already_subscribed":
-        return en
-          ? "<b>🔔 Restock alert active</b>\n\nWe will message you the moment this product is back in stock."
-          : "<b>🔔 Notifikasi restok aktif</b>\n\nKami kabari begitu produk ini tersedia lagi.";
-      case "in_stock":
-        return en ? "<b>✅ Already in stock</b>\n\nYou can buy it right away." : "<b>✅ Stok tersedia</b>\n\nProduk sudah bisa dibeli sekarang.";
-      case "limit_reached":
-        return en
-          ? "<b>🔔 Alert limit reached</b>\n\nYou already follow 20 products. Wait for one to restock first."
-          : "<b>🔔 Batas notifikasi tercapai</b>\n\nKamu sudah mengikuti 20 produk. Tunggu salah satunya restok dulu.";
-      default:
-        return en ? "<b>⚠️ Product unavailable</b>\n\nThis product cannot be watched right now." : "<b>⚠️ Produk tidak tersedia</b>\n\nProduk ini belum bisa diikuti sekarang.";
-    }
-  })();
+  const text = en
+    ? "<b>ℹ️ Restock alerts are no longer available</b>\n\nBrowse the catalog to see products currently in stock."
+    : "<b>ℹ️ Pengingat restok sudah tidak tersedia</b>\n\nCek katalog untuk melihat produk yang sedang tersedia.";
   await sendMessage({
     chat_id: chatId,
     text,
@@ -143,7 +128,7 @@ export async function handleExtraStartPayload(
     if (!match) return false;
     const productId = Number(match[1]);
     if (!Number.isSafeInteger(productId) || productId <= 0) return false;
-    await confirmRestockSubscription(productId, chatId, from);
+    await replyRestockRetired(chatId, from);
     return true;
   } catch {
     await friendlyFailure(chatId, from);
