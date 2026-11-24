@@ -9,7 +9,7 @@ export const STOREBAT_FAMILY_SPECS: (Omit<StorebatFamily, "label"> & { members: 
   { key: "codex-api", name: "Codex API Token", slug: "codex-api-sb", category: 1, images: ["chatgpt-plus-av", "chatgpt-tunvn"], members: { 36: "10M Token · 1 Hari", 37: "50M Token · 2 Hari", 38: "100M Token · 3 Hari" } },
   { key: "gemini", name: "Google AI / Gemini", slug: "gemini-sb", category: 1, images: ["google-ai-pro-antigravity", "gemini-plus-av", "gemini-tunvn", "gemini-ai-sk"], members: { 3: "AI Pro 12 Bulan", 114: "Gemini Plus 12 Bulan", 121: "Gemini Plus 6 Bulan [No Card]", 137: "CDK AI Pro 12 Bulan (V2)", 144: "CDK AI Pro 12 Bulan (V1)" } },
   { key: "elevenlabs", name: "ElevenLabs", slug: "elevenlabs-sb", category: 1, images: ["elevenlabs-tunvn"], members: { 2: "Creator 12 Bulan", 73: "Free 10k Kredit" } },
-  { key: "elevenreader", name: "ElevenReader Ultra", slug: "elevenreader-sb", category: 1, images: ["elevenlabs-tunvn"], members: { 119: "Ultra 12 Bulan" } },
+  { key: "elevenreader", name: "ElevenReader Ultra", slug: "elevenreader-sb", category: 1, images: [], imageUrl: "/r2/products/90ceeb28e24ad380d45344dcd0ac71ac.webp", members: { 119: "Ultra 12 Bulan" } },
   { key: "grok", name: "Grok Plus", slug: "grok-sb", category: 1, images: ["grok-ai", "grok-ai-sk"], members: { 107: "Plus 1 Bulan (Garansi 5 Hari)" } },
   { key: "grok-cursor", name: "Grok + Cursor Premium", slug: "grok-cursor-sb", category: 1, images: ["grok-cursor-tunvn", "grok-ai"], members: { 101: "Cursor Pro + Grok + X Premium 12 Bulan", 115: "Grok + Cursor Premium 14 Hari" } },
   { key: "gamma", name: "Gamma AI", slug: "gamma-sb", category: 1, images: [], imageUrl: "/r2/products/a18fbcac6bfea9151549eb182bf3d518.webp", members: { 59: "Plus 1 Bulan", 79: "Pro 12 Bulan" } },

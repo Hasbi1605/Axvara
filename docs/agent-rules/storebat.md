@@ -1,5 +1,10 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Foto khusus ElevenReader Ultra (`#401`, `elevenreader-sb`) — 24 November 2026 (prod + repo)
+
+- Atas persetujuan owner, foto `#401` ElevenReader Ultra (`elevenreader-sb`) diganti dari foto ElevenLabs bersama (`61ec0f…`) ke foto R2 baru `/r2/products/90ceeb28e24ad380d45344dcd0ac71ac.webp` (`1600×900` WebP, gaya tile 3D obsidian AXVARA dengan ikon kipas/buku terbuka resmi ElevenReader) di bucket `axvara-assets` & D1 prod (+ bump `catalog_revision_market`); foto lama tetap dipertahankan untuk ElevenLabs (`#51965`/`#126`/`#400`/`#51962`).
+- `src/lib/storebat/families.ts` family `elevenreader` diperbarui memakai `images: [], imageUrl: "/r2/products/90ceeb28e24ad380d45344dcd0ac71ac.webp"` agar insert baru tidak mewarisi gambar ElevenLabs lagi.
+
 ## Aktivasi Paket A + Paket B & Grup Produk — 24 November 2026 (D1 produksi)
 
 - Atas instruksi owner, produk/varian StoreBat berikut diaktifkan di D1 produksi (disertai `images`, durasi/garansi terstruktur, dan penyegaran `catalog_revision_market`):

@@ -21,4 +21,5 @@ it("validates duplicate IDs and excludes test products while preserving tiers",(
   expect(parseStorebatBalance({success:true,wallet_balance:false})).toBeNull();
   expect(storebatFamily(62,"test").key).toBe(storebatFamily(90,"test").key);
   expect(storebatFamily(123456,"same").slug).not.toBe(storebatFamily(123457,"same").slug);
+  expect(storebatFamily(119,"ElevenReader")).toMatchObject({ key:"elevenreader", images:[], imageUrl:"/r2/products/90ceeb28e24ad380d45344dcd0ac71ac.webp" });
 });
