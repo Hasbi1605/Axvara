@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## AXVARA 2FA publik (`2fa.axvara.tech`) — 24 November 2026 (lokal, belum dideploy)
+
+- Utilitas publik tanpa login untuk membuat kode 2FA TOTP (RFC 6238 / RFC 4226) pada subdomain `https://2fa.axvara.tech`, kompatibel penuh dengan kunci setup 2FA dari layanan standar maupun situs seperti `2fa.live` / `2fa.cn` dan aplikasi Authenticator (secret sama + waktu UTC sama → kode 6 digit identik).
+- Seluruh pemrosesan secret key berjalan 100% lokal di browser (tanpa mengirim secret ke server, tanpa database, dan tanpa menyimpan rahasia di URL). Mendukung input secret tunggal, URI `otpauth://totp/...`, dan mode multi-baris (`email|password|secret` tanpa menampilkan segmen password, maks 50 baris), opsi parameter lanjutan on-demand (`6/7/8` digit, `15/30/60` detik, `SHA-1`/`SHA-256`/`SHA-512`), preview kode berikutnya pada sisa ≤5 detik, koreksi otomatis selisih jam perangkat via `/api/time`, serta penyimpanan daftar kunci lokal opsional di `localStorage` browser pengguna.
+- Status: implementasi & verifikasi lokal lengkap (publikasi melalui CI `main` belum diverifikasi live; shortlink `/go/otp-2fa` dan `/go/otp-2fa-auth` tetap menunjuk tujuan existing hingga verifikasi live selesai).
+
 ## Konfirmasi baca deskripsi, S&K & cara aktivasi di QuickVariantModal — 23 November 2026 (lokal)
 
 - Tombol **Keranjang** dan **Checkout** pada kartu katalog beranda tetap dipertahankan. Untuk semua produk pada mode `checkout` dan `cart` (`QuickVariantModal`), pembeli kini melihat **Aturan pakai** (highlight amber bila ada, tanpa duplikasi), **Deskripsi Produk**, **Syarat & Ketentuan**, dan **Cara Aktivasi** (ID/EN) secara terbuka langsung sebelum dapat melanjutkan — sejajar dengan gerbang "Baca sebelum bayar" di Bot Telegram.

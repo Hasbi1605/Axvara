@@ -1,5 +1,14 @@
 # DESIGN.md — AXVARA Design System
 
+## AXVARA 2FA (`2fa.axvara.tech`) — 24 November 2026 (lokal)
+
+- **Identitas & permukaan Liquid Glass AXVARA (`2fa/public/{index.html,styles.css,favicon.svg}`):** Topbar sticky (`60px` desktop / `56px` mobile) selaras dengan `mail.axvara.tech`: logo Prism wireframe resmi AXVARA (`viewBox="0 0 120 110"`), wordmark `AXVARA / 2FA`, pill tenang berikon gembok `Lokal di browser`, tautan `axvara.tech ↗`, serta favicon `/favicon.svg`. Satu kartu utama `.ax-card` terpusat (`max-width: 760px`) tanpa hero marketing, tanpa kartu fitur dekoratif, dan tanpa teks helper berlebih; tetap mematuhi CSP ketat (`style-src 'self'`, nol `innerHTML`, nol inline `style=`, animasi countdown ring via atribut SVG `stroke-dashoffset`).
+- **Zona input & opsi on-demand:** `<textarea id="secret-input">` monospace auto-grow tanpa resize handle (`resize: none`) dengan aksi cepat `Tempel`, `Bersihkan` (muncul hanya saat terisi), dan `Opsi` (membuka panel 3 parameter `Digit 6/7/8`, `Interval 30/60/15 detik`, `Algoritma SHA-1/SHA-256/SHA-512` yang tertutup secara default dan dapat ditutup dengan `Escape`). Validasi error (termasuk deteksi OTP 6 digit) tampil satu baris pasca-interaksi (`aria-invalid` + `aria-describedby` + live announcer terpisah) dan lenyap seketika saat valid.
+- **Tampilan kode (Single, Bulk, & Tersimpan):**
+  - *Single:* kode `tabular-nums` besar (`clamp(36px, 8vw, 50px)`, grup spasi presisi `123 456` namun menyalin digit bersih `123456`), SVG countdown ring 30 dtk (beralih dari cyan `#00E5FF` ke AXVARA Gold `#FFB800` pada sisa ≤5 dtk), preview tombol `Berikutnya` hanya pada sisa ≤5 dtk, tombol utama cyan `Salin` (morph ke hijau `#22C55E` `Tersalin` bahkan saat hover tanpa mendisable tombol agar fokus keyboard terjaga), dan tombol `Simpan di browser`.
+  - *Bulk (≥2 baris):* daftar baris rapat dipisah hairline dengan ekstraksi `otpauth://totp/...` serta `email|password|secret` (tidak pernah menampilkan segmen password), tombol `Salin` per baris, dan `Salin semua`.
+  - *Tersimpan (`localStorage`):* kartu sekunder hanya dirender saat ≥1 kunci tersimpan, lengkap dengan live tick, klik angka untuk salin, rename inline, hapus per item, dan `Hapus semua`. Notis sinkronisasi waktu (`#skew-bar`) hanya tampil saat selisih jam perangkat >2 detik.
+
 ## Tampilan Admin Produk Gabungan, Penyembunyian Varian Habis Storefront/Telegram & Pensiun Tombol Restok — 24 November 2026 (lokal)
 
 - **Daftar `Produk → Live` (`ProductsSection.tsx`):** baris pemenang grup `merge_variants` menampilkan badge semua supplier aktif yang menyumbang varian siap beli + pill `Gabung`, serta baris sekunder `Toko: mulai Rp…` dan `Toko: …` di kolom Harga/Stok saat berbeda dari angka produk induk.

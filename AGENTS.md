@@ -30,6 +30,7 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 | MiraiAPI (paket token, harga USDT, kode redeem, admin) | `docs/agent-rules/mirai.md` |
 | Pixel Verification (Google AI Pro 3 bulan, kredensial Gmail buyer, dispatch/polling, admin) | `docs/agent-rules/pixelverif.md` |
 | Temp mail publik, Email Worker, domain penerima dan D1 inbox terpisah | `docs/agent-rules/temp-mail.md` + `temp-mail/README.md` |
+| AXVARA 2FA publik (`2fa.axvara.tech`), Worker Static Assets client-side TOTP | `docs/agent-rules/2fa.md` + `2fa/README.md` |
 
 Games S1 lokal (9 November 2026): host routing opsional `GAMES_HOST` default
 `games.axvara.tech`; bila kelak dipasang di Pages wajib `secret_text`. Domain/metadata

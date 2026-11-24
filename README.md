@@ -45,6 +45,7 @@ untuk memilih pemeriksaan sesuai jenis perubahan.
 | [`mcp-worker/`](mcp-worker/) | Cloudflare Worker untuk cron dan antrean fulfillment |
 | [`gateway/`](gateway/) | Gateway WhatsApp (grup/admin + historis; alur beli pembeli dipensiunkan 13 Nov 2026) |
 | [`temp-mail/`](temp-mail/) | Layanan email sementara yang terisolasi |
+| [`2fa/`](2fa/) | Generator kode 2FA TOTP client-side yang terisolasi (`2fa.axvara.tech`) |
 | [`tests/`](tests/) | Tes aplikasi dan integrasi |
 
 ## Panduan rilis dan operasi
@@ -64,7 +65,7 @@ konfigurasi, rollback, dan prosedur operasi, lihat
 | Desain, brand, dan komponen | [DESIGN](docs/DESIGN.md) |
 | Arsitektur, skema, kontrak API, dan konfigurasi Cloudflare | [ARCHITECTURE](docs/ARCHITECTURE.md) |
 | Spesifikasi Pedia dan Games | [Pedia PRD](docs/PEDIA-PRD.md), [Pedia Design](docs/PEDIA-DESIGN.md), [Games](docs/GAMES.md) |
-| Pengembangan gateway WhatsApp dan temp mail | [Gateway](gateway/AGENTS.md), [Temp Mail](temp-mail/README.md) |
+| Pengembangan gateway WhatsApp, temp mail, dan 2FA | [Gateway](gateway/AGENTS.md), [Temp Mail](temp-mail/README.md), [2FA](2fa/README.md) |
 | Riwayat perubahan | [CHANGELOG.md](CHANGELOG.md) |
 
 README ini hanya untuk orientasi dan cara mulai. Catat perubahan di

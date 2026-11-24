@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Generator kode 2FA TOTP instan dari AXVARA. Diproses 100% lokal di browser tanpa mengirim kunci ke server.">
+<meta name="theme-color" content="#070a1e">
+<title>AXVARA 2FA — Generator Kode TOTP</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="https://axvara.tech" target="_blank" rel="noopener noreferrer" aria-label="AXVARA 2FA — Kembali ke axvara.tech">
+      <span class="prism" aria-hidden="true">
+        <svg viewBox="0 0 120 110" fill="none" stroke="currentColor" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision">
+          <path d="M60 4 L6.5 104 L113.5 104 Z"/>
+          <path d="M60 4 L60 49.5"/>
+          <path d="M60 49.5 L35.8 78.5 L84.2 78.5 Z"/>
+          <path d="M35.8 78.5 L6.5 104"/>
+          <path d="M84.2 78.5 L113.5 104"/>
+        </svg>
+      </span>
+      <span class="wordmark">AXVARA</span>
+      <span class="brand-sep" aria-hidden="true">/</span>
+      <span class="brand-sub">2FA</span>
+    </a>
+    <div class="topbar-right">
+      <span class="pill-local" title="Perhitungan kode berjalan lokal di browser Anda">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3.2" y="7" width="9.6" height="6.8" rx="1.8"/>
+          <path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7"/>
+        </svg>
+        <span>Lokal di browser</span>
+      </span>
+      <a class="store-link" href="https://axvara.tech" target="_blank" rel="noopener noreferrer">
+        <span>axvara.tech</span>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 11L11 5M6.5 5H11V9.5"/>
+        </svg>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main class="shell">
+  <h1 class="sr-only">AXVARA 2FA — Generator Kode TOTP</h1>
+
+  <section class="ax-card tool-card" aria-label="Generator kode 2FA">
+    <div class="input-zone">
+      <div class="zone-head">
+        <label for="secret-input" class="zone-label">Kunci 2FA</label>
+        <div class="zone-actions">
+          <button id="paste-btn" type="button" class="btn-subtle">Tempel</button>
+          <button id="clear-btn" type="button" class="btn-subtle" hidden>Bersihkan</button>
+          <button id="options-toggle" type="button" class="btn-subtle" aria-expanded="false" aria-controls="options-bar">Opsi</button>
+        </div>
+      </div>
+
+      <textarea
+        id="secret-input"
+        class="secret-input"
+        rows="1"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="Tempel secret key, otpauth://, atau beberapa baris sekaligus"
+        aria-invalid="false"
+        data-error="input-error"
+      ></textarea>
+
+      <p id="input-error" class="input-error" hidden></p>
+
+      <div id="options-bar" class="options-bar" hidden>
+        <div class="opt-field">
+          <label for="opt-digits">Digit</label>
+          <select id="opt-digits" class="opt-select">
+            <option value="6" selected>6 digit</option>
+            <option value="7">7 digit</option>
+            <option value="8">8 digit</option>
+          </select>
+        </div>
+        <div class="opt-field">
+          <label for="opt-period">Interval</label>
+          <select id="opt-period" class="opt-select">
+            <option value="30" selected>30 detik</option>
+            <option value="60">60 detik</option>
+            <option value="15">15 detik</option>
+          </select>
+        </div>
+        <div class="opt-field">
+          <label for="opt-algo">Algoritma</label>
+          <select id="opt-algo" class="opt-select">
+            <option value="SHA-1" selected>SHA-1</option>
+            <option value="SHA-256">SHA-256</option>
+            <option value="SHA-512">SHA-512</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="output-zone" aria-label="Hasil kode 2FA">
+      <div id="state-empty" class="state-empty">
+        <div class="code-placeholder" aria-hidden="true">--- ---</div>
+        <p class="empty-caption">Kode muncul otomatis begitu kunci ditempel.</p>
+      </div>
+
+      <div id="state-single" class="state-single" hidden>
+        <div id="single-meta" class="single-meta" hidden>
+          <span id="single-label" class="single-label"></span>
+          <span id="single-spec" class="spec-chip" hidden></span>
+        </div>
+
+        <div class="single-stage">
+          <button
+            id="single-code-btn"
+            type="button"
+            class="code-display"
+            command="--copy"
+            commandfor="single-code-value"
+            title="Klik untuk menyalin kode"
+            aria-label="Salin kode 2FA"
+          >
+            <span id="single-code-value" class="code-digits" data-copy-value="">--- ---</span>
+          </button>
+
+          <div class="single-controls">
+            <div id="single-ring-wrap" class="ring-wrap" title="Sisa waktu berlaku kode">
+              <svg class="ring-svg" viewBox="0 0 40 40" aria-hidden="true">
+                <circle class="ring-track" cx="20" cy="20" r="16"/>
+                <circle id="single-ring" class="ring-progress" cx="20" cy="20" r="16" stroke-dasharray="100.53" stroke-dashoffset="0"/>
+              </svg>
+              <span id="single-sec" class="ring-sec">30</span>
+            </div>
+
+            <button
+              id="single-copy"
+              type="button"
+              class="btn btn-primary"
+              command="--copy"
+              commandfor="single-code-value"
+            >
+              <svg class="ico ico-copy" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="7" y="7" width="9.5" height="9.5" rx="2"/>
+                <path d="M5 13H4.5A2 2 0 0 1 2.5 11V4.5A2 2 0 0 1 4.5 2.5H11a2 2 0 0 1 2 2V5"/>
+              </svg>
+              <svg class="ico ico-check" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4.5 10.5L8.2 14.2L15.5 6"/>
+              </svg>
+              <span class="btn-label">Salin</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="single-foot">
+          <button
+            id="single-next"
+            type="button"
+            class="next-preview"
+            command="--copy"
+            commandfor="single-next-value"
+            hidden
+          >
+            <span class="next-tag">Berikutnya</span>
+            <span id="single-next-value" class="next-digits" data-copy-value=""></span>
+          </button>
+          <button id="single-save" type="button" class="btn-subtle btn-save">Simpan di browser</button>
+        </div>
+      </div>
+
+      <div id="state-bulk" class="state-bulk" hidden>
+        <div class="bulk-head">
+          <div class="bulk-head-left">
+            <span id="bulk-count" class="bulk-count">0 kode</span>
+            <span id="bulk-truncated" class="warn-chip" hidden>Maks 50 baris</span>
+          </div>
+          <div class="bulk-head-right">
+            <div class="ring-mini-wrap" title="Sisa waktu interval standar 30 detik">
+              <svg class="ring-mini-svg" viewBox="0 0 28 28" aria-hidden="true">
+                <circle class="ring-track" cx="14" cy="14" r="11"/>
+                <circle id="bulk-ring" class="ring-progress" cx="14" cy="14" r="11" stroke-dasharray="69.12" stroke-dashoffset="0"/>
+              </svg>
+              <span id="bulk-sec" class="ring-mini-sec">30d</span>
+            </div>
+            <button id="bulk-copy-all" type="button" class="btn btn-secondary btn-compact">Salin semua</button>
+          </div>
+        </div>
+        <ul id="bulk-list" class="bulk-list" aria-label="Daftar kode 2FA"></ul>
+      </div>
+    </div>
+  </section>
+
+  <p id="skew-bar" class="skew-bar" hidden></p>
+
+  <section id="saved-section" class="ax-card saved-card" aria-labelledby="saved-title" hidden>
+    <div class="saved-head">
+      <div class="saved-title-group">
+        <h2 id="saved-title">Tersimpan</h2>
+        <span id="saved-count" class="count-pill">0</span>
+      </div>
+      <div class="saved-head-right">
+        <div class="ring-mini-wrap" title="Sisa waktu interval standar 30 detik">
+          <svg class="ring-mini-svg" viewBox="0 0 28 28" aria-hidden="true">
+            <circle class="ring-track" cx="14" cy="14" r="11"/>
+            <circle id="saved-ring" class="ring-progress" cx="14" cy="14" r="11" stroke-dasharray="69.12" stroke-dashoffset="0"/>
+          </svg>
+          <span id="saved-sec" class="ring-mini-sec">30d</span>
+        </div>
+        <button id="saved-clear-all" type="button" class="link-btn">Hapus semua</button>
+      </div>
+    </div>
+    <ul id="saved-list" class="saved-list" aria-label="Kunci 2FA tersimpan di browser"></ul>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>AXVARA 2FA</span>
+  <span aria-hidden="true">·</span>
+  <span>RFC 6238 TOTP</span>
+  <span aria-hidden="true">·</span>
+  <span>Diproses 100% di browser</span>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="sr-announcer" class="sr-only" aria-live="polite"></div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
