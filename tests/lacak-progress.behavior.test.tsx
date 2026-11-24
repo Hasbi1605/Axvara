@@ -101,3 +101,42 @@ it('keeps polling when automatic progress is ready until credentials_ready flips
  await act(async()=>{await vi.advanceTimersByTimeAsync(30000)});
  expect(fetcher).toHaveBeenCalledTimes(3);
 });
+
+it('uses the 2-column desktop layout for paid lookup results while keeping pre-lookup and pending compact', async () => {
+ vi.stubGlobal('requestAnimationFrame', () => 1);
+ let status = 'lunas';
+ const fetcher = vi.fn(async () => Response.json({
+  order: {
+   code: 'AXV-20261124-LACAK2CL',
+   customer_name: 'Terry',
+   customer_wa: '0812****7890',
+   status,
+   items: [{ name: 'Canva Pro — 1 Bulan', price: 2000, qty: 1 }],
+   subtotal: 2207,
+   payment_method: 'qris',
+   credentials_ready: status === 'lunas',
+   buyer_pin_required: true,
+   supplier_running: false,
+   fulfillment_status: status === 'lunas' ? 'delivered' : null,
+  },
+ }));
+ vi.stubGlobal('fetch', fetcher);
+ const { container } = render(<Page />);
+ expect((container.firstElementChild as HTMLElement).className).not.toContain('lg:max-w-[1080px]');
+
+ fireEvent.change(screen.getByLabelText(/Kode pesanan/), { target: { value: 'AXV-20261124-LACAK2CL' } });
+ const contact = screen.getByLabelText(/No. WA atau email checkout/);
+ fireEvent.change(contact, { target: { value: 'buyer@example.test' } });
+ await act(async () => { fireEvent.submit(contact.closest('form')!); });
+
+ expect((container.firstElementChild as HTMLElement).className).toContain('lg:max-w-[1080px]');
+ expect(container.querySelector('[class*="lg:grid-cols-[minmax(0,1fr)_380px]"]')).toBeTruthy();
+ expect(screen.getByTestId('progress').closest('[class*="lg:col-start-1"]')).toBeTruthy();
+ expect(screen.getByRole('list', { name: 'Alur status pesanan' }).closest('[class*="lg:col-start-2"]')).toBeTruthy();
+ expect(screen.getByText('Ringkasan').closest('[class*="lg:col-start-2"]')).toBeTruthy();
+
+ status = 'pending';
+ await act(async () => { fireEvent.submit(contact.closest('form')!); });
+ expect((container.firstElementChild as HTMLElement).className).not.toContain('lg:max-w-[1080px]');
+ expect(container.querySelector('[class*="lg:grid-cols-[minmax(0,1fr)_380px]"]')).toBeNull();
+});

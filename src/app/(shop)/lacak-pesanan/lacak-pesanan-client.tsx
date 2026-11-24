@@ -468,8 +468,10 @@ export default function LacakPesananClient() {
     return "upcoming";
   };
 
+  const widePaidResult = Boolean(order && isPaid && !adminView);
+
   return (
-    <div className="mx-auto max-w-[720px] px-4 py-10 sm:px-6">
+    <div className={`mx-auto max-w-[720px] px-4 py-10 sm:px-6${widePaidResult ? " lg:max-w-[1080px] lg:px-8 lg:py-8" : ""}`}>
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/75">{ui.lacak.eyebrow}</p>
       <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">{ui.lacak.h1}</h1>
       {adminView ? (
@@ -486,7 +488,7 @@ export default function LacakPesananClient() {
       </p>}
 
       {/* Form utama dulu; daftar perangkat diringkas di bawah agar hemat ruang. */}
-      {!adminView && <form onSubmit={submit} className="ax-glass-card mt-6 rounded-[24px] p-5 sm:p-6" aria-label="Formulir lacak pesanan">
+      {!adminView && <form onSubmit={submit} className={`ax-glass-card mt-6 rounded-[24px] p-5 sm:p-6${widePaidResult ? " lg:px-7 lg:py-5" : ""}`} aria-label="Formulir lacak pesanan">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">
             <IosIcon name="search" size={20} tint="#00E5FF" />
@@ -496,9 +498,9 @@ export default function LacakPesananClient() {
             <p className="text-xs text-white/65">{ui.lacak.formSub}</p>
           </div>
         </div>
-        <div className="mt-4 grid gap-3">
-          <div>
-            <label htmlFor="track-code" className="mb-1 block text-xs font-medium text-white/60">{ui.lacak.codeLabel}</label>
+        <div className={`mt-4 grid gap-3${widePaidResult ? " lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-start" : ""}`}>
+          <div className="min-w-0">
+            <label htmlFor="track-code" title={ui.lacak.codeLabel} className={`mb-1 block text-xs font-medium text-white/60${widePaidResult ? " lg:truncate" : ""}`}>{ui.lacak.codeLabel}</label>
             <input
               id="track-code"
               value={code}
@@ -513,8 +515,8 @@ export default function LacakPesananClient() {
             {codeError && <p className="mt-1.5 text-xs text-red-300">{codeError}</p>}
             {pediaTyped && <p role="status" className="mt-1.5 text-xs leading-5 text-white/65">Kode AXP adalah pesanan Pedia. <a href={pediaTrackUrl(code)} className="font-semibold text-[#00E5FF] underline underline-offset-2">Lacak di Pedia →</a> Kontak diisi di halaman Pedia.</p>}
           </div>
-          <div>
-            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">{ui.lacak.contactLabel}</label>
+          <div className="min-w-0">
+            <label htmlFor="track-wa" title={ui.lacak.contactLabel} className={`mb-1 block text-xs font-medium text-white/60${widePaidResult ? " lg:truncate" : ""}`}>{ui.lacak.contactLabel}</label>
             <input
               id="track-wa"
               value={wa}
@@ -532,8 +534,8 @@ export default function LacakPesananClient() {
             />
             {waError && <p id="track-wa-error" className="mt-1.5 text-xs text-red-300">{waError}</p>}
           </div>
-          <div>
-            <label htmlFor="track-pin" className="mb-1 block text-xs font-medium text-white/60">{ui.lacak.pinLabel}</label>
+          <div className="min-w-0">
+            <label htmlFor="track-pin" title={ui.lacak.pinLabel} className={`mb-1 block text-xs font-medium text-white/60${widePaidResult ? " lg:truncate" : ""}`}>{ui.lacak.pinLabel}</label>
             <input
               id="track-pin"
               value={pin}
@@ -555,12 +557,25 @@ export default function LacakPesananClient() {
             />
             {pinError && <p id="track-pin-error" className="mt-1.5 text-xs text-red-300">{pinError}</p>}
           </div>
+          {widePaidResult && (
+            <div className="hidden lg:block">
+              <span className="mb-1 block h-4" aria-hidden />
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#00E5FF] px-6 font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-60"
+              >
+                {loading && <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E]" />}
+                {loading ? (lookupStage >= 1 ? ui.lacak.slow : ui.lacak.submitting) : ui.lacak.submit}
+              </button>
+            </div>
+          )}
         </div>
         {error && <p role="alert" className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{error}</p>}
         <button
           type="submit"
           disabled={!canSubmit}
-          className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-[#00E5FF] font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-60"
+          className={`mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-[#00E5FF] font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-60${widePaidResult ? " lg:hidden" : ""}`}
         >
           {loading && <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E]" />}
           {loading ? (lookupStage >= 1 ? ui.lacak.slow : ui.lacak.submitting) : ui.lacak.submit}
@@ -610,34 +625,44 @@ export default function LacakPesananClient() {
       )}
 
       {order && (
-        <div ref={resultRef} className="ax-glass-card mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8" aria-live="polite">
-          <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${statusMeta.shell}`}>
-            <img src={statusMeta.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusMeta.filter }} draggable={false} />
+        <div
+          ref={resultRef}
+          className={widePaidResult
+            ? "ax-glass-card-mobile mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8 lg:rounded-none lg:p-0 lg:text-left"
+            : "ax-glass-card mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8"}
+          aria-live="polite"
+        >
+          <div className={widePaidResult ? "ax-glass-card-desktop lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 lg:gap-y-1 lg:rounded-[24px] lg:px-7 lg:py-5" : undefined}>
+            <div className={`mx-auto flex h-16 w-16 shrink-0 items-center justify-center rounded-full ${widePaidResult ? "lg:col-start-1 lg:row-span-2 lg:mx-0 lg:h-12 lg:w-12" : ""} ${statusMeta.shell}`}>
+              <img src={statusMeta.icon} alt="" width={32} height={32} className={`h-8 w-8 object-contain${widePaidResult ? " lg:h-6 lg:w-6" : ""}`} style={{ filter: statusMeta.filter }} draggable={false} />
+            </div>
+            <h2 className={`mt-4 font-display text-2xl font-bold text-white${widePaidResult ? " lg:col-start-2 lg:row-start-1 lg:mt-0 lg:text-[22px] lg:leading-7" : ""}`}>{statusMeta.title}</h2>
+            <div className={`mt-2 flex flex-wrap items-center justify-center gap-2${widePaidResult ? " lg:col-start-3 lg:row-start-1 lg:mt-0 lg:justify-end" : ""}`}>
+              <span className="font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</span>
+              <button
+                type="button"
+                onClick={() => void copy(order.code, "code")}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full border border-white/15 px-3 text-xs font-semibold text-white/70 transition hover:bg-white/10"
+              >
+                <IosIcon name="copy" size={13} tint="white" /> {copied === "code" ? "Disalin" : "Salin"}
+              </button>
+            </div>
+            <div className={`mt-3${widePaidResult ? " lg:col-start-3 lg:row-start-2 lg:mt-0.5 lg:flex lg:justify-end" : ""}`}>
+              <span className={`inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${statusMeta.badgeClass}${widePaidResult ? " lg:py-1" : ""}`}>{statusMeta.badge}</span>
+            </div>
+            {isPending && !isExpired && order.expiresAt && (
+              <p className="mt-3 inline-flex items-center gap-2 text-xs text-[#FFB800]">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[#FFB800]" />
+                {ui.lacak.deadline(countdown(order.expiresAt, now))}
+              </p>
+            )}
+            {checkedAt && (
+              <p className={`mt-2 text-[11px] text-white/65${widePaidResult ? " lg:col-start-2 lg:row-start-2 lg:mt-0" : ""}`}>
+                {ui.lacak.statusUpdated(checkedAt.toLocaleTimeString(order.locale === "en" ? "en-US" : "id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", second: "2-digit" }))} WIB
+                {pollError ? ` • ${ui.lacak.lastUpdateFailed}: ${pollError}` : ""}
+              </p>
+            )}
           </div>
-          <h2 className="mt-4 font-display text-2xl font-bold text-white">{statusMeta.title}</h2>
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-            <span className="font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</span>
-            <button
-              type="button"
-              onClick={() => void copy(order.code, "code")}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full border border-white/15 px-3 text-xs font-semibold text-white/70 transition hover:bg-white/10"
-            >
-              <IosIcon name="copy" size={13} tint="white" /> {copied === "code" ? "Disalin" : "Salin"}
-            </button>
-          </div>
-          <span className={`mt-3 inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${statusMeta.badgeClass}`}>{statusMeta.badge}</span>
-          {isPending && !isExpired && order.expiresAt && (
-            <p className="mt-3 inline-flex items-center gap-2 text-xs text-[#FFB800]">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-[#FFB800]" />
-              {ui.lacak.deadline(countdown(order.expiresAt, now))}
-            </p>
-          )}
-          {checkedAt && (
-            <p className="mt-2 text-[11px] text-white/65">
-              {ui.lacak.statusUpdated(checkedAt.toLocaleTimeString(order.locale === "en" ? "en-US" : "id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", second: "2-digit" }))} WIB
-              {pollError ? ` • ${ui.lacak.lastUpdateFailed}: ${pollError}` : ""}
-            </p>
-          )}
 
           {pay && payHeading && <p className="mt-3 text-sm leading-6 text-white/60">{payHeading.lead}</p>}
           {pay && showPayPanel && order && (
@@ -652,164 +677,198 @@ export default function LacakPesananClient() {
             />
           )}
 
-          <ol className="mt-6 space-y-0 text-left" aria-label="Alur status pesanan">
-            {steps.map((step, index) => {
-              const state = stepState(index);
-              const dot = state === "done"
-                ? "border-[#22C55E]/40 bg-[#22C55E]/15"
-                : state === "current"
-                  ? "border-[#FFB800]/40 bg-[#FFB800]/15"
-                  : state === "failed"
-                    ? "border-red-500/40 bg-red-500/15"
-                    : "border-white/10 bg-white/[0.04]";
-              return (
-                <li key={step.id} aria-current={state === "current" ? "step" : undefined} className="relative flex gap-3 pb-5 last:pb-0">
-                  {index < steps.length - 1 && <span aria-hidden className={`absolute left-[15px] top-9 h-[calc(100%-28px)] w-px ${state === "done" ? "bg-[#22C55E]/40" : "bg-white/10"}`} />}
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${dot}`}>
-                    {state === "done"
-                      ? <IosIcon name="checked" size={14} tint="#22c55e" />
+          <div className={widePaidResult ? "lg:mt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-5" : undefined}>
+            {/* Mobile urutan 1 / Desktop kanan atas (lunas): Alur status pesanan */}
+            <div className={widePaidResult ? "min-w-0 lg:col-start-2 lg:row-start-1" : undefined}>
+              <ol className={`mt-6 space-y-0 text-left${widePaidResult ? " ax-glass-card-desktop lg:mt-0 lg:rounded-2xl lg:p-5" : ""}`} aria-label="Alur status pesanan">
+                {steps.map((step, index) => {
+                  const state = stepState(index);
+                  const dot = state === "done"
+                    ? "border-[#22C55E]/40 bg-[#22C55E]/15"
+                    : state === "current"
+                      ? "border-[#FFB800]/40 bg-[#FFB800]/15"
                       : state === "failed"
-                        ? <IosIcon name="close" size={13} tint="#ef4444" />
-                        : state === "current"
-                          ? <IosIcon name="clock" size={14} tint="#ffb800" />
-                          : <IosIcon name="box" size={14} tint="white" />}
-                  </span>
-                  <span className="min-w-0 pt-0.5">
-                    <span className={`block text-sm font-semibold ${state === "upcoming" ? "text-white/65" : "text-white"}`}>{step.title}</span>
-                    {step.hint && <span className="block text-xs leading-5 text-white/65">
-                      {step.id === "created" && order.createdAt ? `${ui.lacak.created} ${formatDateTime(order.createdAt)}.` : step.id === "paid" && pay ? ui.lacak.verifiedAuto : step.hint}
-                      {step.id === "paid" && isPending && !isExpired ? ` ${ui.lacak.finishBefore}` : ""}
-                      {step.id === "paid" && isPaid ? ` ${ui.lacak.paymentVerified}` : ""}
-                      {step.id === "paid" && (isCancelled || isExpired) ? ` ${ui.lacak.paymentNotCompleted}` : ""}
-                    </span>}
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
+                        ? "border-red-500/40 bg-red-500/15"
+                        : "border-white/10 bg-white/[0.04]";
+                  return (
+                    <li key={step.id} aria-current={state === "current" ? "step" : undefined} className="relative flex gap-3 pb-5 last:pb-0">
+                      {index < steps.length - 1 && <span aria-hidden className={`absolute left-[15px] top-9 h-[calc(100%-28px)] w-px ${state === "done" ? "bg-[#22C55E]/40" : "bg-white/10"}`} />}
+                      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${dot}`}>
+                        {state === "done"
+                          ? <IosIcon name="checked" size={14} tint="#22c55e" />
+                          : state === "failed"
+                            ? <IosIcon name="close" size={13} tint="#ef4444" />
+                            : state === "current"
+                              ? <IosIcon name="clock" size={14} tint="#ffb800" />
+                              : <IosIcon name="box" size={14} tint="white" />}
+                      </span>
+                      <span className="min-w-0 pt-0.5">
+                        <span className={`block text-sm font-semibold ${state === "upcoming" ? "text-white/65" : "text-white"}`}>{step.title}</span>
+                        {step.hint && <span className="block text-xs leading-5 text-white/65">
+                          {step.id === "created" && order.createdAt ? `${ui.lacak.created} ${formatDateTime(order.createdAt)}.` : step.id === "paid" && pay ? ui.lacak.verifiedAuto : step.hint}
+                          {step.id === "paid" && isPending && !isExpired ? ` ${ui.lacak.finishBefore}` : ""}
+                          {step.id === "paid" && isPaid ? ` ${ui.lacak.paymentVerified}` : ""}
+                          {step.id === "paid" && (isCancelled || isExpired) ? ` ${ui.lacak.paymentNotCompleted}` : ""}
+                        </span>}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
 
-          {isPaid && !order.automaticProgress.length && (
-            <p className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-left text-xs leading-6 text-emerald-200">
-              {ui.lacak.paidBanner(order.name)}
-            </p>
-          )}
-          {/* Detail akun WR di hasil lacak: kontak sudah diverifikasi penuh
-              oleh /api/orders/lookup; PIN form utama diteruskan sebagai prefill
-              React state (tanpa storage). Verifikasi tetap di server. */}
-          {isDeliveryFailed && (
-            <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4">
-              <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
-              <p className="mt-1 text-xs leading-5 text-white/60">
-                {ui.delivery.failedBody}
-              </p>
-            </div>
-          )}
-          {isPaid && order.automaticProgress.length > 0 && <AutomaticOrderProgress items={order.automaticProgress} locale={order.locale} />}
-          {isPaid && (order.buyerPinRequired || order.credentialsReady) && (
-            <WrCredentialsPanel credentialsReady={order.credentialsReady} deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} prefillPin={pin} buyerPinRequired={order.buyerPinRequired} adminView={adminView} locale={order.locale} />
-          )}
-          {isPaid && !order.credentialsReady && order.supplierRunning && !order.automaticProgress.length && (
-            <p className="mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60" role="status">
-              <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" aria-hidden />
-              {ui.lacak.supplierRunning}
-            </p>
-          )}
-          {isPaid && !order.credentialsReady && <WarrantyClaimAccordion code={order.code} adminView={adminView} locale={order.locale} />}
-          {isCancelled && (
-            <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-left text-xs leading-6 text-red-200">
-              {ui.lacak.cancelledBanner}
-            </p>
-          )}
-          {isExpired && !isPaid && (
-            <p className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60">
-              {ui.lacak.expiredBanner}
-            </p>
-          )}
-
-          <div className="ax-glass-card mt-5 rounded-2xl p-4 text-left">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{ui.delivery.summary}</p>
-            <div className="mt-3 space-y-2">
-              {order.items.map((item, index) => (
-                <div key={index} className="flex justify-between gap-4 text-sm">
-                  <span className="text-white/70">{translateProductName(item.name, order.locale)} × {item.qty}</span>
-                  <span className="font-medium text-white">{formatRupiah(item.price * item.qty)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 space-y-1.5 border-t border-white/10 pt-3 text-xs text-white/50">
-              <div className="flex justify-between gap-4"><span>{ui.lacak.buyer}</span><span className="text-right text-white/75">{order.name} • {order.wa}</span></div>
-              <div className="flex justify-between gap-4"><span>{ui.lacak.created}</span><span className="text-white/75">{formatDateTime(order.createdAt)}</span></div>
-            </div>
-            <div className="mt-3 flex justify-between border-t border-white/10 pt-3">
-              <span className="text-sm text-white/60">{pay?.kind === "crypto" ? ui.delivery.orderTotal : ui.delivery.total} • {paymentMethodLabel(pay, order.method)}</span>
-              <span className="font-bold text-white">{formatRupiah(payableAmount)}</span>
-            </div>
-            {pay?.kind === "crypto" && pay.usdText && (
-              <div className="mt-1.5 flex justify-between text-xs text-white/55"><span>{pay.surchargeBps !== null && pay.surchargeText ? orderPanelCopy(order.locale === "en" ? "en" : "id").crypto.totalWithFee : (order.locale === "en" ? "Order value (USD)" : "Nilai pesanan (USD)")}</span><span className="tabular-nums text-white/80">{usdFor(pay.usdText, asPayLocale(order.locale))}</span></div>
-            )}
-          </div>
-
-          <div className="mt-6 grid grid-cols-2 gap-2.5">
-            {!adminView && isPending && !isExpired ? (
-              <Link prefetch={false} href={`/pesanan/${order.code}`} className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{payInfo ? payInfo.cta : (order.locale === "en" ? "Open payment page" : "Buka Halaman Pembayaran")}</Link>
-            ) : isExpired || isCancelled ? (
-              <Link prefetch={false} href="/#katalog" className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{order.locale === "en" ? "Place new order" : "Buat Pesanan Baru"}</Link>
-            ) : (
-              <Link prefetch={false} href="/" className="ax-glass-card col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{ui.delivery.shop}</Link>
-            )}
-          </div>
-          {/* Batal mandiri: lookup sudah memverifikasi kontak, jadi tidak minta
-              ulang — konfirmasi langsung. Stok kembali detik itu juga. */}
-          {!adminView && isPending && !isExpired && !paymentCancelHidden(pay, isExpired) && (
-            <div className="mt-3">
-              {!confirmingCancel ? (
-                <button
-                  type="button"
-                  onClick={() => { setConfirmingCancel(true); setCancelError(null); }}
-                  className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"
-                >
-                  {cancelCopy(order.locale).button}
-                </button>
-              ) : (
-                <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label={cancelCopy(order.locale).dialogLabel}>
-                  <p className="text-sm font-semibold text-red-200">{cancelCopy(order.locale).title(order.code)}</p>
-                  <p className="mt-1 text-xs leading-5 text-white/55">{cancelCopy(order.locale).body}</p>
-                  {cancelError && <p role="alert" className="mt-2 text-xs text-red-300">{cancelError}</p>}
-                  <div className="mt-3 grid grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => { setConfirmingCancel(false); setCancelError(null); }}
-                      disabled={cancelling}
-                      className="flex h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-sm font-semibold text-white/60 transition hover:bg-white/5 disabled:opacity-50"
-                    >
-                      {cancelCopy(order.locale).back}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void cancelOrder()}
-                      disabled={cancelling}
-                      className="flex h-10 items-center justify-center rounded-xl bg-red-500 px-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
-                    >
-                      {cancelling ? cancelCopy(order.locale).cancelling : cancelCopy(order.locale).confirm}
-                    </button>
-                  </div>
+            {/* Mobile urutan 2 / Desktop kiri penuh (lunas): Banner, Progres, PIN & Detail Akun, Garansi */}
+            <div className={widePaidResult ? "min-w-0 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:flex lg:flex-col lg:gap-4" : undefined}>
+              {isPaid && !order.automaticProgress.length && (
+                <p className={`mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-left text-xs leading-6 text-emerald-200${widePaidResult ? " lg:mt-0" : ""}`}>
+                  {ui.lacak.paidBanner(order.name)}
+                </p>
+              )}
+              {/* Detail akun WR di hasil lacak: kontak sudah diverifikasi penuh
+                  oleh /api/orders/lookup; PIN form utama diteruskan sebagai prefill
+                  React state (tanpa storage). Verifikasi tetap di server. */}
+              {isDeliveryFailed && (
+                <div className={`mt-4 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left${widePaidResult ? " lg:mt-0 lg:rounded-[24px] lg:p-6" : ""}`}>
+                  <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
+                  <p className="mt-1 text-xs leading-5 text-white/60">
+                    {ui.delivery.failedBody}
+                  </p>
                 </div>
               )}
+              {isPaid && order.automaticProgress.length > 0 && (
+                <AutomaticOrderProgress
+                  items={order.automaticProgress}
+                  locale={order.locale}
+                  className={widePaidResult ? "ax-glass-card-desktop lg:mt-0 lg:rounded-[24px] lg:p-6" : ""}
+                />
+              )}
+              {isPaid && (order.buyerPinRequired || order.credentialsReady) && (
+                <WrCredentialsPanel
+                  credentialsReady={order.credentialsReady}
+                  deliveryProgress={order.deliveryProgress}
+                  key={order.code}
+                  code={order.code}
+                  prefillContact={wa}
+                  prefillPin={pin}
+                  buyerPinRequired={order.buyerPinRequired}
+                  adminView={adminView}
+                  locale={order.locale}
+                  pinClassName={widePaidResult ? "lg:my-0" : ""}
+                  pinStatusClassName={widePaidResult ? "lg:mt-0" : ""}
+                  panelClassName={widePaidResult ? "lg:mt-0 lg:rounded-[24px] lg:p-6" : ""}
+                />
+              )}
+              {isPaid && !order.credentialsReady && order.supplierRunning && !order.automaticProgress.length && (
+                <p className={`mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60${widePaidResult ? " lg:mt-0" : ""}`} role="status">
+                  <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" aria-hidden />
+                  {ui.lacak.supplierRunning}
+                </p>
+              )}
+              {isPaid && !order.credentialsReady && (
+                <WarrantyClaimAccordion code={order.code} adminView={adminView} locale={order.locale} className={`mt-6 text-left${widePaidResult ? " lg:mt-0" : ""}`} />
+              )}
+              {isCancelled && (
+                <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-left text-xs leading-6 text-red-200">
+                  {ui.lacak.cancelledBanner}
+                </p>
+              )}
+              {isExpired && !isPaid && (
+                <p className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60">
+                  {ui.lacak.expiredBanner}
+                </p>
+              )}
             </div>
-          )}
-          <div className="mt-3">
-            <p className="text-center text-[11px] text-white/65">{ui.delivery.help}</p>
-            <div className="mt-2 grid grid-cols-2 gap-2.5">
-              <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
-              <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
+
+            {/* Mobile urutan 3 / Desktop kanan bawah (lunas): Ringkasan, Aksi, Bantuan, Disclaimer */}
+            <div className={widePaidResult ? "min-w-0 lg:col-start-2 lg:row-start-2 lg:self-start" : undefined}>
+              <div className={`ax-glass-card mt-5 rounded-2xl p-4 text-left${widePaidResult ? " lg:mt-0 lg:p-5" : ""}`}>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{ui.delivery.summary}</p>
+                <div className="mt-3 space-y-2">
+                  {order.items.map((item, index) => (
+                    <div key={index} className={`flex justify-between gap-3 ${widePaidResult ? "text-sm lg:text-[13px] lg:leading-5" : "gap-4 text-sm"}`}>
+                      <span className="min-w-0 break-words text-white/70">{translateProductName(item.name, order.locale)}{" "}<span className="whitespace-nowrap">× {item.qty}</span></span>
+                      <span className="shrink-0 whitespace-nowrap font-medium tabular-nums text-white">{formatRupiah(item.price * item.qty)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 space-y-1.5 border-t border-white/10 pt-3 text-xs text-white/50">
+                  <div className="flex justify-between gap-4"><span>{ui.lacak.buyer}</span><span className="text-right text-white/75">{order.name} • {order.wa}</span></div>
+                  <div className="flex justify-between gap-4"><span>{ui.lacak.created}</span><span className="text-white/75">{formatDateTime(order.createdAt)}</span></div>
+                </div>
+                <div className="mt-3 flex justify-between border-t border-white/10 pt-3">
+                  <span className="text-sm text-white/60">{pay?.kind === "crypto" ? ui.delivery.orderTotal : ui.delivery.total} • {paymentMethodLabel(pay, order.method)}</span>
+                  <span className="shrink-0 font-bold tabular-nums text-white">{formatRupiah(payableAmount)}</span>
+                </div>
+                {pay?.kind === "crypto" && pay.usdText && (
+                  <div className="mt-1.5 flex justify-between text-xs text-white/55"><span>{pay.surchargeBps !== null && pay.surchargeText ? orderPanelCopy(order.locale === "en" ? "en" : "id").crypto.totalWithFee : (order.locale === "en" ? "Order value (USD)" : "Nilai pesanan (USD)")}</span><span className="tabular-nums text-white/80">{usdFor(pay.usdText, asPayLocale(order.locale))}</span></div>
+                )}
+              </div>
+
+              <div className={`mt-6 grid grid-cols-2 gap-2.5${widePaidResult ? " lg:mt-4" : ""}`}>
+                {!adminView && isPending && !isExpired ? (
+                  <Link prefetch={false} href={`/pesanan/${order.code}`} className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{payInfo ? payInfo.cta : (order.locale === "en" ? "Open payment page" : "Buka Halaman Pembayaran")}</Link>
+                ) : isExpired || isCancelled ? (
+                  <Link prefetch={false} href="/#katalog" className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{order.locale === "en" ? "Place new order" : "Buat Pesanan Baru"}</Link>
+                ) : (
+                  <Link prefetch={false} href="/" className="ax-glass-card col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{ui.delivery.shop}</Link>
+                )}
+              </div>
+              {/* Batal mandiri: lookup sudah memverifikasi kontak, jadi tidak minta
+                  ulang — konfirmasi langsung. Stok kembali detik itu juga. */}
+              {!adminView && isPending && !isExpired && !paymentCancelHidden(pay, isExpired) && (
+                <div className="mt-3">
+                  {!confirmingCancel ? (
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmingCancel(true); setCancelError(null); }}
+                      className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"
+                    >
+                      {cancelCopy(order.locale).button}
+                    </button>
+                  ) : (
+                    <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label={cancelCopy(order.locale).dialogLabel}>
+                      <p className="text-sm font-semibold text-red-200">{cancelCopy(order.locale).title(order.code)}</p>
+                      <p className="mt-1 text-xs leading-5 text-white/55">{cancelCopy(order.locale).body}</p>
+                      {cancelError && <p role="alert" className="mt-2 text-xs text-red-300">{cancelError}</p>}
+                      <div className="mt-3 grid grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => { setConfirmingCancel(false); setCancelError(null); }}
+                          disabled={cancelling}
+                          className="flex h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-sm font-semibold text-white/60 transition hover:bg-white/5 disabled:opacity-50"
+                        >
+                          {cancelCopy(order.locale).back}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void cancelOrder()}
+                          disabled={cancelling}
+                          className="flex h-10 items-center justify-center rounded-xl bg-red-500 px-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
+                        >
+                          {cancelling ? cancelCopy(order.locale).cancelling : cancelCopy(order.locale).confirm}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="mt-3">
+                <p className="text-center text-[11px] text-white/65">{ui.delivery.help}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2.5">
+                  <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
+                  <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
+                </div>
+              </div>
+              <div className="text-center">
+                {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white">{ui.lacak.another}</button>}
+                <p className="mt-3 text-center text-[11px] leading-5 text-white/65">{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
+              </div>
             </div>
           </div>
-          {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white">{ui.lacak.another}</button>}
-          <p className="mt-3 text-center text-[11px] leading-5 text-white/65">{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
         </div>
       )}
 
-      <section className="mt-4 space-y-2" aria-label={displayLocale === "en" ? "Frequently asked questions" : "Pertanyaan umum"}>
+      <section className={`mt-4 space-y-2${widePaidResult ? " lg:mt-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0" : ""}`} aria-label={displayLocale === "en" ? "Frequently asked questions" : "Pertanyaan umum"}>
         {ui.lacak.faq.map(([question, answer]) => (
           <details key={question} className="ax-glass-card group rounded-2xl px-4 py-3">
             <summary className="cursor-pointer list-none text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
