@@ -101,15 +101,17 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
   // tidak terlihat seperti situs error; tombol beli tetap non-klik.
   // -1 = stok tak terbatas → tidak pernah habis.
   const outOfStock = product.stock !== undefined && product.stock !== null && product.stock !== -1 && product.stock <= 0;
+  // Satu chip per kartu: diskon valid menang atas badge gold (Terlaris/Baru/...).
+  const showDiscount = discount > 0 && !outOfStock;
 
   if (compact) {
     return (
       <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(displayName) : displayName} className="group block ax-glass-card rounded-[14px] overflow-hidden hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
         <div className="relative aspect-[4/3] overflow-hidden bg-white/[0.03] m-1 rounded-[10px]">
-          {product.badge && (
+          {product.badge && !showDiscount && (
             <span className="absolute top-1.5 left-1.5 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[9px] font-bold px-1.5 py-0.5 leading-none shadow">{badgeLabel(product.badge, prices.locale)}</span>
           )}
-          {discount > 0 && !outOfStock && (
+          {showDiscount && (
             <span className="absolute top-1.5 right-1.5 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[9px] font-bold px-1.5 py-0.5 leading-none">-{discount}%</span>
           )}
           {imgFailed ? <div className="flex w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/65 text-[10px] text-center p-2">{displayName}</div> : (
@@ -154,10 +156,10 @@ export function ProductCard({ product, index = 0, compact = false, hideCategory 
       className="group relative ax-glass-card rounded-[16px] sm:rounded-[22px] overflow-hidden ax-glass-cyan ax-liquid transition-all duration-300 hover:-translate-y-1 flex flex-col"
       style={{ animationDelay: `${index * 35}ms` }}
     >
-      {product.badge && (
+      {product.badge && !showDiscount && (
         <span className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 shadow leading-none">{badgeLabel(product.badge, prices.locale)}</span>
       )}
-      {discount > 0 && !outOfStock && (
+      {showDiscount && (
         <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 leading-none">-{discount}%</span>
       )}
       <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(displayName) : undefined} className="block flex-1">

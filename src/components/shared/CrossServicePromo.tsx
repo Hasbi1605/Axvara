@@ -20,7 +20,7 @@ export function CrossServicePromo({ current, target, locale }: { current: Axvara
         <span className="block break-words text-[13px] font-semibold leading-5 text-white sm:text-sm">{localized.name}</span>
         <span className="block text-[11px] leading-[1.4] text-white/60 sm:text-xs sm:leading-5 line-clamp-2">{localized.description}</span>
       </span>
-      <ArrowUpRight aria-hidden="true" className="hidden h-4 w-4 shrink-0 text-white/60 sm:block" />
+      <ArrowUpRight aria-hidden="true" className="hidden h-4 w-4 shrink-0 text-white/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none sm:block" />
     </a>
   );
 }
