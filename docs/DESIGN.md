@@ -1,5 +1,13 @@
 # DESIGN.md — AXVARA Design System
 
+## Overhaul UI/UX AXVARA Temp Mail (`mail.axvara.tech`) — 24 November 2026 (lokal)
+
+- **Identitas & permukaan Liquid Glass AXVARA (`temp-mail/public/{index.html,styles.css,favicon.svg}`):** Topbar sticky memakai logo Prism wireframe resmi AXVARA (`viewBox="0 0 120 110"`), wordmark tracking lebar `AXVARA / Temp Mail`, pill ringkas `Publik · 24 jam`, tautan `axvara.tech ↗`, serta favicon `/favicon.svg`. Permukaan kartu memakai gradien kaca `.ax-card` di atas `#070a1e`/`#080C1E` tanpa `backdrop-filter` berlebih dan tetap mematuhi CSP ketat (`style-src 'self'`, tanpa inline `style=` atau `innerHTML`).
+- **Address bar kompak (1 baris utama):** Alamat monospace penuh (klik untuk salin) + CTA primary cyan solid `Salin` (morph ke hijau `Tersalin` + toast) + tombol sekunder `Ganti` (membuka drawer inline input custom dengan suffix `@isturaiky.page`), `Alamat acak`, dan dropdown `Riwayat` (`localStorage`, maks 8 alamat terakhir). Kotak peringatan besar dan dua blok helper panjang diringkas menjadi 1 baris catatan `Semua inbox bersifat publik · Pesan terhapus otomatis setelah 24 jam · Alamat dapat dibuka lagi kapan saja`.
+- **Webmail 2-pane desktop (`360px` + `1fr`) & Master → Detail mobile (`<860px`):**
+  - Daftar pesan memakai baris webmail bersih (bukan kotak tombol cyan), avatar inisial, nama pengirim bersih (`parsed.from` MIME diprioritaskan atas SMTP bounce envelope di `temp-mail/src/worker.mjs` + fallback formatter di klien untuk email lama), waktu relatif, indikator `unread`, highlight kiri cyan pada pesan aktif (`aria-current="true"`), chip `OTP` 1-pandang, dan pencarian lokal cepat saat pesan ≥ 3. Polling aktif 5 detik (pause saat `document.hidden`) + badge `(N)` pada `document.title` saat pesan baru tiba di latar.
+  - Reader teks aman (bebas eksekusi HTML & tanpa remote image) mengubah URL `https?://` dan pola `Label → ( https://... )` menjadi tautan klikable cyan via DOM API murni, merapikan garis ASCII berulang (`****`/`----`) menjadi heading/divider, menampilkan kartu sorotan otomatis **Kode Verifikasi** (`Salin Kode`) dan **Tautan Aksi** (`Buka Tautan ↗` + `Salin Link` + hostname tujuan), sisa waktu hidup dari `expires_at`, toggle `Tampilan Rapi` / `Teks Mentah`, `Salin Teks`, serta tombol `← Kembali ke Inbox` di mobile.
+
 ## Tata letak desktop halaman pesanan & lacak pesanan setelah bayar (`/pesanan/[code]`, `/lacak-pesanan`) — 24 November 2026 (lokal)
 
 - **Khusus status `lunas` (`isPaid`) pada breakpoint desktop (`lg:` ≥1024px):** container melebar ke `lg:max-w-[1080px]` tanpa mengubah tampilan mobile/tablet (`<lg` tetap satu kartu terpusat dengan urutan blok identik).

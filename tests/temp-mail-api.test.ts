@@ -108,7 +108,12 @@ describe("temp-mail pure logic + API guards", () => {
     expect(html).toContain("Muat ulang");
     expect(js).not.toContain("innerHTML");
     expect(js).toContain("document.hidden");
-    expect(js).toContain("10_000");
+    expect(js).toContain("5_000");
+    expect(html).toContain("/favicon.svg");
+    expect(html).toContain("M60 4 L6.5 104 L113.5 104 Z");
+    // Strict CSP (style-src 'self'): no inline style attributes in HTML or JS.
+    expect(html).not.toMatch(/\sstyle=/i);
+    expect(js).not.toMatch(/setAttribute\(\s*["']style["']/i);
     for (const token of ["#080C1E", "#00E5FF", "#FFB800", "SF Pro"]) expect(css + html).toContain(token);
     expect(css).toContain("min-height:44px");
   });

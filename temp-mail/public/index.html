@@ -4,50 +4,180 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#070a1e">
 <title>AXVARA Temp Mail — Email Sementara</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="mark" aria-hidden="true">A</span><span>AXVARA <strong>Temp Mail</strong></span></div>
-  <span class="badge">Tanpa daftar</span>
+  <div class="topbar-inner">
+    <a class="brand" href="https://axvara.tech" target="_blank" rel="noopener noreferrer" aria-label="AXVARA Temp Mail — Kembali ke axvara.tech">
+      <span class="prism" aria-hidden="true">
+        <svg viewBox="0 0 120 110" fill="none" stroke="currentColor" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision">
+          <path d="M60 4 L6.5 104 L113.5 104 Z"/>
+          <path d="M60 4 L60 49.5"/>
+          <path d="M60 49.5 L35.8 78.5 L84.2 78.5 Z"/>
+          <path d="M35.8 78.5 L6.5 104"/>
+          <path d="M84.2 78.5 L113.5 104"/>
+        </svg>
+      </span>
+      <span class="wordmark">AXVARA</span>
+      <span class="brand-sep" aria-hidden="true">/</span>
+      <span class="brand-sub">Temp Mail</span>
+    </a>
+    <div class="topbar-right">
+      <span class="pill-info" title="Semua inbox bersifat publik dan pesan dihapus otomatis setelah 24 jam">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span>Publik · 24 jam</span>
+      </span>
+      <a class="store-link" href="https://axvara.tech" target="_blank" rel="noopener noreferrer">
+        <span>axvara.tech</span>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 11L11 5M6.5 5H11V9.5"/>
+        </svg>
+      </a>
+    </div>
+  </div>
 </header>
-<main class="layout">
-  <section class="panel address-panel" aria-labelledby="addr-title">
-    <h1 id="addr-title">Kotak masuk sementara Anda</h1>
-    <p class="warn" role="note"><strong>Semua inbox bersifat publik.</strong> Siapa pun yang mengetahui alamat ini dapat membaca pesannya.</p>
-    <label for="address">Alamat email</label>
-    <div class="row">
-      <input id="address" type="text" readonly autocomplete="off" spellcheck="false" aria-describedby="addr-help">
-      <button id="copy" type="button">Salin</button>
-      <button id="random" type="button" class="gold">Alamat acak</button>
-    </div>
-    <p id="addr-help" class="help">Pesan disimpan <strong>24 jam</strong>, lalu terhapus. Alamatnya sendiri tetap dapat dipakai lagi — buka kembali kapan saja untuk menerima email baru.</p>
-    <form id="open-form">
-      <label for="custom">Buka atau buat alamat Anda sendiri</label>
-      <div class="row">
-        <input id="custom" type="text" autocomplete="off" spellcheck="false" placeholder="mis. tes-saya" aria-describedby="custom-help">
-        <button type="submit">Buka inbox</button>
+
+<main class="shell">
+  <section class="ax-card address-bar" aria-labelledby="addr-title">
+    <h1 id="addr-title" class="sr-only">Kotak masuk sementara AXVARA</h1>
+    <div class="addr-main">
+      <div class="addr-field" id="addr-field">
+        <span class="addr-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2.5" y="4.5" width="15" height="11" rx="2.5"/>
+            <path d="M3.5 6l6.5 4.8L16.5 6"/>
+          </svg>
+        </span>
+        <input id="address" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Alamat email sementara" title="Klik untuk menyalin alamat email">
       </div>
-      <p id="custom-help" class="help">3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung. Boleh juga menempel alamat lengkap pada domain ini.</p>
-      <p id="form-error" class="error" role="alert" hidden></p>
-    </form>
-  </section>
-  <section class="panel inbox-panel" aria-labelledby="inbox-title">
-    <div class="inbox-head">
-      <h2 id="inbox-title">Kotak masuk</h2>
-      <span id="status" class="status" role="status" aria-live="polite"></span>
-      <button id="refresh" type="button">Muat ulang</button>
+      <div class="addr-actions">
+        <button id="copy" type="button" class="btn btn-primary">
+          <svg class="ico ico-copy" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="7" y="7" width="9.5" height="9.5" rx="2"/>
+            <path d="M5 13H4.5A2 2 0 0 1 2.5 11V4.5A2 2 0 0 1 4.5 2.5H11a2 2 0 0 1 2 2V5"/>
+          </svg>
+          <svg class="ico ico-check" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4.5 10.5L8.2 14.2L15.5 6"/>
+          </svg>
+          <span class="btn-label">Salin</span>
+        </button>
+        <button id="toggle-custom" type="button" class="btn btn-secondary" aria-expanded="false" aria-controls="custom-drawer">
+          <svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13.8 3.6a2 2 0 0 1 2.8 2.8L7.4 15.6l-3.9 1 1-3.9 9.3-9.1z"/>
+          </svg>
+          <span>Ganti</span>
+        </button>
+        <button id="random" type="button" class="btn btn-secondary" title="Buat alamat email acak baru">
+          <svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16 4v4h-4"/>
+            <path d="M4 16v-4h4"/>
+            <path d="M4.8 8.2A5.5 5.5 0 0 1 14 6l2 2"/>
+            <path d="M15.2 11.8A5.5 5.5 0 0 1 6 14l-2-2"/>
+          </svg>
+          <span>Alamat acak</span>
+        </button>
+        <div class="history-wrap" id="history-wrap" hidden>
+          <button id="history-toggle" type="button" class="btn btn-secondary btn-icon-label" aria-expanded="false" aria-controls="history-menu" title="Riwayat alamat di browser ini">
+            <svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="10" cy="10" r="7"/>
+              <path d="M10 6.5V10l2.4 1.6"/>
+            </svg>
+            <span class="hide-xs">Riwayat</span>
+          </button>
+          <div id="history-menu" class="ax-popover" role="region" aria-label="Riwayat alamat terakhir" hidden>
+            <div class="popover-head">
+              <span>Alamat terakhir</span>
+              <button id="history-clear" type="button" class="link-btn">Bersihkan</button>
+            </div>
+            <ul id="history-list" class="history-list"></ul>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="columns">
-      <ul id="list" class="list" aria-label="Daftar pesan"></ul>
-      <article id="detail" class="detail" aria-label="Detail pesan">
-        <p class="empty">Pilih pesan untuk membacanya di sini.</p>
+
+    <div id="custom-drawer" class="custom-drawer" hidden>
+      <form id="open-form" class="custom-form" novalidate>
+        <label for="custom" class="sr-only">Nama alamat email sendiri</label>
+        <div class="custom-input-wrap">
+          <input id="custom" type="text" autocomplete="off" spellcheck="false" placeholder="nama-inbox (3–32 huruf/angka)" aria-describedby="custom-hint">
+          <span id="domain-suffix" class="domain-suffix">@isturaiky.page</span>
+        </div>
+        <button type="submit" class="btn btn-primary">Buka inbox</button>
+      </form>
+      <p id="custom-hint" class="micro-hint">Huruf kecil, angka, titik, garis bawah, atau tanda hubung. Boleh paste alamat lengkap.</p>
+      <p id="form-error" class="form-error" role="alert" hidden></p>
+    </div>
+
+    <p class="addr-meta" role="note">
+      <span class="warn-tag">Semua inbox bersifat publik</span>
+      <span class="dot-sep" aria-hidden="true">·</span>
+      <span>Pesan terhapus otomatis setelah <strong>24 jam</strong></span>
+      <span class="dot-sep hide-sm" aria-hidden="true">·</span>
+      <span class="hide-sm">Alamat dapat dibuka lagi kapan saja</span>
+    </p>
+  </section>
+
+  <section id="workspace" class="ax-card workspace" aria-labelledby="inbox-title">
+    <div class="ws-head">
+      <div class="ws-title-group">
+        <h2 id="inbox-title">Kotak masuk</h2>
+        <span id="msg-count" class="count-pill">0</span>
+      </div>
+      <div class="ws-controls">
+        <span class="live-indicator" aria-hidden="true"><span class="live-pulse"></span></span>
+        <span id="status" class="status-text" role="status" aria-live="polite">Menyiapkan kotak masuk…</span>
+        <button id="refresh" type="button" class="btn btn-ghost btn-compact">
+          <svg class="ico ico-spin" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16.2 10a6.2 6.2 0 1 1-1.6-4.2L16.5 7.5"/>
+            <path d="M16.5 3.8v3.7h-3.7"/>
+          </svg>
+          <span>Muat ulang</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="ws-grid">
+      <aside class="pane-list" aria-label="Daftar pesan">
+        <div id="search-wrap" class="search-wrap" hidden>
+          <svg class="search-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="9" r="5.5"/>
+            <path d="M13.5 13.5L17 17"/>
+          </svg>
+          <input id="search-inbox" type="search" autocomplete="off" spellcheck="false" placeholder="Cari subjek atau pengirim…" aria-label="Cari di kotak masuk">
+        </div>
+        <ul id="list" class="msg-list" aria-label="Daftar pesan"></ul>
+      </aside>
+
+      <article id="detail" class="pane-detail" aria-label="Detail pesan">
+        <div class="empty-state">
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="3"/>
+              <path d="M4 7l8 5.5L20 7"/>
+            </svg>
+          </div>
+          <p class="empty-title">Pilih pesan untuk membacanya di sini.</p>
+          <p class="empty-sub">Kode OTP dan tautan verifikasi akan disorot otomatis di bagian atas pesan.</p>
+        </div>
       </article>
     </div>
   </section>
 </main>
-<footer>AXVARA Temp Mail · Inbox publik · Pesan terhapus otomatis setelah 24 jam · Lampiran tidak tersedia</footer>
+
+<footer class="foot">
+  <span>AXVARA Temp Mail</span>
+  <span aria-hidden="true">·</span>
+  <span>Teks aman (tanpa eksekusi HTML &amp; tanpa pelacak gambar)</span>
+  <span aria-hidden="true">·</span>
+  <span>Lampiran tidak disimpan</span>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
 <script src="/app.js" defer></script>
 </body>
 </html>

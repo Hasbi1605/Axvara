@@ -180,4 +180,111 @@ describe("temp-mail UI behavior (deferred fetches, rapid switching)", () => {
     gate.resolve(jsonRes({ address: "tiga@isturaiky.page", messages: [] }));
     await flush();
   });
+
+  it("renders clickable https links + action card, strips ASCII dividers, rejects javascript:/script XSS, and cleans bounce senders", async () => {
+    const [bootD] = bootCalls;
+    bootD.resolve(jsonRes({ address: "nebula-123@isturaiky.page" }));
+    await flush();
+    const bounceSender = "bounces+33220900-9073-nebula-123=isturaiky.page@em1578.elevenlabs.io";
+    const elevenBody = [
+      "ElevenLabs ( https://elevenlabs.io )",
+      "***************************",
+      "Confirm Your Action",
+      "***************************",
+      "We received a request on 24/11/2026.",
+      "Confirm Action → ( https://elevenlabs.io/app/settings?dialog=update-email&sensitiveActionVerificationCode=a0013a01ff4205e1c9ef1f407711ef76 )",
+      "Bad link: javascript:alert(1) and <script>window.__xss=1</script>",
+    ].join("\n\n");
+    fetchHandler = (url) => {
+      if (url.includes("/messages/11")) {
+        return Promise.resolve(jsonRes({
+          message: { id: 11, subject: "Confirm Your Action", sender: bounceSender, body_text: elevenBody, received_at: Date.now(), expires_at: Date.now() + 20 * 3600_000 },
+        }));
+      }
+      if (url.includes("/messages")) {
+        return Promise.resolve(jsonRes({
+          address: "nebula-123@isturaiky.page",
+          messages: [{ id: 11, subject: "Confirm Your Action", sender: bounceSender, received_at: Date.now(), expires_at: Date.now() + 20 * 3600_000, preview: elevenBody.slice(0, 200) }],
+        }));
+      }
+      return Promise.resolve(jsonRes({}, 404));
+    };
+    (document.getElementById("refresh") as HTMLButtonElement).click();
+    await flush();
+    const row = document.querySelector<HTMLButtonElement>("#list button[data-msg-id='11']")!;
+    expect(row.textContent).toContain("Elevenlabs");
+    expect(row.textContent).not.toContain("bounces+33220900");
+    expect(row.textContent).not.toContain("*******");
+    row.click();
+    await flush();
+
+    expect(row.getAttribute("aria-current")).toBe("true");
+    const detail = document.getElementById("detail")!;
+    expect(detail.querySelector("script")).toBeNull();
+    expect(detail.textContent).toContain("<script>window.__xss=1</script>");
+    expect(detail.querySelector(".smart-otp")).toBeNull(); // year 2026 / hex token is NOT an OTP
+    const actionCard = detail.querySelector(".smart-action")!;
+    expect(actionCard).toBeTruthy();
+    expect(actionCard.textContent).toContain("elevenlabs.io");
+    const openAction = actionCard.querySelector<HTMLAnchorElement>("a.btn-primary")!;
+    expect(openAction.href).toBe("https://elevenlabs.io/app/settings?dialog=update-email&sensitiveActionVerificationCode=a0013a01ff4205e1c9ef1f407711ef76");
+    expect(openAction.target).toBe("_blank");
+    expect(openAction.rel).toContain("noopener");
+    expect(openAction.rel).toContain("noreferrer");
+    const links = [...detail.querySelectorAll<HTMLAnchorElement>("a")];
+    expect(links.every((a) => a.href.startsWith("https://"))).toBe(true);
+    expect(detail.querySelector("h4.msg-heading")?.textContent).toBe("Confirm Your Action");
+  });
+
+  it("extracts OTP for 1-click copy, morphs address copy button, toggles raw mode, and tracks address history", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const [bootD] = bootCalls;
+    bootD.resolve(jsonRes({ address: "alpha-1@isturaiky.page" }));
+    await flush();
+
+    // Address copy morphs button & shows toast
+    const copyBtn = document.getElementById("copy") as HTMLButtonElement;
+    copyBtn.click();
+    await flush();
+    expect(writeText).toHaveBeenCalledWith("alpha-1@isturaiky.page");
+    expect(copyBtn.classList.contains("is-copied")).toBe(true);
+    expect(copyBtn.textContent).toContain("Tersalin");
+    expect(document.getElementById("toast")!.hidden).toBe(false);
+
+    // Switch to second address so history dropdown appears
+    fetchHandler = (url) => {
+      if (url.includes("/api/address/open")) return Promise.resolve(jsonRes({ address: "beta-2@isturaiky.page" }));
+      if (url.includes("/messages/22")) {
+        return Promise.resolve(jsonRes({
+          message: { id: 22, subject: "Kode verifikasi masuk", sender: "OpenAI <noreply@tm.openai.com>", body_text: "Gunakan kode verifikasi: 482910 untuk melanjutkan login.", received_at: Date.now(), expires_at: Date.now() + 18 * 3600_000 },
+        }));
+      }
+      if (url.includes("/messages")) {
+        return Promise.resolve(jsonRes({
+          address: "beta-2@isturaiky.page",
+          messages: [{ id: 22, subject: "Kode verifikasi masuk", sender: "OpenAI <noreply@tm.openai.com>", received_at: Date.now(), preview: "Gunakan kode verifikasi: 482910 untuk melanjutkan login." }],
+        }));
+      }
+      return Promise.resolve(jsonRes({}, 404));
+    };
+    openCustom("beta-2");
+    await flush();
+    expect(document.getElementById("history-wrap")!.hidden).toBe(false);
+    expect(document.getElementById("list")!.textContent).toContain("OTP · 482910");
+
+    document.querySelector<HTMLButtonElement>("#list button[data-msg-id='22']")!.click();
+    await flush();
+    const detail = document.getElementById("detail")!;
+    expect(detail.querySelector(".otp-code")?.textContent).toBe("482910");
+    const copyOtp = [...detail.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes("Salin Kode"))!;
+    copyOtp.click();
+    await flush();
+    expect(writeText).toHaveBeenLastCalledWith("482910");
+
+    // Toggle raw text mode
+    const rawBtn = [...detail.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes("Teks Mentah"))!;
+    rawBtn.click();
+    expect(detail.querySelector("pre.msg-raw")?.textContent).toContain("482910");
+  });
 });

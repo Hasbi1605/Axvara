@@ -66,16 +66,17 @@ export async function htmlToText(html) {
       .replace(/<a[^>]+href="([^"]+)"[^>]*>/gi, " $1 ").replace(/<[^>]*>/g, " ")
       .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim().slice(0, MAX_BODY_CHARS);
   }
-  let links = "";
+  const linkSet = new Set();
   const rewriter = new HTMLRewriter()
     .on("script,style,noscript,iframe,svg", { element(e) { e.remove(); } })
     .on("img", { element(e) { e.remove(); } })
-    .on("a", { element(e) { const h = e.getAttribute("href"); if (h && /^https?:\/\//i.test(h)) links += `\n${h}`; } })
+    .on("a", { element(e) { const h = e.getAttribute("href"); if (h && /^https?:\/\//i.test(h)) linkSet.add(h.trim()); } })
     .on("br", { element(e) { e.after("\n"); } })
     .on("p,div,tr,li,h1,h2,h3,h4", { element(e) { e.after("\n"); } });
   const res = rewriter.transform(new Response(String(html), { headers: { "content-type": "text/html" } }));
   const text = (await res.text()).replace(/<[^>]*>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n\n").trim();
-  return (links && !text.includes(links.trim()) ? `${text}\n${links}` : text).slice(0, MAX_BODY_CHARS);
+  const extraLinks = [...linkSet].filter((href) => !text.includes(href));
+  return (extraLinks.length ? `${text}\n\n${extraLinks.join("\n")}` : text).slice(0, MAX_BODY_CHARS);
 }
 async function sha256Hex(buf) {
   const d = await crypto.subtle.digest("SHA-256", buf);
@@ -87,8 +88,13 @@ export async function parseEmail(rawBytes) {
   const email = await parser.parse(rawBytes);
   let body = (email.text || "").trim();
   if (!body && email.html) body = await htmlToText(email.html);
+  const fromName = String(email.from?.name || "").trim();
+  const fromAddr = String(email.from?.address || "").trim();
+  const from = fromName && fromAddr && fromName.toLowerCase() !== fromAddr.toLowerCase()
+    ? `${fromName} <${fromAddr}>`
+    : (fromAddr || fromName || "Unknown sender");
   return {
-    from: [email.from?.name, email.from?.address].filter(Boolean).join(" ").trim() || "Unknown sender",
+    from,
     subject: (email.subject || "(no subject)").slice(0, 500),
     bodyText: body.slice(0, MAX_BODY_CHARS),
   };
@@ -253,7 +259,9 @@ const worker = {
     const now = Date.now();
     const parsed = await parseEmail(raw);
     const dedupe = await sha256Hex(raw);
-    const sender = String(message.from || parsed.from).slice(0, 500) || parsed.from;
+    // Prefer the human-readable MIME From header over SMTP envelope bounce/VERP addresses.
+    const headerFrom = parsed.from && parsed.from !== "Unknown sender" ? parsed.from : "";
+    const sender = String(headerFrom || message.from || "Unknown sender").slice(0, 500);
     await cleanup(db, now);
     await ingestBatch(db, { address, sender, subject: parsed.subject, bodyText: parsed.bodyText, now, dedupe });
   },

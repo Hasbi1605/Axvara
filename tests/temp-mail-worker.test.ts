@@ -348,4 +348,20 @@ describe("temp-mail workerd (real D1)", () => {
       { MAIL_DOMAIN: "isturaiky.page", DB: db, __rateLimitCheck: allowAll }, { waitUntil() {} });
     expect(ok.status).toBe(200);
   });
+
+  it("prefers human-readable MIME From header over SMTP bounce envelope address", async () => {
+    const raw = enc(mime({
+      from: "ElevenLabs <no-reply@elevenlabs.io>",
+      to: "cleanfrom@isturaiky.page",
+      subject: "Confirm Your Action",
+      body: "Confirm Action -> ( https://elevenlabs.io/app/settings?token=abc )",
+    }));
+    const bounceEnvelope = "bounces+33220900-9073-cleanfrom=isturaiky.page@em1578.elevenlabs.io";
+    const out = await dispatchEmail("cleanfrom@isturaiky.page", raw, bounceEnvelope);
+    expect(out.outcome).toBe("accepted");
+    const list = await listBody("/api/inbox/cleanfrom%40isturaiky.page/messages");
+    expect(list.messages).toHaveLength(1);
+    expect(list.messages[0].sender).toBe("ElevenLabs <no-reply@elevenlabs.io>");
+    expect(list.messages[0].sender).not.toContain("bounces+");
+  });
 });

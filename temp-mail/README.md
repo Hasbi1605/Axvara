@@ -14,8 +14,10 @@ assets, isolated D1 — it never uses the root `axvara-db`.
   exposed/copied into public inboxes, and excluded from cleanup.
 - `email`: validates the exact envelope recipient against `MAIL_DOMAIN`,
   rejects raw mail over 1 MiB, parses real MIME with `postal-mime`
-  (base64 / quoted-printable / multipart / Unicode subjects), stores text only.
-  HTML-only mail is converted to readable text server-side (links kept as text).
+  (base64 / quoted-printable / multipart / Unicode subjects), stores text only,
+  and prefers the human-readable MIME `From` header over SMTP bounce/VERP
+  envelope addresses.
+  HTML-only mail is converted to readable text server-side (deduplicated links kept as text).
   Attachments are ignored — never stored, never downloadable. Failure
   semantics: invalid recipients and oversize mail get `setReject` (a permanent
   refusal — the sender is told delivery failed; it is NOT a retry request).
