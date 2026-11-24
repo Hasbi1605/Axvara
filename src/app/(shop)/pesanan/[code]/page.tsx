@@ -637,7 +637,7 @@ export default function OrderSuccessPage() {
     // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
     // janji menit untuk baris antrean — plafonnya 12 jam (keputusan owner
     // 2026-09-18). Teksnya dipilih di `delivery` di atas.
-    <section className={`ax-glass-card mt-6 rounded-2xl p-4 text-left${isPaid ? " lg:mt-0 lg:rounded-[24px] lg:p-6" : ""}`} aria-label={delivery.title} aria-live="polite" aria-busy={delivery.skeleton === true}>
+    <section className={`ax-glass-card mt-6 rounded-2xl p-4 text-left${isPaid ? " lg:mt-0 lg:p-5" : ""}`} aria-label={delivery.title} aria-live="polite" aria-busy={delivery.skeleton === true}>
       {delivery.skeleton ? (
         <>
           <span role="status" className="sr-only">{delivery.title}…</span>
@@ -659,75 +659,78 @@ export default function OrderSuccessPage() {
     </section>
   ) : null;
 
-  const helpAndNoteBlock = (
-    <>
-      <div className={compactPayment ? "mt-4 border-t border-white/10 pt-3" : "mt-3"}>
-        <p className="text-center text-[11px] text-white/65">{oc.help}</p>
-        <div className={compactPayment ? "mt-2 flex items-center justify-center gap-3" : "mt-2 grid grid-cols-2 gap-2.5"}>
-          <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
-          <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
-        </div>
-      </div>
-
-      <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : "mt-4 text-[11px] leading-5"} text-center text-white/65`}>{oc.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.terms}</Link>.</p>
-    </>
-  );
-
-  const renderPaidBody = (pinNode: ReactNode, credPanel: ReactNode) => (
-    <div className="lg:mt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-5">
-      {/* Mobile urutan 1 / Desktop kanan atas: Ringkasan + PIN */}
-      <div className="min-w-0 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-4">
-        <div className="ax-glass-card mt-6 rounded-2xl p-4 text-left lg:mt-0 lg:p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{oc.summary}</p>
-          <div className="mt-3">{summaryContent}</div>
-        </div>
-        {pinNode}
-      </div>
-
-      {/* Mobile urutan 2 / Desktop kiri penuh: Detail Akun / Progres / Status Pengiriman / Garansi */}
-      <div className="min-w-0 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:flex lg:flex-col lg:gap-4">
-        {isDeliveryFailed && (
-          <section className="mt-6 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left lg:mt-0 lg:rounded-[24px] lg:p-6" aria-label="Pengiriman bermasalah">
-            <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
-            <p className="mt-1 text-xs leading-5 text-white/60">
-              {ui.delivery.failedBody}
-            </p>
-          </section>
-        )}
-
-        {Boolean(order.automaticProgress?.length) && (
-          <AutomaticOrderProgress
-            items={order.automaticProgress!}
-            locale={order.locale}
-            className="ax-glass-card-desktop lg:mt-0 lg:rounded-[24px] lg:p-6"
-          />
-        )}
-
-        {credPanel}
-        {deliveryFallbackBlock}
-
-        {!order.credentialsReady && (
-          <WarrantyClaimAccordion code={code} locale={order.locale} className="mt-6 text-left lg:mt-0" />
-        )}
-      </div>
-
-      {/* Mobile urutan 3 / Desktop kanan bawah: Aksi, Bantuan, Disclaimer */}
-      <div className="min-w-0 lg:col-start-2 lg:row-start-2 lg:self-start">
-        <div className="mt-6 grid grid-cols-2 gap-2.5 lg:mt-0">
-          <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.track}</Link>
-          <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.shop}</Link>
-        </div>
-        {helpAndNoteBlock}
+  const helpButtonsBlock = (
+    <div className={compactPayment ? "mt-4 border-t border-white/10 pt-3" : "mt-3"}>
+      <p className="text-center text-[11px] text-white/65">{oc.help}</p>
+      <div className={compactPayment ? "mt-2 flex items-center justify-center gap-3" : "mt-2 grid grid-cols-2 gap-2.5"}>
+        <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
+        <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
       </div>
     </div>
   );
 
+  const disclaimerBlock = (
+    <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : isPaid ? "mt-4 text-[11px] leading-5 lg:mt-6 lg:border-t lg:border-white/10 lg:pt-4" : "mt-4 text-[11px] leading-5"} text-center text-white/65`}>{oc.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.terms}</Link>.</p>
+  );
+
+  const renderPaidBody = (pinNode: ReactNode, credPanel: ReactNode) => (
+    <>
+      <div className="lg:mt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6 lg:gap-y-4">
+        {/* Mobile urutan 1 / Desktop kanan atas: Ringkasan + PIN */}
+        <div className="min-w-0 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-4">
+          <div className="ax-glass-card mt-6 rounded-2xl p-4 text-left lg:mt-0 lg:p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{oc.summary}</p>
+            <div className="mt-3">{summaryContent}</div>
+          </div>
+          {pinNode}
+        </div>
+
+        {/* Mobile urutan 2 / Desktop kiri penuh: Detail Akun / Progres / Status Pengiriman / Garansi */}
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:flex lg:flex-col lg:gap-4">
+          {isDeliveryFailed && (
+            <section className="mt-6 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left lg:mt-0 lg:p-5" aria-label="Pengiriman bermasalah">
+              <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
+              <p className="mt-1 text-xs leading-5 text-white/60">
+                {ui.delivery.failedBody}
+              </p>
+            </section>
+          )}
+
+          {Boolean(order.automaticProgress?.length) && (
+            <AutomaticOrderProgress
+              items={order.automaticProgress!}
+              locale={order.locale}
+              className="lg:mt-0 lg:p-5"
+            />
+          )}
+
+          {credPanel}
+          {deliveryFallbackBlock}
+
+          {!order.credentialsReady && (
+            <WarrantyClaimAccordion code={code} locale={order.locale} className="mt-6 text-left lg:mt-0" />
+          )}
+        </div>
+
+        {/* Mobile urutan 3 / Desktop kanan bawah (di dalam 1 bingkai luar): Aksi & Bantuan */}
+        <div className="min-w-0 lg:col-start-2 lg:row-start-2 lg:self-start lg:border-t lg:border-white/10 lg:pt-4">
+          <div className="mt-6 grid grid-cols-2 gap-2.5 lg:mt-0">
+            <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.track}</Link>
+            <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.shop}</Link>
+          </div>
+          {helpButtonsBlock}
+        </div>
+      </div>
+      {disclaimerBlock}
+    </>
+  );
+
   return (
     <div className={`mx-auto px-4 sm:px-6 ${compactPayment ? "max-w-[760px] py-4 sm:py-6" : isPaid ? "max-w-[640px] py-10 lg:max-w-[1080px] lg:px-8 lg:py-8" : "max-w-[640px] py-10"}`}>
-      <div className={isPaid ? "ax-glass-card-mobile rounded-[28px] p-6 text-center sm:p-8 lg:rounded-none lg:p-0 lg:text-left" : `ax-glass-card text-center ${compactPayment ? "rounded-2xl p-4 sm:p-5" : "rounded-[28px] p-6 sm:p-8"}`}>
+      <div className={isPaid ? "ax-glass-card rounded-[28px] p-6 text-center sm:p-8 lg:p-8 lg:text-left" : `ax-glass-card text-center ${compactPayment ? "rounded-2xl p-4 sm:p-5" : "rounded-[28px] p-6 sm:p-8"}`}>
         {isPaid ? (
           <>
-            <div className="ax-glass-card-desktop lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 lg:gap-y-1 lg:rounded-[24px] lg:px-7 lg:py-5">
+            <div className="lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 lg:gap-y-1 lg:border-b lg:border-white/10 lg:pb-6">
               <div className={`mx-auto flex h-16 w-16 shrink-0 items-center justify-center rounded-full lg:col-start-1 lg:row-span-2 lg:mx-0 lg:h-12 lg:w-12 ${statusVisual.shell}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain lg:h-6 lg:w-6" style={{ filter: statusVisual.filter }} draggable={false} />
@@ -764,7 +767,7 @@ export default function OrderSuccessPage() {
                 locale={order.locale}
                 pinClassName="lg:my-0"
                 pinStatusClassName="lg:mt-0"
-                panelClassName="lg:mt-0 lg:rounded-[24px] lg:p-6"
+                panelClassName="lg:mt-0 lg:p-5"
                 renderLayout={({ pin, panel }) => renderPaidBody(pin, panel)}
               />
             ) : renderPaidBody(null, null)}
@@ -984,7 +987,8 @@ export default function OrderSuccessPage() {
             )}
           </div>
         )}
-        {helpAndNoteBlock}
+        {helpButtonsBlock}
+        {disclaimerBlock}
         </>
         )}
       </div>

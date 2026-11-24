@@ -628,11 +628,11 @@ export default function LacakPesananClient() {
         <div
           ref={resultRef}
           className={widePaidResult
-            ? "ax-glass-card-mobile mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8 lg:rounded-none lg:p-0 lg:text-left"
+            ? "ax-glass-card mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8 lg:p-8 lg:text-left"
             : "ax-glass-card mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8"}
           aria-live="polite"
         >
-          <div className={widePaidResult ? "ax-glass-card-desktop lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 lg:gap-y-1 lg:rounded-[24px] lg:px-7 lg:py-5" : undefined}>
+          <div className={widePaidResult ? "lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-4 lg:gap-y-1 lg:border-b lg:border-white/10 lg:pb-6" : undefined}>
             <div className={`mx-auto flex h-16 w-16 shrink-0 items-center justify-center rounded-full ${widePaidResult ? "lg:col-start-1 lg:row-span-2 lg:mx-0 lg:h-12 lg:w-12" : ""} ${statusMeta.shell}`}>
               <img src={statusMeta.icon} alt="" width={32} height={32} className={`h-8 w-8 object-contain${widePaidResult ? " lg:h-6 lg:w-6" : ""}`} style={{ filter: statusMeta.filter }} draggable={false} />
             </div>
@@ -677,10 +677,10 @@ export default function LacakPesananClient() {
             />
           )}
 
-          <div className={widePaidResult ? "lg:mt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-5" : undefined}>
+          <div className={widePaidResult ? "lg:mt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6 lg:gap-y-4" : undefined}>
             {/* Mobile urutan 1 / Desktop kanan atas (lunas): Alur status pesanan */}
             <div className={widePaidResult ? "min-w-0 lg:col-start-2 lg:row-start-1" : undefined}>
-              <ol className={`mt-6 space-y-0 text-left${widePaidResult ? " ax-glass-card-desktop lg:mt-0 lg:rounded-2xl lg:p-5" : ""}`} aria-label="Alur status pesanan">
+              <ol className={`mt-6 space-y-0 text-left${widePaidResult ? " lg:mt-0 lg:rounded-2xl lg:border lg:border-white/10 lg:bg-white/[0.03] lg:p-4" : ""}`} aria-label="Alur status pesanan">
                 {steps.map((step, index) => {
                   const state = stepState(index);
                   const dot = state === "done"
@@ -728,7 +728,7 @@ export default function LacakPesananClient() {
                   oleh /api/orders/lookup; PIN form utama diteruskan sebagai prefill
                   React state (tanpa storage). Verifikasi tetap di server. */}
               {isDeliveryFailed && (
-                <div className={`mt-4 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left${widePaidResult ? " lg:mt-0 lg:rounded-[24px] lg:p-6" : ""}`}>
+                <div className={`mt-4 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left${widePaidResult ? " lg:mt-0 lg:p-5" : ""}`}>
                   <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
                   <p className="mt-1 text-xs leading-5 text-white/60">
                     {ui.delivery.failedBody}
@@ -739,7 +739,7 @@ export default function LacakPesananClient() {
                 <AutomaticOrderProgress
                   items={order.automaticProgress}
                   locale={order.locale}
-                  className={widePaidResult ? "ax-glass-card-desktop lg:mt-0 lg:rounded-[24px] lg:p-6" : ""}
+                  className={widePaidResult ? "lg:mt-0 lg:p-5" : ""}
                 />
               )}
               {isPaid && (order.buyerPinRequired || order.credentialsReady) && (
@@ -755,7 +755,7 @@ export default function LacakPesananClient() {
                   locale={order.locale}
                   pinClassName={widePaidResult ? "lg:my-0" : ""}
                   pinStatusClassName={widePaidResult ? "lg:mt-0" : ""}
-                  panelClassName={widePaidResult ? "lg:mt-0 lg:rounded-[24px] lg:p-6" : ""}
+                  panelClassName={widePaidResult ? "lg:mt-0 lg:p-5" : ""}
                 />
               )}
               {isPaid && !order.credentialsReady && order.supplierRunning && !order.automaticProgress.length && (
@@ -779,7 +779,7 @@ export default function LacakPesananClient() {
               )}
             </div>
 
-            {/* Mobile urutan 3 / Desktop kanan bawah (lunas): Ringkasan, Aksi, Bantuan, Disclaimer */}
+            {/* Mobile urutan 3 / Desktop kanan bawah (di dalam 1 bingkai luar): Ringkasan, Aksi, Bantuan */}
             <div className={widePaidResult ? "min-w-0 lg:col-start-2 lg:row-start-2 lg:self-start" : undefined}>
               <div className={`ax-glass-card mt-5 rounded-2xl p-4 text-left${widePaidResult ? " lg:mt-0 lg:p-5" : ""}`}>
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{ui.delivery.summary}</p>
@@ -804,66 +804,69 @@ export default function LacakPesananClient() {
                 )}
               </div>
 
-              <div className={`mt-6 grid grid-cols-2 gap-2.5${widePaidResult ? " lg:mt-4" : ""}`}>
-                {!adminView && isPending && !isExpired ? (
-                  <Link prefetch={false} href={`/pesanan/${order.code}`} className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{payInfo ? payInfo.cta : (order.locale === "en" ? "Open payment page" : "Buka Halaman Pembayaran")}</Link>
-                ) : isExpired || isCancelled ? (
-                  <Link prefetch={false} href="/#katalog" className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{order.locale === "en" ? "Place new order" : "Buat Pesanan Baru"}</Link>
-                ) : (
-                  <Link prefetch={false} href="/" className="ax-glass-card col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{ui.delivery.shop}</Link>
-                )}
-              </div>
-              {/* Batal mandiri: lookup sudah memverifikasi kontak, jadi tidak minta
-                  ulang — konfirmasi langsung. Stok kembali detik itu juga. */}
-              {!adminView && isPending && !isExpired && !paymentCancelHidden(pay, isExpired) && (
-                <div className="mt-3">
-                  {!confirmingCancel ? (
-                    <button
-                      type="button"
-                      onClick={() => { setConfirmingCancel(true); setCancelError(null); }}
-                      className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"
-                    >
-                      {cancelCopy(order.locale).button}
-                    </button>
+              <div className={widePaidResult ? "lg:mt-4 lg:border-t lg:border-white/10 lg:pt-4" : undefined}>
+                <div className={`mt-6 grid grid-cols-2 gap-2.5${widePaidResult ? " lg:mt-0" : ""}`}>
+                  {!adminView && isPending && !isExpired ? (
+                    <Link prefetch={false} href={`/pesanan/${order.code}`} className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{payInfo ? payInfo.cta : (order.locale === "en" ? "Open payment page" : "Buka Halaman Pembayaran")}</Link>
+                  ) : isExpired || isCancelled ? (
+                    <Link prefetch={false} href="/#katalog" className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{order.locale === "en" ? "Place new order" : "Buat Pesanan Baru"}</Link>
                   ) : (
-                    <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label={cancelCopy(order.locale).dialogLabel}>
-                      <p className="text-sm font-semibold text-red-200">{cancelCopy(order.locale).title(order.code)}</p>
-                      <p className="mt-1 text-xs leading-5 text-white/55">{cancelCopy(order.locale).body}</p>
-                      {cancelError && <p role="alert" className="mt-2 text-xs text-red-300">{cancelError}</p>}
-                      <div className="mt-3 grid grid-cols-2 gap-2.5">
-                        <button
-                          type="button"
-                          onClick={() => { setConfirmingCancel(false); setCancelError(null); }}
-                          disabled={cancelling}
-                          className="flex h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-sm font-semibold text-white/60 transition hover:bg-white/5 disabled:opacity-50"
-                        >
-                          {cancelCopy(order.locale).back}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void cancelOrder()}
-                          disabled={cancelling}
-                          className="flex h-10 items-center justify-center rounded-xl bg-red-500 px-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
-                        >
-                          {cancelling ? cancelCopy(order.locale).cancelling : cancelCopy(order.locale).confirm}
-                        </button>
-                      </div>
-                    </div>
+                    <Link prefetch={false} href="/" className="ax-glass-card col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{ui.delivery.shop}</Link>
                   )}
                 </div>
-              )}
-              <div className="mt-3">
-                <p className="text-center text-[11px] text-white/65">{ui.delivery.help}</p>
-                <div className="mt-2 grid grid-cols-2 gap-2.5">
-                  <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
-                  <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
+                {/* Batal mandiri: lookup sudah memverifikasi kontak, jadi tidak minta
+                    ulang — konfirmasi langsung. Stok kembali detik itu juga. */}
+                {!adminView && isPending && !isExpired && !paymentCancelHidden(pay, isExpired) && (
+                  <div className="mt-3">
+                    {!confirmingCancel ? (
+                      <button
+                        type="button"
+                        onClick={() => { setConfirmingCancel(true); setCancelError(null); }}
+                        className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"
+                      >
+                        {cancelCopy(order.locale).button}
+                      </button>
+                    ) : (
+                      <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label={cancelCopy(order.locale).dialogLabel}>
+                        <p className="text-sm font-semibold text-red-200">{cancelCopy(order.locale).title(order.code)}</p>
+                        <p className="mt-1 text-xs leading-5 text-white/55">{cancelCopy(order.locale).body}</p>
+                        {cancelError && <p role="alert" className="mt-2 text-xs text-red-300">{cancelError}</p>}
+                        <div className="mt-3 grid grid-cols-2 gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => { setConfirmingCancel(false); setCancelError(null); }}
+                            disabled={cancelling}
+                            className="flex h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-sm font-semibold text-white/60 transition hover:bg-white/5 disabled:opacity-50"
+                          >
+                            {cancelCopy(order.locale).back}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void cancelOrder()}
+                            disabled={cancelling}
+                            className="flex h-10 items-center justify-center rounded-xl bg-red-500 px-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
+                          >
+                            {cancelling ? cancelCopy(order.locale).cancelling : cancelCopy(order.locale).confirm}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="mt-3">
+                  <p className="text-center text-[11px] text-white/65">{ui.delivery.help}</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2.5">
+                    <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
+                    <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
+                  </div>
                 </div>
               </div>
-              <div className="text-center">
-                {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white">{ui.lacak.another}</button>}
-                <p className="mt-3 text-center text-[11px] leading-5 text-white/65">{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
-              </div>
             </div>
+          </div>
+
+          <div className={widePaidResult ? "text-center lg:mt-6 lg:border-t lg:border-white/10 lg:pt-4" : "text-center"}>
+            {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className={`mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white${widePaidResult ? " lg:mt-0" : ""}`}>{ui.lacak.another}</button>}
+            <p className={`${widePaidResult ? "mt-3 lg:mt-1" : "mt-3"} text-center text-[11px] leading-5 text-white/65`}>{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
           </div>
         </div>
       )}

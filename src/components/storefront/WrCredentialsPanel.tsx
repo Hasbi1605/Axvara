@@ -331,8 +331,8 @@ export function WrCredentialsPanel({
     {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
   </section>;
 
-  if (automaticPending) return <p role="status" className={`mt-4 text-xs text-white/65${panelClassName ? ` ax-glass-card-desktop text-left${panelExtra}` : ""}`}>{text.checking}</p>;
-  if (automaticError) return <section className={`mt-4 text-left text-xs text-white/65${panelClassName ? ` ax-glass-card-desktop${panelExtra}` : ""}`}>
+  if (automaticPending) return <p role="status" className={`mt-4 text-xs text-white/65${panelClassName ? ` text-left${panelExtra}` : ""}`}>{text.checking}</p>;
+  if (automaticError) return <section className={`mt-4 text-left text-xs text-white/65${panelExtra}`}>
     <p role="alert">{text.networkRetry}</p>
     <button type="button" onClick={() => { triedPrefill.current = false; triedDevice.current = ""; setRetry(n => n + 1); }} className="min-h-11 px-3 font-semibold text-[#00E5FF] underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">{orderCopy(locale).common.retry}</button>
   </section>;

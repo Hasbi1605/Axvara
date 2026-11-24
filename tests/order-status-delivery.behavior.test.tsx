@@ -346,6 +346,7 @@ describe("/pesanan/[code] — kirim otomatis dari stok sendiri", () => {
     const outer = container.firstElementChild as HTMLElement;
     expect(outer.className).toContain("max-w-[640px]");
     expect(outer.className).toContain("lg:max-w-[1080px]");
+    expect((outer.firstElementChild as HTMLElement).className).toContain("ax-glass-card");
     const grid = container.querySelector('[class*="lg:grid-cols-[minmax(0,1fr)_380px]"]');
     expect(grid).toBeTruthy();
     expect(account.closest('[class*="lg:col-start-1"]')).toBeTruthy();
