@@ -2869,23 +2869,3 @@ putih 10 %. Berkas: `favicon.svg`, `favicon.ico` (PNG 16/32/48), `apple-touch-ic
 penuh tanpa sudut, iOS memberi mask), `icon-192.png`, `icon-512.png`; dirujuk lewat
 `faviconIcons()` (`src/lib/favicons.ts`) di layout root/Pedia dan `gamesMetadata`. `public/favicon.svg`
 dan `public/favicon.ico` root = set Market (fallback).
-
-## Kerapatan area Katalog Premium — 2026-11-24 (lokal)
-
-Pengurangan rasa "sesak/padat" pada area yang di-SS (kartu promo Pedia/Games → judul
-Katalog Premium → pills → header kategori → kartu produk), tanpa mengubah keputusan
-owner yang sudah tercatat (ukuran pill 24/36px & ikon 10/14px keputusan 8 Nov, wrapper
-`mt-4` polos, `pt-2` katalog setelah promo, gap grid 12/20px, dua kartu promo selalu
-berdampingan keputusan 2 Nov, `min-h-[64px]`, token Midnight/Cyan/Gold, `ax-glass-card`):
-
-- `CrossServicePromo`: ikon `ArrowUpRight` kini hanya muncul saat hover/fokus
-  (`opacity-0` → `group-hover:opacity-100`/`group-focus-visible:opacity-100`, tetap
-  `hidden` di mobile), mengurangi noise permanen di pojok kanan kartu tanpa mengubah
-  tinggi/kolom kartu.
-- `CategoryPills`: gap antar-pill dinaikkan `gap-1.5 sm:gap-2` → `gap-2 sm:gap-2.5`
-  (8px/10px). Ukuran pill, ikon, strip mobile `-mx-4 px-4` + `pb-2` tetap.
-- `ProductCard` (compact & normal): **satu chip per kartu** — bila ada diskon valid
-  (`comparePrice > harga tampil` dan tidak stok habis), chip cyan `-NN%` yang tampil dan
-  badge gold (Terlaris/Baru/Hemat dst.) disembunyikan; bila tanpa diskon, badge gold
-  tampil seperti biasa. Stok habis tetap menampilkan badge apa adanya (chip diskon
-  memang tidak dirender saat habis).

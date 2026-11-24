@@ -24,7 +24,7 @@ export function CategoryPills({ active, onChange, categories }: {
   }, [categories]);
   const items = [{ id: "all", slug: "semua", name: "Semua", icon: "star" }, ...(categories ?? fallback).filter(category => category.slug !== "semua")];
   return (
-    <div className="relative flex gap-2 sm:gap-2.5 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0" aria-label={locale === "en" ? "Product categories" : "Kategori produk"}>
+    <div className="relative flex gap-1.5 sm:gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0" aria-label={locale === "en" ? "Product categories" : "Kategori produk"}>
       {items.map(category => {
         const selected = active === category.slug;
         return <button key={category.slug} data-category={category.slug} aria-pressed={selected} onClick={() => onChange(category.slug)} className={cn(
