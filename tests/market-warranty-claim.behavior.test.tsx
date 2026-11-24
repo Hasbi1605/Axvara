@@ -66,16 +66,19 @@ function expectPolicy(container: HTMLElement, size: "sm" | "xs" = "xs") {
   expect(container.textContent).not.toMatch(/1[x×]24 jam kerja|BUKAN refund dana|Refund hanya jika stok/);
 }
 
+const WARRANTY_ACCORDION_ID = "Syarat klaim garansi (khusus produk bergaransi)";
+const WARRANTY_ACCORDION_EN = "Warranty claim terms (eligible products only)";
+
 function expectAccountWarranty() {
   const account = screen.getByRole("region", { name: "Detail akun digital" });
   const buttons = within(account).getAllByRole("button");
   expect(buttons.map(button => button.textContent)).toEqual([
-    "Salin akun 1", "Salin akun 2", "Syarat & Ketentuan", "Cara Penggunaan / Aktivasi",
-    "Syarat klaim garansi",
+    "Salin akun 1", "Salin akun 2", "Cara Penggunaan / Aktivasi", "Syarat & Ketentuan",
+    WARRANTY_ACCORDION_ID,
   ]);
   // Garansi tetap satu per pesanan, setelah panduan terakhir dan sebelum catatan simpan.
-  const warranty = within(account).getByRole("button", { name: "Syarat klaim garansi" });
-  expect(screen.getAllByRole("button", { name: "Syarat klaim garansi" })).toHaveLength(1);
+  const warranty = within(account).getByRole("button", { name: WARRANTY_ACCORDION_ID });
+  expect(screen.getAllByRole("button", { name: WARRANTY_ACCORDION_ID })).toHaveLength(1);
   expect(warranty.className).toBe(within(account).getByRole("button", { name: "Syarat & Ketentuan" }).className);
   expect(warranty.parentElement!.className).toBe(within(account).getByRole("button", { name: "Syarat & Ketentuan" }).parentElement!.className);
   expect(warranty.compareDocumentPosition(within(account).getByText(/Simpan detail ini/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -98,21 +101,21 @@ describe("Market warranty claim guidance", () => {
       await screen.findByRole("region", { name: "Detail akun digital" });
       expectAccountWarranty();
     }
-    const button = await screen.findByRole("button", { name: "Syarat klaim garansi" });
-    expect(screen.getAllByRole("button", { name: "Syarat klaim garansi" })).toHaveLength(1);
+    const button = await screen.findByRole("button", { name: WARRANTY_ACCORDION_ID });
+    expect(screen.getAllByRole("button", { name: WARRANTY_ACCORDION_ID })).toHaveLength(1);
     expect(button.getAttribute("aria-expanded")).toBe("false");
     const panel = document.getElementById(button.getAttribute("aria-controls")!);
     expect(panel?.hidden).toBe(true);
     fireEvent.click(button);
     expect(button.getAttribute("aria-expanded")).toBe("true");
-    expectPolicy(screen.getByRole("region", { name: "Syarat klaim garansi" }));
+    expectPolicy(screen.getByRole("region", { name: WARRANTY_ACCORDION_ID }));
   });
 
   it.each(["pending", "cancelled", "expired"])("does not show the post-payment accordion for %s orders", async (status) => {
     stubOrder({ status, buyer_pin_required: false, credentials_ready: false, expires_at: new Date(Date.now() + 600000).toISOString() });
     render(<OrderStatusPage />);
     await screen.findByText("Ringkasan");
-    expect(screen.queryByRole("button", { name: "Syarat klaim garansi" })).toBeNull();
+    expect(screen.queryByRole("button", { name: WARRANTY_ACCORDION_ID })).toBeNull();
   });
 
   it("also nests the accordion after activation inside the verified tracking account card", async () => {
@@ -122,23 +125,23 @@ describe("Market warranty claim guidance", () => {
     await screen.findByRole("region", { name: "Detail akun digital" });
     const button = expectAccountWarranty();
     fireEvent.click(button);
-    expectPolicy(screen.getByRole("region", { name: "Syarat klaim garansi" }));
+    expectPolicy(screen.getByRole("region", { name: WARRANTY_ACCORDION_ID }));
   });
 
   it("keeps one warranty accordion inside the account card before contact verification", async () => {
     stubOrder({ buyer_pin_required: true });
     render(<OrderStatusPage />);
     const account = await screen.findByRole("region", { name: "Ambil detail akun" });
-    const button = within(account).getByRole("button", { name: "Syarat klaim garansi" });
-    expect(screen.getAllByRole("button", { name: "Syarat klaim garansi" })).toHaveLength(1);
+    const button = within(account).getByRole("button", { name: WARRANTY_ACCORDION_ID });
+    expect(screen.getAllByRole("button", { name: WARRANTY_ACCORDION_ID })).toHaveLength(1);
     fireEvent.click(button);
-    expectPolicy(within(account).getByRole("region", { name: "Syarat klaim garansi" }));
+    expectPolicy(within(account).getByRole("region", { name: WARRANTY_ACCORDION_ID }));
   });
 
   it.each([
-    [false, "id", "Syarat klaim garansi", "Cek Estimasi Refund", "/kalkulator-refund"],
-    [false, "en", "Warranty claim terms", "Check refund estimate", "/kalkulator-refund"],
-    [true, "id", "Syarat klaim garansi", "Hitung Refund", "/admin/refund"],
+    [false, "id", WARRANTY_ACCORDION_ID, "Cek Estimasi Refund", "/kalkulator-refund"],
+    [false, "en", WARRANTY_ACCORDION_EN, "Check refund estimate", "/kalkulator-refund"],
+    [true, "id", WARRANTY_ACCORDION_ID, "Hitung Refund", "/admin/refund"],
   ] as const)("keeps the invoice link inside the accordion (admin: %s, locale: %s)", (adminView, locale, title, label, path) => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
@@ -155,11 +158,11 @@ describe("Market warranty claim guidance", () => {
   it("can be expanded and collapsed with the keyboard", async () => {
     const user = userEvent.setup();
     render(<WarrantyClaimAccordion />);
-    const button = screen.getByRole("button", { name: "Syarat klaim garansi" });
+    const button = screen.getByRole("button", { name: WARRANTY_ACCORDION_ID });
     await user.tab();
     expect(document.activeElement).toBe(button);
     await user.keyboard("{Enter}");
-    expectPolicy(screen.getByRole("region", { name: "Syarat klaim garansi" }));
+    expectPolicy(screen.getByRole("region", { name: WARRANTY_ACCORDION_ID }));
     await user.keyboard(" ");
     expect(button.getAttribute("aria-expanded")).toBe("false");
   });

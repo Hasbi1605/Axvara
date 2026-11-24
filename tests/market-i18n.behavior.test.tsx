@@ -47,7 +47,7 @@ describe("order page EN (order.locale)", () => {
     stubOrder(body({ status: "lunas" }));
     render(<OrderPage />);
     expect(await screen.findByRole("heading", { name: "Payment Confirmed! 🎉" })).toBeTruthy();
-    for (const label of ["Paid — Detected Automatically", "Payment for Buyer has been received", "Summary", "Total • QRIS", "Track Status", "Continue Shopping", "Need help?", "warranty terms"]) {
+    for (const label of ["Paid — Detected Automatically", "Payment for Buyer has been received", "Summary", "Total • QRIS", "Track Status", "Continue Shopping", "Need help?", "warranty claims", "eligible products only", "order PIN"]) {
       expect(text(), label).toContain(label);
     }
     expect(text()).not.toMatch(/Pembayaran Dikonfirmasi|Lunas — Terdeteksi|Ringkasan|Lacak Status/);

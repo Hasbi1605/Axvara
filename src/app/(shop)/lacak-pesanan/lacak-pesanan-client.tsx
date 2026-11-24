@@ -870,7 +870,12 @@ export default function LacakPesananClient() {
 
           <div className={widePaidResult ? "text-center lg:mt-6 lg:border-t lg:border-white/10 lg:pt-4" : "text-center"}>
             {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className={`mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/65 underline decoration-white/20 underline-offset-4 hover:text-white${widePaidResult ? " lg:mt-0" : ""}`}>{ui.lacak.another}</button>}
-            <p className={`${widePaidResult ? (adminView ? "mt-3 lg:mt-0" : "mt-3 lg:mt-1") : "mt-3"} text-center text-[11px] leading-5 text-white/65`}>{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
+            <p className={`${widePaidResult ? (adminView ? "mt-3 lg:mt-0" : "mt-3 lg:mt-1") : "mt-3"} text-center text-[11px] leading-5 text-white/65`}>
+              {(() => {
+                const warrantyLink = <Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.claimLink}</Link>;
+                return isPaid && order.buyerPinRequired ? ui.delivery.notePaidPin(warrantyLink) : ui.delivery.noteBeforePin(warrantyLink);
+              })()}
+            </p>
           </div>
         </div>
       )}

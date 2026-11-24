@@ -296,13 +296,13 @@ describe("chrome ringkasan/footer mengikuti locale pesanan", () => {
     render(<OrderPage />);
     await screen.findByRole("heading", { name: "Crypto Payment" });
     const en = text();
-    for (const label of ["Summary", "Order total", "Continue Shopping", "Need help?", "Third-party AXVARA product", "warranty terms"]) expect(en, label).toContain(label);
-    expect(en).not.toMatch(/Ringkasan|Total pesanan|Lanjut Belanja|Butuh bantuan|ketentuan garansi/);
+    for (const label of ["Summary", "Order total", "Continue Shopping", "Need help?", "Save your order code", "warranty claims", "eligible products only"]) expect(en, label).toContain(label);
+    expect(en).not.toMatch(/Ringkasan|Total pesanan|Lanjut Belanja|Butuh bantuan|klaim garansi|khusus produk bergaransi/);
     cleanup();
     stub({ gets: [orderBody(cryptoView(), { locale: "id", payment_method: "nowpayments:usdtbsc" })] });
     render(<OrderPage />);
     await screen.findByRole("heading", { name: "Pembayaran Crypto" });
-    for (const label of ["Ringkasan", "Total pesanan", "Lanjut Belanja", "Butuh bantuan?", "ketentuan garansi"]) expect(text(), label).toContain(label);
+    for (const label of ["Ringkasan", "Total pesanan", "Lanjut Belanja", "Butuh bantuan?", "Simpan kode pesanan", "klaim garansi", "khusus produk bergaransi"]) expect(text(), label).toContain(label);
     document.cookie = "axv_locale=; Max-Age=0; Path=/";
   });
 });

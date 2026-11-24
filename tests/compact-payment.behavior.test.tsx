@@ -127,6 +127,6 @@ describe("compact pending QRIS payment", () => {
     expect(screen.queryByRole("button", { name: /Ringkasan/ })).toBeNull();
     expect(screen.queryByRole("link", { name: "Simpan QRIS" })).toBeNull();
     expect(screen.getByRole("link", { name: "Lacak Status" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Syarat klaim garansi" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Syarat klaim garansi (khusus produk bergaransi)" })).toBeTruthy();
   });
 });

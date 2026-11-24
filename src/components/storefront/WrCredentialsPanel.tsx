@@ -305,14 +305,14 @@ export function WrCredentialsPanel({
               </div>
               {c.terms && !creds.slice(i+1).some(next=>JSON.stringify(next.terms)===JSON.stringify(c.terms)) && (c.terms.sections.length > 0 || c.terms.activation.length > 0 || c.terms.notes.length > 0) && (
                 <>
-                  {c.terms.sections.length > 0 && (
-                    <MobileCollapsible title={text.terms}>
-                      <TermsBody sections={c.terms.sections} size="xs" locale={locale} />
-                    </MobileCollapsible>
-                  )}
                   {(c.terms.activation.length > 0 || c.terms.notes.length > 0) && (
                     <MobileCollapsible title={text.activation}>
                       <ActivationBody groups={c.terms.activation} notes={c.terms.notes} size="xs" />
+                    </MobileCollapsible>
+                  )}
+                  {c.terms.sections.length > 0 && (
+                    <MobileCollapsible title={text.terms}>
+                      <TermsBody sections={c.terms.sections} size="xs" locale={locale} />
                     </MobileCollapsible>
                   )}
                 </>

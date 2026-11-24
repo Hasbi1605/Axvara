@@ -90,8 +90,13 @@ export function orderCopy(locale: Locale) {
       track: en ? "Track Status" : "Lacak Status",
       shop: en ? "Continue Shopping" : "Lanjut Belanja",
       help: en ? "Need help?" : "Butuh bantuan?",
-      note: en ? "Third-party AXVARA product — keep your order code for claims. Warranty is a replacement under the " : "Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai ",
-      terms: en ? "warranty terms" : "ketentuan garansi",
+      claimLink: en ? "warranty claims" : "klaim garansi",
+      notePaidPin: (claimLink: React.ReactNode) => (en
+        ? <>Save your order code for {claimLink} (eligible products only) and your order PIN to reopen product details or access them on another device.</>
+        : <>Simpan kode pesanan untuk {claimLink} (khusus produk bergaransi) dan PIN pesanan untuk membuka detail produk kembali atau di perangkat lain.</>),
+      noteBeforePin: (claimLink: React.ReactNode) => (en
+        ? <>Save your order code to track status and submit {claimLink} (eligible products only).</>
+        : <>Simpan kode pesanan untuk melacak status dan {claimLink} (khusus produk bergaransi).</>),
       toBuyerEmail: en ? "Order details are sent automatically by email when the order is placed and shown on this page." : "Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.",
       toBuyerPanel: en ? "Check this page for product details, or contact the admin with your order code if you need help." : "Cek detail produk di halaman ini, atau hubungi admin dengan kode pesanan jika butuh bantuan.",
       preparingTitle: en ? "Preparing product details" : "Menyiapkan detail produk",
@@ -291,7 +296,7 @@ export function orderCopy(locale: Locale) {
       submit: en ? "Show" : "Tampilkan",
     },
     warranty: {
-      title: en ? "Warranty claim terms" : "Syarat klaim garansi",
+      title: en ? "Warranty claim terms (eligible products only)" : "Syarat klaim garansi (khusus produk bergaransi)",
       note: en ? "Note:" : "Catatan:",
     },
   };

@@ -669,8 +669,11 @@ export default function OrderSuccessPage() {
     </div>
   );
 
+  const warrantyLink = <Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.claimLink}</Link>;
   const disclaimerBlock = (
-    <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : isPaid ? "mt-4 text-[11px] leading-5 lg:mt-6 lg:border-t lg:border-white/10 lg:pt-4" : "mt-4 text-[11px] leading-5"} text-center text-white/65`}>{oc.note}<Link prefetch={false} href="/garansi-replace" className="text-white/65 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.terms}</Link>.</p>
+    <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : isPaid ? "mt-4 text-[11px] leading-5 lg:mt-6 lg:border-t lg:border-white/10 lg:pt-4" : "mt-4 text-[11px] leading-5"} text-center text-white/65`}>
+      {isPaid && order.buyerPinRequired ? oc.notePaidPin(warrantyLink) : oc.noteBeforePin(warrantyLink)}
+    </p>
   );
 
   const renderPaidBody = (pinNode: ReactNode, credPanel: ReactNode) => (
