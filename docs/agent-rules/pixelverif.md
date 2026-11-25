@@ -2,6 +2,8 @@
 
 ## Sinkronisasi stok — 25 November 2026
 
+- Daftar pantauan Markup memakai snapshot baca-saja `pixelverif_observed_plans`; jangan mengubah paket yang hanya teramati menjadi SKU, markup, atau eligibility checkout. Paket yang hilang dari respons tetap ada di snapshot sebagai tidak tercantum. Jangan tampilkan harga yang tidak diketahui sebagai nol.
+
 - `/api/pricing` saat dicek mengiklankan `full:6` (1,2 kredit) dengan `allowed_validities: [6]`; ini bukan bukti checkout atau aktivasi. Sync membaca perubahan metadata tanpa menambah SKU 6 bulan. Paket lokal yang tidak lagi tersedia diproyeksikan stok nol, tanpa mengubah status aktif, copy atau harga terakhir. Jika payload rusak atau kosong tanpa sinyal penonaktifan, pertahankan alarm sync. Tidak ada perubahan alur aktivasi.
 
 ## Perbaikan progres realtime, delivery segera, & debounce checkout — 23 November 2026 (lokal, belum dideploy)

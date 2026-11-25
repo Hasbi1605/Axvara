@@ -5,6 +5,7 @@ import { isPixelverifConfigured, isPixelverifEnabled, isPixelverifSyncEnabled } 
 import { parseStoredSyncError } from "@/lib/sync-status";
 import { loadProductGroupLosers, computeVariantLiveStatus } from "@/lib/product-live-status";
 import { PIXELVERIF_FAMILY } from "@/lib/pixelverif/families";
+import { parsePixelverifObservedPlans, PIXELVERIF_OBSERVED_PLANS_KEY, pixelverifObservedKey } from "@/lib/pixelverif/observed-plans";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -38,7 +39,8 @@ export async function GET(request: NextRequest) {
         ORDER BY s.flow_type ASC`,
     );
     const settings = await db.queryAll(
-      `SELECT key, value FROM store_settings WHERE key IN ('pixelverif_catalog_success_at','pixelverif_catalog_last_error')`,
+      `SELECT key, value FROM store_settings WHERE key IN ('pixelverif_catalog_success_at','pixelverif_catalog_last_error',?)`,
+      PIXELVERIF_OBSERVED_PLANS_KEY,
     );
     const loserToWinner = await loadProductGroupLosers(db.queryAll);
     const items = rows.map((row) => {
@@ -66,12 +68,27 @@ export async function GET(request: NextRequest) {
         variant_reason: live.reason,
       };
     });
+    const mirrored = new Set(rows.map(row => row.service_key));
+    const observed = parsePixelverifObservedPlans(settings.find(r => r.key === PIXELVERIF_OBSERVED_PLANS_KEY)?.value)
+      .filter(plan => !mirrored.has(pixelverifObservedKey(plan.flow, plan.months)))
+      .map(plan => ({
+        service_key: pixelverifObservedKey(plan.flow, plan.months),
+        label: `${plan.flow === "full" ? "Aktivasi Langsung" : "Link Redeem"} ${plan.months} Bulan`,
+        credit_cost: plan.cost,
+        markup_percent: 0,
+        variant_active: 0,
+        variant_id: null,
+        variant_status: "hidden_nocatalog",
+        variant_reason: "Belum terhubung ke katalog AXVARA",
+        pixel_observed_state: plan.state,
+        family: { key: `pixel-observed-${plan.months}`, name: `Google AI Pro ${plan.months} Bulan` },
+      }));
     return json({
       ok: true,
       configured: isPixelverifConfigured(),
       dispatch_enabled: isPixelverifEnabled(),
       sync_enabled: isPixelverifSyncEnabled(),
-      items,
+      items: [...items, ...observed],
       last_sync_at: settings.find((r) => r.key === "pixelverif_catalog_success_at")?.value ?? null,
       last_error: parseStoredSyncError(settings.find((r) => r.key === "pixelverif_catalog_last_error")?.value),
     });

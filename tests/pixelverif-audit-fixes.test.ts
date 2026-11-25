@@ -27,6 +27,7 @@ import { hasActiveSupplierLink } from "@/components/admin/SupplierLinkActions";
 import { supplierOrderError } from "@/components/admin/SupplierOrderQueue";
 import { sanitizePixelverifReceiptSummary } from "@/lib/pixelverif/admin";
 import { projectPixelverifCatalog } from "@/lib/pixelverif/catalog";
+import { PIXELVERIF_OBSERVED_PLANS_KEY } from "@/lib/pixelverif/observed-plans";
 import { processPixelverifOrders, retryPixelverifOrder } from "@/lib/pixelverif/orders";
 import { purgeExpiredPixelverifInputs } from "@/lib/pixelverif/purge";
 import { PIXELVERIF_RETRYABLE_ERRORS } from "@/lib/pixelverif/retryable";
@@ -98,6 +99,26 @@ afterEach(() => {
 });
 
 describe("Pixel Verification peer-reviewed audit fixes", () => {
+  it("lists unmapped observations only in the private admin catalog without giving them a writable ID", async () => {
+    seedPixelCatalog();
+    fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES(?,?)").run(PIXELVERIF_OBSERVED_PLANS_KEY, JSON.stringify([
+      { flow: "full", months: 3, cost: null, state: "disabled" },
+      { flow: "full", months: 6, cost: 1.2, state: "available" },
+      { flow: "normal", months: 6, cost: null, state: "disabled" },
+    ]));
+    const res = await pixelProductsGet(new NextRequest("http://localhost/api/admin/pixelverif/products"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    const { items } = await res.json();
+    expect(items).toHaveLength(4);
+    expect(items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ service_key: "full_3", variant_id: 2 }),
+      expect.objectContaining({ service_key: "full_6", variant_id: null, variant_status: "hidden_nocatalog", credit_cost: 1.2, pixel_observed_state: "available" }),
+      expect.objectContaining({ service_key: "normal_6", variant_id: null, variant_status: "hidden_nocatalog", credit_cost: null, pixel_observed_state: "disabled" }),
+    ]));
+    const bulk = await bulkMarkupPost(jsonReq("http://localhost/api/admin/pixelverif/markup/bulk", { variant_ids: ["full_6"], markup_percent: 46 }));
+    expect(await bulk.json()).toMatchObject({ updated: 0, failed: [{ id: "full_6", error: "invalid_id" }] });
+  });
   it("[C1] projects available services as unlimited stock (-1) so concurrent pending orders do not cause STOK HABIS", async () => {
     seedPixelCatalog();
     fx.sql.exec("UPDATE product_variants SET stock=1 WHERE id IN (1,2)");

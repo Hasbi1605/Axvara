@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import type { D1 } from "@/lib/db";
 import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import { projectPixelverifCatalog, publishPixelverifCatalog } from "@/lib/pixelverif/catalog";
+import { PIXELVERIF_OBSERVED_PLANS_KEY, parsePixelverifObservedPlans } from "@/lib/pixelverif/observed-plans";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
 let f: ReturnType<typeof createD1Fixture>;
@@ -188,6 +189,30 @@ it("does not create fallback services or variants on the first sync of a six-mon
   expect(await publishPixelverifCatalog(createDatabaseAccess(f.db), 16000)).toMatchObject({ ok: true, mirrored: 0 });
   expect(f.sql.prepare("SELECT COUNT(*) AS count FROM pixelverif_services").get()).toEqual({ count: 0 });
   expect(f.sql.prepare("SELECT COUNT(*) AS count FROM products WHERE pixelverif_family IS NOT NULL").get()).toEqual({ count: 0 });
+});
+
+it("remembers priced, disabled, and subsequently delisted plans for admin only", async () => {
+  setupFixture();
+  const db = createDatabaseAccess(f.db);
+  const readObserved = () => parsePixelverifObservedPlans(f.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(PIXELVERIF_OBSERVED_PLANS_KEY)?.value);
+  pricingOverride = sixMonthPricing;
+  expect(await publishPixelverifCatalog(db, 16000, { force: true })).toMatchObject({ ok: true });
+  expect(readObserved()).toEqual([
+    { flow: "full", months: 3, cost: null, state: "disabled" },
+    { flow: "normal", months: 3, cost: null, state: "disabled" },
+    { flow: "full", months: 6, cost: 1.2, state: "available" },
+    { flow: "normal", months: 6, cost: null, state: "disabled" },
+  ]);
+  pricingOverride = { ...sixMonthPricing, allowed_validities: [12], pricing: { full: { "12": 3 } } };
+  expect(await publishPixelverifCatalog(db, 16000, { force: true })).toMatchObject({ ok: true });
+  expect(readObserved()).toContainEqual({ flow: "full", months: 6, cost: 1.2, state: "unlisted" });
+  expect(readObserved()).toContainEqual({ flow: "full", months: 12, cost: 3, state: "available" });
+  const latest = readObserved();
+  pricingOverride = { pricing: null };
+  expect(await publishPixelverifCatalog(db, 16000, { force: true })).toMatchObject({ ok: false });
+  expect(readObserved()).toEqual(latest);
+  expect(f.sql.prepare("SELECT COUNT(*) AS count FROM pixelverif_services").get()).toEqual({ count: 0 });
+  expect(f.sql.prepare("SELECT COUNT(*) AS count FROM product_variants WHERE pixelverif_flow_type IS NOT NULL").get()).toEqual({ count: 0 });
 });
 
 it("retires a previously sellable plan on native workerd D1", async () => {

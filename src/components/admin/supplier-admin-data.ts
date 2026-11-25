@@ -29,6 +29,7 @@ type Product = {
   label?: string | null; variant_label?: string | null; family?: Family | string | null; family_key?: string;
   excluded?: number; supplier_description?: string | null; delivery_type?: string;
   variant_status?: VariantLiveStatus | string; variant_reason?: string;
+  pixel_observed_state?: "available" | "disabled" | "unlisted";
   bulk_markup_tiers?: MarkupTier[] | null; bulk_tiers_preview?: { min_qty: number; unit_price: number }[];
 };
 

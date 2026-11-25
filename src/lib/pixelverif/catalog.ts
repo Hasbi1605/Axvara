@@ -222,7 +222,7 @@ export async function publishPixelverifCatalog(
     await recordSyncError(db, "pixelverif_catalog", "fx_unavailable", now);
     return { ok: false, error: "fx_unavailable" } as const;
   }
-  if (!db.canSpend(23)) {
+  if (!db.canSpend(24)) {
     await recordSyncError(db, "pixelverif_catalog", "catalog_budget_exceeded", now);
     return { ok: false, error: "catalog_budget_exceeded" } as const;
   }

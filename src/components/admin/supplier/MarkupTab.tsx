@@ -37,9 +37,9 @@ function ProcessBadge({ process }: { process?: string | null }) {
   return process ? <Badge variant="secondary">{process}</Badge> : null;
 }
 
-function FamilyCard({ title, description, archived, parentInactive, mode = "manual", selectable = false, children }: {
+function FamilyCard({ title, description, archived, parentInactive, mode = "manual", selectable = false, showPriceHeader = true, children }: {
   title: string; description: ReactNode; archived?: boolean; parentInactive?: boolean;
-  mode?: "manual" | "fixed"; selectable?: boolean; children: ReactNode;
+  mode?: "manual" | "fixed"; selectable?: boolean; showPriceHeader?: boolean; children: ReactNode;
 }) {
   return <Card>
     <CardHeader className="flex-row flex-wrap items-center gap-2 space-y-0 p-4 pb-2">
@@ -48,7 +48,7 @@ function FamilyCard({ title, description, archived, parentInactive, mode = "manu
       <CardDescription className="w-full break-words text-xs">{description}</CardDescription>
     </CardHeader>
     <CardContent className="space-y-2 p-4 pt-0">
-      <SupplierPriceHeader mode={mode} selectable={selectable} />
+      {showPriceHeader && <SupplierPriceHeader mode={mode} selectable={selectable} />}
       {children}
     </CardContent>
   </Card>;
@@ -176,8 +176,21 @@ export function MarkupTab() {
 
     {pagedGroups.groups.map(group => <FamilyCard key={group.key} title={group.name}
       description={`${group.items.length} varian`}
-      archived={group.archived} parentInactive={group.inactive} mode={mode} selectable>
+      archived={group.archived} parentInactive={group.inactive} mode={mode} selectable
+      showPriceHeader={group.items.some(item => !item.pixel_observed_state)}>
       {group.items.map(item => {
+        if (item.pixel_observed_state) {
+          const available = item.pixel_observed_state === "available";
+          const availability = available ? "Tersedia di Pixel" : item.pixel_observed_state === "disabled" ? "Nonaktif di Pixel" : "Tidak tercantum lagi di API";
+          return <div key={`pixel-observed-${item.id}`} className="space-y-1 rounded-lg border border-admin-border bg-admin-subtle/40 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="break-words font-medium text-admin-fg">{item.label}</p>
+              <Badge variant={available ? "success" : "secondary"}>{availability}</Badge>
+              <Badge variant="warning">Belum terhubung ke katalog</Badge>
+            </div>
+            <p className="break-words text-xs text-admin-muted">{item.id} · {item.cost == null ? "Harga API tidak tersedia" : `${available ? "Harga API" : "Harga API terakhir"} ${supplierMoney(currency, item.cost)}`}</p>
+          </div>;
+        }
         if (isWrSk) {
           const canEdit = item.product_archived !== 1;
           const stockText = item.stock === -1 ? "∞" : String(item.stock);

@@ -173,6 +173,8 @@ Keputusan owner untuk mengurangi kesan sesak pada transisi `CommunityBar` → `K
 
 ## Panel supplier admin terpadu (6 supplier) — 19 November 2026 (V3, lokal)
 
+Tambahan Pixel Verification (25 November 2026): baris paket yang belum terhubung muncul di Markup → Semua dan Disembunyikan otomatis, bisa dicari menurut nama/kode, dan dikelompokkan per durasi. Kartu menampilkan status supplier dan harga API bila diketahui; tidak menampilkan kontrol harga atau aktivasi untuk baris pantauan.
+
 Warung Rebahan (`warung`) dan Sekalipay (`sekalipay`) disatukan ke panel bersama
 `SupplierAdminPanel` (bersama `AIVault`, `TUNVN`, `StoreBat`, `Mirai`) dengan
 enam menu/bookmark sidebar tetap dan primitive/token `admin-*` existing:

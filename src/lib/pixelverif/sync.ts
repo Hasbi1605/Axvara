@@ -2,6 +2,7 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import { catalogFailureRecorder, catalogWriteFailure, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { fetchPixelverifPricing, isPixelverifConfigured, isPixelverifSyncEnabled } from "./client";
 import { PIXELVERIF_VARIANTS } from "./families";
+import { observePixelverifPlans, PIXELVERIF_OBSERVED_PLANS_KEY } from "./observed-plans";
 
 export const PIXELVERIF_SYNC_KEY = "pixelverif_catalog_sync_at";
 export const PIXELVERIF_RETRY_AFTER_KEY = "pixelverif_catalog_retry_until";
@@ -22,9 +23,10 @@ export async function syncPixelverifCatalog(
   }
 
   const settings = await db.queryAll(
-    "SELECT key, value FROM store_settings WHERE key IN (?, ?)",
+    "SELECT key, value FROM store_settings WHERE key IN (?, ?, ?)",
     PIXELVERIF_SYNC_KEY,
     PIXELVERIF_RETRY_AFTER_KEY,
+    PIXELVERIF_OBSERVED_PLANS_KEY,
   );
   const prevSync = settings.find((r) => r.key === PIXELVERIF_SYNC_KEY);
   const prevRetry = settings.find((r) => r.key === PIXELVERIF_RETRY_AFTER_KEY);
@@ -84,8 +86,10 @@ export async function syncPixelverifCatalog(
   }));
   if (!hasPublishedPrice && !plans.every((plan) => plan.explicitlyDisabled)) return fail("invalid_or_empty_catalog");
   const at = new Date(now).toISOString();
+  const previousPlans = settings.find((r) => r.key === PIXELVERIF_OBSERVED_PLANS_KEY)?.value;
+  const observedPlans = JSON.stringify(observePixelverifPlans(pricing, previousPlans));
   try {
-    if (!db.canSpend(plans.length + (opts.onFailure ? 11 : 1))) {
+    if (!db.canSpend(plans.length + (opts.onFailure ? 11 : 1) + Number(observedPlans !== previousPlans))) {
       return fail("catalog_budget_exceeded");
     }
     for (const { spec, cost, available } of plans) {
@@ -114,6 +118,14 @@ export async function syncPixelverifCatalog(
         cost,
         pricing.version,
         at,
+      );
+    }
+    if (observedPlans !== previousPlans) {
+      await db.execRun(
+        `INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`,
+        PIXELVERIF_OBSERVED_PLANS_KEY,
+        observedPlans,
       );
     }
     if (!opts.onFailure) await recordSyncSuccess(db, "pixelverif_catalog", now);

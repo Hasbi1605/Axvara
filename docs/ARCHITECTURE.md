@@ -66,6 +66,8 @@
 
 ## Sinkronisasi stok Pixel Verification — 25 November 2026
 
+- `observed-plans.ts` merangkum mode Normal/Full 1–120 bulan dari harga publik dan `disabled_plans` (bukan `link_validation`) ke `store_settings.pixelverif_observed_plans`. Riwayat yang hilang dari feed diberi status `unlisted`; respons invalid tidak mengganti snapshot. `GET /api/admin/pixelverif/products` menambahkan paket tanpa mirror sebagai baris baca-saja, tanpa membuat `pixelverif_services`, `products`, atau `product_variants` baru untuk paket itu. Snapshot tidak menambah request ke supplier dan ditulis ulang hanya saat isinya berubah.
+
 - `syncPixelverifCatalog` menerima harga valid untuk durasi lain sebagai data katalog, tetapi `PIXELVERIF_VARIANTS` tetap menjadi daftar paket yang didukung. `disabled_plans` mengalahkan harga yang masih tercantum. Bila tidak ada harga valid maupun penonaktifan eksplisit untuk semua paket lokal, job tetap mencatat error. Modal terakhir disimpan; tidak ada harga fallback atau baris baru untuk paket yang tidak tersedia.
 - `projectPixelverifCatalog` memproyeksikan hanya layanan tersedia dan menutup stok varian lama secara terpisah dari CAS harga admin. Perubahan stok memicu revisi katalog; `pixelverif_catalog_success_at` tercatat setelah proyeksi tuntas. Tidak ada perubahan migrasi, jadwal cron, checkout, atau dispatch.
 

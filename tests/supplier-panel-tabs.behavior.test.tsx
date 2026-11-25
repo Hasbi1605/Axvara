@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { render as renderAdmin } from "./setup/admin-render";
 import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
 import { SekalipayManager } from "@/components/admin/SekalipayManager";
+import { PixelverifManager } from "@/components/admin/PixelverifManager";
 import { ToastProvider } from "@/components/ui/Toast";
 
 vi.mock("next/navigation", () => ({
@@ -60,6 +61,28 @@ function stubSupplierApi(opts: StubOptions = {}) {
   }));
   return calls;
 }
+
+it("shows observed Pixel plans under Semua but excludes them from active and bulk controls", async () => {
+  stubSupplierApi({ handlers: url => url.endsWith("/pixelverif/products") ? Response.json({
+    configured: true, items: [
+      { service_key: "full_3", label: "Aktivasi Langsung 3 Bulan", variant_id: 1, variant_status: "off", variant_active: 0, markup_percent: 35, family: { key: "three", name: "Google AI Pro 3 Bulan" } },
+      { service_key: "full_6", label: "Aktivasi Langsung 6 Bulan", variant_id: null, variant_status: "hidden_nocatalog", pixel_observed_state: "available", credit_cost: 1.2, markup_percent: 0, family: { key: "six", name: "Google AI Pro 6 Bulan" } },
+      { service_key: "normal_6", label: "Link Redeem 6 Bulan", variant_id: null, variant_status: "hidden_nocatalog", pixel_observed_state: "disabled", markup_percent: 0, family: { key: "six", name: "Google AI Pro 6 Bulan" } },
+    ],
+  }) : null });
+  renderAdmin(<ToastProvider><PixelverifManager /></ToastProvider>);
+  await userEvent.click(screen.getByRole("tab", { name: "Markup" }));
+  await userEvent.click(await screen.findByRole("tab", { name: "Semua (3)" }));
+  expect(screen.getByText("Aktivasi Langsung 6 Bulan")).toBeTruthy();
+  expect(screen.getByText("Tersedia di Pixel")).toBeTruthy();
+  expect(screen.getByText("Nonaktif di Pixel")).toBeTruthy();
+  expect(screen.queryByRole("switch", { name: /6 Bulan/ })).toBeNull();
+  expect(screen.queryByRole("checkbox", { name: /6 Bulan/ })).toBeNull();
+  fireEvent.change(screen.getByRole("textbox", { name: "Cari varian" }), { target: { value: "normal_6" } });
+  expect(screen.getByText("Link Redeem 6 Bulan")).toBeTruthy();
+  expect(screen.queryByText("Aktivasi Langsung 6 Bulan")).toBeNull();
+  expect(screen.queryByText("Pilih halaman ini")).toBeNull();
+});
 
 describe("tab dalam-halaman WR", () => {
   it("mempertahankan hasil filter terbaru saat respons antrean lama terlambat", async () => {
