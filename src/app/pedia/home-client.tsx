@@ -27,7 +27,7 @@ export function PediaHomeClient({ products }: { products: PediaCatalogSummary[] 
         <div className="flex min-w-0 justify-center lg:justify-end shrink-0 mt-6 lg:mt-0"><PediaOrbit /></div>
       </div>
     </section>
-    <div className="mx-auto -mt-1 mb-2 max-w-[1280px] px-4 sm:px-6 lg:px-8"><PediaServiceCards /></div>
+    <div className="mx-auto -mt-1 mb-6 max-w-[1280px] px-4 sm:mb-10 sm:px-6 lg:px-8"><PediaServiceCards /></div>
     <PlatformCatalog products={products} />
   </>;
 }

@@ -32,10 +32,10 @@ export function PlatformCatalog({ products, headingLevel = 2 }: { products: Pedi
       <div><Heading id="pedia-catalog-heading" className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">{query.trim() ? t.catalogResults : t.catalogPickPlatform}</Heading>{query.trim() && <p className="mt-1 text-sm text-white/55">{fill(t.catalogFor, { query: query.trim() })}</p>}</div>
       <span className="shrink-0 text-xs text-white/45">{query.trim() ? fill(t.catalogServiceCount, { count: pediaNumber(results.length, locale) }) : fill(t.catalogPlatformCount, { count: pediaNumber(available.length, locale) })}</span>
     </div>
-    {!query.trim() && <div className="-mx-4 mt-4 flex gap-1.5 overflow-x-auto px-4 pb-2 scrollbar-none sm:mx-0 sm:gap-2 sm:px-0" aria-label={t.catalogGroupsAria}>{PEDIA_GROUPS.filter((g) => !g.id || available.some((p) => p.group === g.id)).map((g) => {
+    {!query.trim() && <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none sm:mx-0 sm:gap-2.5 sm:px-0" aria-label={t.catalogGroupsAria}>{PEDIA_GROUPS.filter((g) => !g.id || available.some((p) => p.group === g.id)).map((g) => {
       const isActive = group === g.id;
-      return <button key={g.id} type="button" onClick={() => setGroup(g.id)} aria-pressed={isActive} className={`flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-[10px] font-medium transition sm:h-9 sm:gap-1.5 sm:px-4 sm:text-sm ${isActive ? "border-white bg-white text-[#080C1E] shadow" : "ax-glass-card border-white/10 text-white/70 hover:bg-white/10 hover:text-white"}`}>
-        <span aria-hidden="true"><IosIcon name={g.icon} size={10} className={`sm:!h-3.5 sm:!w-3.5 ${isActive ? "opacity-100" : "opacity-70"}`} tint={isActive ? "black" : "white"} /></span>
+      return <button key={g.id} type="button" onClick={() => setGroup(g.id)} aria-pressed={isActive} className={`flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 text-[10px] font-medium transition-colors sm:h-9 sm:gap-1.5 sm:px-4 sm:text-sm ${isActive ? "border-white bg-white text-[#080C1E] shadow" : "border-white/[0.08] bg-white/[0.04] text-white/65 hover:border-white/15 hover:bg-white/[0.08] hover:text-white"}`}>
+        {g.id && <span aria-hidden="true"><IosIcon name={g.icon} size={10} className={`sm:!h-3.5 sm:!w-3.5 ${isActive ? "opacity-100" : "opacity-75"}`} tint={isActive ? "black" : "white"} /></span>}
         {groupLabel(g.id, t)}
       </button>;
     })}</div>}

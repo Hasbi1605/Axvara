@@ -138,6 +138,9 @@ describe("shared service navigation", () => {
       expect(card.className).toContain("min-h-[64px]");
       expect(card.className).toContain("min-w-0");
       expect(card.className).toContain("flex-1");
+      expect(card.className).toContain("bg-white/[0.03]");
+      expect(card.className).toContain("border-white/[0.08]");
+      expect(card.className).not.toContain("ax-glass-card");
       expect(card.querySelector(".truncate")).toBeNull();
       expect(card.querySelector(".break-words")).toBeTruthy();
       expect(card.querySelector("[class*='h-7'][class*='w-7'][class*='sm:h-9'][class*='sm:w-9']")).toBeTruthy();

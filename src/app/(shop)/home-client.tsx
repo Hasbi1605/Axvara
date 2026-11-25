@@ -234,7 +234,7 @@ export function HomeClient({ initialProducts, initialCategories, initialRevision
       <CommunityBar />
 
       {/* Katalog with pagination — authoritative D1 data */}
-      <section id="katalog" className="scroll-mt-36 lg:scroll-mt-20 mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
+      <section id="katalog" className="scroll-mt-36 lg:scroll-mt-20 mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 pb-10">
         <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{t.catalogTitle}</h2>
         <div className="mt-4">
           <CategoryPills categories={sortCategoriesForDisplay(categories)} active={activeCat} onChange={selectCategory} />
@@ -266,7 +266,7 @@ export function HomeClient({ initialProducts, initialCategories, initialRevision
               const open = Boolean(expanded[key]);
               const busy = expanding === key;
               const categoryLabel = category ? marketCategoryName(category.slug, prices.locale, category.name) : t.uncategorized;
-              return <section key={category?.slug ?? "unknown"} data-catalog-category={category?.slug} aria-labelledby={`category-${category?.slug ?? "unknown"}`} className={cn("catalog-category-section scroll-mt-40", groupIndex === 0 ? "mt-3 sm:mt-4" : "mt-10 sm:mt-14")}>
+              return <section key={category?.slug ?? "unknown"} data-catalog-category={category?.slug} aria-labelledby={`category-${category?.slug ?? "unknown"}`} className={cn("catalog-category-section scroll-mt-40", groupIndex === 0 ? "mt-4 sm:mt-6" : "mt-10 sm:mt-14")}>
               <div className="mb-4 flex items-center gap-2 sm:mb-5 sm:gap-3">
                 <span aria-hidden="true" className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center sm:h-10 sm:w-10">
                   {icon ? <>

@@ -1,5 +1,14 @@
 # DESIGN.md — AXVARA Design System
 
+## Ritme jarak & permukaan tenang area header katalog beranda — 25 November 2026 (lokal)
+
+Keputusan owner untuk mengurangi kesan sesak pada transisi `CommunityBar` → `Katalog Premium` → `CategoryPills` → header kategori pertama (menggantikan jeda 16px dan permukaan `.ax-glass-card` seragam pada chrome pendukung):
+
+- **Hierarki jarak vertikal (`src/app/(shop)/home-client.tsx`):** `#katalog` memakai `pt-6 sm:pt-10` (total jeda dari `CommunityBar` menjadi **32px mobile / 48px desktop**, naik dari 16px); `Katalog Premium` → strip pill tetap rapat `mt-4` (**16px**); section kategori pertama memakai `mt-4 sm:mt-6` (total jeda dari pill bersama `pb-2` menjadi **24px mobile / 32px desktop**, naik dari 20/24px); header → grid tetap `mb-4 sm:mb-5` (**16/20px**) dan antar-kategori tetap `mt-10 sm:mt-14` (**40/56px**). Beranda Pedia (`src/app/pedia/home-client.tsx`) diselaraskan dengan `mb-6 sm:mb-10` pada pembungkus `PediaServiceCards` (total **32px mobile / 48px desktop** ke `#pedia-catalog`, tanpa mengubah `/pedia/layanan`).
+- **Permukaan chrome tenang tanpa shadow berat:**
+  - **Pill kategori tidak aktif** (`src/components/storefront/CategoryPills.tsx`, `src/components/pedia/PlatformCatalog.tsx`): melepas `.ax-glass-card` ke permukaan datar ringan `border-white/[0.08] bg-white/[0.04] text-white/65` (`hover:border-white/15 hover:bg-white/[0.08] hover:text-white`), `gap-2 sm:gap-2.5`, `px-2.5 sm:px-4`, serta meredupkan ikon tidak aktif ke `opacity-75`. Pill `Semua`/`All` (Market & Pedia) ditampilkan tanpa ikon bintang agar tidak kembar dengan kategori `Streaming & Hiburan`. Pill aktif tetap putih solid `bg-white text-[#080C1E]`.
+  - **Kartu lintas-layanan `CrossServicePromo`** (`src/components/shared/CrossServicePromo.tsx`): melepas `.ax-glass-card` ke permukaan kaca datar tenang `border-white/[0.08] bg-white/[0.03]` (`hover:border-white/20 hover:bg-white/[0.06]`), ikon brand `opacity-90 group-hover:opacity-100`, serta `ArrowUpRight` tetap tampil dengan kontras lembut `text-white/35 group-hover:text-white/75`. Kontrak tinggi `min-h-[64px]` dan tata letak 2 kolom kanan-kiri di mobile tidak berubah.
+
 ## AXVARA 2FA (`2fa.axvara.tech`) — 24 November 2026 (lokal)
 
 - **Identitas & permukaan Liquid Glass AXVARA (`2fa/public/{index.html,styles.css,favicon.svg}`):** Topbar sticky (`60px` desktop / `56px` mobile) selaras dengan `mail.axvara.tech`: logo Prism wireframe resmi AXVARA (`viewBox="0 0 120 110"`), wordmark `AXVARA / 2FA`, pill tenang berikon gembok `Lokal di browser`, tautan `axvara.tech ↗`, serta favicon `/favicon.svg`. Satu kartu utama `.ax-card` terpusat (`max-width: 760px`) tanpa hero marketing, tanpa kartu fitur dekoratif, dan tanpa teks helper berlebih; tetap mematuhi CSP ketat (`style-src 'self'`, nol `innerHTML`, nol inline `style=`, animasi countdown ring via atribut SVG `stroke-dashoffset`).

@@ -498,16 +498,19 @@ produksi; daily-admin-summary tidak diubah. Deployment/data ingest belum terbukt
   `aria-busy`/`aria-controls`; `aria-disabled` + guard klik menjaga fokus selama
   loading. Ciutkan menggulir ke section bila header di atas navbar. Permukaan
   tombol32px dalam target44px, outline keyboard netral; cyan hanya pada active.
-- Revisi pills owner17November: wrapper `mt-4` tanpa sticky/style top/latar/blur/
+- Revisi pills owner17November (diperbarui 25 November 2026): wrapper `mt-4` tanpa sticky/style top/latar/blur/
   divider. `selectCategory` hanya set filter dan reset pagination, tanpa scroll;
   event `axvara:category` dari sheet/deep link tetap kontrak navigasinya.
-  `CategoryPills` mengembalikan area scroll mobile `-mx-4 px-4`/reset mulai `sm`,
-  padding bawah8px dan outline fokus inset agar tidak terpotong. Section pertama
-  `mt-3 sm:mt-4` (gap visual20/24px dengan padding strip); header-grid16/20px,
-  antarkategori tetap40/56px. Sumber SSR/API, urutan kategori, grouping dan ekspansi
-  tidak berubah. Header Katalog Premium tidak lagi memiliki counter total/tampil
-  pada mode grup/filter/search; jumlah header kategori tetap. Implementasi lokal,
-  bukan bukti deployment.
+  `CategoryPills` mempertahankan area scroll mobile `-mx-4 px-4`/reset mulai `sm`,
+  padding bawah 8px dan outline fokus inset agar tidak terpotong; sejak 25 Nov 2026
+  `#katalog` memakai `pt-6 sm:pt-10` (jeda dari `CommunityBar` 32/48px, selaras
+  `mb-6 sm:mb-10` di beranda Pedia), section pertama `mt-4 sm:mt-6` (gap visual
+  24/32px dengan `pb-2`), header-grid 16/20px, antarkategori tetap 40/56px, serta
+  pill tidak aktif dan `CrossServicePromo` memakai permukaan datar ringan tanpa
+  `.ax-glass-card` dan pill `Semua` tanpa ikon bintang duplikat. Sumber SSR/API,
+  urutan kategori, grouping dan ekspansi tidak berubah. Header Katalog Premium
+  tidak lagi memiliki counter total/tampil pada mode grup/filter/search; jumlah
+  header kategori tetap. Implementasi lokal, bukan bukti deployment.
 - Aset `public/brand/catalog/category-3d/<slug>.webp`: **ikon 3D kategori custom AXVARA,
   dibuat dengan image generation, dipangkas 192px webp**; map murni
   `src/lib/category-3d-icons.ts`, tes keberadaan semua file.
