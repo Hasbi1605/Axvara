@@ -35,6 +35,10 @@ type PriceChange = { product_id: number; variant_id?: number; name: string; prev
 
 import { rowMatchesIssue } from "@/lib/checkout-line-identity";
 
+const CIRCLED_STEPS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"] as const;
+const formatStepHeading = (step: number, label: string) =>
+  `${CIRCLED_STEPS[step - 1] ?? `${step}.`} ${label}`;
+
 type DirectProduct = Product & {
   buyerFieldKey?: BuyerFieldKey | null;
   customBuyerFields?: CustomBuyerFieldsConfig | null;
@@ -908,6 +912,13 @@ function CheckoutInner() {
     </label>
   );
 
+  let nextCheckoutStep = 3;
+  const museStep = needsMuseCode ? nextCheckoutStep++ : 0;
+  const inviteStep = needsInviteEmail ? nextCheckoutStep++ : 0;
+  const customStepStart = nextCheckoutStep;
+  nextCheckoutStep += customFieldGroups.length;
+  const pixelStep = needsPixelverif ? nextCheckoutStep++ : 0;
+
   return (
     <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       <h1 className="font-display font-bold text-2xl text-white tracking-[-0.02em]">Checkout</h1>
@@ -1032,7 +1043,7 @@ function CheckoutInner() {
                   autoCorrect="off"
                   autoCapitalize="none"
                   spellCheck={false}
-                  enterKeyHint={needsPixelverif || needsMuseCode || needsInviteEmail ? "next" : "done"}
+                  enterKeyHint={needsPixelverif || needsMuseCode || needsInviteEmail || needsCustomFields ? "next" : "done"}
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setFieldErrors((f) => ({ ...f, email: "" })); }}
                   placeholder={text("email@contoh.com", "email@example.com")}
@@ -1045,8 +1056,8 @@ function CheckoutInner() {
             </div>
 
             {needsMuseCode && (
-              <div className="mt-5 border-t border-white/10 pt-5" data-testid="checkout-muse-section">
-                <h3 className="text-sm font-semibold text-white">{text("Data Aktivasi Muse", "Muse Activation Details")}</h3>
+              <div className="mt-6 border-t border-white/10 pt-6" data-testid="checkout-muse-section">
+                <h2 className="text-sm font-semibold text-white">{formatStepHeading(museStep, text("Data Aktivasi Muse", "Muse Activation Details"))}</h2>
                 <p id="checkout-muse-hint" className="mt-1 text-xs leading-5 text-white/45">
                   {text("6 huruf/angka dari menu Invite friends (huruf besar/kecil berpengaruh; 1–30 = 1–30B token).", "6 letters/numbers from Invite friends (case-sensitive; qty 1–30 = 1–30B tokens).")}
                 </p>
@@ -1077,8 +1088,8 @@ function CheckoutInner() {
             )}
 
             {needsInviteEmail && (
-              <div className="mt-5 border-t border-white/10 pt-5" data-testid="checkout-invite-email-section">
-                <h3 className="text-sm font-semibold text-white">{text("Data Invite", "Invitation Details")}</h3>
+              <div className="mt-6 border-t border-white/10 pt-6" data-testid="checkout-invite-email-section">
+                <h2 className="text-sm font-semibold text-white">{formatStepHeading(inviteStep, text("Data Invite", "Invitation Details"))}</h2>
                 <p id="checkout-invite-email-hint" className="mt-1 text-xs leading-5 text-white/45">
                   {text("Masukkan alamat email akun yang akan menerima undangan paket ini.", "Enter the email address that will receive the package invitation.")}
                 </p>
@@ -1114,7 +1125,7 @@ function CheckoutInner() {
                     autoCorrect="off"
                     autoCapitalize="none"
                     spellCheck={false}
-                    enterKeyHint={needsPixelverif ? "next" : "done"}
+                    enterKeyHint={needsPixelverif || needsCustomFields ? "next" : "done"}
                     placeholder="nama@gmail.com"
                     aria-invalid={!!inviteEmailError}
                     aria-describedby={inviteEmailError ? "checkout-invite-email-hint checkout-invite-email-error" : "checkout-invite-email-hint"}
@@ -1125,18 +1136,18 @@ function CheckoutInner() {
               </div>
             )}
 
-            {customFieldGroups.map((group) => {
+            {customFieldGroups.map((group, groupIdx) => {
               const hasSecret = group.config.fields.some((f) => f.type === "password");
               return (
                 <div
                   key={group.variantId}
-                  className="mt-5 border-t border-white/10 pt-5"
+                  className="mt-6 border-t border-white/10 pt-6"
                   data-testid="checkout-custom-fields-section"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-white">
-                      {group.config.title?.trim() || text("Data Tambahan", "Additional Details")}
-                    </h3>
+                    <h2 className="text-sm font-semibold text-white">
+                      {formatStepHeading(customStepStart + groupIdx, group.config.title?.trim() || text("Data Tambahan", "Additional Details"))}
+                    </h2>
                     {customFieldGroups.length > 1 && (
                       <span className="text-xs text-white/45">{group.label}</span>
                     )}
@@ -1254,10 +1265,10 @@ function CheckoutInner() {
             })}
 
             {needsPixelverif && (
-              <div className="mt-5 border-t border-white/10 pt-5" data-testid="checkout-activation-section">
-                <h3 className="text-sm font-semibold text-white">
-                  {text("Data Akun Google yang Diaktivasi", "Google Account to Activate")}
-                </h3>
+              <div className="mt-6 border-t border-white/10 pt-6" data-testid="checkout-activation-section">
+                <h2 className="text-sm font-semibold text-white">
+                  {formatStepHeading(pixelStep, text("Data Akun Google yang Diaktivasi", "Google Account to Activate"))}
+                </h2>
                 <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-white/45">
                   <Lock aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#00E5FF]/75" />
                   <span>{text("Terenkripsi, dipakai sekali oleh bot untuk aktivasi, lalu dihapus.", "Encrypted, used once by our bot for activation, then deleted.")}</span>

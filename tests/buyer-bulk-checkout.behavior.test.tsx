@@ -111,6 +111,7 @@ describe("checkout + grosir", () => {
     render(<CheckoutPage />);
 
     const inviteSection = screen.getByTestId("checkout-invite-email-section");
+    expect(within(inviteSection).getByRole("heading", { name: "③ Data Invite" })).toBeTruthy();
     const inviteInput = document.getElementById("checkout-invite-email") as HTMLInputElement;
     const contactEmail = document.getElementById("checkout-email") as HTMLInputElement;
     const waInput = document.getElementById("checkout-wa") as HTMLInputElement;
@@ -207,7 +208,7 @@ describe("checkout + grosir", () => {
     render(<CheckoutPage />);
 
     const section = screen.getByTestId("checkout-custom-fields-section");
-    expect(within(section).getByText("Data Akun Aktivasi")).toBeTruthy();
+    expect(within(section).getByRole("heading", { name: "③ Data Akun Aktivasi" })).toBeTruthy();
     const emailInput = document.getElementById("checkout-custom-11-account_email") as HTMLInputElement;
     const passInput = document.getElementById("checkout-custom-11-account_password") as HTMLInputElement;
     const contactWa = document.getElementById("checkout-wa") as HTMLInputElement;
@@ -255,6 +256,36 @@ describe("checkout + grosir", () => {
     expect(localStorage.getItem("axvara-cart") ?? "").not.toContain("PassRahasia123");
   });
 
+  it("checkout numbers multiple product-specific data sections sequentially (③, ④) after ① & ②", () => {
+    stubQuote(() => ({ body: ok([]) }));
+    useCart.setState({
+      items: [
+        line({ id: "60", variantId: 101, qty: 1, price: 18_000, buyerFieldKey: "invite_email", bulkTiers: [] }),
+        line({
+          id: "60",
+          variantId: 102,
+          qty: 1,
+          price: 40_000,
+          buyerFieldKey: "custom",
+          customBuyerFields: {
+            title: "Data Akun Google untuk Aktivasi",
+            fields: [
+              { key: "account_email", label: "Email akun Google", type: "email", required: true },
+              { key: "account_password", label: "Password akun Google", type: "password", required: true },
+            ],
+          },
+          bulkTiers: [],
+        }),
+      ],
+    });
+    render(<CheckoutPage />);
+
+    expect(screen.getByRole("heading", { name: "① Metode Pembayaran" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "② Data Pembeli" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "③ Data Invite" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "④ Data Akun Google untuk Aktivasi" })).toBeTruthy();
+  });
+
   it("checkout Google activation separates contact fields above activation section, toggles password visibility, and validates on blur", async () => {
     const bodies = stubQuote(() => ({ body: ok([quoted(1, 39_900, { queued_delivery: true, automatic_processing: true, buyer_fields: { pv_fingerprint: "fp1" } })]) }));
     useCart.setState({ items: [line({ qty: 1, price: 39_900, pixelverifInput: true, maxQty: 1, bulkTiers: [] })] });
@@ -264,6 +295,7 @@ describe("checkout + grosir", () => {
     const waInput = document.getElementById("checkout-wa") as HTMLInputElement;
     const contactEmail = document.getElementById("checkout-email") as HTMLInputElement;
     const activationSection = screen.getByTestId("checkout-activation-section");
+    expect(within(activationSection).getByRole("heading", { name: "③ Data Akun Google yang Diaktivasi" })).toBeTruthy();
     const pvEmailInput = document.getElementById("checkout-pv-email") as HTMLInputElement;
     const pvPassInput = document.getElementById("checkout-pv-password") as HTMLInputElement;
     const pvTotpInput = document.getElementById("checkout-pv-totp") as HTMLInputElement;
