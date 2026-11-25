@@ -1,6 +1,11 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
-## Migrasi base URL API ke `https://batman.sarl/api/reseller` — 25 November 2026 (lokal + Pages secret; menunggu deploy CI)
+## Aktivasi ulang 26 produk StoreBat pasca deploy `batman.sarl` — 25 November 2026 (D1 produksi)
+
+- Deployment CI `3c8cf926` terbukti aktif di produksi: D1 `store_settings` mencatat `storebat_catalog_success_at` sukses pada `2026-11-25 03:17:33 UTC` (`10:17:33 WIB`, `ETag: W/"534d8edf943aa1005b763dd7"`) dengan `sync_stale_state_storebat.last_recovered_at` terisi `03:21:02 UTC`, dan stok/harga StoreBat tersinkron ulang (mis. `SB-137` stok `381`, `SB-60` restok `8`, `SB-143` stok `0`). Catatan monitoring: pada `03:20:38 UTC` sempat tercatat `products_http_429` dan `storebat_balance_error` (`streak: 42` pada `03:16:33 UTC`, tepat sebelum deploy/window pulih) — pantau bila 429 berulang dari IP Cloudflare bersama.
+- Atas instruksi owner, **26 produk StoreBat** yang dinonaktifkan saat maintenance diaktifkan kembali di D1 produksi (`products.is_active = 1`, `product_variants.is_active` tetap utuh sesuai kurasi; `#411` `grok-cursor-sb` tetap `is_active = 0`). Grup `#38` (`Microsoft 365`) kembali ke `#422` (`microsoft-365-sb`, stok `179`), cron otomatis menaikkan `#394` (`chatgpt-plus-sb`) & `v#34576` (`SB-60`, stok `8`) di Grup `#37`, dan `catalog_revision_market` disegarkan (`mwvk4zvx-1-sbon` → `mwvk5231-1-mnux`).
+
+## Migrasi base URL API ke `https://batman.sarl/api/reseller` — 25 November 2026 (terdeploy CI)
 
 - Pasca *Emergency Maintenance* 25 Nov 2026, host Railway lama (`https://web-production-1c7b1.up.railway.app/api/reseller`) tetap HTTP 404 (`Application not found`); StoreBat/VenteBot memindahkan Reseller API v1.2.0 (di balik Cloudflare) ke **`https://batman.sarl/api/reseller`** (Swagger: `https://batman.sarl/api/swagger/`, OpenAPI: `/api/reseller/openapi.json`).
 - Kontrak OpenAPI v1.2.0 cocok 1-ke-1 dengan `src/lib/storebat/*`, dan `STOREBAT_API_KEY` lama terbukti valid lewat `GET /products` HTTP 200 (`ETag: W/"cbcdeb06fce0332727dbdb92"`, 98 produk, 68 berstok, 0 anomali parser) dan `POST /quote` HTTP 200 (`product_id=137`, `unit_price=1.1`, `stock=287`, `wallet_balance=8.59`).
