@@ -316,7 +316,7 @@ describe("Telegram keyboards", () => {
     });
   });
 
-  it("variant keyboard hides sold-out choices when available variants exist, omits restock alert button, and falls back to sold-out rows when all are out", () => {
+  it("variant keyboard keeps sold-out choices last as red ❌ buttons and omits restock alert button", () => {
     const kb = variantsKeyboard(7, [
       { id: 1, label: "Legal", price: 36500, stock: 0, duration_label: "28 Hari", warranty_label: "Garansi 25 Hari" },
       { id: 2, label: "Anti Limit", price: 26000, stock: 4, duration_label: "28 Hari", warranty_label: "Garansi 20 Hari" },
@@ -324,7 +324,7 @@ describe("Telegram keyboards", () => {
     const buttons = kb.inline_keyboard.flat();
     expect(buttons[0].text).toBe("Anti Limit · 28 Hari · Rp26.000 · stok 4");
     expect(buttons[0].callback_data).toBe("var:2");
-    expect(buttons.some((b) => b.callback_data === "soldout")).toBe(false);
+    expect(buttons[1]).toMatchObject({ text: "❌ Legal · 28 Hari · Habis", callback_data: "soldout", style: "danger" });
     expect(buttons.some((b) => b.callback_data === "rst:7")).toBe(false);
     expect(buttons.some((b) => String(b.callback_data ?? "").startsWith("terms:"))).toBe(false);
     expect(buttons.some((b) => b.text.includes("Detail & Ketentuan"))).toBe(false);

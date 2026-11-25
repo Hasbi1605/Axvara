@@ -492,9 +492,9 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
       { id: 1, label: "Head", price: 19500, stock: 48 },
       { id: 2, label: "Sol", price: 29500, stock: 0 },
     ]);
-    // Owner 2026-11-24: hide sold-out variants when available variants exist, and omit restock alert button.
+    // Owner 2026-11-25: sold-out variants stay visible as red ❌ buttons, while restock alert button stays retired.
     expect(vk.inline_keyboard.flat().some((b) => b.callback_data === "rst:9")).toBe(false);
-    expect(vk.inline_keyboard.flat().some((b) => b.callback_data === "soldout")).toBe(false);
+    expect(vk.inline_keyboard.flat().some((b) => b.callback_data === "soldout" && b.style === "danger" && b.text.startsWith("❌ "))).toBe(true);
 
     const methodDetails = paymentMethodOfferDetails([{ kind: "qris", label: "QRIS Dinamis" }]);
     expect(methodDetails).toEqual(["QRIS: semua e-wallet &amp; m-banking."]);
