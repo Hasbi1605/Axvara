@@ -73,6 +73,8 @@ describe("dev fallback in-memory — 43 slug prod tersedia tanpa D1", () => {
     expect(rows.length).toBe(46);
     const otp = await queryFirst(`SELECT destination FROM supplier_links WHERE slug=? AND is_active=1`, "otp");
     expect(String(otp?.destination)).toBe("https://netflix-codes.sekalipay.com/mailbox");
+    const otp2fa = await queryFirst(`SELECT destination FROM supplier_links WHERE slug=? AND is_active=1`, "otp-2fa");
+    expect(String(otp2fa?.destination)).toBe("https://2fa.axvara.tech/");
     const before = Number((await queryFirst(`SELECT click_count FROM supplier_links WHERE slug=?`, "otp"))?.click_count ?? 0);
     await execRun(
       `UPDATE supplier_links SET click_count=click_count+1, last_clicked_at=datetime('now'), updated_at=datetime('now') WHERE slug=?`,
@@ -102,8 +104,10 @@ describe("rewrite supplier → go/* (tahan sync, termasuk produk off/restok)", (
     expect(out).not.toContain("sekalipay.com/docs");
   });
 
-  it("linkify: axvara.tech/go/* tampil jadi link internal /go", () => {
+  it("linkify: axvara.tech/go/* tampil jadi link internal /go dan 2fa.axvara.tech jadi https://2fa.axvara.tech/", () => {
     const segments = linkifySegments(`Buka ${GO_OTP} untuk kode`);
     expect(segments[1]).toEqual({ text: GO_OTP, href: "/go/otp" });
+    const twoFa = linkifySegments("Saat diminta kode 2FA, buka 2fa.axvara.tech, tempel kunci.");
+    expect(twoFa[1]).toEqual({ text: "2fa.axvara.tech", href: "https://2fa.axvara.tech/" });
   });
 });

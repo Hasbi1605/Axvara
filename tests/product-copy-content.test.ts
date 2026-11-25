@@ -171,7 +171,7 @@ describe.each(snapshot.pairs.map((p) => [p.variants.join(" | "), p] as const))("
       [/waroengmail\.com/i, /go\/otp-waroeng/i],
       [/tmail\.runcubesapps\.com/i, /go\/otp-runcubes/i],
       [/generator\.email/i, /go\/otp-generator/i],
-      [/2fa\.live/i, /go\/otp-2fa/i],
+      [/2fa\.live|2fa\.cn|2fa-auth\.com/i, /2fa\.axvara\.tech|go\/otp-2fa/i],
       [/docdownloader\.com/i, /go\/doc-scribd/i],
       [/pastebin\.com/i, /go\/netflix-solusi/i],
       [/drive\.google\.com/i, /go\/grok-error/i],

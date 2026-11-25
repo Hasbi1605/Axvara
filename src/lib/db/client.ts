@@ -202,7 +202,7 @@ function getSupplierLinkMem(): Row[] {
       ["otp-waroeng", "https://waroengmail.com/", "Mailbox OTP Waroengmail (Wink/Meitu)"],
       ["otp-runcubes", "https://tmail.runcubesapps.com/mailbox", "Mailbox OTP Runcubes (Scribd)"],
       ["otp-generator", "https://generator.email/", "Mailbox Generator.email (Perplexity)"],
-      ["otp-2fa", "https://2fa.live/", "Alat kode 2FA (Gemini)"],
+      ["otp-2fa", "https://2fa.axvara.tech/", "AXVARA 2FA"],
       ["mail-olies", "https://oliesmail.com/", "Mailbox Oliesmail (Prime Video)"],
       ["mail-fnstore", "https://fnstore.my.id/", "Mailbox Fnstore (iQiyi)"],
       ["mail-losantoz", "https://losantoz.com/", "Mailbox Losantoz (iQiyi)"],

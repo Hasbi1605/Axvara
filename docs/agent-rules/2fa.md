@@ -27,8 +27,19 @@
   `temp-mail/node_modules/.bin/wrangler deploy --config 2fa/wrangler.jsonc`.
   Jangan deploy manual dengan Wrangler kecuali recovery eksplisit dari owner.
 - Preflight DNS read-only 24 November 2026 (`dig` A/AAAA/CNAME) tidak menemukan
-  record bentrok pada `2fa.axvara.tech`. Implementasi/QA lokal bukan bukti
-  deployment live atau propagasi sertifikat custom domain.
-- Link redirect storefront `/go/otp-2fa` dan `/go/otp-2fa-auth` tetap menunjuk
-  tujuan existing hingga `2fa.axvara.tech` terverifikasi live dan owner
-  menginstruksikan pengalihan.
+  record bentrok pada `2fa.axvara.tech`. Verifikasi live 25 November 2026:
+  `GET https://2fa.axvara.tech/` HTTP 200 dengan CSP ketat dan
+  `GET https://2fa.axvara.tech/api/time` mengembalikan `{"now":...}`.
+- Konsolidasi tautan 2FA (keputusan owner 25 November 2026, Opsi B):
+  - Migrasi idempoten `0167_axvara_2fa_links.sql` mengalihkan tujuan shortlink
+    `otp-2fa` dan `otp-2fa-auth` pada `supplier_links` ke `https://2fa.axvara.tech/`
+    (email/pesanan lama tetap hidup), memperbarui seluruh salinan produk/varian
+    (`admin_activation*`, `admin_terms*`, `handover_template`, `description*`)
+    dari `2fa.cn`/`2fa.live`/`2fa-auth.com`/`axvara.tech/go/otp-2fa*` menjadi
+    `2fa.axvara.tech`, dan menyegarkan `catalog_revision_market`.
+  - `src/lib/product-copy/format.ts` (`GO_OTP_2FA = AXVARA_2FA_HOST = "2fa.axvara.tech"`)
+    otomatis me-rewrite seluruh situs generator TOTP pihak ketiga
+    (`2fa.live`, `2fa.cn`, `2fa-auth.com`, `2fa.fb.rip`, `2fa.uno`, `2fa.zone`,
+    `2fa.run`, `totp.danhersam.com`) dari teks mentah supplier langsung ke
+    `2fa.axvara.tech`. Mailbox OTP email (`/go/otp*`, `tempmail.plus`, `dongvan`,
+    dll.) tidak boleh diarahkan ke `2fa.axvara.tech`.

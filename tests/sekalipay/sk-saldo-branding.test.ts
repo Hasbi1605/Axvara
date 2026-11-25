@@ -226,11 +226,16 @@ describe("rewrite link docs supplier → shortlink axvara.tech/go/*", () => {
       ["email akses : tmail.runcubesapps.com/mailbox", GO_OTP_RUNCUBES],
       ["AKSES MAIL : https://generator.email/emailnyadisini", GO_OTP_GENERATOR],
       ["Buka web https://2fa.live/", GO_OTP_2FA],
+      ["Buka https://2fa.cn/ untuk kode", GO_OTP_2FA],
+      ["Cek OTP di https://2fa-auth.com/ ya", GO_OTP_2FA],
+      ["Kode dari 2fa.cn dan 2fa.fb.rip serta totp.danhersam.com", GO_OTP_2FA],
     ];
     for (const [raw, go] of cases) {
       const out = rewriteSupplierDocsLinks(raw)!;
       expect(out, raw).toContain(go);
     }
+    expect(GO_OTP_2FA).toBe("2fa.axvara.tech");
+    expect(rewriteSupplierDocsLinks("Buka 2fa.axvara.tech langsung")).toBe("Buka 2fa.axvara.tech langsung");
   });
 
   it("audit live: bot Telegram supplier jadi shortlink", () => {

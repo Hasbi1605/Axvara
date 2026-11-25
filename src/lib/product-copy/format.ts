@@ -207,7 +207,10 @@ export const GO_OTP_SEKALICHAT = "axvara.tech/go/otp-sekalichat";
 export const GO_OTP_WAROENG = "axvara.tech/go/otp-waroeng";
 export const GO_OTP_RUNCUBES = "axvara.tech/go/otp-runcubes";
 export const GO_OTP_GENERATOR = "axvara.tech/go/otp-generator";
-export const GO_OTP_2FA = "axvara.tech/go/otp-2fa";
+// Layanan AXVARA 2FA resmi (https://2fa.axvara.tech): semua situs generator TOTP
+// pihak ketiga (2fa.live, 2fa.cn, 2fa-auth.com, dll.) diarahkan langsung ke sini.
+export const AXVARA_2FA_HOST = "2fa.axvara.tech";
+export const GO_OTP_2FA = AXVARA_2FA_HOST;
 export const GO_MAIL_OLIES = "axvara.tech/go/mail-olies";
 export const GO_MAIL_FNSTORE = "axvara.tech/go/mail-fnstore";
 export const GO_MAIL_LOSANTOZ = "axvara.tech/go/mail-losantoz";
@@ -248,6 +251,13 @@ const MAILBOX_HOSTS = [
   "tmail\\.runcubesapps\\.com(?:\\/mailbox)?",
   "generator\\.email",
   "2fa\\.live",
+  "2fa\\.cn",
+  "2fa-auth\\.com",
+  "2fa\\.fb\\.rip",
+  "2fa\\.uno",
+  "2fa\\.zone",
+  "2fa\\.run",
+  "totp\\.danhersam\\.com",
   "oliesmail\\.com",
   "fnstore\\.my\\.id",
   "losantoz\\.com",
@@ -321,7 +331,18 @@ function mailboxGoSlug(match: string): string {
   if (lower.includes("waroengmail.com")) return GO_OTP_WAROENG;
   if (lower.includes("tmail.runcubesapps.com")) return GO_OTP_RUNCUBES;
   if (lower.includes("generator.email")) return GO_OTP_GENERATOR;
-  if (lower.includes("2fa.live")) return GO_OTP_2FA;
+  if (
+    lower.includes("2fa.live") ||
+    lower.includes("2fa.cn") ||
+    lower.includes("2fa-auth.com") ||
+    lower.includes("2fa.fb.rip") ||
+    lower.includes("2fa.uno") ||
+    lower.includes("2fa.zone") ||
+    lower.includes("2fa.run") ||
+    lower.includes("totp.danhersam.com")
+  ) {
+    return GO_OTP_2FA;
+  }
   if (lower.includes("oliesmail.com")) return GO_MAIL_OLIES;
   if (lower.includes("fnstore.my.id")) return GO_MAIL_FNSTORE;
   if (lower.includes("losantoz.com")) return GO_MAIL_LOSANTOZ;

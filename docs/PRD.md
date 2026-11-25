@@ -1,10 +1,10 @@
 # PRD — AXVARA
 
-## AXVARA 2FA publik (`2fa.axvara.tech`) — 24 November 2026 (lokal, belum dideploy)
+## AXVARA 2FA publik (`2fa.axvara.tech`) — 24–25 November 2026 (live; konsolidasi tautan lokal via 0167)
 
 - Utilitas publik tanpa login untuk membuat kode 2FA TOTP (RFC 6238 / RFC 4226) pada subdomain `https://2fa.axvara.tech`, kompatibel penuh dengan kunci setup 2FA dari layanan standar maupun situs seperti `2fa.live` / `2fa.cn` dan aplikasi Authenticator (secret sama + waktu UTC sama → kode 6 digit identik).
 - Seluruh pemrosesan secret key berjalan 100% lokal di browser (tanpa mengirim secret ke server, tanpa database, dan tanpa menyimpan rahasia di URL). Mendukung input secret tunggal, URI `otpauth://totp/...`, dan mode multi-baris (`email|password|secret` tanpa menampilkan segmen password, maks 50 baris) langsung otomatis dengan standar `6 digit / 30 detik / SHA-1` tanpa tombol Opsi manual (parameter custom dari URI `otpauth://` tetap dibaca otomatis), preview kode berikutnya pada sisa ≤5 detik, koreksi otomatis selisih jam perangkat via `/api/time`, serta penyimpanan daftar kunci lokal opsional di `localStorage` browser pengguna.
-- Status: implementasi & verifikasi lokal lengkap (publikasi melalui CI `main` belum diverifikasi live; shortlink `/go/otp-2fa` dan `/go/otp-2fa-auth` tetap menunjuk tujuan existing hingga verifikasi live selesai).
+- Status: `https://2fa.axvara.tech` terverifikasi live HTTP 200 (25 Nov 2026). Konsolidasi Opsi B (migrasi `0167_axvara_2fa_links.sql` + `format.ts` + `storebat/copy.ts`, siap rilis CI `main`): shortlink `/go/otp-2fa` dan `/go/otp-2fa-auth` dialihkan ke `https://2fa.axvara.tech/` agar tautan pesanan lama tetap hidup, dan seluruh panduan aktivasi/S&K produk yang sebelumnya menunjuk situs 2FA luar atau `/go/otp-2fa*` diperbarui agar menampilkan langsung `2fa.axvara.tech` tanpa menyentuh mailbox OTP email.
 
 ## Konfirmasi baca deskripsi, S&K & cara aktivasi di QuickVariantModal — 23 November 2026 (lokal)
 
