@@ -198,7 +198,7 @@ export async function dispatchPayq1Creating(
     if (!created.isExisting) trackFunnelEvent({ stage: "order", channel: "telegram", locale: creating.locale,
       method: selectedId, subtotal: built.subtotal, productId: built.lines[0]?.productId, variantId: built.primaryVariantId,
       quantity: built.lines.reduce((sum, line) => sum + line.qty, 0) });
-    if (creating.source.pvFlowId) {
+    if (creating.source.pvFlowId || creating.source.customFlowId) {
       const { clearPixelverifStash } = await import("./buyer-input");
       await clearPixelverifStash(ownerId).catch(() => {});
     }

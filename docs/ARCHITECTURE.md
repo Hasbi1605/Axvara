@@ -858,8 +858,23 @@ proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-
     `📩 Email invite:` / `📝 <Label>:` dan selalu memask field `password` menjadi
     `🔒 <Label>: (lihat di Panel Admin → Detail Pesanan)`; di bot Telegram
     (`src/lib/telegram/handlers/buyer-input.ts`), `invite_email` dikumpulkan di DM
-    privat (`payq1` `inviteEmail`), sedangkan `custom` mengarahkan ke URL
-    `/checkout?buy=<slug>&variant=<id>&qty=<qty>`.
+    privat (`payq1` `inviteEmail`), sedangkan sejak **25 November 2026** (keputusan owner,
+    implementasi lokal) seluruh varian mode `custom` (lintas produk, 1–6 field
+    `text`/`email`/`password`/`textarea`, wajib atau opsional) juga dikumpulkan
+    langsung 1-per-1 di DM privat (`pending_action = custominput:<pid>:<vid>:<qty>:<idx>`):
+    pesan field `password` dihapus otomatis segera via `deleteSecretMessage` dan nilainya
+    dipertahankan utuh tanpa `.trim()` (termasuk awalan `/`), seluruh nilai sementara
+    disimpan terenkripsi AES-256-GCM di `telegram_pixelverif_stashes` dengan diskriminator
+    `kind: "custom"` (terisolasi dari loader Pixel, TTL keras 10 menit, dibersihkan saat
+    order terbentuk / `/batal` / `/start` / navigasi pergi / cleanup maintenance),
+    `payq1.source` hanya menampung UUID `customFlowId` non-rahasia, `checkoutApprovalTag`
+    mengikat SHA-256 `computeCustomFieldsFingerprint` (tanpa nilai mentah), serta kedua
+    jalur bayar Telegram (QRIS di `payment-methods.ts`/`invoice.ts` dan Crypto di
+    `payment-lines.ts`/`payment-create.ts`/`payment-dispatch.ts`) memvalidasi ulang
+    `custom_values` dan menyematkan `custom_buyer_fields_meta` ke `orders.items`
+    sehingga detail admin & masker password notifikasi grup konsisten dengan web.
+    Pada `callback.ts`, `requestBuyerInput` dijalankan setelah gerbang `require_email`
+    agar produk dengan `require_email = 1` sekaligus kolom khusus tetap mengalir mulus.
 - Pembaruan Admin Grup Gabung, Storefront Varian Habis, & Pensiun Restok Telegram (24 Nov 2026, lokal):
   - `GET /api/products` (admin only, 1 query tambahan untuk semua grup) mengembalikan
     `mergedSuppliers`, `mergedGroupId`, `mergedGroupName`, `mergedMinPrice`,

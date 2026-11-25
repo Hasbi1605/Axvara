@@ -55,7 +55,7 @@ export async function showPaymentMethodOffer(
   from: { id: number; first_name: string; username?: string },
   target: OfferRenderTarget,
 ): Promise<void> {
-  if (!target.skipBuyerInputPrompt && !target.identity.museInviteCode && !target.identity.pvFlowId) {
+  if (!target.skipBuyerInputPrompt && !target.identity.museInviteCode && !target.identity.inviteEmail && !target.identity.pvFlowId && !target.identity.customFlowId) {
     const { requestBuyerInput } = await import("./buyer-input");
     if (await requestBuyerInput(chatId,from,target.productId,target.variantId,target.qty)) return;
   }
@@ -105,7 +105,7 @@ async function startLegacyQrisFromOffer(
   chatId: number,
   messageId: number,
   from: { id: number; first_name: string; username?: string },
-  state: Pick<import("@/lib/telegram/payment-quote").Payq1State, "source" | "tag" | "contact">,
+  state: Pick<import("@/lib/telegram/payment-quote").Payq1State, "source" | "tag" | "contact" | "locale">,
 ): Promise<void> {
   const { handlePayWithQris } = await import("./invoice");
   const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
@@ -113,10 +113,28 @@ async function startLegacyQrisFromOffer(
   const emailReady = Boolean(checked?.required && state.contact?.email && checked.email === state.contact.email);
   let buyerFields: import("@/lib/buyer-fields").BuyerFields | undefined;
   let pvFlowId: string | undefined;
+  let customFlowId: string | undefined;
   if (state.source.museInviteCode) {
     buyerFields = { muse_invite_code: state.source.museInviteCode };
   } else if (state.source.inviteEmail) {
     buyerFields = { invite_email: state.source.inviteEmail };
+  } else if (state.source.customFlowId) {
+    const { clearPixelverifStash, loadCompletedCustomStash } = await import("./buyer-input");
+    const customValues = await loadCompletedCustomStash(String(from.id), state.source.variantId, state.source.qty, state.source.customFlowId);
+    if (!customValues) {
+      await clearPixelverifStash(String(from.id));
+      await sendMessage({
+        chat_id: chatId,
+        text: state.locale === "en"
+          ? "Your account detail session has expired. Please restart from /katalog."
+          : "Sesi pengisian data akun kedaluwarsa. Silakan ulangi dari /katalog.",
+        parse_mode: "HTML",
+        reply_markup: minimalMenuKeyboard({ locale: state.locale }),
+      });
+      return;
+    }
+    buyerFields = { custom_values: customValues };
+    customFlowId = state.source.customFlowId;
   } else if (state.source.pvFlowId) {
     const { clearPixelverifStash, loadCompletedPixelverifStash } = await import("./buyer-input");
     const pv = await loadCompletedPixelverifStash(String(from.id), state.source.variantId, state.source.pvFlowId);
@@ -147,7 +165,7 @@ async function startLegacyQrisFromOffer(
   await handlePayWithQris(
     chatId, messageId, state.source.productId, state.source.variantId, state.source.qty, from,
     emailReady, state.tag, emailReady ? state.contact.email! : undefined,
-    buyerFields ? { buyerFields, pvFlowId } : undefined,
+    buyerFields ? { buyerFields, pvFlowId, customFlowId } : undefined,
   );
 }
 

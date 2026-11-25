@@ -163,8 +163,9 @@ export async function claimPayq1Creating(
 }
 
 export type CartLineLike = {
-  buyerFields?: { muse_invite_code?: string; invite_email?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
+  buyerFields?: { muse_invite_code?: string; invite_email?: string; custom_values?: Record<string, string>; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
   buyerFieldKey?: import("@/lib/buyer-fields").BuyerFieldKey | null;
+  customBuyerFieldsMeta?: { key: string; label: string; type: "text" | "email" | "password" | "textarea" }[];
   pixelverifInput?: boolean;
   maxQty?: number | null;
   productId: number; variantId: number; qty: number; productName: string; variantLabel: string;
@@ -267,6 +268,7 @@ export function orderLinesFromSource(
     base_price: l.basePrice,
     ...(l.appliedTierMinQty != null ? { applied_tier_min_qty: l.appliedTierMinQty } : {}),
     buyer_field_key:l.buyerFieldKey ?? null,max_qty:l.maxQty ?? null,buyer_fields:l.buyerFields,
+    ...(l.customBuyerFieldsMeta?.length ? { custom_buyer_fields_meta: l.customBuyerFieldsMeta } : {}),
     qty: l.qty,
   }));
   const variantSnapshot = JSON.stringify({

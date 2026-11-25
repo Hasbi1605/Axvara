@@ -209,6 +209,15 @@ export async function handleCallback(
     const { readPayq1State } = await import("@/lib/telegram/payment-quote");
     const storedNav = await readPayq1State(String(from.id)).catch(() => null);
     if (!storedNav?.state || storedNav.state.st !== "creating") {
+      if (
+        storedNav?.raw?.startsWith("pvinput:")
+        || storedNav?.raw?.startsWith("custominput:")
+        || storedNav?.state?.source.pvFlowId
+        || storedNav?.state?.source.customFlowId
+      ) {
+        const { clearPixelverifStash } = await import("./buyer-input");
+        await clearPixelverifStash(String(from.id));
+      }
       await clearPendingAction(from);
     }
   }
@@ -257,6 +266,15 @@ export async function handleCallback(
         const { readPayq1State } = await import("@/lib/telegram/payment-quote");
         const storedHome = await readPayq1State(String(from.id)).catch(() => null);
         if (!storedHome?.state || storedHome.state.st !== "creating") {
+          if (
+            storedHome?.raw?.startsWith("pvinput:")
+            || storedHome?.raw?.startsWith("custominput:")
+            || storedHome?.state?.source.pvFlowId
+            || storedHome?.state?.source.customFlowId
+          ) {
+            const { clearPixelverifStash } = await import("./buyer-input");
+            await clearPixelverifStash(String(from.id));
+          }
           await clearPendingAction(from);
         }
       }
@@ -294,6 +312,15 @@ export async function handleCallback(
         const { readPayq1State } = await import("@/lib/telegram/payment-quote");
         const storedCatalog = await readPayq1State(String(from.id)).catch(() => null);
         if (!storedCatalog?.state || storedCatalog.state.st !== "creating") {
+          if (
+            storedCatalog?.raw?.startsWith("pvinput:")
+            || storedCatalog?.raw?.startsWith("custominput:")
+            || storedCatalog?.state?.source.pvFlowId
+            || storedCatalog?.state?.source.customFlowId
+          ) {
+            const { clearPixelverifStash } = await import("./buyer-input");
+            await clearPixelverifStash(String(from.id));
+          }
           await clearPendingAction(from);
         }
       }
@@ -471,8 +498,6 @@ export async function handleCallback(
           await handleShowReview(chatId, messageId, productId, variantId, rawQty, from, sourceMeta);
           break;
         }
-        const { requestBuyerInput } = await import("./buyer-input");
-        if (await requestBuyerInput(chatId, from, productId, variantId, rawQty)) break;
         let checked: { required: boolean; email: string | null };
         try {
           checked = await readCheckoutEmail(String(from.id), [{ productId, variantId }]);
@@ -524,6 +549,8 @@ export async function handleCallback(
           await showEmailConfirmation(chatId, productId, variantId, rawQty, checked.email, currentPending, messageId, from);
           break;
         }
+        const { requestBuyerInput } = await import("./buyer-input");
+        if (await requestBuyerInput(chatId, from, productId, variantId, rawQty)) break;
         const allowPendingAction = currentPending === `qty_for:${productId}:${variantId}` || isConfirmedEmail
           ? currentPending ?? undefined
           : undefined;

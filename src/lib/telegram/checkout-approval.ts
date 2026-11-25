@@ -1,7 +1,7 @@
-import type { BuyerFieldKey } from "@/lib/buyer-fields";
+import { computeCustomFieldsFingerprint, type BuyerFieldKey } from "@/lib/buyer-fields";
 
 export type CheckoutApprovalLine = {
-  buyerFields?: { muse_invite_code?: string; invite_email?: string; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
+  buyerFields?: { muse_invite_code?: string; invite_email?: string; custom_values?: Record<string, string>; pv_email?: string; pv_password?: string; pv_totp_secret?: string };
   buyerFieldKey?: BuyerFieldKey | null;
   pixelverifInput?: boolean;
   maxQty?: number | null;
@@ -12,7 +12,7 @@ export type CheckoutApprovalLine = {
 };
 
 /** Public stale-state check, not an authorization token. Never include contacts.
- *  Pixel lines bind a SHA-256 fingerprint of the credential triple — never the values. */
+ *  Pixel & custom-field lines bind a SHA-256 fingerprint — never raw values/passwords. */
 export async function checkoutApprovalTag(lines: readonly CheckoutApprovalLine[]): Promise<string> {
   if (!lines.length || lines.length > 20 || lines.some(line =>
     ![line.productId, line.variantId, line.qty, line.price].every(Number.isSafeInteger)
@@ -23,7 +23,9 @@ export async function checkoutApprovalTag(lines: readonly CheckoutApprovalLine[]
     .map(async line => {
       const fieldValue = line.buyerFieldKey === "invite_email"
         ? (line.buyerFields?.invite_email?.trim().toLowerCase() ?? null)
-        : (line.buyerFields?.muse_invite_code ?? null);
+        : line.buyerFieldKey === "custom"
+          ? await computeCustomFieldsFingerprint(line.buyerFields?.custom_values ?? {})
+          : (line.buyerFields?.muse_invite_code ?? null);
       const base = [line.productId,line.variantId,line.qty,line.price,...(line.buyerFieldKey || line.maxQty != null ? [line.buyerFieldKey ?? null,line.maxQty ?? null,fieldValue] : [])];
       if (!line.pixelverifInput) return base;
       const { computeFingerprint } = await import("@/lib/fulfillment/crypto");

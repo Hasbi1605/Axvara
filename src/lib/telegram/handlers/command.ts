@@ -37,6 +37,15 @@ async function clearPendingUnlessCreating(from?: { id: number }) {
     const { readPayq1State } = await import("@/lib/telegram/payment-quote");
     const stored = await readPayq1State(String(from.id)).catch(() => null);
     if (!stored?.state || stored.state.st !== "creating") {
+      if (
+        stored?.raw?.startsWith("pvinput:")
+        || stored?.raw?.startsWith("custominput:")
+        || stored?.state?.source.pvFlowId
+        || stored?.state?.source.customFlowId
+      ) {
+        const { clearPixelverifStash } = await import("./buyer-input");
+        await clearPixelverifStash(String(from.id));
+      }
       await clearPendingAction(from);
     }
   } else {

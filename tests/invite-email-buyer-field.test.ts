@@ -19,8 +19,16 @@ import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { createDatabaseAccess } from "@/lib/db-access";
 
 const auth = vi.hoisted(() => ({ admin: true }));
-const telegram = vi.hoisted(() => ({ send: vi.fn(), edit: vi.fn() }));
-vi.mock("@/lib/telegram/api", () => ({ sendMessage: telegram.send, safeEditOrSend: telegram.edit, getMe: vi.fn(async () => ({ ok: true })) }));
+const telegram = vi.hoisted(() => ({ send: vi.fn(), edit: vi.fn(), del: vi.fn(), photo: vi.fn() }));
+vi.mock("@/lib/telegram/api", () => ({
+  sendMessage: telegram.send,
+  safeEditOrSend: telegram.edit,
+  deleteMessage: telegram.del,
+  sendPhoto: telegram.photo,
+  sendChatAction: vi.fn(async () => ({ ok: true })),
+  answerCallbackQuery: vi.fn(async () => ({ ok: true })),
+  getMe: vi.fn(async () => ({ ok: true })),
+}));
 vi.mock("@/lib/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/auth")>()),
   requireAdmin: vi.fn(async () => (auth.admin ? { email: "fixture@example.test" } : null)),
@@ -45,11 +53,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   telegram.send.mockResolvedValue({ ok: true, result: { message_id: 101 } });
   telegram.edit.mockResolvedValue({ ok: true, result: { message_id: 102 } });
+  telegram.del.mockResolvedValue({ ok: true });
+  telegram.photo.mockResolvedValue({ ok: true, result: { message_id: 103 } });
   vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
   vi.stubEnv("PRODUCT_VARIANTS_WRITE", "true");
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture-bot-token");
   vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "-100999888777");
+  vi.stubEnv("FULFILLMENT_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
   fx = createD1Fixture();
   clearRateLimitBucketsForTest();
   auth.admin = true;
@@ -549,5 +560,272 @@ describe("invite_email buyer field — Admin APIs & migration 0165", () => {
     expect(tgText).toContain("📝 Email akun: buyer.act@gmail.com");
     expect(tgText).toContain("🔒 Password akun: (lihat di Panel Admin → Detail Pesanan)");
     expect(tgText).not.toContain("My$ecretPass!99");
+  });
+
+  it("Telegram bot collects custom fields step-by-step (email -> password), auto-deletes password message, encrypts stash, and supports QRIS & Crypto with masked admin alert", async () => {
+    const customConfig = {
+      title: "Data Akun Google untuk Aktivasi",
+      note: "Data hanya dipakai admin untuk aktivasi akun kamu.",
+      fields: [
+        { key: "account_email", label: "Email akun Google", type: "email" as const, placeholder: "nama@gmail.com", required: true },
+        { key: "account_password", label: "Password akun Google", type: "password" as const, placeholder: "Password login akun Google", required: true },
+      ],
+    };
+    fx.sql.prepare(
+      "UPDATE product_variants SET custom_buyer_field='custom', custom_buyer_fields_json=?, max_qty=1 WHERE id=102",
+    ).run(JSON.stringify(customConfig));
+    fx.sql.exec("INSERT INTO telegram_users(user_id, chat_id, first_name) VALUES('789', '789', 'PembeliTG')");
+
+    const buyer = { id: 789, first_name: "PembeliTG" };
+    const {
+      requestBuyerInput,
+      handleBuyerInput,
+      loadCompletedCustomStash,
+      loadCompletedPixelverifStash,
+    } = await import("@/lib/telegram/handlers/buyer-input");
+    const { parsePayq1State } = await import("@/lib/telegram/payment-quote");
+    const { resolveCurrentPayq1Lines } = await import("@/lib/telegram/handlers/payment-lines");
+    const { orderLinesFromSource } = await import("@/lib/telegram/payment-create");
+
+    // Ignored in group chats
+    expect(await requestBuyerInput(-789, buyer, 60, 102, 1)).toBe(true);
+    expect(telegram.send).not.toHaveBeenCalled();
+
+    // Step 1/2 prompt in private DM
+    expect(await requestBuyerInput(789, buyer, 60, 102, 1)).toBe(true);
+    const step1Text = String(telegram.send.mock.calls.at(-1)?.[0]?.text ?? "");
+    expect(step1Text).toContain("Data Akun Google untuk Aktivasi");
+    expect(step1Text).toContain("(1/2)");
+    expect(step1Text).toContain("Email akun Google");
+    expect(step1Text).toContain("otomatis dihapus");
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='789'").get()).toEqual({
+      pending_action: "custominput:60:102:1:0",
+    });
+
+    // Invalid email retries step 1 without advancing or deleting message
+    expect(await handleBuyerInput("bukan-email", 789, buyer, 501)).toBe(true);
+    expect(telegram.del).not.toHaveBeenCalled();
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='789'").get()).toEqual({
+      pending_action: "custominput:60:102:1:0",
+    });
+
+    // Valid email advances to step 2/2 (password)
+    expect(await handleBuyerInput("  Buyer.TG@Gmail.COM ", 789, buyer, 502)).toBe(true);
+    expect(telegram.del).not.toHaveBeenCalled();
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='789'").get()).toEqual({
+      pending_action: "custominput:60:102:1:1",
+    });
+    const step2Text = String(telegram.send.mock.calls.at(-1)?.[0]?.text ?? "");
+    expect(step2Text).toContain("Email akun Google disimpan");
+    expect(step2Text).toContain("(2/2)");
+    expect(step2Text).toContain("Password akun Google");
+    expect(step2Text).not.toContain("(contoh:");
+
+    // Password starting with "/" and trailing space is preserved verbatim and immediately deleted from chat
+    const rawPassword = "/MySecret Pass!99 ";
+    expect(await handleBuyerInput(rawPassword, 789, buyer, 503)).toBe(true);
+    expect(telegram.del).toHaveBeenCalledWith(789, 503);
+
+    // pending_action now holds frozen payq1 offer referencing customFlowId (never plaintext password!)
+    const offerRaw = String(
+      (fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='789'").get() as { pending_action: string | null })
+        ?.pending_action ?? "",
+    );
+    expect(offerRaw).not.toContain(rawPassword);
+    expect(offerRaw).not.toContain("buyer.tg@gmail.com");
+    const offer = parsePayq1State(offerRaw);
+    expect(offer?.source.kind).toBe("single");
+    expect(offer?.source.customFlowId).toMatch(/^[0-9a-f-]{36}$/i);
+
+    // Encrypted stash stores ciphertext (no plaintext leak) and is isolated from Pixel loader
+    const stashRow = fx.sql.prepare("SELECT flow_id, ciphertext, iv FROM telegram_pixelverif_stashes WHERE user_id='789'").get() as { flow_id: string; ciphertext: string; iv: string };
+    expect(stashRow.flow_id).toBe(offer!.source.customFlowId);
+    expect(stashRow.ciphertext).not.toContain(rawPassword);
+    expect(stashRow.ciphertext).not.toContain("buyer.tg@gmail.com");
+    expect(await loadCompletedPixelverifStash("789", 102, stashRow.flow_id)).toBeNull();
+    expect(await loadCompletedCustomStash("789", 102, 1, stashRow.flow_id)).toEqual({
+      account_email: "buyer.tg@gmail.com",
+      account_password: rawPassword,
+    });
+
+    // Crypto path: resolveCurrentPayq1Lines validates & binds custom_values + customBuyerFieldsMeta
+    const resolved = await resolveCurrentPayq1Lines("789", offer!);
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) throw new Error("expected resolved ok");
+    expect(resolved.cartLines[0]).toMatchObject({
+      productId: 60,
+      variantId: 102,
+      buyerFieldKey: "custom",
+      buyerFields: {
+        custom_values: { account_email: "buyer.tg@gmail.com", account_password: rawPassword },
+      },
+      customBuyerFieldsMeta: [
+        { key: "account_email", label: "Email akun Google", type: "email" },
+        { key: "account_password", label: "Password akun Google", type: "password" },
+      ],
+    });
+
+    // Approval tag changes when custom field value changes
+    const baseLine = {
+      productId: 60,
+      variantId: 102,
+      qty: 1,
+      price: 45000,
+      buyerFieldKey: "custom" as const,
+      maxQty: 1,
+      buyerFields: { custom_values: { account_email: "buyer.tg@gmail.com", account_password: rawPassword } },
+    };
+    expect(await checkoutApprovalTag([baseLine])).not.toBe(
+      await checkoutApprovalTag([{ ...baseLine, buyerFields: { custom_values: { account_email: "buyer.tg@gmail.com", account_password: "DifferentPass" } } }]),
+    );
+
+    // Order created via createChannelOrderAtomic (Crypto / QRIS shared atomic writer) preserves meta & masks password in Telegram admin alert
+    const built = orderLinesFromSource(offer!, resolved.cartLines)!;
+    await createChannelOrderAtomic({
+      orderCode: "AXV-20261125-TGCUST01",
+      lines: built.lines,
+      items: built.items,
+      variantSnapshot: built.variantSnapshot,
+      subtotal: built.subtotal,
+      primaryVariantId: built.primaryVariantId,
+      customerName: "PembeliTG",
+      salesChannel: "telegram",
+      telegramChatId: "789",
+      telegramUserId: "789",
+      paymentMethod: "qris",
+      paymentAccount: "-",
+      fulfillmentStatus: "manual_required",
+    });
+
+    // Admin detail exposes labeled entries with secret=true on password
+    const { GET: orderDetailGet } = await import("@/app/api/admin/orders/[code]/route");
+    const adminRes = await orderDetailGet(
+      new NextRequest("http://localhost/api/admin/orders/AXV-20261125-TGCUST01"),
+      { params: Promise.resolve({ code: "AXV-20261125-TGCUST01" }) },
+    );
+    expect(adminRes.status).toBe(200);
+    expect(await adminRes.json()).toEqual({
+      buyerInputs: [
+        { item_index: 0, variant_id: 102, key: "custom:account_email", label: "Email akun Google", value: "buyer.tg@gmail.com" },
+        { item_index: 0, variant_id: 102, key: "custom:account_password", label: "Password akun Google", secret: true, value: rawPassword },
+      ],
+    });
+
+    // Telegram paid admin notification displays non-secret email and MASKS password
+    fx.sql.exec("UPDATE orders SET status='lunas', payment_status='paid', paid_at=datetime('now') WHERE code='AXV-20261125-TGCUST01'");
+    const { notifyTelegramPaidAdmin } = await import("@/lib/telegram/order-notifications");
+    expect(await notifyTelegramPaidAdmin("AXV-20261125-TGCUST01", createDatabaseAccess(fx.db))).toBe(true);
+    const paidAdminText = String(telegram.send.mock.calls.at(-1)?.[0]?.text ?? "");
+    expect(paidAdminText).toContain("📝 Email akun Google: buyer.tg@gmail.com");
+    expect(paidAdminText).toContain("🔒 Password akun Google: (lihat di Panel Admin → Detail Pesanan)");
+    expect(paidAdminText).not.toContain(rawPassword);
+
+    // Expired stash fails closed
+    fx.sql.exec("UPDATE telegram_pixelverif_stashes SET expires_at=datetime('now','-1 minute') WHERE user_id='789'");
+    expect(await loadCompletedCustomStash("789", 102, 1, stashRow.flow_id)).toBeNull();
+  });
+
+  it("Telegram bot generically handles arbitrary multi-field configs including optional fields & /batal cleanup", async () => {
+    const genericConfig = {
+      title: "Data Aktivasi Layanan",
+      fields: [
+        { key: "username", label: "Username akun", type: "text" as const, placeholder: "@user", required: true },
+        { key: "secret_pin", label: "PIN sementara", type: "password" as const, required: true },
+        { key: "extra_note", label: "Catatan tambahan", type: "textarea" as const, required: false },
+      ],
+    };
+    fx.sql.prepare(
+      "UPDATE product_variants SET custom_buyer_field='custom', custom_buyer_fields_json=?, max_qty=2 WHERE id=102",
+    ).run(JSON.stringify(genericConfig));
+    fx.sql.exec("INSERT INTO telegram_users(user_id, chat_id, first_name) VALUES('790', '790', 'UserGeneric')");
+
+    const buyer = { id: 790, first_name: "UserGeneric" };
+    const { requestBuyerInput, handleBuyerInput, loadCompletedCustomStash } = await import("@/lib/telegram/handlers/buyer-input");
+    const { parsePayq1State } = await import("@/lib/telegram/payment-quote");
+    const { handleCommand } = await import("@/lib/telegram/handlers/command");
+
+    // Step 1 -> 2 -> 3 (skip optional with "-")
+    expect(await requestBuyerInput(790, buyer, 60, 102, 2)).toBe(true);
+    expect(await handleBuyerInput("  akun_demo  ", 790, buyer, 601)).toBe(true);
+    expect(telegram.del).not.toHaveBeenCalled();
+    expect(await handleBuyerInput("998877", 790, buyer, 602)).toBe(true);
+    expect(telegram.del).toHaveBeenCalledWith(790, 602);
+    const step3Text = String(telegram.send.mock.calls.at(-1)?.[0]?.text ?? "");
+    expect(step3Text).toContain("(3/3)");
+    expect(step3Text).toContain("Opsional");
+    expect(await handleBuyerInput("-", 790, buyer, 603)).toBe(true);
+
+    const offerRaw = String(
+      (fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='790'").get() as { pending_action: string | null })
+        ?.pending_action ?? "",
+    );
+    const offer = parsePayq1State(offerRaw);
+    expect(offer?.source.qty).toBe(2);
+    expect(offer?.source.customFlowId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(await loadCompletedCustomStash("790", 102, 2, offer!.source.customFlowId!)).toEqual({
+      username: "akun_demo",
+      secret_pin: "998877",
+    });
+
+    // /batal clears both pending_action and encrypted stash
+    await handleCommand("/batal", 790, "private", buyer, undefined, 604);
+    expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='790'").get()).toEqual({ pending_action: null });
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_pixelverif_stashes WHERE user_id='790'").get()).toEqual({ n: 0 });
+  });
+
+  it("Telegram QRIS end-to-end (handleCommand -> pm: qris) creates order with custom_values + meta and clears stash", async () => {
+    const { calculateCrc16 } = await import("@/lib/payments/qris");
+    const gopayBase = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI51440014ID.CO.QRIS.WWW0215ID10111111111110303UMI5204899953033605802ID5911AXVARA TEST6006SLEMAN61055558162070703A016304";
+    vi.stubEnv("QRIS_ACTIVE_PROVIDER", "gopay");
+    vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+    vi.stubEnv("GOPAY_STATIC_QRIS", `${gopayBase}${calculateCrc16(gopayBase)}`);
+    vi.stubEnv("GOPAY_POLLER_SECRET", "custom-qris-poller-secret");
+    vi.stubEnv("GOPAY_POLLER_WAKE_URL", "");
+
+    const customConfig = {
+      title: "Data Akun Google untuk Aktivasi",
+      fields: [
+        { key: "account_email", label: "Email akun Google", type: "email" as const, placeholder: "nama@gmail.com", required: true },
+        { key: "account_password", label: "Password akun Google", type: "password" as const, required: true },
+      ],
+    };
+    fx.sql.prepare(
+      "UPDATE product_variants SET custom_buyer_field='custom', custom_buyer_fields_json=?, max_qty=1 WHERE id=102",
+    ).run(JSON.stringify(customConfig));
+    fx.sql.exec("INSERT INTO telegram_users(user_id, chat_id, first_name, locale) VALUES('791', '791', 'QrisCustomBuyer', 'id')");
+
+    const buyer = { id: 791, first_name: "QrisCustomBuyer" };
+    const { requestBuyerInput } = await import("@/lib/telegram/handlers/buyer-input");
+    const { handleCommand } = await import("@/lib/telegram/handlers/command");
+    const { handleCallback } = await import("@/lib/telegram/handlers/callback");
+    const { parsePayq1State } = await import("@/lib/telegram/payment-quote");
+
+    await requestBuyerInput(791, buyer, 60, 102, 1);
+    await handleCommand("qris.buyer@gmail.com", 791, "private", buyer, undefined, 701);
+    await handleCommand("/PassWithSlash 123 ", 791, "private", buyer, undefined, 702);
+    expect(telegram.del).toHaveBeenCalledWith(791, 702);
+
+    const pendingRaw = String((fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='791'").get() as { pending_action: string | null })?.pending_action ?? "");
+    const offer = parsePayq1State(pendingRaw)!;
+    const qrisIdx = offer.methods.findIndex((m) => m.id === "qris");
+    expect(qrisIdx).toBeGreaterThanOrEqual(0);
+
+    await handleCallback(`pm:${offer.nonce}:${qrisIdx}`, 791, 99, buyer);
+
+    const order = fx.sql.prepare("SELECT code, items, subtotal FROM orders WHERE telegram_user_id='791'").get() as { code: string; items: string; subtotal: number } | undefined;
+    expect(order).toBeTruthy();
+    expect(order!.subtotal).toBe(45000);
+    const items = JSON.parse(order!.items) as Record<string, unknown>[];
+    expect(items[0]).toMatchObject({
+      buyer_field_key: "custom",
+      buyer_fields: {
+        custom_values: { account_email: "qris.buyer@gmail.com", account_password: "/PassWithSlash 123 " },
+      },
+      custom_buyer_fields_meta: [
+        { key: "account_email", label: "Email akun Google", type: "email" },
+        { key: "account_password", label: "Password akun Google", type: "password" },
+      ],
+    });
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM telegram_pixelverif_stashes WHERE user_id='791'").get()).toEqual({ n: 0 });
   });
 });

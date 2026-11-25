@@ -35,8 +35,9 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
   if (effective * source.qty !== state.idrSubtotal) return { ok: false, reason: "subtotal_changed" };
 
   let buyerFields: BuyerFields | undefined;
+  let customBuyerFieldsMeta: { key: string; label: string; type: "text" | "email" | "password" | "textarea" }[] | undefined;
   if (variant.pixelverif_input) {
-    if (source.qty !== 1 || !source.pvFlowId || source.museInviteCode || source.inviteEmail) return { ok: false, reason: "variant_changed" };
+    if (source.qty !== 1 || !source.pvFlowId || source.museInviteCode || source.inviteEmail || source.customFlowId) return { ok: false, reason: "variant_changed" };
     const { loadCompletedPixelverifStash } = await import("./buyer-input");
     const pv = await loadCompletedPixelverifStash(ownerUserId, source.variantId, source.pvFlowId);
     if (!pv) return { ok: false, reason: "variant_changed" };
@@ -44,7 +45,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
     if (await isPixelverifEmailBlocked(pv.pv_email, 3)) return { ok: false, reason: "variant_changed" };
     buyerFields = pv;
   } else if (variant.buyer_field_key === "muse_invite_code") {
-    if (!source.museInviteCode || source.inviteEmail || source.pvFlowId) return { ok: false, reason: "variant_changed" };
+    if (!source.museInviteCode || source.inviteEmail || source.pvFlowId || source.customFlowId) return { ok: false, reason: "variant_changed" };
     try {
       buyerFields = validateBuyerFields(
         { buyer_field_key: variant.buyer_field_key, max_qty: variant.max_qty },
@@ -55,7 +56,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
       return { ok: false, reason: "variant_changed" };
     }
   } else if (variant.buyer_field_key === "invite_email") {
-    if (!source.inviteEmail || source.museInviteCode || source.pvFlowId) return { ok: false, reason: "variant_changed" };
+    if (!source.inviteEmail || source.museInviteCode || source.pvFlowId || source.customFlowId) return { ok: false, reason: "variant_changed" };
     try {
       buyerFields = validateBuyerFields(
         { buyer_field_key: variant.buyer_field_key, max_qty: variant.max_qty },
@@ -65,7 +66,28 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
     } catch {
       return { ok: false, reason: "variant_changed" };
     }
-  } else if (source.museInviteCode || source.inviteEmail || source.pvFlowId) {
+  } else if (variant.buyer_field_key === "custom") {
+    if (!source.customFlowId || source.museInviteCode || source.inviteEmail || source.pvFlowId) return { ok: false, reason: "variant_changed" };
+    const { loadCompletedCustomStash } = await import("./buyer-input");
+    const customValues = await loadCompletedCustomStash(ownerUserId, source.variantId, source.qty, source.customFlowId);
+    if (!customValues) return { ok: false, reason: "variant_changed" };
+    try {
+      buyerFields = validateBuyerFields(
+        { buyer_field_key: variant.buyer_field_key, custom_buyer_fields: variant.custom_buyer_fields, max_qty: variant.max_qty },
+        { custom_values: customValues },
+        source.qty,
+      );
+    } catch {
+      return { ok: false, reason: "variant_changed" };
+    }
+    if (variant.custom_buyer_fields?.fields?.length) {
+      customBuyerFieldsMeta = variant.custom_buyer_fields.fields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+      }));
+    }
+  } else if (source.museInviteCode || source.inviteEmail || source.pvFlowId || source.customFlowId) {
     return { ok: false, reason: "variant_changed" };
   }
 
@@ -93,6 +115,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
       price: effective, basePrice: Number(variant.price), appliedTierMinQty: resolved.tier ?? null,
       buyerFieldKey: variant.buyer_field_key, maxQty: variant.max_qty,
       ...(buyerFields ? { buyerFields } : {}),
+      ...(customBuyerFieldsMeta?.length ? { customBuyerFieldsMeta } : {}),
       pixelverifInput: variant.pixelverif_input,
       stock, fulfillmentMode: String(variant.fulfillment_mode || "manual"),
     }],

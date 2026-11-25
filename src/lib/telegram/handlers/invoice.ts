@@ -48,7 +48,7 @@ export async function handlePayWithQris(
   emailConfirmed = false,
   approvalTag?: string,
   confirmedEmail?: string,
-  buyerInput?: { buyerFields?: import("@/lib/buyer-fields").BuyerFields; pvFlowId?: string },
+  buyerInput?: { buyerFields?: import("@/lib/buyer-fields").BuyerFields; pvFlowId?: string; customFlowId?: string },
 ) {
   if (await notifyPaymentMaintenance(chatId)) return;
   if (!buyerInput?.buyerFields) {
@@ -135,7 +135,12 @@ export async function handlePayWithQris(
     try {
       const { validateBuyerFields } = await import("@/lib/buyer-fields");
       validatedBuyerFields = validateBuyerFields(
-        { buyer_field_key: variant.buyer_field_key, max_qty: variant.max_qty, pixelverif_flow_type: variant.pixelverif_input ? "normal" : null },
+        {
+          buyer_field_key: variant.buyer_field_key,
+          custom_buyer_fields: variant.custom_buyer_fields,
+          max_qty: variant.max_qty,
+          pixelverif_flow_type: variant.pixelverif_input ? "normal" : null,
+        },
         buyerInput?.buyerFields,
         qty,
       );
@@ -219,7 +224,7 @@ export async function handlePayWithQris(
     buyerEmail,
     effectivePrice,
     appliedTier,
-    validatedBuyerFields ? { buyerFields: validatedBuyerFields, pvFlowId: buyerInput?.pvFlowId } : undefined,
+    validatedBuyerFields ? { buyerFields: validatedBuyerFields, pvFlowId: buyerInput?.pvFlowId, customFlowId: buyerInput?.customFlowId } : undefined,
   );
 }
 
@@ -236,7 +241,7 @@ export async function createAndSendVariantInvoice(
   emailSnapshot?: string | null,
   effectivePrice?: number,
   appliedTierMinQty?: number | null,
-  buyerInput?: { buyerFields?: import("@/lib/buyer-fields").BuyerFields; pvFlowId?: string },
+  buyerInput?: { buyerFields?: import("@/lib/buyer-fields").BuyerFields; pvFlowId?: string; customFlowId?: string },
 ) {
   const qty = clampQty(rawQty);
   // TG2b: harga efektif server dari bulk config aktif (bukan klaim tombol).
@@ -269,6 +274,9 @@ export async function createAndSendVariantInvoice(
   const uniqueFulfillment = fulfillmentMode === "unique";
   const orderCode = generateOrderCode();
   const itemVariantLabel = formatVariantLabel(variant);
+  const customMeta = variant.buyer_field_key === "custom" && variant.custom_buyer_fields?.fields?.length
+    ? variant.custom_buyer_fields.fields.map((f) => ({ key: f.key, label: f.label, type: f.type }))
+    : undefined;
   const items = [{
     product_id: productId,
     variant_id: variant.id,
@@ -278,6 +286,7 @@ export async function createAndSendVariantInvoice(
     buyer_field_key: variant.buyer_field_key ?? null,
     max_qty: variant.max_qty ?? null,
     ...(buyerInput?.buyerFields ? { buyer_fields: buyerInput.buyerFields } : {}),
+    ...(customMeta?.length ? { custom_buyer_fields_meta: customMeta } : {}),
     ...(appliedSingleTier != null ? { applied_tier_min_qty: appliedSingleTier } : {}),
     qty,
   }];
@@ -385,7 +394,7 @@ export async function createAndSendVariantInvoice(
       throw reservationError;
     }
     orderInserted = true;
-    if (buyerInput?.pvFlowId) {
+    if (buyerInput?.pvFlowId || buyerInput?.customFlowId) {
       const { clearPixelverifStash } = await import("./buyer-input");
       await clearPixelverifStash(String(from.id)).catch(() => {});
     }

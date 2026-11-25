@@ -31,6 +31,8 @@ export type Payq1CartSource = {
   inviteEmail?: string;
   /** Optional UUID referencing encrypted `telegram_pixelverif_stashes` row (never stores secret in pending_action). */
   pvFlowId?: string;
+  /** Optional UUID referencing encrypted `telegram_pixelverif_stashes` row for custom buyer fields (never stores secrets in pending_action). */
+  customFlowId?: string;
 };
 
 export type Payq1State = {
@@ -142,7 +144,7 @@ export function parsePayq1State(raw: unknown): Payq1State | null {
   if (typeof v.tag !== "string" || !/^[0-9a-f]{12}$/.test(v.tag)) return null;
   if (v.locale !== "id" && v.locale !== "en") return null;
   if (!Number.isSafeInteger(v.idrSubtotal) || (v.idrSubtotal as number) <= 0) return null;
-  const source = v.source as { kind?: unknown; productId?: unknown; variantId?: unknown; qty?: unknown; museInviteCode?: unknown; inviteEmail?: unknown; pvFlowId?: unknown } | null;
+  const source = v.source as { kind?: unknown; productId?: unknown; variantId?: unknown; qty?: unknown; museInviteCode?: unknown; inviteEmail?: unknown; pvFlowId?: unknown; customFlowId?: unknown } | null;
   if (!source || typeof source !== "object" || source.kind !== "single") return null;
   if (!Number.isSafeInteger(source.productId) || (source.productId as number) <= 0) return null;
   if (!Number.isSafeInteger(source.variantId) || (source.variantId as number) <= 0) return null;
@@ -150,7 +152,8 @@ export function parsePayq1State(raw: unknown): Payq1State | null {
   if (source.museInviteCode !== undefined && (typeof source.museInviteCode !== "string" || !/^[A-Za-z0-9]{6}$/.test(source.museInviteCode))) return null;
   if (source.inviteEmail !== undefined && (typeof source.inviteEmail !== "string" || source.inviteEmail.length > 254 || !INVITE_EMAIL_REGEX.test(source.inviteEmail))) return null;
   if (source.pvFlowId !== undefined && (typeof source.pvFlowId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.pvFlowId))) return null;
-  const inputCount = [source.museInviteCode, source.inviteEmail, source.pvFlowId].filter(x => x !== undefined).length;
+  if (source.customFlowId !== undefined && (typeof source.customFlowId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.customFlowId))) return null;
+  const inputCount = [source.museInviteCode, source.inviteEmail, source.pvFlowId, source.customFlowId].filter(x => x !== undefined).length;
   if (inputCount > 1) return null;
   if (!Array.isArray(v.methods)) return null;
   if (v.methods.length > PAYQ1_MAX_METHODS) return null;
