@@ -155,7 +155,8 @@ describe("Pixel Verification peer-reviewed audit fixes", () => {
     const resolved = await resolveCurrentPayq1Lines("901", parsedOffer!);
     expect(resolved.ok).toBe(true);
     if (resolved.ok) expect(resolved.cartLines[0].buyerFields).toEqual(pvCreds);
-    await expect(loadCompletedPixelverifStash("901", 1, parsedOffer!.source.pvFlowId!)).resolves.toEqual(pvCreds);
+    if (!parsedOffer || parsedOffer.source.kind !== "single") throw new Error("expected single offer");
+    await expect(loadCompletedPixelverifStash("901", 1, parsedOffer.source.pvFlowId!)).resolves.toEqual(pvCreds);
 
     // Expired stash fails closed on resolver and is swept by cleanup.
     fx.sql.exec("UPDATE telegram_pixelverif_stashes SET expires_at=datetime('now','-1 minute') WHERE user_id='901'");

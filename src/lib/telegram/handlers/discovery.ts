@@ -236,9 +236,11 @@ export async function handlePendingSearchInput(
 }
 
 export async function handleSearchResults(chatId: number, keyword: string, from?: { id: number }) {
-  const [{ readTelegramCatalog, searchTelegramCatalog }, ctx] = await Promise.all([
+  const [{ readTelegramCatalog, searchTelegramCatalog }, ctx, gamesMatches, pediaMatches] = await Promise.all([
     import("@/lib/telegram/catalog-snapshot"),
     tgCtxFor(from?.id ?? chatId),
+    import("./games").then((m) => m.searchGamesCatalog(keyword)).catch(() => []),
+    import("./pedia").then((m) => m.searchPediaCatalog(keyword)).catch(() => []),
   ]);
   const matching = searchTelegramCatalog(await readTelegramCatalog(), keyword);
   const available = matching.filter(row => row.price !== null);
@@ -248,14 +250,69 @@ export async function handleSearchResults(chatId: number, keyword: string, from?
     price: row.price!,
     stock: row.stock,
   }));
-  const soldOut = products.length ? 0 : matching.length;
+  const topGames = gamesMatches.slice(0, 3);
+  const topPedia = pediaMatches.slice(0, 3);
+
+  // Bila hanya Market yang cocok (atau tidak ada sama sekali), pertahankan
+  // perilaku & format existing 100% tanpa perubahan.
+  if (!topGames.length && !topPedia.length) {
+    const soldOut = products.length ? 0 : matching.length;
+    await sendMessage({
+      chat_id: chatId,
+      text: searchResultsMessage(keyword, available.length, soldOut, products.length, { locale: ctx.locale }),
+      parse_mode: "HTML",
+      reply_markup: products.length > 0
+        ? searchResultsKeyboard(products, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx })
+        : searchNoResultsKeyboard({ locale: ctx.locale }),
+    });
+    return;
+  }
+
+  // Pencarian lintas 3 lini (Apps + Games + Pedia) tanpa banjir tombol (maks 10 tombol hasil).
+  const en = ctx.locale === "en";
+  const { cb, buttonPrice } = await import("@/lib/telegram/keyboards");
+  const { pediaServiceName } = await import("@/lib/pedia/copy");
+  const { escapeHtml, truncate } = await import("@/lib/telegram/messages/format");
+  const marketSlice = products.slice(0, Math.max(4, 10 - topGames.length - topPedia.length));
+  const marketMarkup = marketSlice.length > 0
+    ? searchResultsKeyboard(marketSlice, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }).inline_keyboard.slice(0, -1)
+    : [];
+  const extraRows: import("@/lib/telegram/types").InlineKeyboardButton[][] = [];
+  const { gameCallbackRef } = await import("./games");
+  for (const g of topGames) {
+    const ref = await gameCallbackRef(g.slug);
+    extraRows.push([{
+      text: `🎮 ${truncate(g.name, 26)}${g.min_price ? ` · ${en ? "from" : "mulai"} ${buttonPrice(g.min_price)}` : ""}`,
+      callback_data: cb.gamesOpen(ref),
+      style: "success",
+    }]);
+  }
+  for (const p of topPedia) {
+    const pName = en ? pediaServiceName(p.name, "en") : p.name;
+    extraRows.push([{
+      text: `📈 ${truncate(pName, 24)}${p.min_price ? ` · ${en ? "from" : "mulai"} ${buttonPrice(p.min_price)}` : ""}`,
+      callback_data: cb.pediaTiers(p.id, "a", 0),
+      style: "success",
+    }]);
+  }
+  const totalCount = available.length + gamesMatches.length + pediaMatches.length;
+  const header = en
+    ? `🔎 <b>Search results for “${escapeHtml(truncate(keyword, 40))}”</b> (${totalCount})`
+    : `🔎 <b>Hasil pencarian “${escapeHtml(truncate(keyword, 40))}”</b> (${totalCount})`;
   await sendMessage({
     chat_id: chatId,
-    text: searchResultsMessage(keyword, available.length, soldOut, products.length, { locale: ctx.locale }),
+    text: header,
     parse_mode: "HTML",
-    reply_markup: products.length > 0
-      ? searchResultsKeyboard(products, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx })
-      : searchNoResultsKeyboard({ locale: ctx.locale }),
+    reply_markup: {
+      inline_keyboard: [
+        ...marketMarkup,
+        ...extraRows,
+        [
+          { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+          { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+        ],
+      ],
+    },
   });
 }
 

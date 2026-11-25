@@ -323,16 +323,16 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     const idMenu = mainReplyMenu("id");
     expect(idMenu.keyboard).toHaveLength(2);
     expect(idMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
-      ["🛍 Katalog", "📦 Pesanan"],
-      ["💬 Bantuan", "🇮🇩 Bahasa"],
+      ["🛍 Katalog", "📈 Sosmed", "🎮 Games"],
+      ["📦 Pesanan", "💬 Bantuan", "🇮🇩 Bahasa"],
     ]);
     expect(idMenu.is_persistent).toBe(false);
     expect(idMenu.resize_keyboard).toBe(true);
 
     const enMenu = mainReplyMenu("en");
     expect(enMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
-      ["🛍 Catalog", "📦 Orders"],
-      ["💬 Help", "🇬🇧 Language"],
+      ["🛍 Catalog", "📈 Social", "🎮 Games"],
+      ["📦 Orders", "💬 Help", "🇬🇧 Language"],
     ]);
 
     await handleCommand("/start", buyer.id, "private", buyer);
@@ -348,6 +348,10 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     const welcomeKb = photoCall?.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string; style?: string }[][] };
     expect(welcomeKb.inline_keyboard).toEqual([
       [{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📈 Sosmed Pedia", callback_data: "pdh", style: "success" },
+        { text: "🎮 Top Up Games", callback_data: "gmh", style: "success" },
+      ],
       [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
         { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
@@ -486,7 +490,11 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
 
     const hk = homeKeyboard("id");
     expect(hk.inline_keyboard[0][0]).toMatchObject({ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" });
-    expect(hk.inline_keyboard[1][0]?.style).toBe("primary");
+    expect(hk.inline_keyboard[1]).toEqual([
+      { text: "📈 Sosmed Pedia", callback_data: "pdh", style: "success" },
+      { text: "🎮 Top Up Games", callback_data: "gmh", style: "success" },
+    ]);
+    expect(hk.inline_keyboard[2][0]?.style).toBe("primary");
 
     const vk = variantsKeyboard(9, [
       { id: 1, label: "Head", price: 19500, stock: 48 },
@@ -536,6 +544,10 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
       [{ text: "🛠️ Developer & Tools", callback_data: "cat:6:0" }],
       [{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }],
       [
+        { text: "📈 Sosmed Pedia", callback_data: "pdh", style: "success" },
+        { text: "🎮 Top Up Games", callback_data: "gmh", style: "success" },
+      ],
+      [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
         { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
       ],
@@ -552,7 +564,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     const enEditKb = tg.safeEditOrSend.mock.calls.at(-1)?.[0]?.reply_markup as {
       inline_keyboard: { text: string; callback_data?: string; url?: string; style?: string }[][];
     };
-    expect(enEditKb.inline_keyboard.slice(0, 4)).toEqual([
+    expect(enEditKb.inline_keyboard.slice(0, 5)).toEqual([
       [
         { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
         { text: "🎬 Streaming & Entertainment", callback_data: "cat:2:0" },
@@ -563,8 +575,12 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
       ],
       [{ text: "🛠️ Developer & Tools", callback_data: "cat:6:0" }],
       [{ text: "🛍 View All Catalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📈 Social Media", callback_data: "pdh", style: "success" },
+        { text: "🎮 Top Up Games", callback_data: "gmh", style: "success" },
+      ],
     ]);
-    expect(enEditKb.inline_keyboard[5]).toEqual([
+    expect(enEditKb.inline_keyboard[6]).toEqual([
       { text: "🇬🇧 Language", callback_data: "settings" },
       { text: "🌐 Web", url: "https://axvara.tech" },
     ]);

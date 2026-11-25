@@ -61,9 +61,13 @@ export async function handleCallback(
   // grup tidak boleh dipakai untuk mengambil alih order orang lain.
   // R2 note: pm/pgo/gconsent/pmentry handlers each enforce chatId===from.id
   // + owned telegram_user_id before any DB read/write (private only).
-  const ownerBound = new Set(["pay", "pm", "pmc", "pmb", "pgo", "gconsent", "pmentry", "qinput", "epay", "eedit", "cancel", "cancelok", "refresh", "order", "cred", "wainput", "qrenew"]);
+  const ownerBound = new Set([
+    "pay", "pm", "pmc", "pmb", "pgo", "gconsent", "pmentry", "qinput", "epay", "eedit",
+    "cancel", "cancelok", "refresh", "order", "cred", "wainput", "qrenew",
+    "gmv", "gmu", "gme", "pds", "pdl", "pdn", "pdni", "pdrf",
+  ]);
   if (ownerBound.has(action)) {
-    const targetCode = action === "cancel" || action === "cancelok" || action === "refresh" || action === "order" || action === "cred" || action === "wainput" || action === "qrenew"
+    const targetCode = action === "cancel" || action === "cancelok" || action === "refresh" || action === "order" || action === "cred" || action === "wainput" || action === "qrenew" || action === "pdrf"
       ? String(params[0] || "").toUpperCase()
       : null;
     if (targetCode) {
@@ -203,7 +207,7 @@ export async function handleCallback(
     });
     return;
   }
-  if (["cats", "cat", "prd", "vars", "buy", "myorders", "help", "warranty"].includes(action)) {
+  if (["cats", "cat", "prd", "vars", "buy", "myorders", "help", "warranty", "gmh", "gma", "gmg", "gmo", "gmr", "pdh", "pda", "pdp"].includes(action)) {
     // Guard COMMON clear: preserve a durable creating intent (quoted stays
     // clearable); navigation away never silently discards the anchor.
     const { readPayq1State } = await import("@/lib/telegram/payment-quote");
@@ -212,14 +216,23 @@ export async function handleCallback(
       if (
         storedNav?.raw?.startsWith("pvinput:")
         || storedNav?.raw?.startsWith("custominput:")
-        || storedNav?.state?.source.pvFlowId
-        || storedNav?.state?.source.customFlowId
+        || (storedNav?.state?.source.kind === "single" && (storedNav.state.source.pvFlowId || storedNav.state.source.customFlowId))
       ) {
         const { clearPixelverifStash } = await import("./buyer-input");
         await clearPixelverifStash(String(from.id));
       }
       await clearPendingAction(from);
     }
+  }
+
+  // Delegate AXVARA Games (`gm*`) & AXVARA Pedia (`pd*` / `pdrf`) callbacks.
+  if (action.startsWith("gm")) {
+    const { handleGamesCallback } = await import("./games");
+    if (await handleGamesCallback(action, params, chatId, messageId, from, sourceMeta)) return;
+  }
+  if (action.startsWith("pd")) {
+    const { handlePediaCallback } = await import("./pedia");
+    if (await handlePediaCallback(action, params, chatId, messageId, from, sourceMeta)) return;
   }
 
   switch (action) {
@@ -269,8 +282,7 @@ export async function handleCallback(
           if (
             storedHome?.raw?.startsWith("pvinput:")
             || storedHome?.raw?.startsWith("custominput:")
-            || storedHome?.state?.source.pvFlowId
-            || storedHome?.state?.source.customFlowId
+            || (storedHome?.state?.source.kind === "single" && (storedHome.state.source.pvFlowId || storedHome.state.source.customFlowId))
           ) {
             const { clearPixelverifStash } = await import("./buyer-input");
             await clearPixelverifStash(String(from.id));
@@ -315,8 +327,7 @@ export async function handleCallback(
           if (
             storedCatalog?.raw?.startsWith("pvinput:")
             || storedCatalog?.raw?.startsWith("custominput:")
-            || storedCatalog?.state?.source.pvFlowId
-            || storedCatalog?.state?.source.customFlowId
+            || (storedCatalog?.state?.source.kind === "single" && (storedCatalog.state.source.pvFlowId || storedCatalog.state.source.customFlowId))
           ) {
             const { clearPixelverifStash } = await import("./buyer-input");
             await clearPixelverifStash(String(from.id));

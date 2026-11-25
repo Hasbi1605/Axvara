@@ -1,5 +1,17 @@
 # DESIGN.md — AXVARA Design System
 
+## Permukaan Bot Telegram Native untuk AXVARA Pedia & AXVARA Games — 25 November 2026 (lokal)
+
+- **Beranda `/start` (`homeKeyboard` di `src/lib/telegram/keyboards.ts`):** mempertahankan seluruh susunan kategori dan utilitas existing secara utuh, dengan 1 baris tambahan berisi 2 tombol hijau (`style: "success"`) tepat di bawah **`🛍 Lihat Semua Katalog`**:
+  - ID: `📈 Sosmed Pedia` (`pdh`, 15 char) | `🎮 Top Up Games` (`gmh`, 15 char)
+  - EN: `📈 Social Media` (`pdh`, 15 char) | `🎮 Top Up Games` (`gmh`, 15 char)
+  - Batas ≤15 karakter menjaga kedua tombol bebas elipsis di layar HP 2 kolom.
+- **Reply keyboard 2×3 (`mainReplyMenu`):** baris 1 `[🛍 Katalog | 📈 Sosmed | 🎮 Games]` (EN `[🛍 Catalog | 📈 Social | 🎮 Games]`), baris 2 `[📦 Pesanan | 💬 Bantuan | 🇮🇩 Bahasa]` (EN `[📦 Orders | 💬 Help | 🇬🇧 Language]`), dengan placeholder input `"Cari produk/game atau tempel link sosmed…"`.
+- **Pola navigasi ramah-HP di chat native:**
+  - **Games (`handlers/games.ts`, `messages/games.ts`):** foto ikon game via `replaceWithPhoto`, grid nominal 2 kolom (maks 10 SKU/halaman) dengan harga ringkas `buttonPrice`, tab adaptif `🎫 Pass & Member` (muncul saat >12 SKU), filter rentang harga (`<20rb` / `20–100rb` / `>100rb`, muncul saat >10 SKU), tombol pencarian nominal cepat, dan switcher region terpisah agar katalog besar (mis. 100+ SKU MLBB) tetap ringkas.
+  - **Pedia (`handlers/pedia.ts`, `messages/pedia.ts`):** daftar tier bernomor rinci di body pesan (label kualitas, wilayah, refill, estimasi, harga/1K) dipasangkan tombol angka hijau kompak `1..5` agar detail tidak terpotong batas lebar tombol Telegram; baris filter `🇮🇩 Indo`/`🌍 Global`/`🛡 Refill` disembunyikan otomatis untuk produk ≤3 tier.
+  - **Pesanan lintas-lini (`/orders`):** ikon pembeda `📋` (Market), `🎮` (Games), dan `📈` (Pedia) pada tombol daftar pesanan.
+
 ## Ritme jarak & permukaan tenang area header katalog beranda — 25 November 2026 (lokal)
 
 Keputusan owner untuk mengurangi kesan sesak pada transisi `CommunityBar` → `Katalog Premium` → `CategoryPills` → header kategori pertama (menggantikan jeda 16px dan permukaan `.ax-glass-card` seragam pada chrome pendukung):

@@ -126,7 +126,12 @@ export async function claimPayq1Creating(
   if (selected.kind === "gateway" && current.contact?.phone && !isValidWaNumber(current.contact.phone)) {
     return { ok: false, reason: "contact_invalid", state: current };
   }
-  const orderCode = (await import("@/lib/security")).generateOrderCode();
+  const rawCode = (await import("@/lib/security")).generateOrderCode();
+  const orderCode = current.source.kind === "games"
+    ? rawCode.replace(/^AXV-/, "AXG-")
+    : current.source.kind === "pedia"
+      ? rawCode.replace(/^AXV-/, "AXP-")
+      : rawCode;
   const idempotencyKey = payq1IdempotencyKey(ownerUserId, current.nonce);
   const method = current.methods.find((m) => m.id === selected.methodId)!;
   const selectedSnapshot: Payq1State["selected"] = {

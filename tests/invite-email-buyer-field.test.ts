@@ -635,11 +635,12 @@ describe("invite_email buyer field — Admin APIs & migration 0165", () => {
     expect(offerRaw).not.toContain("buyer.tg@gmail.com");
     const offer = parsePayq1State(offerRaw);
     expect(offer?.source.kind).toBe("single");
-    expect(offer?.source.customFlowId).toMatch(/^[0-9a-f-]{36}$/i);
+    if (!offer || offer.source.kind !== "single") throw new Error("expected single offer");
+    expect(offer.source.customFlowId).toMatch(/^[0-9a-f-]{36}$/i);
 
     // Encrypted stash stores ciphertext (no plaintext leak) and is isolated from Pixel loader
     const stashRow = fx.sql.prepare("SELECT flow_id, ciphertext, iv FROM telegram_pixelverif_stashes WHERE user_id='789'").get() as { flow_id: string; ciphertext: string; iv: string };
-    expect(stashRow.flow_id).toBe(offer!.source.customFlowId);
+    expect(stashRow.flow_id).toBe(offer.source.customFlowId);
     expect(stashRow.ciphertext).not.toContain(rawPassword);
     expect(stashRow.ciphertext).not.toContain("buyer.tg@gmail.com");
     expect(await loadCompletedPixelverifStash("789", 102, stashRow.flow_id)).toBeNull();
@@ -760,9 +761,10 @@ describe("invite_email buyer field — Admin APIs & migration 0165", () => {
         ?.pending_action ?? "",
     );
     const offer = parsePayq1State(offerRaw);
-    expect(offer?.source.qty).toBe(2);
-    expect(offer?.source.customFlowId).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(await loadCompletedCustomStash("790", 102, 2, offer!.source.customFlowId!)).toEqual({
+    if (!offer || offer.source.kind !== "single") throw new Error("expected single offer");
+    expect(offer.source.qty).toBe(2);
+    expect(offer.source.customFlowId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(await loadCompletedCustomStash("790", 102, 2, offer.source.customFlowId!)).toEqual({
       username: "akun_demo",
       secret_pin: "998877",
     });

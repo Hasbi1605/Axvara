@@ -23,11 +23,16 @@ import {
 import { buyerDeliveryKind } from "@/lib/catalog";
 import { hasAutomaticSupplierDelivery } from "@/lib/buyer-fields";
 import {
+  gamesPaidKeyboard,
   orderPaidKeyboard,
+  pediaPaidKeyboard,
   telegramOrderAdminKeyboard,
   webOrderAdminKeyboard,
   webPaidAdminKeyboard,
 } from "@/lib/telegram/keyboards";
+import { gamesPaidNoticeMessage } from "@/lib/telegram/messages/games";
+import { pediaPaidNoticeMessage } from "@/lib/telegram/messages/pedia";
+import { readTelegramOrderDetail, telegramOrderKindOf } from "@/lib/telegram/order-summary";
 import { siteOrigin } from "@/lib/site-url";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
 import { GAMES_ORDER_LABEL_SQL } from "@/lib/games/order-display";
@@ -214,12 +219,44 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
   }
   const profile = await telegramPaidDeliveryProfile(order, database);
   const locale = String((order as Row).locale ?? "") === "en" ? "en" as const : "id" as const;
+  const orderKind = telegramOrderKindOf(order);
+  let paidText = orderPaidMessage(String(order.code), productNames(order.items), profile.delivery, { locale });
+  let paidMarkup = orderPaidKeyboard(String(order.code), { locale });
+  if (orderKind === "games" || orderKind === "pedia") {
+    const detail = await readTelegramOrderDetail(
+      { code: order.code, order_kind: orderKind, items: order.items, status: "lunas", payment_status: "paid" },
+      locale,
+      database,
+    ).catch(() => null);
+    if (detail?.kind === "games") {
+      paidText = gamesPaidNoticeMessage({
+        orderCode: String(order.code),
+        gameName: detail.gameName,
+        packageName: detail.packageName,
+        customerNo: detail.customerNo,
+        nickname: detail.customerNickname,
+        locale,
+      });
+      paidMarkup = gamesPaidKeyboard(String(order.code), { locale });
+    } else if (detail?.kind === "pedia") {
+      paidText = pediaPaidNoticeMessage({
+        orderCode: String(order.code),
+        productName: detail.productName,
+        serviceName: detail.serviceName,
+        quantity: detail.quantity,
+        target: detail.target,
+        etaStart: detail.etaStart,
+        locale,
+      });
+      paidMarkup = pediaPaidKeyboard(String(order.code), { locale });
+    }
+  }
   // Telegram delivery happens in this chat; never ask a paid buyer for their WA number.
   const sent = await sendMessage({
     chat_id: chatId,
-    text: orderPaidMessage(String(order.code), productNames(order.items), profile.delivery, { locale }),
+    text: paidText,
     parse_mode: "HTML",
-    reply_markup: orderPaidKeyboard(String(order.code), { locale }),
+    reply_markup: paidMarkup,
   }).catch(() => ({ ok: false }));
   // A timeout may already have delivered. Retry only after backoff; Telegram
   // has no idempotency key, so this is bounded at-least-once, not exactly-once.
@@ -427,6 +464,7 @@ async function sendTelegramPaidAdmin(orderCode: string, database: DatabaseAccess
       orderCode: String(order.code),
       siteUrl,
       paidMarket: order.order_kind === "apps",
+      orderKind: String(order.order_kind || "apps"),
     }),
   }, "telegram", recoveryKey, hasTime);
 }

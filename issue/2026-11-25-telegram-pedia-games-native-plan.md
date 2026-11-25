@@ -1,8 +1,8 @@
 # Rencana Implementasi — Order AXVARA Pedia & AXVARA Games via Bot Telegram Native (`@Axvara_bot`)
 
-> **Status:** Rencana desain & arsitektur (draft untuk persetujuan owner — belum ada perubahan kode/DB/deploy).
+> **Status:** Terimplementasi penuh (Fase 0–3 selesai lokal, publikasi melalui CI `main`).
 > **Tanggal:** 2026-11-25
-> **Basis kode:** `main` @ `491c2919`
+> **Basis kode:** `main` @ `504fb873`
 > **Target kanal:** Bot Telegram native existing (`@Axvara_bot`, `src/lib/telegram/*`), **tanpa Telegram Mini App**.
 
 ---

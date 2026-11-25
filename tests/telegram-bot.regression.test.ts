@@ -18,8 +18,8 @@ import {
   productDetailKeyboard, variantsKeyboard, emailConfirmationKeyboard,
   helpKeyboard, orderStatusKeyboard, paidOrderStatusKeyboard, orderTerminalKeyboard,
   paymentMethodOfferKeyboard, credentialResendOutcomeKeyboard, settingsKeyboard,
-  MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
-  MENU_LABEL_SETTINGS, MENU_LABEL_EN,
+  MENU_LABEL_CATALOG, MENU_LABEL_PEDIA, MENU_LABEL_GAMES, MENU_LABEL_SEARCH,
+  MENU_LABEL_ORDERS, MENU_LABEL_HELP, MENU_LABEL_SETTINGS, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import fs from "node:fs";
 import path from "node:path";
@@ -131,10 +131,14 @@ describe("Telegram callback data", () => {
 });
 
 describe("Telegram keyboards", () => {
-  it("home keyboard places categories above View All Catalog and uses flag icons for Language", () => {
+  it("home keyboard places categories above View All Catalog, adds green Sosmed Pedia + Top Up Games row below it, and uses flag icons for Language", () => {
     const idEmpty = homeKeyboard("id");
     expect(idEmpty.inline_keyboard).toEqual([
       [{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📈 Sosmed Pedia", callback_data: "pdh", style: "success" },
+        { text: "🎮 Top Up Games", callback_data: "gmh", style: "success" },
+      ],
       [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
         { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
@@ -148,6 +152,10 @@ describe("Telegram keyboards", () => {
     const enEmpty = homeKeyboard("en");
     expect(enEmpty.inline_keyboard).toEqual([
       [{ text: "🛍 View All Catalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📈 Social Media", callback_data: "pdh", style: "success" },
+        { text: "🎮 Top Up Games", callback_data: "gmh", style: "success" },
+      ],
       [
         { text: "📦 My Orders", callback_data: "myorders", style: "primary" },
         { text: "💬 Help", url: "https://axvara.tech/wa", style: "primary" },
@@ -178,6 +186,10 @@ describe("Telegram keyboards", () => {
       [{ text: "🛠️ Developer & Tools", callback_data: "cat:6:0" }],
       [{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }],
       [
+        { text: "📈 Sosmed Pedia", callback_data: "pdh", style: "success" },
+        { text: "🎮 Top Up Games", callback_data: "gmh", style: "success" },
+      ],
+      [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
         { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
       ],
@@ -192,8 +204,8 @@ describe("Telegram keyboards", () => {
       { id: 4, name: "Bundle Hemat", slug: "bundle-hemat" },
       { id: 7, name: "Extra Cat", slug: "extra-cat" },
     ]);
-    // Capped at 6 categories (3 rows) + View All Catalog + 2 utility rows = 6 rows total.
-    expect(enWithCats.inline_keyboard).toHaveLength(6);
+    // Capped at 6 categories (3 rows) + View All Catalog + Sosmed/Games row + 2 utility rows = 7 rows total.
+    expect(enWithCats.inline_keyboard).toHaveLength(7);
     expect(enWithCats.inline_keyboard.slice(0, 3)).toEqual([
       [
         { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
@@ -210,6 +222,10 @@ describe("Telegram keyboards", () => {
     ]);
     expect(enWithCats.inline_keyboard[3]).toEqual([
       { text: "🛍 View All Catalog", callback_data: "catalog:0", style: "success" },
+    ]);
+    expect(enWithCats.inline_keyboard[4]).toEqual([
+      { text: "📈 Social Media", callback_data: "pdh", style: "success" },
+      { text: "🎮 Top Up Games", callback_data: "gmh", style: "success" },
     ]);
 
     const snr = searchNoResultsKeyboard({ locale: "id" });
@@ -683,8 +699,14 @@ describe("Telegram order and payment flow wiring", () => {
   it("follows every buyer paid push with an admin-group paid update", () => {
     const notifications = read("src/lib/telegram/order-notifications.ts");
     const notifyEnd = notifications.indexOf("await notifyTelegramPaidAdmin(orderCode, database);");
-    const sendBuyer = notifications.indexOf("reply_markup: orderPaidKeyboard");
-    expect(sendBuyer).toBeGreaterThan(0);
+    const appsMarkup = notifications.indexOf("paidMarkup = orderPaidKeyboard");
+    const gamesMarkup = notifications.indexOf("paidMarkup = gamesPaidKeyboard");
+    const pediaMarkup = notifications.indexOf("paidMarkup = pediaPaidKeyboard");
+    const sendBuyer = notifications.indexOf("reply_markup: paidMarkup");
+    expect(appsMarkup).toBeGreaterThan(0);
+    expect(gamesMarkup).toBeGreaterThan(appsMarkup);
+    expect(pediaMarkup).toBeGreaterThan(gamesMarkup);
+    expect(sendBuyer).toBeGreaterThan(pediaMarkup);
     expect(notifyEnd).toBeGreaterThan(sendBuyer);
   });
 
@@ -755,21 +777,22 @@ describe("Telegram warranty anti-refund copy", () => {
 });
 
 describe("Telegram Fase 1: navigasi & marketing", () => {
-  it("persistent reply menu exposes 2x2 catalog, orders, help, settings in ID and EN", () => {
+  it("persistent reply menu exposes 2x3 catalog, sosmed, games, orders, help, settings in ID and EN", () => {
     const menu = mainReplyMenu();
     expect(menu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
-      [MENU_LABEL_CATALOG, MENU_LABEL_ORDERS],
-      [MENU_LABEL_HELP, MENU_LABEL_SETTINGS],
+      [MENU_LABEL_CATALOG, MENU_LABEL_PEDIA, MENU_LABEL_GAMES],
+      [MENU_LABEL_ORDERS, MENU_LABEL_HELP, MENU_LABEL_SETTINGS],
     ]);
     expect(menu.is_persistent).toBe(false);
     expect(menu.resize_keyboard).toBe(true);
-    expect(menu.input_field_placeholder).toBe("Cari produk atau ketik nama produk…");
+    expect(menu.input_field_placeholder).toBe("Cari produk/game atau tempel link sosmed…");
 
     const enMenu = mainReplyMenu("en");
     expect(enMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
-      [MENU_LABEL_EN.catalog, MENU_LABEL_EN.orders],
-      [MENU_LABEL_EN.help, MENU_LABEL_EN.settings],
+      [MENU_LABEL_EN.catalog, MENU_LABEL_EN.pedia, MENU_LABEL_EN.games],
+      [MENU_LABEL_EN.orders, MENU_LABEL_EN.help, MENU_LABEL_EN.settings],
     ]);
+    expect(enMenu.input_field_placeholder).toBe("Search product/game or paste a social link…");
   });
 
   it("webhook routes new and legacy reply-menu labels and commands", () => {

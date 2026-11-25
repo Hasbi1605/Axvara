@@ -43,6 +43,8 @@ const PER_PAGE = 6;
 
 // Reply-menu labels — single source of truth shared by webhook routing + tests.
 export const MENU_LABEL_CATALOG = "🛍 Katalog";
+export const MENU_LABEL_PEDIA = "📈 Sosmed";
+export const MENU_LABEL_GAMES = "🎮 Games";
 export const MENU_LABEL_SEARCH = "🔎 Cari";
 export const MENU_LABEL_ORDERS = "📦 Pesanan";
 export const MENU_LABEL_WARRANTY = "🛡 Garansi";
@@ -141,6 +143,30 @@ export const cb = {
   lang: (locale: "id" | "en") => `lang:${locale}`,
   /** TG1 independent display-currency control. */
   currency: (currency: "IDR" | "USD") => `cur:${currency}`,
+  // ---- AXVARA Games callbacks (all <= 64 bytes) ----
+  gamesHome: () => "gmh",
+  gamesAll: (page = 0) => `gma:${page}`,
+  gamesGenre: (genre: string, page = 0) => `gmg:${genre}:${page}`,
+  gamesSearch: () => "gmq",
+  gamesOpen: (slugOrRef: string) => `gmo:${slugOrRef}`,
+  gamesRegions: (slugOrRef: string) => `gmr:${slugOrRef}`,
+  gamesSearchSku: (slugOrRef: string, typeIdx = 0) => `gms:${slugOrRef}:${typeIdx}`,
+  gamesTab: (slugOrRef: string, typeIdx: number, cat: string, range: string, page = 0) =>
+    `gmt:${slugOrRef}:${typeIdx}:${cat}:${range}:${page}`,
+  gamesVariant: (gamesProductId: number) => `gmv:${gamesProductId}`,
+  gamesUseSaved: (gamesProductId: number) => `gmu:${gamesProductId}`,
+  gamesEditId: (gamesProductId: number) => `gme:${gamesProductId}`,
+  // ---- AXVARA Pedia callbacks (all <= 64 bytes) ----
+  pediaHome: () => "pdh",
+  pediaAll: (page = 0) => `pda:${page}`,
+  pediaSearch: () => "pdsrc",
+  pediaPlatform: (platform: string, page = 0) => `pdp:${platform}:${page}`,
+  pediaTiers: (productId: number, filter = "a", page = 0) => `pdt:${productId}:${filter}:${page}`,
+  pediaSelect: (productId: number, tierId: number) => `pds:${productId}:${tierId}`,
+  pediaLinkProduct: (productId: number) => `pdl:${productId}`,
+  pediaQty: (productId: number, tierId: number, qty: number) => `pdn:${productId}:${tierId}:${qty}`,
+  pediaQtyInput: (productId: number, tierId: number) => `pdni:${productId}:${tierId}`,
+  pediaRefill: (orderCode: string) => `pdrf:${orderCode}`,
 } as const;
 
 // ---- Callback data parser ----
@@ -160,26 +186,26 @@ export function mainReplyMenu(locale: "id" | "en" = "id"): ReplyKeyboardMarkup {
   if (locale === "en") {
     return {
       keyboard: [
-        [{ text: MENU_LABEL_EN.catalog }, { text: MENU_LABEL_EN.orders }],
-        [{ text: MENU_LABEL_EN.help }, { text: MENU_LABEL_EN.settings }],
+        [{ text: MENU_LABEL_EN.catalog }, { text: MENU_LABEL_EN.pedia }, { text: MENU_LABEL_EN.games }],
+        [{ text: MENU_LABEL_EN.orders }, { text: MENU_LABEL_EN.help }, { text: MENU_LABEL_EN.settings }],
       ],
       resize_keyboard: true,
       // false: Telegram shows the keyboard toggle icon in the input field so
       // buyers can collapse/expand the menu (owner request 2026-11-20).
       is_persistent: false,
       one_time_keyboard: false,
-      input_field_placeholder: "Search product or pick a menu…",
+      input_field_placeholder: "Search product/game or paste a social link…",
     };
   }
   return {
     keyboard: [
-      [{ text: MENU_LABEL_CATALOG }, { text: MENU_LABEL_ORDERS }],
-      [{ text: MENU_LABEL_HELP }, { text: MENU_LABEL_SETTINGS }],
+      [{ text: MENU_LABEL_CATALOG }, { text: MENU_LABEL_PEDIA }, { text: MENU_LABEL_GAMES }],
+      [{ text: MENU_LABEL_ORDERS }, { text: MENU_LABEL_HELP }, { text: MENU_LABEL_SETTINGS }],
     ],
     resize_keyboard: true,
     is_persistent: false,
     one_time_keyboard: false,
-    input_field_placeholder: "Cari produk atau ketik nama produk…",
+    input_field_placeholder: "Cari produk/game atau tempel link sosmed…",
   };
 }
 
@@ -223,6 +249,8 @@ export function settingsKeyboard(locale?: Locale, _currency?: DisplayCurrency | 
  */
 export const MENU_LABEL_EN = {
   catalog: "🛍 Catalog",
+  pedia: "📈 Social",
+  games: "🎮 Games",
   search: "🔎 Search",
   orders: "📦 Orders",
   warranty: "🛡 Warranty",
@@ -315,6 +343,10 @@ export function homeKeyboard(
     inline_keyboard: [
       ...categoryRows,
       [{ text: en ? "🛍 View All Catalog" : "🛍 Lihat Semua Katalog", callback_data: cb.catalog(), style: "success" }],
+      [
+        { text: en ? "📈 Social Media" : "📈 Sosmed Pedia", callback_data: cb.pediaHome(), style: "success" },
+        { text: "🎮 Top Up Games", callback_data: cb.gamesHome(), style: "success" },
+      ],
       [
         { text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: cb.myOrders(), style: "primary" },
         { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa`, style: "primary" },
@@ -854,17 +886,135 @@ export function cancelConfirmationKeyboard(orderCode: string, ctx?: TgLocaleCtx)
   ] };
 }
 
+export function gamesPaidKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  return {
+    inline_keyboard: [
+      [{ text: en ? "🔄 Check Top Up Status" : "🔄 Cek Status Top Up", callback_data: cb.refresh(orderCode), style: "primary" }],
+      [
+        { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo AXVARA, saya ingin menanyakan pesanan Games ${orderCode}`)}` },
+        { text: `✈️ @${SITE.supportTelegram}`, url: supportTelegramLink() },
+      ],
+      [
+        { text: "🎮 Top Up Games", callback_data: cb.gamesHome() },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+      ],
+    ],
+  };
+}
+
+export function gamesOrderDetailKeyboard(params: {
+  orderCode: string;
+  paid: boolean;
+  pending: boolean;
+  succeeded: boolean;
+  gameSlug?: string;
+  locale?: Locale;
+}): InlineKeyboardMarkup {
+  const en = params.locale === "en";
+  const rows: InlineKeyboardButton[][] = [];
+  if (params.pending) {
+    rows.push([
+      { text: en ? "🔄 Check Payment" : "🔄 Cek Pembayaran", callback_data: cb.refresh(params.orderCode), style: "primary" },
+      { text: en ? "❌ Cancel" : "❌ Batalkan", callback_data: cb.cancel(params.orderCode), style: "danger" },
+    ]);
+  } else if (params.paid) {
+    if (params.succeeded) {
+      rows.push([{
+        text: en ? "🔁 Top Up Again" : "🔁 Top Up Lagi",
+        callback_data: params.gameSlug ? cb.gamesOpen(params.gameSlug) : cb.gamesHome(),
+        style: "success",
+      }]);
+    } else {
+      rows.push([{ text: en ? "🔄 Check Status" : "🔄 Cek Status", callback_data: cb.refresh(params.orderCode), style: "primary" }]);
+    }
+    rows.push([
+      { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo AXVARA, saya ingin menanyakan pesanan Games ${params.orderCode}`)}` },
+    ]);
+  }
+  rows.push([{ text: en ? "◀️ Order List" : "◀️ Daftar Pesanan", callback_data: cb.myOrders() }]);
+  rows.push([
+    { text: "🎮 Top Up Games", callback_data: cb.gamesHome() },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+  ]);
+  return { inline_keyboard: rows };
+}
+
+export function pediaPaidKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  return {
+    inline_keyboard: [
+      [{ text: en ? "🔄 Check Progress" : "🔄 Cek Progres", callback_data: cb.refresh(orderCode), style: "primary" }],
+      [
+        { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo AXVARA, saya ingin menanyakan pesanan Pedia ${orderCode}`)}` },
+        { text: `✈️ @${SITE.supportTelegram}`, url: supportTelegramLink() },
+      ],
+      [
+        { text: en ? "📈 Social Media" : "📈 Sosmed Pedia", callback_data: cb.pediaHome() },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+      ],
+    ],
+  };
+}
+
+export function pediaOrderDetailKeyboard(params: {
+  orderCode: string;
+  paid: boolean;
+  pending: boolean;
+  completed: boolean;
+  refillEligible: boolean;
+  productId?: number;
+  tierId?: number;
+  locale?: Locale;
+}): InlineKeyboardMarkup {
+  const en = params.locale === "en";
+  const rows: InlineKeyboardButton[][] = [];
+  if (params.pending) {
+    rows.push([
+      { text: en ? "🔄 Check Payment" : "🔄 Cek Pembayaran", callback_data: cb.refresh(params.orderCode), style: "primary" },
+      { text: en ? "❌ Cancel" : "❌ Batalkan", callback_data: cb.cancel(params.orderCode), style: "danger" },
+    ]);
+  } else if (params.paid) {
+    if (params.refillEligible) {
+      rows.push([{ text: en ? "♻️ Request Refill" : "♻️ Ajukan Refill", callback_data: cb.pediaRefill(params.orderCode), style: "success" }]);
+    }
+    if (params.completed) {
+      const reorderCb = params.productId && params.tierId
+        ? cb.pediaSelect(params.productId, params.tierId)
+        : cb.pediaHome();
+      rows.push([{ text: en ? "🔁 Order Again" : "🔁 Pesan Lagi", callback_data: reorderCb, style: "primary" }]);
+    } else {
+      rows.push([{ text: en ? "🔄 Check Progress" : "🔄 Cek Progres", callback_data: cb.refresh(params.orderCode), style: "primary" }]);
+    }
+    rows.push([
+      { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo AXVARA, saya ingin menanyakan pesanan Pedia ${params.orderCode}`)}` },
+    ]);
+  }
+  rows.push([{ text: en ? "◀️ Order List" : "◀️ Daftar Pesanan", callback_data: cb.myOrders() }]);
+  rows.push([
+    { text: en ? "📈 Social Media" : "📈 Sosmed Pedia", callback_data: cb.pediaHome() },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+  ]);
+  return { inline_keyboard: rows };
+}
+
 export function telegramOrderAdminKeyboard(params: {
   username?: string;
   orderCode: string;
   siteUrl: string;
   paidMarket?: boolean;
+  orderKind?: string;
 }): InlineKeyboardMarkup {
   const rows: InlineKeyboardButton[][] = [];
   if (params.username) {
     rows.push([{ text: `✈️ @${params.username}`, url: `https://t.me/${params.username}` }]);
   }
-  rows.push([{ text: "👁 Lihat pesanan pembeli", url: `${params.siteUrl}/lacak-pesanan?code=${encodeURIComponent(params.orderCode)}&admin=1` }]);
+  const viewUrl = params.orderKind === "games"
+    ? `${SITE.gamesUrl}/pesanan/${encodeURIComponent(params.orderCode)}`
+    : params.orderKind === "pedia"
+      ? `${SITE.pediaUrl}/pesanan/${encodeURIComponent(params.orderCode)}`
+      : `${params.siteUrl}/lacak-pesanan?code=${encodeURIComponent(params.orderCode)}&admin=1`;
+  rows.push([{ text: "👁 Lihat pesanan pembeli", url: viewUrl }]);
   rows.push([{ text: "🔧 Buka Pesanan", url: `${params.siteUrl}/admin?section=orders&q=${encodeURIComponent(params.orderCode)}` }]);
   if (params.paidMarket) rows.push(...refundAdminButton(params.siteUrl, params.orderCode));
   return { inline_keyboard: rows };
@@ -921,8 +1071,27 @@ function refundAdminButton(siteUrl: string, code: string): InlineKeyboardButton[
 }
 
 /** Hanya ditampilkan bersama pesan QR pertama yang sudah kedaluwarsa. */
-export function paymentExpiredKeyboard(items: unknown, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+export function paymentExpiredKeyboard(
+  items: unknown,
+  ctx?: TgLocaleCtx & { orderKind?: "apps" | "games" | "pedia"; reorderCallback?: string },
+): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
+  if (ctx?.orderKind === "games") {
+    return {
+      inline_keyboard: [[
+        { text: en ? "🔁 Top Up Again" : "🔁 Top Up Lagi", callback_data: ctx.reorderCallback || cb.gamesHome() },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+      ]],
+    };
+  }
+  if (ctx?.orderKind === "pedia") {
+    return {
+      inline_keyboard: [[
+        { text: en ? "🔁 Order Again" : "🔁 Pesan Lagi", callback_data: ctx.reorderCallback || cb.pediaHome() },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+      ]],
+    };
+  }
   const lines = invoiceItems(items);
   const productId = lines.length === 1 ? Number(lines[0].product_id) : 0;
   return { inline_keyboard: [
@@ -934,21 +1103,34 @@ export function paymentExpiredKeyboard(items: unknown, ctx?: TgLocaleCtx): Inlin
   ] };
 }
 
-export function qrisExpiredKeyboard(orderCode: string, ctx?: TgLocaleCtx, items?: unknown): InlineKeyboardMarkup {
+export function qrisExpiredKeyboard(
+  orderCode: string,
+  ctx?: TgLocaleCtx & { orderKind?: "apps" | "games" | "pedia"; reorderCallback?: string },
+  items?: unknown,
+): InlineKeyboardMarkup {
   return { inline_keyboard: [
     [{ text: ctx?.locale === "en" ? "🔄 New QRIS" : "🔄 QRIS Baru", callback_data: cb.qrisRenew(orderCode) }],
     ...paymentExpiredKeyboard(items, ctx).inline_keyboard,
   ] };
 }
 
-export type Payq1OfferSource = { kind: "single"; productId: number; variantId: number; qty: number };
+export type Payq1OfferSource =
+  | { kind: "single"; productId: number; variantId: number; qty: number }
+  | { kind: "games"; productId: number; slug: string }
+  | { kind: "pedia"; productId: number; tierId: number; qty: number };
 
 /** R1: localized "other payment methods" entry (after qty/email approval).
- * Routes single-product contexts back to single pmentry; falls back to catalog. */
+ * Routes single-product / games / pedia contexts back to fresh checkout entry. */
 export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx & { source?: Payq1OfferSource; tag?: string }): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
   if (ctx?.source?.kind === "single") {
     return { inline_keyboard: [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry(ctx.source.productId, ctx.source.variantId, ctx.source.qty, ctx.tag) }]] };
+  }
+  if (ctx?.source?.kind === "games") {
+    return { inline_keyboard: [[{ text: en ? "💳 Choose another method" : "💳 Pilih metode lain", callback_data: cb.gamesVariant(ctx.source.productId) }]] };
+  }
+  if (ctx?.source?.kind === "pedia") {
+    return { inline_keyboard: [[{ text: en ? "💳 Choose another method" : "💳 Pilih metode lain", callback_data: cb.pediaSelect(ctx.source.productId, ctx.source.tierId) }]] };
   }
   return { inline_keyboard: [[{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() }]] };
 }
@@ -1011,6 +1193,19 @@ export function paymentMethodOfferKeyboard(
     ]);
     rows.push([
       { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home(), style: "primary" },
+    ]);
+  } else if (state.source?.kind === "games") {
+    rows.push([
+      { text: en ? "✏️ Change ID" : "✏️ Ganti ID", callback_data: cb.gamesEditId(state.source.productId), style: "primary" },
+      { text: en ? "◀️ Packages" : "◀️ Ganti Nominal", callback_data: cb.gamesOpen(state.source.slug), style: "primary" },
+    ]);
+    rows.push([
+      { text: en ? "✖️ Cancel" : "✖️ Batalkan", callback_data: cb.gamesHome(), style: "danger" },
+    ]);
+  } else if (state.source?.kind === "pedia") {
+    rows.push([
+      { text: en ? "✏️ Change Qty" : "✏️ Ubah Jumlah", callback_data: cb.pediaSelect(state.source.productId, state.source.tierId), style: "primary" },
+      { text: en ? "✖️ Cancel" : "✖️ Batalkan", callback_data: cb.pediaHome(), style: "danger" },
     ]);
   } else {
     rows.push([

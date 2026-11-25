@@ -30,6 +30,11 @@ const SUCCESS_ACTIONS = new Set([
   "claimstart",
   "confirm",
   "cfv",
+  "gmv",
+  "gmu",
+  "pds",
+  "pdn",
+  "pdrf",
 ]);
 const SUCCESS_TEXT_RE = /\b(?:bayar|pay|checkout|beli|konfirmasi|lanjut ke pembayaran|qris|crypto|ajukan)\b/i;
 

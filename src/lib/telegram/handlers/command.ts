@@ -12,7 +12,8 @@ import { sendMessage } from "@/lib/telegram/api";
 import { SITE } from "@/lib/site";
 import {
   cb, homeKeyboard, warrantyKeyboard, languageChooserKeyboard, settingsKeyboard,
-  helpKeyboard, mainReplyMenu, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
+  helpKeyboard, mainReplyMenu, MENU_LABEL_CATALOG, MENU_LABEL_PEDIA, MENU_LABEL_GAMES,
+  MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
   MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY,
   MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_GLOBE_LEGACY, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
@@ -40,8 +41,7 @@ async function clearPendingUnlessCreating(from?: { id: number }) {
       if (
         stored?.raw?.startsWith("pvinput:")
         || stored?.raw?.startsWith("custominput:")
-        || stored?.state?.source.pvFlowId
-        || stored?.state?.source.customFlowId
+        || (stored?.state?.source.kind === "single" && (stored.state.source.pvFlowId || stored.state.source.customFlowId))
       ) {
         const { clearPixelverifStash } = await import("./buyer-input");
         await clearPixelverifStash(String(from.id));
@@ -221,6 +221,20 @@ export async function handleCommand(
     return;
   }
 
+  if (cmd === "/games") {
+    await clearPendingUnlessCreating(from);
+    const { handleGamesHome } = await import("./games");
+    await handleGamesHome(chatId, 0, from);
+    return;
+  }
+
+  if (cmd === "/pedia") {
+    await clearPendingUnlessCreating(from);
+    const { handlePediaHome } = await import("./pedia");
+    await handlePediaHome(chatId, 0, from);
+    return;
+  }
+
   if (cmd === "/cari" || cmd === "/search") {
     await clearPendingUnlessCreating(from);
     const searchArg = trimmed.replace(/^\/(?:cari|search)(?:@\S+)?/i, "").trim();
@@ -270,6 +284,20 @@ export async function handleCommand(
   if (trimmed === MENU_LABEL_CATALOG || trimmed === MENU_LABEL_EN.catalog) {
     await clearPendingUnlessCreating(from);
     await handleShowCatalog(chatId, from);
+    return;
+  }
+
+  if (trimmed === MENU_LABEL_PEDIA || trimmed === MENU_LABEL_EN.pedia) {
+    await clearPendingUnlessCreating(from);
+    const { handlePediaHome } = await import("./pedia");
+    await handlePediaHome(chatId, 0, from);
+    return;
+  }
+
+  if (trimmed === MENU_LABEL_GAMES || trimmed === MENU_LABEL_EN.games) {
+    await clearPendingUnlessCreating(from);
+    const { handleGamesHome } = await import("./games");
+    await handleGamesHome(chatId, 0, from);
     return;
   }
 
@@ -380,12 +408,22 @@ export async function handleCommand(
     if (await handlePayq1PhoneInput(trimmed, chatId, from).catch(() => false)) return;
     if (await handlePendingEmailInput(trimmed, chatId, from)) return;
     if (await handlePendingSearchInput(trimmed, chatId, from)) return;
+    const { handleGamesPendingInput } = await import("./games");
+    if (await handleGamesPendingInput(trimmed, chatId, from)) return;
+    const { handlePediaPendingInput } = await import("./pedia");
+    if (await handlePediaPendingInput(text, chatId, from)) return;
   }
 
   // Extras text / photo handler (e.g. claim proof upload).
   if (from) {
     const { handleExtraText } = await import("./extras");
     if (await handleExtraText(trimmed, chatId, from, photoFileId)) return;
+  }
+
+  // Killer UX Pedia: paste link sosmed langsung di chat -> auto-detect layanan cocok.
+  if (!cmd.startsWith("/") && trimmed.length >= 8) {
+    const { handlePediaPasteLink } = await import("./pedia");
+    if (await handlePediaPasteLink(trimmed, chatId, from).catch(() => false)) return;
   }
 
   // Free-text search: plain text >= 2 chars directly searches catalog instead of dumping home.

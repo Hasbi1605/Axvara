@@ -55,7 +55,14 @@ export async function showPaymentMethodOffer(
   from: { id: number; first_name: string; username?: string },
   target: OfferRenderTarget,
 ): Promise<void> {
-  if (!target.skipBuyerInputPrompt && !target.identity.museInviteCode && !target.identity.inviteEmail && !target.identity.pvFlowId && !target.identity.customFlowId) {
+  if (
+    target.identity.kind === "single"
+    && !target.skipBuyerInputPrompt
+    && !target.identity.museInviteCode
+    && !target.identity.inviteEmail
+    && !target.identity.pvFlowId
+    && !target.identity.customFlowId
+  ) {
     const { requestBuyerInput } = await import("./buyer-input");
     if (await requestBuyerInput(chatId,from,target.productId,target.variantId,target.qty)) return;
   }
@@ -105,8 +112,18 @@ async function startLegacyQrisFromOffer(
   chatId: number,
   messageId: number,
   from: { id: number; first_name: string; username?: string },
-  state: Pick<import("@/lib/telegram/payment-quote").Payq1State, "source" | "tag" | "contact" | "locale">,
+  state: Pick<import("@/lib/telegram/payment-quote").Payq1State, "source" | "tag" | "contact" | "locale" | "idrSubtotal" | "nonce">,
 ): Promise<void> {
+  if (state.source.kind === "games") {
+    const { startGamesQrisFromOffer } = await import("@/lib/telegram/games-checkout");
+    await startGamesQrisFromOffer(chatId, messageId, from, state);
+    return;
+  }
+  if (state.source.kind === "pedia") {
+    const { startPediaQrisFromOffer } = await import("@/lib/telegram/pedia-checkout");
+    await startPediaQrisFromOffer(chatId, messageId, from, state);
+    return;
+  }
   const { handlePayWithQris } = await import("./invoice");
   const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
   const checked = await readCheckoutEmail(String(from.id), [{ productId: state.source.productId, variantId: state.source.variantId }]).catch(() => null);
@@ -500,53 +517,79 @@ export async function handlePayMethodConfirm(
     });
     return;
   }
-  // Re-read the CURRENT cart/single and bind: mismatch (price/tag drift) =>
+  // Re-read the CURRENT cart/single/games/pedia and bind: mismatch (price/tag drift) =>
   // explicit requote, never create on drifted prices.
-  const { resolveCurrentPayq1Lines } = await import("./payment-lines");
-  const resolved = await resolveCurrentPayq1Lines(String(from.id), current).catch(() => null);
-  if (!resolved || !resolved.ok) {
-    const reason = resolved?.reason ?? "catalog_read_failed";
-    console.warn("[telegram-checkout] rejected", { method: live.methodId, reason });
-    await safeEditOrSend({
-      chat_id: chatId, message_id: messageId,
-      text: reason === "stock" ? outOfStockMessage({ locale: ctx.locale }) : paymentMethodNoticeMessage("catalog_changed", { locale: ctx.locale }),
-      parse_mode: "HTML",
-      reply_markup: reason === "stock" ? minimalMenuKeyboard({ locale: ctx.locale }) : otherMethodsEntryKeyboard({ locale: ctx.locale, source: current.source, tag: current.tag }),
-    });
-    return;
-  }
-  void orderLinesFromSource;
-  // Gateway needs provider-required valid email + phone BEFORE creating;
-  // crypto needs existing fulfillment email rules ONLY (never phone).
-  // NOTE: `current` is the CURRENT DB row — the stale `state` snapshot
-  // predates the quoted->contact phone CAS.
-  if (live.kind === "gateway") {
-    const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
-    const checked = await readCheckoutEmail(String(from.id), resolved.cartLinesForEmail).catch(() => null);
-    if (!checked || !checked.email) {
+  if (current.source.kind === "games") {
+    const { preflightGamesSource } = await import("@/lib/telegram/games-checkout");
+    const pre = await preflightGamesSource(current.source, current.idrSubtotal, current.tag).catch(() => null);
+    if (!pre || !pre.ok) {
       await safeEditOrSend({
         chat_id: chatId, message_id: messageId,
-        text: paymentMethodNoticeMessage("contact_needed", { locale: ctx.locale }),
+        text: paymentMethodNoticeMessage("catalog_changed", { locale: ctx.locale }),
         parse_mode: "HTML",
+        reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale, source: current.source, tag: current.tag }),
       });
       return;
     }
-    const contactPhone = current.contact?.phone ?? null;
-    if (!contactPhone) {
-      const { requestPayq1Contact } = await import("./payment-contact");
-      await requestPayq1Contact(chatId, messageId, from, ctx.locale, currentRaw, current, checked.email);
+  } else if (current.source.kind === "pedia") {
+    const { preflightPediaSource } = await import("@/lib/telegram/pedia-checkout");
+    const pre = await preflightPediaSource(current.source, current.idrSubtotal, current.tag, ctx.locale).catch(() => null);
+    if (!pre || !pre.ok) {
+      await safeEditOrSend({
+        chat_id: chatId, message_id: messageId,
+        text: paymentMethodNoticeMessage("catalog_changed", { locale: ctx.locale }),
+        parse_mode: "HTML",
+        reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale, source: current.source, tag: current.tag }),
+      });
       return;
     }
   } else {
-    const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
-    const checked = await readCheckoutEmail(String(from.id), resolved.cartLinesForEmail).catch(() => null);
-    if (checked && checked.required && !checked.email) {
+    const { resolveCurrentPayq1Lines } = await import("./payment-lines");
+    const resolved = await resolveCurrentPayq1Lines(String(from.id), current).catch(() => null);
+    if (!resolved || !resolved.ok) {
+      const reason = resolved?.reason ?? "catalog_read_failed";
+      console.warn("[telegram-checkout] rejected", { method: live.methodId, reason });
       await safeEditOrSend({
         chat_id: chatId, message_id: messageId,
-        text: paymentMethodNoticeMessage("contact_needed", { locale: ctx.locale }),
+        text: reason === "stock" ? outOfStockMessage({ locale: ctx.locale }) : paymentMethodNoticeMessage("catalog_changed", { locale: ctx.locale }),
         parse_mode: "HTML",
+        reply_markup: reason === "stock" ? minimalMenuKeyboard({ locale: ctx.locale }) : otherMethodsEntryKeyboard({ locale: ctx.locale, source: current.source, tag: current.tag }),
       });
       return;
+    }
+    void orderLinesFromSource;
+    // Gateway needs provider-required valid email + phone BEFORE creating;
+    // crypto needs existing fulfillment email rules ONLY (never phone).
+    // NOTE: `current` is the CURRENT DB row — the stale `state` snapshot
+    // predates the quoted->contact phone CAS.
+    if (live.kind === "gateway") {
+      const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
+      const checked = await readCheckoutEmail(String(from.id), resolved.cartLinesForEmail).catch(() => null);
+      if (!checked || !checked.email) {
+        await safeEditOrSend({
+          chat_id: chatId, message_id: messageId,
+          text: paymentMethodNoticeMessage("contact_needed", { locale: ctx.locale }),
+          parse_mode: "HTML",
+        });
+        return;
+      }
+      const contactPhone = current.contact?.phone ?? null;
+      if (!contactPhone) {
+        const { requestPayq1Contact } = await import("./payment-contact");
+        await requestPayq1Contact(chatId, messageId, from, ctx.locale, currentRaw, current, checked.email);
+        return;
+      }
+    } else {
+      const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
+      const checked = await readCheckoutEmail(String(from.id), resolved.cartLinesForEmail).catch(() => null);
+      if (checked && checked.required && !checked.email) {
+        await safeEditOrSend({
+          chat_id: chatId, message_id: messageId,
+          text: paymentMethodNoticeMessage("contact_needed", { locale: ctx.locale }),
+          parse_mode: "HTML",
+        });
+        return;
+      }
     }
   }
   // Quote-expiry re-check (second seam): the quote may expire between

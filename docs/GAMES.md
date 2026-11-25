@@ -1026,3 +1026,11 @@ pemulihan admin §15 untuk `AXG-20261116-4206****` tidak berhasil (masih `needs_
 cek D1 18 Nov). Setelah deploy, kedua order dipulihkan lewat tombol admin "Cek ulang Sekalipay".
 Bukti region: WDP Membership (varian 1031) ditolak untuk akun ID (dikonfirmasi admin
 Sekalipay), sedangkan Diamond tipe Lainnya berhasil untuk akun ID.
+
+### 15.4 Pemesanan Native via Bot Telegram (`@Axvara_bot`) — 25 November 2026 (lokal, publikasi via CI `main`)
+
+AXVARA Games kini dapat dipesan langsung di chat pribadi `@Axvara_bot` (tombol hijau `🎮 Top Up Games` di bawah `🛍 Lihat Semua Katalog` pada `/start`, reply menu `🎮 Games`, atau `/games`) tanpa Mini App, env baru, maupun migrasi D1 baru.
+
+- **Gerbang & katalog:** memakai `gamesOrderingOpen()` + `getGamesCatalog()`/`getGamesDetail()` yang sama dengan web (default region Indonesia/utama, tab adaptif `🎫 Pass & Member` >12 SKU, filter rentang harga >10 SKU, grid 2 kolom, cari nominal, switcher region).
+- **Checkout & keamanan:** `src/lib/telegram/games-checkout.ts` menulis `orders` (`order_kind='games'`, `sales_channel='telegram'`, kode `AXG-`, `items='[]'`) + `games_order_items` dalam 1 `d1.batch` atomik dengan rail **QRIS + Crypto (NOWPayments)** tanpa form email/WA; 1-klik pakai ID terakhir dibaca dari `orders ⨝ games_order_items` milik user sendiri; cek nickname gratis (`checkSkGamesNickname`) menyertakan peringatan konflik region; cancel & failure definitif memakai restock `[]` + expire item Games tanpa menyentuh stok Market.
+- **Notifikasi:** DM lunas dimiliki tunggal oleh `notifyTelegramBuyerPaid` (`notifyGamesPaid` no-op untuk `sales_channel='telegram'`); DM selesai dengan copyable `SN` & tombol `🔁 Top Up Lagi` dikirim terpagar ledger oleh `notifyGamesCompleted` (`src/lib/games/notify.ts`).

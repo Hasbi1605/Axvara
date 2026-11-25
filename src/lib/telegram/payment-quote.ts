@@ -11,6 +11,9 @@ import { isCanonicalMethodOption } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/locale";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { INVITE_EMAIL_REGEX } from "@/lib/buyer-fields";
+import { isActiveQrisConfigured } from "@/lib/payments/qris";
+import { CUSTOM_COMMENT_MAX_CHARS, CUSTOM_COMMENT_MAX_LINES, CUSTOM_COMMENT_MAX_TOTAL } from "@/lib/pedia/custom-comments";
+import { GAMES_SK_NOTE_MAX, GAMES_SK_ZONE_MAX } from "@/lib/games/registry";
 
 export const PAYQ1_TTL_SEC = 600;
 // Katalog crypto multi-koin (hingga 28 koin, tiap koin membawa blok kurs bertanda) membuat
@@ -20,7 +23,7 @@ export const PAYQ1_MAX_METHODS = 96;
 export const PAYQ1_CALLBACK_MAX_BYTES = 64;
 export const PAYQ1_GCONSENT_MAX_BYTES = 64;
 
-export type Payq1CartSource = {
+export type Payq1SingleSource = {
   kind: "single";
   productId: number;
   variantId: number;
@@ -34,6 +37,37 @@ export type Payq1CartSource = {
   /** Optional UUID referencing encrypted `telegram_pixelverif_stashes` row for custom buyer fields (never stores secrets in pending_action). */
   customFlowId?: string;
 };
+
+export type Payq1GamesSource = {
+  kind: "games";
+  /** games_products.id */
+  productId: number;
+  skVariantId: number;
+  sku: string;
+  slug: string;
+  note: string;
+  zoneId?: string;
+  nickname?: string;
+  contractDigest: string;
+  costSnapshot: number;
+};
+
+export type Payq1PediaSource = {
+  kind: "pedia";
+  /** pedia_products.id */
+  productId: number;
+  /** pedia_tiers.id */
+  tierId: number;
+  qty: number;
+  targetRaw: string;
+  targetNormalized: string;
+  supplier: string;
+  supplierServiceId: number;
+  supplierRateSnapshot: number;
+  comments?: string[];
+};
+
+export type Payq1CartSource = Payq1SingleSource | Payq1GamesSource | Payq1PediaSource;
 
 export type Payq1State = {
   v: 1;
@@ -75,6 +109,8 @@ export type Payq1FreezeResult =
   | { ok: false; reason: "namespace_busy" | "no_methods" | "overflow" | "store_unavailable" };
 
 function identityLabel(identity: Payq1LineIdentity): string {
+  if (identity.kind === "games") return `games:${identity.productId}:${identity.sku}`;
+  if (identity.kind === "pedia") return `pedia:${identity.productId}:${identity.tierId}:${identity.qty}`;
   return `single:${identity.productId}:${identity.variantId}:${identity.qty}`;
 }
 
@@ -144,17 +180,49 @@ export function parsePayq1State(raw: unknown): Payq1State | null {
   if (typeof v.tag !== "string" || !/^[0-9a-f]{12}$/.test(v.tag)) return null;
   if (v.locale !== "id" && v.locale !== "en") return null;
   if (!Number.isSafeInteger(v.idrSubtotal) || (v.idrSubtotal as number) <= 0) return null;
-  const source = v.source as { kind?: unknown; productId?: unknown; variantId?: unknown; qty?: unknown; museInviteCode?: unknown; inviteEmail?: unknown; pvFlowId?: unknown; customFlowId?: unknown } | null;
-  if (!source || typeof source !== "object" || source.kind !== "single") return null;
-  if (!Number.isSafeInteger(source.productId) || (source.productId as number) <= 0) return null;
-  if (!Number.isSafeInteger(source.variantId) || (source.variantId as number) <= 0) return null;
-  if (!Number.isSafeInteger(source.qty) || (source.qty as number) <= 0) return null;
-  if (source.museInviteCode !== undefined && (typeof source.museInviteCode !== "string" || !/^[A-Za-z0-9]{6}$/.test(source.museInviteCode))) return null;
-  if (source.inviteEmail !== undefined && (typeof source.inviteEmail !== "string" || source.inviteEmail.length > 254 || !INVITE_EMAIL_REGEX.test(source.inviteEmail))) return null;
-  if (source.pvFlowId !== undefined && (typeof source.pvFlowId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.pvFlowId))) return null;
-  if (source.customFlowId !== undefined && (typeof source.customFlowId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.customFlowId))) return null;
-  const inputCount = [source.museInviteCode, source.inviteEmail, source.pvFlowId, source.customFlowId].filter(x => x !== undefined).length;
-  if (inputCount > 1) return null;
+  const source = v.source as Record<string, unknown> | null;
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+  if (source.kind === "single") {
+    if (!Number.isSafeInteger(source.productId) || (source.productId as number) <= 0) return null;
+    if (!Number.isSafeInteger(source.variantId) || (source.variantId as number) <= 0) return null;
+    if (!Number.isSafeInteger(source.qty) || (source.qty as number) <= 0) return null;
+    if (source.museInviteCode !== undefined && (typeof source.museInviteCode !== "string" || !/^[A-Za-z0-9]{6}$/.test(source.museInviteCode))) return null;
+    if (source.inviteEmail !== undefined && (typeof source.inviteEmail !== "string" || source.inviteEmail.length > 254 || !INVITE_EMAIL_REGEX.test(source.inviteEmail))) return null;
+    if (source.pvFlowId !== undefined && (typeof source.pvFlowId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.pvFlowId))) return null;
+    if (source.customFlowId !== undefined && (typeof source.customFlowId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.customFlowId))) return null;
+    const inputCount = [source.museInviteCode, source.inviteEmail, source.pvFlowId, source.customFlowId].filter(x => x !== undefined).length;
+    if (inputCount > 1) return null;
+  } else if (source.kind === "games") {
+    if (!Number.isSafeInteger(source.productId) || (source.productId as number) <= 0) return null;
+    if (!Number.isSafeInteger(source.skVariantId) || (source.skVariantId as number) <= 0) return null;
+    if (typeof source.sku !== "string" || !source.sku.trim() || source.sku.length > 100) return null;
+    if (typeof source.slug !== "string" || !source.slug.trim() || source.slug.length > 80) return null;
+    if (typeof source.note !== "string" || !source.note.trim() || source.note.length > GAMES_SK_NOTE_MAX) return null;
+    if (source.zoneId !== undefined && (typeof source.zoneId !== "string" || !source.zoneId.trim() || source.zoneId.length > GAMES_SK_ZONE_MAX)) return null;
+    if (source.nickname !== undefined && (typeof source.nickname !== "string" || source.nickname.length > 120)) return null;
+    if (typeof source.contractDigest !== "string" || !/^[0-9a-f]{64}$/.test(source.contractDigest)) return null;
+    if (!Number.isSafeInteger(source.costSnapshot) || (source.costSnapshot as number) <= 0) return null;
+  } else if (source.kind === "pedia") {
+    if (!Number.isSafeInteger(source.productId) || (source.productId as number) <= 0) return null;
+    if (!Number.isSafeInteger(source.tierId) || (source.tierId as number) <= 0) return null;
+    if (!Number.isSafeInteger(source.qty) || (source.qty as number) <= 0 || (source.qty as number) > 100_000_000) return null;
+    if (typeof source.targetRaw !== "string" || !source.targetRaw.trim() || source.targetRaw.length > 600) return null;
+    if (typeof source.targetNormalized !== "string" || !source.targetNormalized.trim() || source.targetNormalized.length > 600) return null;
+    if (typeof source.supplier !== "string" || !source.supplier.trim() || source.supplier.length > 40) return null;
+    if (!Number.isSafeInteger(source.supplierServiceId) || (source.supplierServiceId as number) <= 0) return null;
+    if (typeof source.supplierRateSnapshot !== "number" || !Number.isFinite(source.supplierRateSnapshot) || source.supplierRateSnapshot <= 0) return null;
+    if (source.comments !== undefined) {
+      if (!Array.isArray(source.comments) || source.comments.length === 0 || source.comments.length > CUSTOM_COMMENT_MAX_LINES) return null;
+      let totalChars = 0;
+      for (const line of source.comments) {
+        if (typeof line !== "string" || !line.trim() || line.length > CUSTOM_COMMENT_MAX_CHARS) return null;
+        totalChars += line.length + 1;
+        if (totalChars > CUSTOM_COMMENT_MAX_TOTAL + CUSTOM_COMMENT_MAX_LINES) return null;
+      }
+    }
+  } else {
+    return null;
+  }
   if (!Array.isArray(v.methods)) return null;
   if (v.methods.length > PAYQ1_MAX_METHODS) return null;
   const idrSubtotal = v.idrSubtotal as number;
@@ -176,7 +244,7 @@ export function parsePayq1State(raw: unknown): Payq1State | null {
   if (contact.phone !== null && typeof contact.phone !== "string") return null;
   if (contact.phone !== null && !isValidWaNumber(contact.phone)) return null;
   if (v.st === "creating") {
-    if (typeof v.orderCode !== "string" || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(v.orderCode)) return null;
+    if (typeof v.orderCode !== "string" || !/^(?:AXV|AXG|AXP)-\d{8}-[A-Z0-9]{8}$/.test(v.orderCode)) return null;
     if (typeof v.idempotencyKey !== "string" || !v.idempotencyKey || (v.idempotencyKey as string).length > 128) return null;
     if (!v.selected || typeof v.selected !== "object") return null;
     if (typeof (v.selected as { id?: unknown }).id !== "string" || !ids.has(String((v.selected as { id?: unknown }).id))) return null;
@@ -221,7 +289,14 @@ export async function freezePayq1(input: FreezeInput): Promise<Payq1FreezeResult
   if (input.contactEmail !== null && (typeof input.contactEmail !== "string" || input.contactEmail.length > 100
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.contactEmail))) return { ok: false, reason: "no_methods" };
   // Owner 7 Nov 2026: bot hanya QRIS + Crypto; gateway Sekalipay tetap di web.
-  const methods = await buildMethodOptions(input.idrSubtotal, { includeGateway: false });
+  let methods = await buildMethodOptions(input.idrSubtotal, { includeGateway: false });
+  if ((input.identity.kind === "games" || input.identity.kind === "pedia") && !methods.some((m) => m.id === "qris") && isActiveQrisConfigured()) {
+    methods = [{
+      id: "qris", kind: "qris" as const, label: "QRIS", sublabel: null,
+      account_number: "qris", account_name: "QRIS", qris_url: null,
+      currency: "IDR" as const, available: true as const,
+    }, ...methods];
+  }
   if (!methods.length) return { ok: false, reason: "no_methods" };
   if (methods.length > PAYQ1_MAX_METHODS) return { ok: false, reason: "overflow" };
   const nowSec = Math.floor(Date.now() / 1000);
@@ -265,8 +340,17 @@ export async function freezePayq1(input: FreezeInput): Promise<Payq1FreezeResult
       encoded, input.fromUserId, current,
     ).catch(() => ({ changes: 0 }));
   if ((claimed.changes ?? 0) < 1) return { ok: false, reason: "namespace_busy" };
-  trackFunnelEvent({ stage: "quote", channel: "telegram", locale: input.locale, subtotal: input.idrSubtotal,
-    ...(input.identity.kind === "single" ? { productId: input.identity.productId, variantId: input.identity.variantId, quantity: input.identity.qty } : {}) });
+  trackFunnelEvent({
+    stage: "quote",
+    channel: "telegram",
+    locale: input.locale,
+    subtotal: input.idrSubtotal,
+    ...(input.identity.kind === "single"
+      ? { productId: input.identity.productId, variantId: input.identity.variantId, quantity: input.identity.qty }
+      : input.identity.kind === "games"
+        ? { orderKind: "games" as const, productId: input.identity.productId, productSlug: input.identity.slug, variantId: input.identity.skVariantId, quantity: 1 }
+        : { orderKind: "pedia" as const, productId: input.identity.productId, variantId: input.identity.tierId, quantity: input.identity.qty }),
+  });
   return { ok: true, state, raw: encoded };
 }
 

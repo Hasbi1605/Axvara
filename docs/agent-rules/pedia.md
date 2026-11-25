@@ -2,6 +2,12 @@
 
 Job `pedia_orders` dimuat dinamis dari `src/lib/cron/lite/jobs/pedia.ts`. Dispatch/poll tetap berjalan sebelum cek saldo IndoSMM (checkpoint 5 menit) dan refresh statistik layanan. Gagal dispatch tetap ditandai sebagai subjob inti gagal; penanda sukses dikelola route.
 
+## Pemesanan & Refill Native di Bot Telegram (`@Axvara_bot`) — 25 November 2026 (lokal, publikasi via CI `main`)
+
+- Pembeli dapat memesan Pedia langsung di DM `@Axvara_bot` lewat tombol hijau `📈 Sosmed Pedia` (`pdh`), reply menu `📈 Sosmed`, `/pedia`, atau **tempel link media sosial langsung di chat** (`detectPediaLink` → `pd_linkctx:` → lompati prompt link). Rail pembayaran = **QRIS + Crypto (NOWPayments)** saja (tanpa email/WA, tanpa env/migrasi baru); gerbang tetap `PEDIA_ENABLED=true` & `PEDIA_ORDERS_ENABLED=true`.
+- Modul inti: `src/lib/telegram/handlers/pedia.ts`, `src/lib/telegram/pedia-checkout.ts` (termasuk guard harga/margin PD-33), `src/lib/telegram/messages/pedia.ts`, serta helper bersama `src/lib/pedia/refill-action.ts` (`executePediaRefill` — dipakai bersama oleh `POST /api/pedia/orders/[code]/refill` dan callback `pdrf:<kode>` dengan `ownerBound` + cooldown 24 jam atomik).
+- Pembatalan/kegagalan definitif di Telegram tetap menggunakan daftar restock kosong `[]` dan mengekspirasi `pedia_order_items` tanpa menyentuh stok Market. DM lunas dimiliki tunggal oleh `notifyTelegramBuyerPaid`; DM selesai (+ tombol `♻️ Ajukan Refill` bila eligible) & tindak lanjut `partial`/`canceled` dikirim lewat `notifyPediaCompleted` / `sendPediaBuyerMessage` (terpagar `buyer_notice_log`). Seluruh salinan pembeli tetap 100% white-label.
+
 ## Simpan harga kurasi dari admin — 21 November 2026 (lokal)
 
 - POST tier menyimpan `input_kind`, `drop_label`, `speed_per_day` dan harga paket pada INSERT yang sama; bila tidak ada paket yang dapat dihargai, gagal tanpa menulis tier. Custom Comments memakai batas jumlah yang sama dengan quote.

@@ -1,11 +1,21 @@
 import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import { queryFirst, getD1, transitionPendingOrder, OrderTransitionError } from "@/lib/db";
 import { sendMessage, safeEditOrSend, sendPhoto } from "@/lib/telegram/api";
-import { orderStatusKeyboard, paidOrderStatusKeyboard, qrisInvoiceKeyboard, orderTerminalKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
+import {
+  orderStatusKeyboard, paidOrderStatusKeyboard, qrisInvoiceKeyboard, orderTerminalKeyboard, minimalMenuKeyboard,
+  gamesOrderDetailKeyboard, pediaOrderDetailKeyboard,
+} from "@/lib/telegram/keyboards";
 import {
   errorMessage, orderStatusMessage, invoiceMessage,
   orderCancelledMessage, qrisRenewRejectedMessage,
 } from "@/lib/telegram/messages";
+import { gamesOrderDetailMessage } from "@/lib/telegram/messages/games";
+import { pediaOrderDetailMessage } from "@/lib/telegram/messages/pedia";
+import {
+  readTelegramOrderDetail, telegramOrderIcon, telegramOrderItemSummary, telegramOrderKindOf,
+  type TelegramOrderKind,
+} from "@/lib/telegram/order-summary";
+import { GAMES_ORDER_LABEL_SQL } from "@/lib/games/order-display";
 import type { Locale } from "@/lib/i18n/locale";
 import type { InlineKeyboardMarkup, InlineKeyboardButton } from "@/lib/telegram/types";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
@@ -13,7 +23,7 @@ import { reissueGopayQrisInvoice } from "@/lib/payments/qris";
 import { markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend, claimProviderInvoiceSend, releaseInvoiceSendClaim } from "@/lib/telegram/invoice-retry";
 import { SITE } from "@/lib/site";
 import { marketWarrantyClaim, marketWarrantyClaimEn, warrantyClaimRules } from "@/lib/warranty-policy";
-import { escapeHtml, invoiceItemSummary } from "@/lib/telegram/messages/format";
+import { escapeHtml } from "@/lib/telegram/messages/format";
 
 function orderItemsSummary(raw: unknown): string {
   try {
@@ -147,11 +157,82 @@ export async function handleOrderStatus(chatId: number, orderCode: string, fromU
   }
 
   const locale = orderLocaleOf(order);
+  const orderKind = telegramOrderKindOf(order);
+  const createdText = wibDateTimeText(order.created_at, locale);
+  const paidText = wibDateTimeText(order.paid_at, locale);
+  const paid = String(order.payment_status) === "paid";
+  const pending = ["unpaid", "pending"].includes(String(order.payment_status)) && String(order.status) === "pending";
+
+  if (orderKind === "games" || orderKind === "pedia") {
+    const detail = await readTelegramOrderDetail(order, locale);
+    if (detail.kind === "games") {
+      await sendMessage({
+        chat_id: chatId,
+        text: gamesOrderDetailMessage({
+          orderCode: String(order.code),
+          gameName: detail.gameName,
+          packageName: detail.packageName,
+          customerNo: detail.customerNo,
+          nickname: detail.customerNickname,
+          payableAmount: Number(order.payable_amount ?? order.subtotal),
+          paymentStatus: String(order.payment_status || "unpaid"),
+          buyerStatus: detail.buyerStatus,
+          manualRefundRequired: detail.manualRefundRequired,
+          sn: detail.sn,
+          createdAtText: createdText,
+          paidAtText: paidText,
+          locale,
+        }),
+        parse_mode: "HTML",
+        reply_markup: gamesOrderDetailKeyboard({
+          orderCode: String(order.code),
+          paid,
+          pending,
+          succeeded: detail.buyerStatus === "success",
+          gameSlug: detail.gameSlug,
+          locale,
+        }),
+      });
+      return;
+    }
+    if (detail.kind === "pedia") {
+      await sendMessage({
+        chat_id: chatId,
+        text: pediaOrderDetailMessage({
+          orderCode: String(order.code),
+          productName: detail.productName,
+          serviceName: detail.serviceName,
+          quantity: detail.quantity,
+          target: detail.target,
+          payableAmount: Number(order.payable_amount ?? order.subtotal),
+          paymentStatus: String(order.payment_status || "unpaid"),
+          itemStatus: detail.itemStatus,
+          startCount: detail.startCount,
+          remains: detail.remains,
+          done: detail.done,
+          refill: detail.refill,
+          createdAtText: createdText,
+          paidAtText: paidText,
+          locale,
+        }),
+        parse_mode: "HTML",
+        reply_markup: pediaOrderDetailKeyboard({
+          orderCode: String(order.code),
+          paid,
+          pending,
+          completed: detail.itemStatus === "completed",
+          refillEligible: detail.refill.eligible,
+          productId: detail.productId,
+          tierId: detail.tierId,
+          locale,
+        }),
+      });
+      return;
+    }
+  }
 
   // Item 11: date + paid date + warranty remaining, rendered above the
   // existing total/status footer.
-  const createdText = wibDateTimeText(order.created_at, locale);
-  const paidText = wibDateTimeText(order.paid_at, locale);
   const warranty = await orderWarrantySummary({
     code: String(order.code), status: order.status, payment_status: order.payment_status, subtotal: order.subtotal,
   }, locale);
@@ -174,7 +255,6 @@ export async function handleOrderStatus(chatId: number, orderCode: string, fromU
     payableAmount: Number(order.payable_amount ?? order.subtotal),
   }, { locale });
 
-  const paid = String(order.payment_status) === "paid";
   const claimEligible = paid && warranty.claimEligible;
   await sendMessage({
     chat_id: chatId,
@@ -272,6 +352,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
 
   let invoiceFailed = false;
   const locale = orderLocaleOf(order);
+  const refreshKind = telegramOrderKindOf(order);
   if ((order.payment_provider === "gopay" || order.payment_provider === "klikqris")
     && order.payment_status === "pending" && order.transaction_status === "pending"
     && order.qris_url && !order.telegram_invoice_sent_at
@@ -281,12 +362,13 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
       // sama — klaim atomik dulu; "busy" berarti pengirim lain memegangnya.
       const claim = await claimProviderInvoiceSend(orderCode, { allowFresh: true });
       if (claim === "claimed") {
+        const summaryLabel = await telegramOrderItemSummary(order, locale);
         const photo = await sendPhoto({
           chat_id: chatId,
           photo: String(order.qris_url),
           caption: invoiceMessage({
             orderCode,
-            productName: invoiceItemSummary(order.items, locale === "en"),
+            productName: summaryLabel,
             payableAmount: Number(order.payable_amount ?? order.subtotal),
             expiresAt: String(order.invoice_expires_at),
             paymentMethod: "qris",
@@ -306,6 +388,86 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
     } catch { invoiceFailed = true; }
   }
 
+  const extraNotice = (paymentNotice && order.payment_status !== "paid" ? `\n\n${paymentNotice}` : "")
+    + (checkFailed && order.payment_status !== "paid"
+      ? (locale === "en" ? "\n\nPayment check did not succeed. Try again or contact admin." : "\n\nPemeriksaan pembayaran belum berhasil. Coba lagi atau hubungi admin.")
+      : "")
+    + (invoiceFailed ? (locale === "en" ? "\n\nQR payment failed to send. Check status again or contact admin." : "\n\nQR pembayaran gagal dikirim. Cek status lagi atau hubungi admin.") : "");
+
+  if (refreshKind === "games" || refreshKind === "pedia") {
+    const detail = await readTelegramOrderDetail(order, locale);
+    const paid = String(order.payment_status) === "paid";
+    const pending = ["unpaid", "pending"].includes(String(order.payment_status)) && String(order.status) === "pending";
+    const createdText = wibDateTimeText(order.created_at, locale);
+    const paidText = wibDateTimeText(order.paid_at, locale);
+    if (detail.kind === "games") {
+      await safeEditOrSend({
+        chat_id: chatId,
+        message_id: messageId,
+        text: gamesOrderDetailMessage({
+          orderCode: String(order.code),
+          gameName: detail.gameName,
+          packageName: detail.packageName,
+          customerNo: detail.customerNo,
+          nickname: detail.customerNickname,
+          payableAmount: Number(order.payable_amount ?? order.subtotal),
+          paymentStatus: String(order.payment_status || "unpaid"),
+          buyerStatus: detail.buyerStatus,
+          manualRefundRequired: detail.manualRefundRequired,
+          sn: detail.sn,
+          createdAtText: createdText,
+          paidAtText: paidText,
+          locale,
+        }) + extraNotice,
+        parse_mode: "HTML",
+        reply_markup: gamesOrderDetailKeyboard({
+          orderCode: String(order.code),
+          paid,
+          pending,
+          succeeded: detail.buyerStatus === "success",
+          gameSlug: detail.gameSlug,
+          locale,
+        }),
+      });
+      return;
+    }
+    if (detail.kind === "pedia") {
+      await safeEditOrSend({
+        chat_id: chatId,
+        message_id: messageId,
+        text: pediaOrderDetailMessage({
+          orderCode: String(order.code),
+          productName: detail.productName,
+          serviceName: detail.serviceName,
+          quantity: detail.quantity,
+          target: detail.target,
+          payableAmount: Number(order.payable_amount ?? order.subtotal),
+          paymentStatus: String(order.payment_status || "unpaid"),
+          itemStatus: detail.itemStatus,
+          startCount: detail.startCount,
+          remains: detail.remains,
+          done: detail.done,
+          refill: detail.refill,
+          createdAtText: createdText,
+          paidAtText: paidText,
+          locale,
+        }) + extraNotice,
+        parse_mode: "HTML",
+        reply_markup: pediaOrderDetailKeyboard({
+          orderCode: String(order.code),
+          paid,
+          pending,
+          completed: detail.itemStatus === "completed",
+          refillEligible: detail.refill.eligible,
+          productId: detail.productId,
+          tierId: detail.tierId,
+          locale,
+        }),
+      });
+      return;
+    }
+  }
+
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: orderStatusMessage({
@@ -314,10 +476,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
-    }, { locale }) + (paymentNotice && order.payment_status !== "paid" ? `\n\n${paymentNotice}` : "")
-      + (checkFailed && order.payment_status !== "paid"
-      ? (locale === "en" ? "\n\nPayment check did not succeed. Try again or contact admin." : "\n\nPemeriksaan pembayaran belum berhasil. Coba lagi atau hubungi admin.")
-      : "") + (invoiceFailed ? (locale === "en" ? "\n\nQR payment failed to send. Check status again or contact admin." : "\n\nQR pembayaran gagal dikirim. Cek status lagi atau hubungi admin.") : ""),
+    }, { locale }) + extraNotice,
     parse_mode: "HTML",
     reply_markup: ["unpaid", "pending"].includes(String(order.payment_status))
       ? orderStatusKeyboard(orderCode, { locale })
@@ -342,7 +501,7 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
   if (!orderCode) return;
 
   const order = await queryFirst(
-    `SELECT items, buyer_access_version,buyer_access_format, locale, payment_method FROM orders WHERE code=? AND sales_channel='telegram'`,
+    `SELECT code, order_kind, items, buyer_access_version,buyer_access_format, locale, payment_method FROM orders WHERE code=? AND sales_channel='telegram'`,
     orderCode,
   ).catch(() => null);
   if (!order) {
@@ -389,12 +548,13 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
 
   // Nama produk dibaca ulang dari snapshot order, bukan dari memori request
   // lama, agar caption selalu cocok dengan apa yang benar-benar dipesan.
+  const renewProductName = await telegramOrderItemSummary({ code: orderCode, order_kind: order.order_kind, items: order.items }, locale);
   const photo = await sendPhoto({
     chat_id: chatId,
     photo: result.invoice.qrisUrl,
     caption: invoiceMessage({
       orderCode,
-      productName: invoiceItemSummary(order.items, locale === "en"),
+      productName: renewProductName,
       payableAmount: result.invoice.payableAmount,
       expiresAt: result.invoice.expiresAt,
       paymentMethod: "qris",
@@ -422,7 +582,7 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
   let order;
   try {
     order = await queryFirst(
-      `SELECT code, telegram_user_id, items, locale FROM orders WHERE code=? AND sales_channel='telegram'
+      `SELECT code, order_kind, telegram_user_id, items, locale FROM orders WHERE code=? AND sales_channel='telegram'
        AND status='pending' AND payment_status IN ('unpaid','pending')`,
       orderCode,
     );
@@ -441,18 +601,32 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
     return;
   }
 
+  const cancelKind = telegramOrderKindOf(order);
   try {
-    const items = JSON.parse(String(order.items));
-    if (!Array.isArray(items) || !items.length || items.some(item =>
-      !item || !Number.isSafeInteger(item.product_id) || item.product_id <= 0
-      || !Number.isSafeInteger(item.qty) || item.qty <= 0
-      || (item.variant_id != null && (!Number.isSafeInteger(item.variant_id) || item.variant_id <= 0)))) {
-      throw new Error("invalid_order_items");
+    let items: { product_id: number; variant_id?: number; qty: number }[] = [];
+    if (cancelKind === "apps") {
+      const parsed = JSON.parse(String(order.items));
+      if (!Array.isArray(parsed) || !parsed.length || parsed.some(item =>
+        !item || !Number.isSafeInteger(item.product_id) || item.product_id <= 0
+        || !Number.isSafeInteger(item.qty) || item.qty <= 0
+        || (item.variant_id != null && (!Number.isSafeInteger(item.variant_id) || item.variant_id <= 0)))) {
+        throw new Error("invalid_order_items");
+      }
+      items = parsed;
     }
     const d1 = getD1();
     if (!d1) throw new Error("cancellation_requires_d1");
     const guardId = `${orderCode}:telegram-cancel:${crypto.randomUUID()}`;
     // Extend the existing stock/inventory transition batch, not a second commit.
+    // Games & Pedia NEVER restock Market inventory (`items = []`) and
+    // atomically release their active target/account lock on cancellation.
+    const itemExpireStatements = cancelKind === "games"
+      ? [d1.prepare(`UPDATE games_order_items SET status='expired', updated_at=datetime('now')
+          WHERE order_code=? AND status='awaiting_payment'`).bind(orderCode)]
+      : cancelKind === "pedia"
+        ? [d1.prepare(`UPDATE pedia_order_items SET status='expired', updated_at=datetime('now')
+            WHERE order_code=? AND status IN ('awaiting_payment','queued') AND supplier_order_id IS NULL AND submit_attempts=0`).bind(orderCode)]
+        : [];
     await transitionPendingOrder(orderCode, "dibatalkan", "buyer_cancel", items, {
       prepare: query => d1.prepare(query),
       batch: statements => d1.batch([
@@ -463,6 +637,7 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
             AND status NOT IN ('initializing','pending','unpaid','expired','failed','cancelled')) THEN 1 ELSE 0 END`)
           .bind(guardId, orderCode, String(from.id), orderCode),
         ...statements,
+        ...itemExpireStatements,
         d1.prepare(`UPDATE payment_transactions SET status='cancelled', updated_at=datetime('now')
           WHERE order_code=? AND status IN ('initializing','pending','unpaid','expired')`).bind(orderCode),
         d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
@@ -497,8 +672,16 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
 
 export const ORDERS_PAGE_SIZE = 5;
 const ORDER_TAB_SQL = {
-  a: `(o.status='pending' OR (o.status='lunas' AND o.fulfillment_status!='delivered'))`,
-  s: `(o.status='lunas' AND o.payment_status='paid' AND o.fulfillment_status='delivered')`,
+  a: `(o.status='pending' OR (o.status='lunas' AND (
+    (COALESCE(o.order_kind,'apps')='apps' AND o.fulfillment_status!='delivered')
+    OR (o.order_kind='games' AND COALESCE(gi.status,'queued') IN ('awaiting_payment','queued','submitting','pending','needs_check'))
+    OR (o.order_kind='pedia' AND COALESCE(pi.status,'queued') IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check','partial','canceled'))
+  )))`,
+  s: `(o.status='lunas' AND o.payment_status='paid' AND (
+    (COALESCE(o.order_kind,'apps')='apps' AND o.fulfillment_status='delivered')
+    OR (o.order_kind='games' AND gi.status='success')
+    OR (o.order_kind='pedia' AND pi.status='completed')
+  ))`,
   g: `(o.status IN ('kadaluarsa','dibatalkan') OR o.payment_status IN ('expired','failed','refunded'))`,
 } as const;
 export type OrderTab = keyof typeof ORDER_TAB_SQL;
@@ -507,11 +690,27 @@ function isOrderTab(value: unknown): value is OrderTab {
   return value === "a" || value === "s" || value === "g";
 }
 
-type OrdersListRow = { code: string; items: string; payment_status: string; fulfillment_status: string; created_at: string | null; payable_amount: number | null };
+type OrdersListRow = {
+  code: string;
+  order_kind: TelegramOrderKind;
+  items: string;
+  games_label: string | null;
+  pedia_label: string | null;
+  games_status: string | null;
+  pedia_status: string | null;
+  payment_status: string;
+  fulfillment_status: string;
+  created_at: string | null;
+  payable_amount: number | null;
+};
 
 function orderRowButtonLabel(row: OrdersListRow, locale: Locale): string {
   const en = locale === "en";
-  const name = orderItemsSummary(row.items).split("\n")[0] ?? (en ? "Product" : "Produk");
+  const name = row.order_kind === "games"
+    ? (row.games_label || (en ? "Games Top Up" : "Top Up Games"))
+    : row.order_kind === "pedia"
+      ? (row.pedia_label || orderItemsSummary(row.items).split("\n")[0] || (en ? "Pedia Order" : "Pesanan Pedia"))
+      : (orderItemsSummary(row.items).split("\n")[0] ?? (en ? "Product" : "Produk"));
   const date = wibDateTimeText(row.created_at, locale)?.split(" • ")[0] ?? "";
   // Potong rapi: jangan biarkan pemisah ("—", "/", "·") menggantung di ujung.
   const short = name.length > 26
@@ -532,7 +731,7 @@ export function myOrdersPagedKeyboard(params: {
   const en = locale === "en";
   const tabLabel = (t: OrderTab, label: string) => (t === tab ? `• ${label} (${counts[t]})` : `${label} (${counts[t]})`);
   const rowsKeyboard: InlineKeyboardButton[][] = rows.map(row => [
-    { text: `📋 ${orderRowButtonLabel(row, locale)}`, callback_data: `order:${row.code}` },
+    { text: `${telegramOrderIcon(row.order_kind)} ${orderRowButtonLabel(row, locale)}`, callback_data: `order:${row.code}` },
   ]);
   rowsKeyboard.push([
     { text: tabLabel("a", en ? "Active" : "Aktif"), callback_data: `mo:a:0` },
@@ -560,14 +759,26 @@ function myOrdersPagedText(params: { tab: OrderTab; page: number; totalPages: nu
     return [header, "", en ? "No orders in this tab." : "Belum ada pesanan di tab ini."].join("\n");
   }
   return [header, "", `${en ? "Page" : "Halaman"} ${page + 1}/${totalPages}`, "", ...rows.map(row =>
-    `• <code>${row.code}</code> — ${rowLabelStatus(row, en)}${row.payable_amount != null ? ` · Rp${Number(row.payable_amount).toLocaleString("id-ID")}` : ""}`,
+    `${telegramOrderIcon(row.order_kind)} <code>${row.code}</code> — ${rowLabelStatus(row, en)}${row.payable_amount != null ? ` · Rp${Number(row.payable_amount).toLocaleString("id-ID")}` : ""}`,
   )].join("\n");
 }
 
 function rowLabelStatus(row: OrdersListRow, en: boolean): string {
-  const fulfillment = String(row.fulfillment_status || "not_required");
   const payment = String(row.payment_status || "unpaid");
-  if (payment === "paid") return fulfillment === "delivered" ? (en ? "Delivered" : "Selesai") : (en ? "Processing" : "Diproses");
+  if (payment === "paid") {
+    if (row.order_kind === "games") {
+      return row.games_status === "success" ? (en ? "Completed" : "Selesai")
+        : row.games_status === "needs_check" ? (en ? "Checking" : "Dicek admin")
+          : (en ? "Processing" : "Diproses");
+    }
+    if (row.order_kind === "pedia") {
+      return row.pedia_status === "completed" ? (en ? "Completed" : "Selesai")
+        : ["partial", "canceled", "needs_check"].includes(String(row.pedia_status ?? "")) ? (en ? "Follow-up" : "Tindak lanjut")
+          : (en ? "Processing" : "Diproses");
+    }
+    const fulfillment = String(row.fulfillment_status || "not_required");
+    return fulfillment === "delivered" ? (en ? "Delivered" : "Selesai") : (en ? "Processing" : "Diproses");
+  }
   if (["expired", "failed", "refunded"].includes(payment)) return en ? "Failed" : "Gagal";
   return en ? "Awaiting payment" : "Menunggu bayar";
 }
@@ -597,7 +808,10 @@ export async function handleMyOrdersPaged(
          SUM(CASE WHEN ${ORDER_TAB_SQL.a} THEN 1 ELSE 0 END) AS a,
          SUM(CASE WHEN ${ORDER_TAB_SQL.s} THEN 1 ELSE 0 END) AS s,
          SUM(CASE WHEN ${ORDER_TAB_SQL.g} THEN 1 ELSE 0 END) AS g
-       FROM orders o WHERE o.sales_channel='telegram' AND o.telegram_user_id=?`,
+       FROM orders o
+       LEFT JOIN games_order_items gi ON gi.order_code=o.code
+       LEFT JOIN pedia_order_items pi ON pi.order_code=o.code
+       WHERE o.sales_channel='telegram' AND o.telegram_user_id=?`,
       userId,
     ));
     const row = (countRows[0] ?? {}) as Record<string, unknown>;
@@ -615,18 +829,35 @@ export async function handleMyOrdersPaged(
   try {
     const { queryAll } = await import("@/lib/db");
     const raw = await queryAll(
-      `SELECT o.code, o.items, o.payment_status, o.fulfillment_status, o.created_at,
+      `SELECT o.code, o.order_kind, o.items, o.payment_status, o.fulfillment_status, o.created_at,
+              gi.status AS games_status,
+              CASE WHEN gi.order_code IS NOT NULL THEN (${GAMES_ORDER_LABEL_SQL}) ELSE NULL END AS games_label,
+              pi.status AS pedia_status,
+              CASE WHEN pi.order_code IS NOT NULL THEN COALESCE(pp.name, 'Pesanan Pedia') ELSE NULL END AS pedia_label,
               (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code ORDER BY pt.id DESC LIMIT 1) AS payable_amount
          FROM orders o
+         LEFT JOIN games_order_items gi ON gi.order_code=o.code
+         LEFT JOIN games_products gp ON gp.id=gi.product_id
+         LEFT JOIN games_meta gm ON gm.slug=gp.game_slug
+         LEFT JOIN pedia_order_items pi ON pi.order_code=o.code
+         LEFT JOIN pedia_products pp ON pp.id=pi.product_id
         WHERE o.sales_channel='telegram' AND o.telegram_user_id=? AND ${ORDER_TAB_SQL[activeTab]}
         ORDER BY o.created_at DESC, o.code DESC
         LIMIT ? OFFSET ?`,
       userId, ORDERS_PAGE_SIZE, safePage * ORDERS_PAGE_SIZE,
     );
     rows = raw.map(row => ({
-      code: String(row.code), items: String(row.items ?? "[]"),
-      payment_status: String(row.payment_status ?? "unpaid"), fulfillment_status: String(row.fulfillment_status ?? "not_required"),
-      created_at: row.created_at == null ? null : String(row.created_at), payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
+      code: String(row.code),
+      order_kind: telegramOrderKindOf(row),
+      items: String(row.items ?? "[]"),
+      games_label: row.games_label == null ? null : String(row.games_label),
+      pedia_label: row.pedia_label == null ? null : String(row.pedia_label),
+      games_status: row.games_status == null ? null : String(row.games_status),
+      pedia_status: row.pedia_status == null ? null : String(row.pedia_status),
+      payment_status: String(row.payment_status ?? "unpaid"),
+      fulfillment_status: String(row.fulfillment_status ?? "not_required"),
+      created_at: row.created_at == null ? null : String(row.created_at),
+      payable_amount: row.payable_amount == null ? null : Number(row.payable_amount),
     }));
   } catch {
     await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: "Daftar pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale }) });
@@ -668,7 +899,7 @@ export async function handleWarrantyClaim(chatId: number, messageId: number, ord
   let order;
   try {
     order = await queryFirst(
-      `SELECT code, items, subtotal, locale, payment_status, fulfillment_status, status FROM orders
+      `SELECT code, order_kind, items, subtotal, locale, payment_status, fulfillment_status, status FROM orders
         WHERE code=? AND sales_channel='telegram' AND telegram_user_id=?`,
       code, String(from.id),
     );
@@ -682,6 +913,24 @@ export async function handleWarrantyClaim(chatId: number, messageId: number, ord
   }
   const locale = orderLocaleOf(order);
   const en = locale === "en";
+  const claimKind = telegramOrderKindOf(order);
+  if (claimKind === "games" || claimKind === "pedia") {
+    await safeEditOrSend({
+      chat_id: chatId,
+      message_id: messageId,
+      text: claimKind === "pedia"
+        ? (en ? "🛡 Market warranty claim does not apply to Pedia orders. Use <b>Request Refill</b> on the order detail page or contact admin." : "🛡 Klaim garansi Market tidak berlaku untuk pesanan Pedia. Gunakan tombol <b>Ajukan Refill</b> di detail pesanan atau hubungi admin.")
+        : (en ? "🛡 Market warranty claim does not apply to Games top up orders. Contact admin via WhatsApp if there is an issue." : "🛡 Klaim garansi Market tidak berlaku untuk pesanan Top Up Games. Hubungi admin via WhatsApp bila ada kendala."),
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: en ? "📋 View Order" : "📋 Lihat Pesanan", callback_data: `order:${code}` }],
+          [{ text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${code}`)}` }],
+        ],
+      },
+    });
+    return;
+  }
   const warranty = await orderWarrantySummary({ code, status: order.status, payment_status: order.payment_status, subtotal: order.subtotal }, locale);
   if (String(order.payment_status) !== "paid") {
     await safeEditOrSend({
@@ -722,11 +971,11 @@ export async function handleWarrantyClaimStart(chatId: number, messageId: number
   if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== from.id) return;
   const code = String(orderCode || "").toUpperCase();
   const owned = await queryFirst(
-    `SELECT code, locale FROM orders WHERE code=? AND sales_channel='telegram' AND telegram_user_id=? AND status='lunas' AND payment_status='paid'`,
+    `SELECT code, order_kind, locale FROM orders WHERE code=? AND sales_channel='telegram' AND telegram_user_id=? AND status='lunas' AND payment_status='paid'`,
     code, String(from.id),
   ).catch(() => null);
   const locale = orderLocaleOf(owned);
-  if (!owned) {
+  if (!owned || telegramOrderKindOf(owned) !== "apps") {
     await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: "❌ Pesanan lunas tidak ditemukan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale }) });
     return;
   }

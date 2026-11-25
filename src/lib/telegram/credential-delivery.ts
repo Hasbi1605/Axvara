@@ -180,10 +180,11 @@ export async function resendTelegramCredentials(
   let rows: Row[];
   try {
     order = await database.queryFirst(
-      `SELECT code, items, status, payment_status, fulfillment_status, locale FROM orders WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'`,
+      `SELECT code, items, status, payment_status, fulfillment_status, locale, order_kind FROM orders WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'`,
       code, String(chatId),
     );
-    rows = order?.status === "lunas" && order.payment_status === "paid"
+    const kind = String(order?.order_kind ?? "apps");
+    rows = order?.status === "lunas" && order.payment_status === "paid" && kind === "apps"
       ? await database.queryAll(
         `SELECT item_index, variant_id, status, delivered_ciphertext, delivered_iv, delivered_message_id
          FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`,
@@ -208,6 +209,23 @@ export async function resendTelegramCredentials(
     return 0;
   }
   const locale = String(order.locale ?? "") === "en" ? "en" as const : "id" as const;
+  const orderKind = String(order.order_kind ?? "apps");
+  if (orderKind === "games" || orderKind === "pedia") {
+    await sendMessage({
+      chat_id: chatId,
+      text: locale === "en"
+        ? `This is ${orderKind === "games" ? "a Games top up" : "a Pedia"} order — it does not have account credentials. Tap <b>View Order</b> to check its latest status.`
+        : `Pesanan ini adalah pesanan ${orderKind === "games" ? "Top Up Games" : "AXVARA Pedia"} — tidak memiliki detail akun. Tekan <b>Lihat Pesanan</b> untuk cek status terbarunya.`,
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: locale === "en" ? "📋 View Order" : "📋 Lihat Pesanan", callback_data: `order:${code}` }],
+          [{ text: locale === "en" ? "🏠 Home" : "🏠 Menu", callback_data: "home" }],
+        ],
+      },
+    });
+    return 0;
+  }
   const paid = String(order.status) === "lunas" && String(order.payment_status) === "paid";
   if (!paid) {
     await sendMessage({

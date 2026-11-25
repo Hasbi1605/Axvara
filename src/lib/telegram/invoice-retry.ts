@@ -34,11 +34,12 @@ import { isFutureIso } from "@/lib/expiry";
 import { execRun } from "@/lib/db";
 import { sendMessage, sendPhoto } from "@/lib/telegram/api";
 import { invoiceMessage } from "@/lib/telegram/messages";
-import { invoiceItemSummary } from "@/lib/telegram/messages/format";
 import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
+import { telegramOrderItemSummary } from "@/lib/telegram/order-summary";
 
 type InvoiceOrderRow = {
   code: string;
+  order_kind: string;
   telegram_user_id: string | null;
   items: string;
   telegram_chat_id: string | null;
@@ -53,7 +54,7 @@ type InvoiceOrderRow = {
 async function readInvoiceOrder(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<InvoiceOrderRow | null> {
   const { queryFirst } = database;
   const row = await queryFirst(
-    `SELECT code, items, telegram_chat_id, telegram_user_id, subtotal, locale, buyer_access_version, buyer_access_format,
+    `SELECT code, order_kind, items, telegram_chat_id, telegram_user_id, subtotal, locale, buyer_access_version, buyer_access_format,
             telegram_invoice_sent_at, telegram_invoice_attempts
      FROM orders WHERE code=? AND sales_channel='telegram' AND status='pending'`,
     orderCode,
@@ -61,6 +62,7 @@ async function readInvoiceOrder(orderCode: string, database: DatabaseAccess = cr
   if (!row) return null;
   return {
     code: String(row.code),
+    order_kind: String(row.order_kind ?? "apps"),
     telegram_user_id: row.telegram_user_id != null ? String(row.telegram_user_id) : null,
     items: String(row.items ?? "[]"),
     telegram_chat_id: row.telegram_chat_id != null ? String(row.telegram_chat_id) : null,
@@ -274,12 +276,13 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
   // attempt was a DEFINITIVE rejection (releaseInvoiceSendClaim).
   const claim = await claimProviderInvoiceSend(orderCode, { allowFresh: true }, database);
   if (claim !== "claimed") return claim === "sent";
+  const productName = await telegramOrderItemSummary(order, order.locale, database);
   const result = await sendPhoto({
     chat_id: Number(order.telegram_chat_id),
     photo: String(ledger.qris_url ?? ""),
     caption: invoiceMessage({
       orderCode: order.code,
-      productName: invoiceItemSummary(order.items, order.locale === "en"),
+      productName,
       payableAmount,
       expiresAt: String(ledger.expires_at ?? ""),
       paymentMethod: "qris",

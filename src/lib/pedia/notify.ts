@@ -38,6 +38,13 @@ export type PediaBuyerContext = {
   pediaUrl: string;
   /** Locale pembeli tersimpan di orders.locale (default id). */
   locale: PediaEmailLocale;
+  salesChannel?: string;
+  telegramUserId?: string | null;
+  productId?: number;
+  tierId?: number;
+  apiRefill?: boolean;
+  itemRow?: Record<string, unknown>;
+  snapshot?: Record<string, unknown>;
 };
 
 function sanitizePublicText(value: unknown, max = 200): string {
@@ -101,14 +108,16 @@ function localizeShell(rendered: { html: string; text: string }, locale: PediaEm
 export async function pediaBuyerContext(db: Db, orderCode: string): Promise<PediaBuyerContext | null> {
   if (!db.canSpend(1)) return null;
   const row = await db.queryFirst(
-    `SELECT o.customer_name, o.customer_email, o.locale, o.status AS order_status, o.payment_status, o.paid_at,
-            i.status AS item_status, i.quantity, i.start_count, i.remains, i.target_normalized, i.supplier_order_id,
-            i.snapshot_json, p.name AS product_name, t.tier AS tier_name, t.label_note,
-            t.eta_start, t.eta_finish
+    `SELECT o.customer_name, o.customer_email, o.sales_channel, o.telegram_user_id, o.locale, o.status AS order_status, o.payment_status, o.paid_at,
+            i.product_id, i.tier_id, i.status AS item_status, i.quantity, i.start_count, i.remains, i.target_normalized, i.supplier_order_id,
+            i.snapshot_json, i.created_at, i.completed_at, i.refill_status, i.refill_last_at, i.refill_supplier_id,
+            p.name AS product_name, t.tier AS tier_name, t.label_note, t.refill_days,
+            t.eta_start, t.eta_finish, COALESCE(s.api_refill,0) AS api_refill
        FROM orders o
        JOIN pedia_order_items i ON i.order_code=o.code
        JOIN pedia_products p ON p.id=i.product_id
        JOIN pedia_tiers t ON t.id=i.tier_id
+       LEFT JOIN pedia_supplier_services s ON s.supplier=i.supplier AND s.service_id=i.supplier_service_id
       WHERE o.code=?`,
     orderCode,
   ).catch(() => null);
@@ -149,6 +158,22 @@ export async function pediaBuyerContext(db: Db, orderCode: string): Promise<Pedi
     refillDays: Number((snap as Record<string, unknown>)?.refill_days) || 0,
     pediaUrl: `${SITE.pediaUrl.replace(/\/$/, "")}/pesanan/${encodeURIComponent(orderCode)}`,
     locale: String(row.locale) === "en" ? "en" : "id",
+    salesChannel: String(row.sales_channel ?? "web"),
+    telegramUserId: row.telegram_user_id != null ? String(row.telegram_user_id) : null,
+    productId: Number(row.product_id) || 0,
+    tierId: Number(row.tier_id) || 0,
+    apiRefill: Number(row.api_refill) === 1,
+    itemRow: {
+      status: itemStatus,
+      created_at: row.created_at,
+      completed_at: row.completed_at,
+      refill_status: row.refill_status,
+      refill_last_at: row.refill_last_at,
+      refill_supplier_id: row.refill_supplier_id,
+      supplier_order_id: row.supplier_order_id,
+      refill_days: row.refill_days,
+    },
+    snapshot: snap,
   };
 }
 
@@ -363,12 +388,86 @@ export async function notifyPediaProcessing(
   );
 }
 
+async function sendPediaTelegramCompleted(db: Db, orderCode: string): Promise<boolean> {
+  if (process.env.TELEGRAM_BOT_ENABLED !== "true" || !process.env.TELEGRAM_BOT_TOKEN) return false;
+  if (!db.canSpend(4)) return false;
+  const ctx = await pediaBuyerContext(db, orderCode);
+  if (!ctx || !ctx.orderPaid || ctx.status !== "completed" || ctx.salesChannel !== "telegram") return false;
+  const chatId = String(ctx.telegramUserId ?? "").trim();
+  if (!/^[1-9]\d*$/.test(chatId) || !Number.isSafeInteger(Number(chatId))) return false;
+  const key = `telegram:pedia-completed:${orderCode}`;
+  const lease = crypto.randomUUID();
+  try {
+    const existing = await db.queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=?`, key).catch(() => null);
+    if (String(existing?.status ?? "") === "sent") return true;
+    const claimed = await db.execRun(
+      `INSERT INTO buyer_notice_log AS b
+         (idempotency_key, order_code, channel, status, access_attempts, access_lease, access_retry_at)
+       SELECT ?, code, 'telegram', 'sending', 1, ?, datetime('now','+1 minute')
+       FROM orders WHERE code=? AND sales_channel='telegram' AND status='lunas' AND payment_status='paid'
+       ON CONFLICT(idempotency_key) DO UPDATE SET
+         status='sending', access_attempts=b.access_attempts+1, access_lease=excluded.access_lease,
+         access_retry_at=datetime('now', CASE b.access_attempts
+           WHEN 0 THEN '+1 minute' WHEN 1 THEN '+5 minutes'
+           WHEN 2 THEN '+15 minutes' ELSE '+60 minutes' END),
+         error=NULL, updated_at=datetime('now')
+       WHERE b.access_attempts < 5
+         AND (b.access_retry_at IS NULL OR datetime(b.access_retry_at) <= datetime('now'))
+         AND (b.status='failed' OR (b.status='sending'
+           AND julianday(b.updated_at) <= julianday('now','-10 minutes')))`,
+      key, lease, orderCode,
+    );
+    if (!claimed.changes) return false;
+  } catch {
+    return false;
+  }
+  const { pediaRefillState } = await import("@/lib/pedia/refill-policy");
+  const refill = pediaRefillState(ctx.itemRow ?? { status: ctx.status }, ctx.snapshot ?? {}, Boolean(ctx.apiRefill));
+  const en = ctx.locale === "en";
+  const { sendMessage } = await import("@/lib/telegram/api");
+  const { pediaCompletedNoticeMessage } = await import("@/lib/telegram/messages/pedia");
+  const { cb } = await import("@/lib/telegram/keyboards");
+  const rows = [];
+  if (refill.eligible) {
+    rows.push([{ text: en ? "♻️ Request Refill" : "♻️ Ajukan Refill", callback_data: cb.pediaRefill(orderCode), style: "success" as const }]);
+  }
+  const reorderCb = ctx.productId && ctx.tierId ? cb.pediaSelect(ctx.productId, ctx.tierId) : cb.pediaHome();
+  rows.push([{ text: en ? "🔁 Order Again" : "🔁 Pesan Lagi", callback_data: reorderCb }]);
+  rows.push([
+    { text: en ? "📋 View Order" : "📋 Lihat Pesanan", callback_data: cb.order(orderCode) },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+  ]);
+  const sent = await sendMessage({
+    chat_id: chatId,
+    text: pediaCompletedNoticeMessage({
+      orderCode,
+      productName: ctx.productName,
+      serviceName: ctx.serviceName,
+      quantity: ctx.quantity,
+      target: ctx.target,
+      refillDays: ctx.refillDays,
+      refillEligible: refill.eligible,
+      locale: ctx.locale,
+    }),
+    parse_mode: "HTML",
+    reply_markup: { inline_keyboard: rows },
+  }).catch(() => ({ ok: false }));
+  await db.execRun(
+    `UPDATE buyer_notice_log SET status=?, error=?, access_lease=NULL, updated_at=datetime('now')
+     WHERE idempotency_key=? AND status='sending' AND access_lease=?`,
+    sent.ok ? "sent" : "failed", sent.ok ? null : "telegram_send_failed", key, lease,
+  ).catch(() => undefined);
+  return sent.ok === true;
+}
+
 /** Pembeli: selesai — ONLY on confirmed completed. */
 export async function notifyPediaCompleted(db: Db, orderCode: string): Promise<boolean> {
-  return sendPediaPhase(db, "completed", orderCode,
+  const emailOk = await sendPediaPhase(db, "completed", orderCode,
     (ctx) => completedEmail(ctx, orderCode),
     (ctx) => ctx.status === "completed",
   );
+  const tgOk = await sendPediaTelegramCompleted(db, orderCode).catch(() => false);
+  return emailOk || tgOk;
 }
 
 /** Admin: antrean needs_check (MANUAL — bukan auto-refund). */

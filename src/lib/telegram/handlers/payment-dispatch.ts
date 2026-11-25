@@ -120,11 +120,12 @@ export async function dispatchPayq1Creating(
 
   // Resolve CURRENT lines again (single source; cart cleared by prior QRIS
   // flows stays failed-closed here — R2 never guesses lines).
+  const isGamesOrPedia = creating.source.kind === "games" || creating.source.kind === "pedia";
   const { resolveCurrentPayq1Lines } = await import("./payment-lines");
   const { orderLinesFromSource, sanitizeCustomerName } = await import("@/lib/telegram/payment-create");
-  const resolved = savedOrder ? null : await resolveCurrentPayq1Lines(ownerId, creating).catch(() => null);
-  const built = savedOrder ? null : (resolved && resolved.ok ? orderLinesFromSource(creating, resolved.cartLines) : null);
-  if (!savedOrder && !built) {
+  const resolved = (savedOrder || isGamesOrPedia) ? null : await resolveCurrentPayq1Lines(ownerId, creating).catch(() => null);
+  const built = (savedOrder || isGamesOrPedia) ? null : (resolved && resolved.ok ? orderLinesFromSource(creating, resolved.cartLines) : null);
+  if (!savedOrder && !isGamesOrPedia && !built) {
     // Tag/price drift or cart gone and NO order/TX exists yet: nothing financial
     // hangs on the anchor, so release it (exact CAS) and let the buyer requote
     // instead of leaving a permanent dead-end creating row.
@@ -133,7 +134,7 @@ export async function dispatchPayq1Creating(
     await failureNotice(reason === "stock" ? "stock" : "catalog_changed");
     return;
   }
-  const orderSubtotal = savedOrder ? Number(savedOrder.subtotal) : built!.subtotal;
+  const orderSubtotal = savedOrder ? Number(savedOrder.subtotal) : (built ? built.subtotal : creating.idrSubtotal);
 
   // Outcome-policy preflight (INTERNAL draft, never guessed public
   // field/env/secret log): crypto needs operator outcome currency; gateway
@@ -171,7 +172,78 @@ export async function dispatchPayq1Creating(
   const phone = creating.contact.phone;
   const customerName = sanitizeCustomerName(from.first_name);
   let orderedCode = orderCode;
-  if (built) try {
+  if (!savedOrder && creating.source.kind === "games") {
+    const { createGamesTelegramOrderAtomic } = await import("@/lib/telegram/games-checkout");
+    const created = await createGamesTelegramOrderAtomic({
+      orderCode,
+      idempotencyKey,
+      source: creating.source,
+      expectedSubtotal: creating.idrSubtotal,
+      expectedTag: creating.tag,
+      locale: creating.locale,
+      ownerUserId: ownerId,
+      chatId: ownerId,
+      customerName,
+      paymentMethod: selectedId,
+      paymentAccount: "NOWPayments",
+      orderWindowMinutes: 60,
+    });
+    if (!created.ok) {
+      console.warn("[telegram-checkout] games crypto rejected", { method: selectedId, reason: created.reason });
+      await failureNotice(created.reason === "price_changed" || created.reason === "unavailable" ? "catalog_changed" : "create_failed");
+      return;
+    }
+    orderedCode = created.code;
+    if (!created.isExisting) {
+      trackFunnelEvent({
+        stage: "order",
+        channel: "telegram",
+        orderKind: "games",
+        locale: creating.locale,
+        method: selectedId,
+        subtotal: created.subtotal,
+        productId: creating.source.productId,
+        productSlug: creating.source.slug,
+        variantId: creating.source.skVariantId,
+        quantity: 1,
+      });
+    }
+  } else if (!savedOrder && creating.source.kind === "pedia") {
+    const { createPediaTelegramOrderAtomic } = await import("@/lib/telegram/pedia-checkout");
+    const created = await createPediaTelegramOrderAtomic({
+      orderCode,
+      idempotencyKey,
+      source: creating.source,
+      expectedSubtotal: creating.idrSubtotal,
+      expectedTag: creating.tag,
+      locale: creating.locale,
+      ownerUserId: ownerId,
+      chatId: ownerId,
+      customerName,
+      paymentMethod: selectedId,
+      paymentAccount: "NOWPayments",
+      orderWindowMinutes: 60,
+    });
+    if (!created.ok) {
+      console.warn("[telegram-checkout] pedia crypto rejected", { method: selectedId, reason: created.reason });
+      await failureNotice(created.reason === "price_changed" || created.reason === "unavailable" || created.reason === "margin_disabled" ? "catalog_changed" : "create_failed");
+      return;
+    }
+    orderedCode = created.code;
+    if (!created.isExisting) {
+      trackFunnelEvent({
+        stage: "order",
+        channel: "telegram",
+        orderKind: "pedia",
+        locale: creating.locale,
+        method: selectedId,
+        subtotal: created.subtotal,
+        productId: creating.source.productId,
+        variantId: creating.source.tierId,
+        quantity: creating.source.qty,
+      });
+    }
+  } else if (built) try {
     const created = await createChannelOrderAtomic({
       orderCode,
       idempotencyKey,
@@ -198,7 +270,7 @@ export async function dispatchPayq1Creating(
     if (!created.isExisting) trackFunnelEvent({ stage: "order", channel: "telegram", locale: creating.locale,
       method: selectedId, subtotal: built.subtotal, productId: built.lines[0]?.productId, variantId: built.primaryVariantId,
       quantity: built.lines.reduce((sum, line) => sum + line.qty, 0) });
-    if (creating.source.pvFlowId || creating.source.customFlowId) {
+    if (creating.source.kind === "single" && (creating.source.pvFlowId || creating.source.customFlowId)) {
       const { clearPixelverifStash } = await import("./buyer-input");
       await clearPixelverifStash(ownerId).catch(() => {});
     }
@@ -269,14 +341,27 @@ export async function dispatchPayq1Creating(
     }
   } catch (error) {
     // Memo/extra id: alamat tanpa memo tidak boleh dibayar. Baris TX sudah 'failed'; batalkan order pending
-    // (stok kembali) dan beri hasil generik "pilih metode lain" — tidak ada alamat yang ditampilkan.
-    if (error instanceof Error && error.message === "nowpayments_extra_id_unsupported") {
+    // (stok kembali hanya untuk Market; Games/Pedia restock `[]` + expire item) dan beri hasil generik.
+    const cancelFailedOrder = async (cancelReason: string) => {
       try {
-        const orderRow = await queryFirst(`SELECT items FROM orders WHERE code=?`, orderedCode);
-        const items = JSON.parse(String(orderRow?.items ?? "[]"));
+        const orderRow = await queryFirst(`SELECT items, order_kind FROM orders WHERE code=?`, orderedCode);
+        const kindStr = String(orderRow?.order_kind ?? (creating.source.kind === "single" ? "apps" : creating.source.kind));
+        const items = kindStr === "apps" ? JSON.parse(String(orderRow?.items ?? "[]")) : [];
         const { transitionPendingOrder } = await import("@/lib/db");
-        await transitionPendingOrder(orderedCode, "dibatalkan", "nowpayments_extra_id_unsupported", items);
+        await transitionPendingOrder(orderedCode, "dibatalkan", cancelReason, Array.isArray(items) ? items : []);
+        if (kindStr === "games") {
+          const { expireGamesCheckouts } = await import("@/lib/games/expire");
+          const { createDatabaseAccess } = await import("@/lib/db-access");
+          await expireGamesCheckouts(createDatabaseAccess()).catch(() => {});
+        } else if (kindStr === "pedia") {
+          const { expirePediaCheckouts } = await import("@/lib/pedia/expire");
+          const { createDatabaseAccess } = await import("@/lib/db-access");
+          await expirePediaCheckouts(createDatabaseAccess()).catch(() => {});
+        }
       } catch { /* kalah balapan / sudah terminal: aman */ }
+    };
+    if (error instanceof Error && error.message === "nowpayments_extra_id_unsupported") {
+      await cancelFailedOrder("nowpayments_extra_id_unsupported");
       const { clearPayq1AfterDurableTx } = await import("@/lib/telegram/payment-create");
       await clearPayq1AfterDurableTx(ownerId, creatingRaw, orderedCode).catch(() => false);
       await safeEditOrSend({
@@ -303,14 +388,8 @@ export async function dispatchPayq1Creating(
       return;
     }
     // DEFINITIF: tidak ada charge tersisa. Batalkan order (restock Market SEKALI
-    // lewat guard atomik), tandai TX terminal bila ada, lepaskan anchor, lalu
-    // tawarkan metode lain dengan quote/nonce BARU (callback pm: lama jadi stale).
-    try {
-      const orderRow = await queryFirst(`SELECT items FROM orders WHERE code=?`, orderedCode);
-      const items = JSON.parse(String(orderRow?.items ?? "[]"));
-      const { transitionPendingOrder } = await import("@/lib/db");
-      await transitionPendingOrder(orderedCode, "dibatalkan", `nowpayments_setup_failed:${message.slice(0, 60)}`, Array.isArray(items) ? items : []);
-    } catch { /* sudah terminal / kalah balapan: aman, stok tidak dobel */ }
+    // lewat guard atomik; Games/Pedia restock [] + expire item), tandai TX terminal, lepaskan anchor.
+    await cancelFailedOrder(`nowpayments_setup_failed:${message.slice(0, 60)}`);
     await execRun(
       `UPDATE payment_transactions SET status='failed',last_error=COALESCE(last_error,?),updated_at=datetime('now')
        WHERE order_code=? AND provider='nowpayments' AND status IN ('initializing','pending')`,
@@ -326,6 +405,13 @@ export async function dispatchPayq1Creating(
     return;
   }
 
+  if (creating.source.kind === "games" || creating.source.kind === "pedia") {
+    await execRun(
+      `UPDATE orders SET expires_at=datetime((SELECT expires_at FROM payment_transactions WHERE order_code=?))
+        WHERE code=? AND status='pending' AND julianday(expires_at)>julianday((SELECT expires_at FROM payment_transactions WHERE order_code=?))`,
+      orderedCode, orderedCode, orderedCode,
+    ).catch(() => undefined);
+  }
   await refreshResumeView(chatId, messageId, orderedCode, from, locale, creatingRaw);
   void execRun;
 }

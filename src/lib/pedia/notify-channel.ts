@@ -115,16 +115,42 @@ export async function supersedePediaEmail(db: Db, key: string, lease: string, re
   }
 }
 
-/** Kirim pesan pembeli via email (selalu) + WA bila tersedia. */
+/** Kirim pesan pembeli via email (bila ada) + DM Telegram (bila kanal Telegram). */
 export async function sendPediaBuyerMessage(db: Db, orderCode: string, text: string): Promise<void> {
   const order = await db.queryFirst(
-    `SELECT code, customer_email, buyer_access_version,buyer_access_format FROM orders WHERE code=?`, orderCode,
+    `SELECT code, customer_email, sales_channel, telegram_user_id, locale, buyer_access_version, buyer_access_format FROM orders WHERE code=?`, orderCode,
   ).catch(() => null);
   const email = String(order?.customer_email ?? "").trim();
   if (email) {
     try {
       const { sendPediaEmail } = await import("@/lib/pedia/email");
       await sendPediaEmail({ to: email, subject: `Pedia — ${orderCode}`, text });
-    } catch { /* email best-effort; WA di bawah tetap jalan */ }
+    } catch { /* email best-effort; Telegram di bawah tetap jalan */ }
+  }
+  if (
+    String(order?.sales_channel ?? "") === "telegram"
+    && process.env.TELEGRAM_BOT_ENABLED === "true"
+    && process.env.TELEGRAM_BOT_TOKEN
+  ) {
+    const chatId = String(order?.telegram_user_id ?? "").trim();
+    if (/^[1-9]\d*$/.test(chatId) && Number.isSafeInteger(Number(chatId))) {
+      try {
+        const locale = String(order?.locale ?? "") === "en" ? "en" as const : "id" as const;
+        const { sendMessage } = await import("@/lib/telegram/api");
+        const { pediaFollowupNoticeMessage } = await import("@/lib/telegram/messages/pedia");
+        const { SITE } = await import("@/lib/site");
+        await sendMessage({
+          chat_id: chatId,
+          text: pediaFollowupNoticeMessage(orderCode, locale),
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo admin, mohon bantu pesanan Pedia ${orderCode}.`)}` }],
+              [{ text: locale === "en" ? "📋 View Order" : "📋 Lihat Pesanan", callback_data: `order:${orderCode}` }],
+            ],
+          },
+        });
+      } catch { /* best-effort; admin followup queue stays durable */ }
+    }
   }
 }

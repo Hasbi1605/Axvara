@@ -10,11 +10,17 @@ import { queryFirst } from "@/lib/db";
 import type { DatabaseAccess } from "@/lib/db-access";
 import { isFutureIso } from "@/lib/expiry";
 import { sendMessage, safeEditOrSend as rawSafeEditOrSend } from "@/lib/telegram/api";
-import { minimalMenuKeyboard, orderTerminalKeyboard, paidOrderStatusKeyboard, paymentExpiredKeyboard } from "@/lib/telegram/keyboards";
+import {
+  cb, minimalMenuKeyboard, orderTerminalKeyboard, paidOrderStatusKeyboard, paymentExpiredKeyboard,
+  gamesOrderDetailKeyboard, pediaOrderDetailKeyboard,
+} from "@/lib/telegram/keyboards";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
-import { escapeHtml, invoiceItemSummary, truncate } from "@/lib/telegram/messages/format";
+import { escapeHtml, truncate } from "@/lib/telegram/messages/format";
 import { pendingInvoiceMessage } from "@/lib/telegram/messages/purchase";
 import { orderExpiredMessage } from "@/lib/telegram/messages/status";
+import { gamesOrderDetailMessage } from "@/lib/telegram/messages/games";
+import { pediaOrderDetailMessage } from "@/lib/telegram/messages/pedia";
+import { readTelegramOrderDetail, telegramOrderKindOf } from "@/lib/telegram/order-summary";
 import { formatIdr } from "@/lib/i18n/format";
 import type { Locale } from "@/lib/i18n/locale";
 import { displayCryptoAmount } from "@/lib/payments/crypto-display";
@@ -82,7 +88,7 @@ async function renderProviderInvoiceStatus(
   };
   const locale: Locale = opts?.locale ?? (await tgCtxFor(from.id).catch(() => ({ locale: "id" as Locale }))).locale;
   const order = await (opts?.database?.queryFirst ?? queryFirst)(
-    `SELECT o.code, o.locale, o.status, o.payment_status, o.subtotal, o.items,
+    `SELECT o.code, o.order_kind, o.locale, o.status, o.payment_status, o.subtotal, o.items, o.created_at, o.paid_at,
             pt.provider, pt.status AS transaction_status, pt.pay_currency, pt.pay_network,
             pt.pay_amount_text, pt.pay_address, pt.price_amount_text, pt.price_currency,
             pt.expires_at, pt.provider_status_text, pt.direct_url, pt.gateway_virtual_account,
@@ -101,11 +107,80 @@ async function renderProviderInvoiceStatus(
   const code = String(order.code);
   const provider = String(order.provider ?? "");
   const en = savedLocale === "en";
-  const productName = invoiceItemSummary(order.items, en);
+  const orderKind = telegramOrderKindOf(order);
+  const orderDetail = await readTelegramOrderDetail(order, savedLocale, opts?.database);
+  const productName = orderDetail.summary;
+  const reorderCallback = orderDetail.kind === "games" && orderDetail.gameSlug
+    ? cb.gamesOpen(orderDetail.gameSlug)
+    : orderDetail.kind === "pedia" && orderDetail.productId && orderDetail.tierId
+      ? cb.pediaSelect(orderDetail.productId, orderDetail.tierId)
+      : undefined;
   const expired = () => safeEditOrSend({ chat_id: chatId, message_id: messageId,
     text: orderExpiredMessage(code, { locale: savedLocale, productName }), parse_mode: "HTML",
-    reply_markup: paymentExpiredKeyboard(order.items, { locale: savedLocale }) });
+    reply_markup: paymentExpiredKeyboard(order.items, { locale: savedLocale, orderKind, reorderCallback }) });
   if (order.payment_status === "paid" || order.status === "lunas") {
+    if (orderDetail.kind === "games") {
+      await safeEditOrSend({
+        chat_id: chatId,
+        message_id: messageId,
+        text: gamesOrderDetailMessage({
+          orderCode: code,
+          gameName: orderDetail.gameName,
+          packageName: orderDetail.packageName,
+          customerNo: orderDetail.customerNo,
+          nickname: orderDetail.customerNickname,
+          payableAmount: Number(order.payable_amount ?? order.subtotal),
+          paymentStatus: "paid",
+          buyerStatus: orderDetail.buyerStatus,
+          manualRefundRequired: orderDetail.manualRefundRequired,
+          sn: orderDetail.sn,
+          locale: savedLocale,
+        }),
+        parse_mode: "HTML",
+        reply_markup: gamesOrderDetailKeyboard({
+          orderCode: code,
+          paid: true,
+          pending: false,
+          succeeded: orderDetail.buyerStatus === "success",
+          gameSlug: orderDetail.gameSlug,
+          locale: savedLocale,
+        }),
+      });
+      return;
+    }
+    if (orderDetail.kind === "pedia") {
+      await safeEditOrSend({
+        chat_id: chatId,
+        message_id: messageId,
+        text: pediaOrderDetailMessage({
+          orderCode: code,
+          productName: orderDetail.productName,
+          serviceName: orderDetail.serviceName,
+          quantity: orderDetail.quantity,
+          target: orderDetail.target,
+          payableAmount: Number(order.payable_amount ?? order.subtotal),
+          paymentStatus: "paid",
+          itemStatus: orderDetail.itemStatus,
+          startCount: orderDetail.startCount,
+          remains: orderDetail.remains,
+          done: orderDetail.done,
+          refill: orderDetail.refill,
+          locale: savedLocale,
+        }),
+        parse_mode: "HTML",
+        reply_markup: pediaOrderDetailKeyboard({
+          orderCode: code,
+          paid: true,
+          pending: false,
+          completed: orderDetail.itemStatus === "completed",
+          refillEligible: orderDetail.refill.eligible,
+          productId: orderDetail.productId,
+          tierId: orderDetail.tierId,
+          locale: savedLocale,
+        }),
+      });
+      return;
+    }
     const { orderPaidMessage } = await import("@/lib/telegram/messages/status");
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,

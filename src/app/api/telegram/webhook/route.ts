@@ -77,7 +77,7 @@ function isProtectedCallbackMessage(msg: Record<string, unknown> | undefined): b
       if (!Array.isArray(row)) continue;
       for (const btn of row) {
         const d = String(btn?.callback_data ?? "");
-        if (/^(?:refresh|qrenew|cancel|cancelok|cred|paycheck|ccancel|claim|claimstart|moredeliv):/.test(d)) {
+        if (/^(?:refresh|qrenew|cancel|cancelok|cred|paycheck|ccancel|claim|claimstart|moredeliv|pdrf):/.test(d)) {
           return true;
         }
       }
@@ -267,7 +267,7 @@ export async function POST(request: NextRequest) {
       }
       if (update.message?.text) {
         const groupText = update.message.text.trim().toLowerCase().split(/\s+/)[0].split("@")[0];
-        const purchaseIntents = ["/start", "/katalog", "/cari", "/search", "/orders", "/riwayat", "/pesanan", "/bantuan", "/help", "/garansi", "/bahasa", "/currency", "/settings"];
+        const purchaseIntents = ["/start", "/katalog", "/games", "/pedia", "/cari", "/search", "/orders", "/riwayat", "/pesanan", "/bantuan", "/help", "/garansi", "/bahasa", "/currency", "/settings"];
         if (purchaseIntents.includes(groupText) || !groupText.startsWith("/")) {
           const { SITE } = await import("@/lib/site");
           const { groupCheckoutRedirectMessage } = await import("@/lib/telegram/messages");
