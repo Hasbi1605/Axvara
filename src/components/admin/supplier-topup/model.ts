@@ -2,16 +2,16 @@ import { fetchAdminAuth } from "@/lib/admin-auth-fetch";
 import type { SupplierTopupStatus, SupplierTopupSupplier } from "@/lib/supplier/topup";
 
 type Currency = "IDR" | "USD" | "USDT";
-type BalanceId = SupplierTopupSupplier | "warung" | "aivault" | "storebat" | "mirai" | "pixelverif" | "pedia";
+type BalanceId = SupplierTopupSupplier | "warung" | "aivault" | "mirai" | "pixelverif" | "pedia";
 
 export const TOPUPS = "/api/admin/supplier-topups";
-export const SUPPLIER_NAMES = { sekalipay: "Sekalipay", tunvn: "TUNVN" };
+export const SUPPLIER_NAMES = { sekalipay: "Sekalipay", tunvn: "TUNVN", storebat: "StoreBat" };
 export const BALANCE_CARDS = [
   { id: "warung", name: "Warung Rebahan", path: "warung/saldo", currency: "IDR" },
   { id: "sekalipay", name: SUPPLIER_NAMES.sekalipay, path: "sekalipay/saldo", currency: "IDR" },
   { id: "tunvn", name: SUPPLIER_NAMES.tunvn, path: "tunvn/balance", currency: "USDT" },
   { id: "aivault", name: "AIVault", path: "aivault/balance", currency: "USD" },
-  { id: "storebat", name: "StoreBat", path: "storebat/balance", currency: "USD" },
+  { id: "storebat", name: SUPPLIER_NAMES.storebat, path: "storebat/balance", currency: "USD" },
   { id: "mirai", name: "Mirai", path: "mirai/balance", currency: "USDT" },
   { id: "pixelverif", name: "Pixel Verification", path: "pixelverif/balance", currency: "USD" },
   { id: "pedia", name: "IndoSMM", path: "pedia/overview", currency: "IDR" },
@@ -48,7 +48,8 @@ export function actionError(code: string, action: "create" | "refresh") {
   switch (code) {
     case "too_many_pending": return "Masih ada 3 topup menunggu. Selesaikan atau tunggu kedaluwarsa.";
     case "too_soon": return "Tunggu beberapa detik";
-    case "sekalipay_unavailable": case "tunvn_unavailable": return TOPUP_INACTIVE;
+    case "sekalipay_unavailable": case "tunvn_unavailable": case "storebat_unavailable": return TOPUP_INACTIVE;
+    case "channel_unavailable": return "Metode topup sedang tidak tersedia di supplier.";
     case "topup_daily_limit": case "trx_daily_limit": return "Batas topup harian Sekalipay tercapai";
     default: return `${action === "create" ? "Gagal membuat topup" : "Gagal mengecek status"} (${code})`;
   }

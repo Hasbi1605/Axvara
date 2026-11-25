@@ -27,6 +27,15 @@ import {
   parseTunvnDeposit,
   parseTunvnDepositStatus,
 } from "@/lib/tunvn/client";
+import { isStorebatConfigured } from "@/lib/storebat/client";
+import {
+  callStorebatCreateDeposit,
+  callStorebatDepositMethods,
+  callStorebatDepositStatus,
+  parseStorebatDeposit,
+  parseStorebatDepositMethod,
+  type StorebatDeposit,
+} from "@/lib/storebat/topup";
 
 const SUPPLIER_TOPUP_MAX_PENDING = 3;
 const SUPPLIER_TOPUP_REFRESH_MIN_MS = 10_000;
@@ -34,7 +43,7 @@ const SUPPLIER_TOPUP_REFRESH_MIN_MS = 10_000;
 const SUPPLIER_TOPUP_UNDATED_PENDING_MS = 30 * 60_000;
 const ERROR_MAX_CHARS = 200;
 
-export type SupplierTopupSupplier = "sekalipay" | "tunvn";
+export type SupplierTopupSupplier = "sekalipay" | "tunvn" | "storebat";
 export type SupplierTopupStatus = "creating" | "pending" | "paid" | "expired" | "failed" | "unknown";
 
 export type SupplierTopupItem = {
@@ -65,16 +74,20 @@ export class SupplierTopupError extends Error {
   }
 }
 
-export function supplierTopupGates(): { sekalipay: boolean; tunvn: boolean } {
+export function supplierTopupGates(): { sekalipay: boolean; tunvn: boolean; storebat: boolean } {
   return {
     sekalipay: isSkEnabled() && isSkConfigured() && !isSkSandbox(),
     tunvn: isTunvnConfigured(),
+    storebat: isStorebatConfigured(),
   };
 }
 
 function assertSupplierGate(supplier: SupplierTopupSupplier): void {
   if (supplierTopupGates()[supplier]) return;
-  throw new SupplierTopupError(503, supplier === "sekalipay" ? "sekalipay_unavailable" : "tunvn_unavailable");
+  throw new SupplierTopupError(
+    503,
+    supplier === "sekalipay" ? "sekalipay_unavailable" : supplier === "tunvn" ? "tunvn_unavailable" : "storebat_unavailable",
+  );
 }
 
 /** `AXVTU-YYYYMMDD-<8 hex>`; tidak pernah diawali `GW-` dan tidak dari klien. */
@@ -156,7 +169,8 @@ async function touch(db: DatabaseAccess, id: number, now: number): Promise<void>
 
 export type CreateSupplierTopupInput =
   | { supplier: "sekalipay"; code: string; amount: number }
-  | { supplier: "tunvn"; amount: number };
+  | { supplier: "tunvn"; amount: number }
+  | { supplier: "storebat"; amount: number };
 
 /** Validasi input create; melempar 400 invalid_request bila bentuk salah. */
 function normalizeCreateInput(input: unknown): CreateSupplierTopupInput {
@@ -164,7 +178,7 @@ function normalizeCreateInput(input: unknown): CreateSupplierTopupInput {
   const raw = input as Record<string, unknown>;
   const supplier = raw.supplier;
   const amount = raw.amount;
-  if (supplier !== "sekalipay" && supplier !== "tunvn") throw new SupplierTopupError(400, "invalid_request");
+  if (supplier !== "sekalipay" && supplier !== "tunvn" && supplier !== "storebat") throw new SupplierTopupError(400, "invalid_request");
   if (typeof amount !== "number" || !Number.isFinite(amount)) throw new SupplierTopupError(400, "invalid_request");
   if (supplier === "sekalipay") {
     const code = typeof raw.code === "string" ? raw.code.trim() : "";
@@ -219,8 +233,10 @@ export async function createSupplierTopup(
   try {
     if (normalized.supplier === "sekalipay") {
       await createSekalipayTopup(db, { id, refId, code: normalized.code, amount: normalized.amount, now });
-    } else {
+    } else if (normalized.supplier === "tunvn") {
       await createTunvnTopup(db, { id, amount: normalized.amount, now });
+    } else {
+      await createStorebatTopup(db, { id, refId, amount: normalized.amount, now });
     }
   } catch (error) {
     if (error instanceof SupplierTopupError) throw error;
@@ -375,7 +391,8 @@ export async function refreshSupplierTopup(
     if (!check.changes) throw new SupplierTopupError(429, "too_soon");
   }
   if (item.supplier === "sekalipay") await refreshSekalipayTopup(db, item, now);
-  else await refreshTunvnTopup(db, item, now);
+  else if (item.supplier === "tunvn") await refreshTunvnTopup(db, item, now);
+  else await refreshStorebatTopup(db, item, now);
   const refreshed = await loadItem(db, id);
   if (!refreshed) throw new SupplierTopupError(503, "load_failed");
   return refreshed;
@@ -510,6 +527,251 @@ async function refreshTunvnTopup(db: DatabaseAccess, item: SupplierTopupItem, no
     return;
   }
   await touch(db, item.id, now);
+}
+
+async function storeStorebatDeposit(
+  db: DatabaseAccess,
+  id: number,
+  deposit: StorebatDeposit,
+  requestedAmount: number,
+  now: number,
+  fallbackExpiresAt: number | null = null,
+): Promise<void> {
+  const creditAmount = deposit.wallet_credit_amount ?? requestedAmount;
+  const feeAmount = deposit.pay_amount !== null && creditAmount !== null
+    ? Math.max(0, Number((deposit.pay_amount - creditAmount).toFixed(6)))
+    : null;
+  const paymentJson = deposit.address && deposit.pay_amount !== null
+    ? JSON.stringify({
+        address: deposit.address,
+        network: "BEP20",
+        exact_amount: deposit.pay_amount,
+        pay_currency: deposit.pay_currency,
+        upstream_status: deposit.status,
+      })
+    : null;
+  const expiresAt = deposit.expires_at ?? fallbackExpiresAt;
+
+  if (deposit.status === "CREDITED") {
+    await db.execRun(
+      `UPDATE supplier_topups
+          SET supplier_ref=?, channel='USDT_BEP20',
+              pay_amount=COALESCE(?,pay_amount),
+              credit_amount=COALESCE(?,credit_amount),
+              fee_amount=COALESCE(?,fee_amount),
+              status='paid', paid_at=?,
+              payment_json=COALESCE(?,payment_json),
+              error=NULL, expires_at=COALESCE(?,expires_at), updated_at=?
+        WHERE id=? AND status<>'paid'`,
+      deposit.deposit_id,
+      deposit.pay_amount,
+      creditAmount,
+      feeAmount,
+      now,
+      paymentJson,
+      expiresAt,
+      now,
+      id,
+    );
+    return;
+  }
+
+  let nextStatus: SupplierTopupStatus;
+  let nextError: string | null = null;
+  if (deposit.status === "WAITING" || deposit.status === "CONFIRMING") {
+    if (expiresAt !== null && now > expiresAt && deposit.status === "WAITING") {
+      nextStatus = "expired";
+    } else {
+      nextStatus = paymentJson ? "pending" : "creating";
+    }
+  } else if (deposit.status === "CREATING") {
+    nextStatus = "creating";
+  } else if (deposit.status === "EXPIRED") {
+    nextStatus = "expired";
+  } else if (deposit.status === "FAILED" || deposit.status === "REFUNDED") {
+    nextStatus = "failed";
+    nextError = deposit.status === "REFUNDED" ? "storebat_refunded" : "storebat_failed";
+  } else {
+    nextStatus = "unknown";
+    nextError = sanitizeError(`storebat_${deposit.status.toLowerCase()}`);
+  }
+
+  await db.execRun(
+    `UPDATE supplier_topups
+        SET supplier_ref=?, channel='USDT_BEP20',
+            pay_amount=COALESCE(?,pay_amount),
+            credit_amount=COALESCE(?,credit_amount),
+            fee_amount=COALESCE(?,fee_amount),
+            status=?, payment_json=COALESCE(?,payment_json),
+            error=?, expires_at=COALESCE(?,expires_at), updated_at=?
+      WHERE id=? AND status NOT IN ('paid','failed')`,
+    deposit.deposit_id,
+    deposit.pay_amount,
+    creditAmount,
+    feeAmount,
+    nextStatus,
+    paymentJson,
+    nextError,
+    expiresAt,
+    now,
+    id,
+  );
+}
+
+async function preflightStorebatDepositMethod(
+  db: DatabaseAccess,
+  id: number,
+  amount: number,
+  now: number,
+  mode: "create" | "refresh",
+): Promise<boolean> {
+  const methodsRes = await callStorebatDepositMethods();
+  if (methodsRes.kind === "config") {
+    const code = sanitizeError(methodsRes.reason);
+    if (mode === "create") await setStatus(db, id, "failed", code, now);
+    else await noteCheckError(db, id, code, now);
+    throw new SupplierTopupError(502, code);
+  }
+  if (methodsRes.kind === "auth") {
+    const code = `auth_${methodsRes.status}`;
+    if (mode === "create") await setStatus(db, id, "failed", code, now);
+    else await noteCheckError(db, id, code, now);
+    throw new SupplierTopupError(502, code);
+  }
+  if (methodsRes.kind === "rejected") {
+    const code = sanitizeError(methodsRes.code);
+    if (mode === "create") await setStatus(db, id, "failed", code, now);
+    else await noteCheckError(db, id, code, now);
+    throw new SupplierTopupError(502, code);
+  }
+  if (methodsRes.kind === "ambiguous") {
+    const code = sanitizeError(methodsRes.reason);
+    if (mode === "create") await setStatus(db, id, "unknown", code, now);
+    else await noteCheckError(db, id, code, now);
+    throw new SupplierTopupError(502, code);
+  }
+  const parsed = parseStorebatDepositMethod(methodsRes.json);
+  if (!parsed.ok) {
+    if (mode === "create") await setStatus(db, id, "unknown", parsed.error, now);
+    else await noteCheckError(db, id, parsed.error, now);
+    throw new SupplierTopupError(502, parsed.error);
+  }
+  if (!parsed.method || !parsed.method.available) {
+    await setStatus(db, id, "failed", "channel_unavailable", now);
+    if (mode === "create") throw new SupplierTopupError(409, "channel_unavailable");
+    return false;
+  }
+  if (parsed.method.minimum_deposit_usd !== null && amount < parsed.method.minimum_deposit_usd) {
+    await setStatus(db, id, "failed", "amount_out_of_range", now);
+    if (mode === "create") throw new SupplierTopupError(400, "amount_out_of_range");
+    return false;
+  }
+  return true;
+}
+
+async function createStorebatTopup(
+  db: DatabaseAccess,
+  args: { id: number; refId: string; amount: number; now: number },
+): Promise<void> {
+  await preflightStorebatDepositMethod(db, args.id, args.amount, args.now, "create");
+  const res = await callStorebatCreateDeposit({
+    amountUsd: args.amount,
+    idempotencyKey: args.refId,
+    reference: args.refId,
+  });
+  if (res.kind === "config") {
+    const code = sanitizeError(res.reason);
+    await setStatus(db, args.id, "failed", code, args.now);
+    throw new SupplierTopupError(502, code);
+  }
+  if (res.kind === "auth") {
+    const code = `auth_${res.status}`;
+    await setStatus(db, args.id, "failed", code, args.now);
+    throw new SupplierTopupError(502, code);
+  }
+  if (res.kind === "rejected") {
+    const code = sanitizeError(res.code);
+    await setStatus(db, args.id, "failed", code, args.now);
+    throw new SupplierTopupError(502, code);
+  }
+  if (res.kind === "ambiguous") {
+    const code = sanitizeError(res.reason);
+    await setStatus(db, args.id, "unknown", code, args.now);
+    throw new SupplierTopupError(502, code);
+  }
+  const parsed = parseStorebatDeposit(res.json, args.amount);
+  if (!parsed.ok) {
+    if (parsed.deposit_id) {
+      await db.execRun(
+        "UPDATE supplier_topups SET supplier_ref=?, status='failed', error=?, updated_at=? WHERE id=? AND status NOT IN ('paid','failed')",
+        parsed.deposit_id,
+        sanitizeError(parsed.error),
+        args.now,
+        args.id,
+      );
+    } else {
+      await setStatus(db, args.id, "failed", parsed.error, args.now);
+    }
+    throw new SupplierTopupError(502, parsed.error);
+  }
+  await storeStorebatDeposit(db, args.id, parsed.deposit, args.amount, args.now);
+}
+
+async function refreshStorebatTopup(db: DatabaseAccess, item: SupplierTopupItem, now: number): Promise<void> {
+  const depositId = item.supplier_ref;
+  if (!depositId) {
+    // Belum ada deposit_id (create sebelumnya ambigu): validasi ulang metode,
+    // lalu replay POST /wallet/deposits dengan idempotency_key (ref_id) yang SAMA.
+    const ok = await preflightStorebatDepositMethod(db, item.id, item.requested_amount, now, "refresh");
+    if (!ok) return;
+    const res = await callStorebatCreateDeposit({
+      amountUsd: item.requested_amount,
+      idempotencyKey: item.ref_id,
+      reference: item.ref_id,
+    });
+    if (res.kind === "auth") {
+      const code = `auth_${res.status}`;
+      await noteCheckError(db, item.id, code, now);
+      throw new SupplierTopupError(502, code);
+    }
+    if (res.kind === "rejected") {
+      const code = sanitizeError(res.code);
+      await setStatus(db, item.id, "failed", code, now);
+      throw new SupplierTopupError(502, code);
+    }
+    if (res.kind !== "ok") {
+      const code = sanitizeError(res.reason);
+      await noteCheckError(db, item.id, code, now);
+      throw new SupplierTopupError(502, code);
+    }
+    const parsed = parseStorebatDeposit(res.json, item.requested_amount);
+    if (!parsed.ok) {
+      await noteCheckError(db, item.id, parsed.error, now);
+      throw new SupplierTopupError(502, parsed.error);
+    }
+    await storeStorebatDeposit(db, item.id, parsed.deposit, item.requested_amount, now, item.expires_at);
+    return;
+  }
+
+  const res = await callStorebatDepositStatus(depositId);
+  if (res.kind !== "ok") {
+    const err = sanitizeError(
+      res.kind === "auth" ? `auth_${res.status}` : res.kind === "rejected" ? res.code : res.reason,
+    );
+    await noteCheckError(db, item.id, err, now);
+    throw new SupplierTopupError(502, err);
+  }
+  const parsed = parseStorebatDeposit(res.json, item.requested_amount);
+  if (!parsed.ok) {
+    await noteCheckError(db, item.id, parsed.error, now);
+    throw new SupplierTopupError(502, parsed.error);
+  }
+  if (parsed.deposit.status === "CREDITED") {
+    await storeStorebatDeposit(db, item.id, parsed.deposit, item.requested_amount, now, item.expires_at);
+    return;
+  }
+  if (item.status === "failed") return;
+  await storeStorebatDeposit(db, item.id, parsed.deposit, item.requested_amount, now, item.expires_at);
 }
 
 /** Saluran topup SK (dipakai route channels). */

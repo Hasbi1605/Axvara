@@ -1,4 +1,4 @@
-// tests/supplier-topups.test.ts — Invoice topup saldo supplier SK + TUNVN.
+// tests/supplier-topups.test.ts — Invoice topup saldo supplier SK + TUNVN + StoreBat.
 // Semua upstream di-mock; tidak ada panggilan tulis supplier nyata.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -11,6 +11,7 @@ import {
   SupplierTopupError,
 } from "@/lib/supplier/topup";
 import { parseTunvnDeposit, parseTunvnDepositStatus } from "@/lib/tunvn/client";
+import { parseStorebatDeposit, parseStorebatDepositMethod } from "@/lib/storebat/topup";
 
 vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn(async () => ({ email: "fixture@example.test" })) }));
 
@@ -32,6 +33,11 @@ function stubTunvnEnv() {
   vi.stubEnv("TUNVN_ENABLED", "true");
   vi.stubEnv("TUNVN_API_KEY", "tunvn-key");
   vi.stubEnv("TUNVN_BASE_URL", "https://tunvn.test");
+}
+
+function stubStorebatEnv() {
+  vi.stubEnv("STOREBAT_API_KEY", "storebat-key");
+  vi.stubEnv("STOREBAT_BASE_URL", "https://storebat.test/api/reseller");
 }
 
 function channel(overrides: Record<string, unknown> = {}) {
@@ -78,21 +84,38 @@ describe("ref_id", () => {
   });
 });
 
-it.each(["sekalipay", "tunvn"] as const)("%s refresh only checks for late credit on a failed invoice", async (supplier) => {
+it.each(["sekalipay", "tunvn", "storebat"] as const)("%s refresh only checks for late credit on a failed invoice", async (supplier) => {
   const fx = createD1Fixture();
   try {
     const sk = supplier === "sekalipay";
+    const sb = supplier === "storebat";
     if (sk) stubSkEnv();
+    else if (sb) stubStorebatEnv();
     else stubTunvnEnv();
     const now = Date.UTC(2026, 10, 20, 8);
-    const ref = sk ? "SK-INV-1" : "TUN-123";
-    const statusPath = sk ? "/sk/v1/balance/mutations" : "/api/deposit/status";
+    const ref = sk ? "SK-INV-1" : sb ? "dep_late_123" : "TUN-123";
+    const statusPath = sk ? "/sk/v1/balance/mutations" : sb ? `/api/reseller/wallet/deposits/${ref}` : "/api/deposit/status";
     let paid = false;
     const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
       const target = new URL(String(url));
       expect(target.pathname).toBe(statusPath);
       expect(init?.method ?? "GET").toBe("GET");
       if (sk) return Response.json({ data: paid ? [{ invoice: ref, direction: "credit", type: "topup", amount: 50_000 }] : [] });
+      if (sb) {
+        expect(target.searchParams.get("refresh")).toBe("true");
+        return Response.json({
+          success: true,
+          deposit: {
+            deposit_id: ref,
+            status: paid ? "CREDITED" : "EXPIRED",
+            wallet_credit_amount: 10,
+            pay_amount: 10.02,
+            pay_currency: "USDTBSC",
+            network: "BEP20",
+            address: ADDRESS,
+          },
+        });
+      }
       expect(target.searchParams.get("code")).toBe(ref);
       return Response.json({ success: true, deposit: { status: paid ? "confirmed" : "expired" }, paid });
     });
@@ -100,7 +123,7 @@ it.each(["sekalipay", "tunvn"] as const)("%s refresh only checks for late credit
     fx.sql.prepare(`INSERT INTO supplier_topups
       (supplier,ref_id,supplier_ref,channel,currency,requested_amount,status,error,created_at,updated_at,expires_at)
       VALUES (?,'AXVTU-late-credit',?,?,?,?,'failed','create_failed',?,?,?)`)
-      .run(supplier, ref, sk ? "sk-topup" : null, sk ? "IDR" : "USDT", sk ? 50_000 : 10, now, now, now + 60_000);
+      .run(supplier, ref, sk ? "sk-topup" : sb ? "USDT_BEP20" : null, sk ? "IDR" : "USDT", sk ? 50_000 : 10, now, now, now + 60_000);
     const db = createDatabaseAccess(fx.db);
     for (const elapsed of [11_000, 61_000]) {
       const unpaid = await refreshSupplierTopup(db, 1, { now: now + elapsed });
@@ -112,6 +135,7 @@ it.each(["sekalipay", "tunvn"] as const)("%s refresh only checks for late credit
     const refreshed = await refreshSupplierTopup(db, 1, { now: paidAt });
     expect(refreshed).toMatchObject({ status: "paid", paid_at: paidAt, error: null });
     if (sk) expect(refreshed.credit_amount).toBe(50_000);
+    if (sb) expect(refreshed.credit_amount).toBe(10);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(await refreshSupplierTopup(db, 1, { now: paidAt + 11_000 })).toEqual(refreshed);
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -717,6 +741,188 @@ describe("TUNVN parsers", () => {
   });
 });
 
+describe("StoreBat topup", () => {
+  function methodsResponse(overrides: Record<string, unknown> = {}) {
+    return {
+      success: true,
+      methods: [{
+        network: "BEP20",
+        asset: "USDT",
+        provider_currency: "USDTBSC",
+        available: true,
+        minimum_deposit_usd: 0.0661334,
+        fee: { ventebot_fee_usd: 0, provider_quote_included: true },
+        expiry_seconds: 300,
+        error: null,
+        ...overrides,
+      }],
+    };
+  }
+
+  function sbDepositResponse(overrides: Record<string, unknown> = {}, idempotent = false) {
+    return {
+      success: true,
+      idempotent,
+      deposit: {
+        deposit_id: "dep_sb_001",
+        status: "WAITING",
+        provider_status: "waiting",
+        wallet_credit_amount: 5,
+        pay_amount: 5.012345,
+        pay_currency: "USDTBSC",
+        network: "BEP20",
+        address: ADDRESS,
+        actually_paid: 0,
+        expires_at: "2026-11-25T08:05:00Z",
+        ...overrides,
+      },
+    };
+  }
+
+  it("preflights deposit-methods and creates an idempotent USDT BEP20 deposit", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubStorebatEnv();
+      const now = Date.UTC(2026, 10, 25, 8, 0, 0);
+      const posts: Record<string, unknown>[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: RequestInit) => {
+        const s = String(url);
+        expect((init?.headers as Record<string, string>)["X-Reseller-Key"]).toBe("storebat-key");
+        if (s.endsWith("/wallet/deposit-methods")) return Response.json(methodsResponse());
+        if (s.endsWith("/wallet/deposits")) {
+          posts.push(JSON.parse(String(init?.body ?? "{}")));
+          return Response.json(sbDepositResponse(), { status: 201 });
+        }
+        throw new Error(`Unexpected fetch ${s}`);
+      }));
+      const db = createDatabaseAccess(fx.db);
+      const item = await createSupplierTopup(db, { supplier: "storebat", amount: 5 }, { now });
+      expect(posts).toHaveLength(1);
+      expect(posts[0]).toMatchObject({ amount_usd: 5, network: "BEP20", idempotency_key: item.ref_id, reference: item.ref_id });
+      expect(item).toMatchObject({
+        supplier: "storebat",
+        status: "pending",
+        supplier_ref: "dep_sb_001",
+        channel: "USDT_BEP20",
+        currency: "USDT",
+        requested_amount: 5,
+        pay_amount: 5.012345,
+        credit_amount: 5,
+        fee_amount: 0.012345,
+        expires_at: Date.parse("2026-11-25T08:05:00Z"),
+      });
+      expect(item.payment).toMatchObject({ address: ADDRESS, network: "BEP20", exact_amount: 5.012345, pay_currency: "USDTBSC", upstream_status: "WAITING" });
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("blocks create before POST when BEP20 method is unavailable or below minimum", async () => {
+    for (const [override, status, code] of [
+      [{ available: false }, 409, "channel_unavailable"],
+      [{ minimum_deposit_usd: 10 }, 400, "amount_out_of_range"],
+    ] as const) {
+      const fx = createD1Fixture();
+      try {
+        stubStorebatEnv();
+        const posts: unknown[] = [];
+        vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: RequestInit) => {
+          if (String(url).endsWith("/wallet/deposit-methods")) return Response.json(methodsResponse(override));
+          posts.push(init?.body);
+          throw new Error("POST must not be called");
+        }));
+        const db = createDatabaseAccess(fx.db);
+        await expect(createSupplierTopup(db, { supplier: "storebat", amount: 5 }, { now: 1 })).rejects.toMatchObject({ status, code });
+        expect(posts).toHaveLength(0);
+      } finally {
+        fx.close();
+      }
+    }
+  });
+
+  it("recovers an ambiguous create by replaying the SAME idempotency_key on refresh", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubStorebatEnv();
+      const now = Date.UTC(2026, 10, 25, 8, 0, 0);
+      const posts: Record<string, unknown>[] = [];
+      let failPost = true;
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: RequestInit) => {
+        const s = String(url);
+        if (s.endsWith("/wallet/deposit-methods")) return Response.json(methodsResponse());
+        if (s.endsWith("/wallet/deposits")) {
+          posts.push(JSON.parse(String(init?.body ?? "{}")));
+          if (failPost) return new Response("{}", { status: 503 });
+          return Response.json(sbDepositResponse({}, true), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch ${s}`);
+      }));
+      const db = createDatabaseAccess(fx.db);
+      await expect(createSupplierTopup(db, { supplier: "storebat", amount: 5 }, { now })).rejects.toMatchObject({ status: 502, code: "storebat_http_503" });
+      const row = fx.sql.prepare("SELECT id,ref_id,status,supplier_ref FROM supplier_topups").get() as { id: number; ref_id: string; status: string; supplier_ref: string | null };
+      expect(row).toMatchObject({ status: "unknown", supplier_ref: null });
+
+      failPost = false;
+      const recovered = await refreshSupplierTopup(db, row.id, { now: now + 11_000 });
+      expect(posts).toHaveLength(2);
+      expect(posts[1].idempotency_key).toBe(posts[0].idempotency_key);
+      expect(posts[1].idempotency_key).toBe(row.ref_id);
+      expect(recovered).toMatchObject({ status: "pending", supplier_ref: "dep_sb_001", pay_amount: 5.012345 });
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("tracks CREATING -> CONFIRMING -> CREDITED and handles UNDERPAID / EXPIRED -> late CREDITED", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubStorebatEnv();
+      const now = Date.UTC(2026, 10, 25, 8, 0, 0);
+      let state: Record<string, unknown> = { status: "CREATING", address: null, pay_amount: null };
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+        const s = String(url);
+        if (s.endsWith("/wallet/deposit-methods")) return Response.json(methodsResponse());
+        if (s.includes("/wallet/deposits/dep_sb_001?refresh=true")) return Response.json(sbDepositResponse(state));
+        return Response.json(sbDepositResponse(state), { status: 201 });
+      }));
+      const db = createDatabaseAccess(fx.db);
+      const created = await createSupplierTopup(db, { supplier: "storebat", amount: 5 }, { now });
+      expect(created).toMatchObject({ status: "creating", supplier_ref: "dep_sb_001", payment: null });
+
+      state = { status: "CONFIRMING", address: ADDRESS, pay_amount: 5.012345 };
+      const confirming = await refreshSupplierTopup(db, created.id, { now: now + 11_000 });
+      expect(confirming).toMatchObject({ status: "pending", pay_amount: 5.012345 });
+      expect(confirming.payment?.upstream_status).toBe("CONFIRMING");
+
+      state = { status: "UNDERPAID", address: ADDRESS, pay_amount: 5.012345 };
+      const underpaid = await refreshSupplierTopup(db, created.id, { now: now + 22_000 });
+      expect(underpaid).toMatchObject({ status: "unknown", error: "storebat_underpaid" });
+
+      state = { status: "EXPIRED", address: ADDRESS, pay_amount: 5.012345 };
+      const expired = await refreshSupplierTopup(db, created.id, { now: now + 33_000 });
+      expect(expired).toMatchObject({ status: "expired" });
+
+      state = { status: "CREDITED", address: ADDRESS, pay_amount: 5.012345, wallet_credit_amount: 5 };
+      const credited = await refreshSupplierTopup(db, created.id, { now: now + 44_000 });
+      expect(credited).toMatchObject({ status: "paid", paid_at: now + 44_000, credit_amount: 5, error: null });
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("validates StoreBat parsers strictly", () => {
+    expect(parseStorebatDepositMethod(methodsResponse())).toMatchObject({ ok: true, method: { network: "BEP20", available: true } });
+    expect(parseStorebatDepositMethod({ success: false })).toEqual({ ok: false, error: "storebat_methods_shape" });
+    expect(parseStorebatDeposit(sbDepositResponse({ expires_at: "2026-11-25 08:05:00" }), 5)).toMatchObject({
+      ok: true,
+      deposit: { expires_at: Date.parse("2026-11-25T08:05:00Z") },
+    });
+    expect(parseStorebatDeposit(sbDepositResponse({ network: "TRC20" }), 5)).toMatchObject({ ok: false, error: "unexpected_network" });
+    expect(parseStorebatDeposit(sbDepositResponse({ address: "0x123" }), 5)).toMatchObject({ ok: false, error: "invalid_address" });
+    expect(parseStorebatDeposit(sbDepositResponse({ pay_amount: 999 }), 5)).toMatchObject({ ok: false, error: "invalid_pay_amount" });
+  });
+});
+
 describe("routes", () => {
   const get = (query = "") => new NextRequest(`http://localhost/api/admin/supplier-topups${query}`);
   const post = (body: unknown) => new NextRequest("http://localhost/api/admin/supplier-topups", {
@@ -769,11 +975,60 @@ describe("routes", () => {
       const listed = await route.GET(get("?supplier=tunvn"));
       expect(listed.status).toBe(200);
       const listedBody = (await listed.json()) as {
-        ok: boolean; items: unknown[]; gates: { sekalipay: boolean; tunvn: boolean };
+        ok: boolean; items: unknown[]; gates: { sekalipay: boolean; tunvn: boolean; storebat: boolean };
       };
       expect(listedBody.ok).toBe(true);
       expect(listedBody.items).toHaveLength(1);
-      expect(listedBody.gates).toEqual({ sekalipay: false, tunvn: true });
+      expect(listedBody.gates).toEqual({ sekalipay: false, tunvn: true, storebat: false });
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("POST/GET supports storebat and maps unconfigured storebat to 503", async () => {
+    const fx = createD1Fixture();
+    try {
+      const { requireAdmin } = await import("@/lib/auth");
+      vi.mocked(requireAdmin).mockResolvedValue({ email: "fixture@example.test" } as never);
+      const route = await import("@/app/api/admin/supplier-topups/route");
+      const gated = await route.POST(post({ supplier: "storebat", amount: 5 }));
+      expect(gated.status).toBe(503);
+      expect(await gated.json()).toEqual({ ok: false, error: "storebat_unavailable" });
+
+      stubStorebatEnv();
+      vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+        const s = String(url);
+        if (s.endsWith("/wallet/deposit-methods")) {
+          return Response.json({
+            success: true,
+            methods: [{ network: "BEP20", asset: "USDT", provider_currency: "USDTBSC", available: true, minimum_deposit_usd: 0.07, expiry_seconds: 300 }],
+          });
+        }
+        return Response.json({
+          success: true,
+          idempotent: false,
+          deposit: {
+            deposit_id: "dep_route_1",
+            status: "WAITING",
+            wallet_credit_amount: 5,
+            pay_amount: 5.012345,
+            pay_currency: "USDTBSC",
+            network: "BEP20",
+            address: ADDRESS,
+            expires_at: "2026-11-25T04:00:00Z",
+          },
+        }, { status: 201 });
+      }));
+      const created = await route.POST(post({ supplier: "storebat", amount: 5 }));
+      expect(created.status).toBe(200);
+      expect(await created.json()).toMatchObject({ ok: true, item: { supplier: "storebat", supplier_ref: "dep_route_1", pay_amount: 5.012345 } });
+
+      const listed = await route.GET(get("?supplier=storebat"));
+      expect(listed.status).toBe(200);
+      const body = (await listed.json()) as { ok: boolean; items: unknown[]; gates: { sekalipay: boolean; tunvn: boolean; storebat: boolean } };
+      expect(body.ok).toBe(true);
+      expect(body.items).toHaveLength(1);
+      expect(body.gates).toEqual({ sekalipay: false, tunvn: false, storebat: true });
     } finally {
       fx.close();
     }

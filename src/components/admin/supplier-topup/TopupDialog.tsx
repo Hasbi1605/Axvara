@@ -63,9 +63,10 @@ function SekalipayPayment({ item, onRefresh, checking }: { item: SupplierTopupIt
   </>;
 }
 
-function TunvnPayment({ item }: { item: SupplierTopupItem }) {
+function UsdtBep20Payment({ item }: { item: SupplierTopupItem }) {
   const exact = item.payment?.exact_amount;
   const address = item.payment?.address;
+  const confirming = item.payment?.upstream_status === "CONFIRMING";
   if (typeof exact !== "number" || !Number.isFinite(exact) || typeof address !== "string" || !/^0x[0-9a-f]{40}$/i.test(address) || item.payment?.network !== "BEP20") {
     return <p className="text-sm text-admin-muted">Instruksi transfer belum tersedia. Cek status sebelum mengirim.</p>;
   }
@@ -77,6 +78,7 @@ function TunvnPayment({ item }: { item: SupplierTopupItem }) {
       <p className="break-words text-3xl font-semibold tabular-nums">{exact} USDT</p>
       <CopyValue key={exact} label="nominal" value={String(exact)} />
     </div>
+    {confirming && <p role="status" className="rounded-md border border-admin-border bg-admin-subtle p-3 text-sm text-admin-muted">Pembayaran terdeteksi, menunggu konfirmasi jaringan BEP20…</p>}
     <p className="rounded-md border border-admin-warning/25 bg-admin-warning/10 p-3 text-sm font-medium text-admin-warning">Kirim PERSIS nominal ini, jaringan BEP20 (BSC) saja.</p>
     <div className="min-w-0 space-y-2">
       <p className="text-sm font-medium">Alamat tujuan</p>
@@ -160,7 +162,7 @@ export function TopupDialog({ supplier, enabled, initialItem, onItem, onClose, o
     } catch (error) {
       if (request.signal.aborted) return;
       const code = getCode(error);
-      if (code === "sekalipay_unavailable" || code === "tunvn_unavailable") onUnavailable(supplier);
+      if (code === "sekalipay_unavailable" || code === "tunvn_unavailable" || code === "storebat_unavailable") onUnavailable(supplier);
       if (manual) setError(actionError(code, "refresh"));
     } finally {
       if (refreshRequest.current === request) refreshRequest.current = null;
@@ -214,7 +216,7 @@ export function TopupDialog({ supplier, enabled, initialItem, onItem, onClose, o
       } else {
         setError(actionError(code, "create"));
         // A failed response can still leave an invoice to reconcile in history.
-        if (code === "sekalipay_unavailable" || code === "tunvn_unavailable") onUnavailable(supplier);
+        if (code === "sekalipay_unavailable" || code === "tunvn_unavailable" || code === "storebat_unavailable") onUnavailable(supplier);
         else void onReloadHistory();
       }
     } finally {
@@ -251,6 +253,7 @@ export function TopupDialog({ supplier, enabled, initialItem, onItem, onClose, o
           <Input id="topup-amount" ref={amountInput} inputMode={isSk ? "numeric" : "decimal"} autoComplete="off" className="h-11 text-base sm:text-sm" value={amount}
             onChange={e => { setAmount(e.target.value); setFieldError(""); }} disabled={creating} aria-invalid={!!fieldError} aria-describedby={`topup-bounds${fieldError ? " topup-amount-error" : ""}`} />
           <p id="topup-bounds" className="text-sm text-admin-muted">{isSk && !chosenChannel ? "Pilih metode untuk melihat batas nominal." : `Batas nominal: ${bounds}.`}</p>
+          {supplier === "storebat" && <p className="text-xs text-admin-muted">Jaringan USDT BEP20 (dikreditkan 1:1 ke saldo USD StoreBat, berlaku 5 menit).</p>}
           {fieldError && <p id="topup-amount-error" role="alert" className="text-sm text-admin-danger">{fieldError}</p>}
         </div>
         {fee !== null && Number.isFinite(fee) && <p className="rounded-md bg-admin-subtle p-3 text-sm">Perkiraan biaya: <strong>{money(fee, "IDR")}</strong></p>}
@@ -269,9 +272,9 @@ export function TopupDialog({ supplier, enabled, initialItem, onItem, onClose, o
           <div><p className="font-semibold">Saldo masuk</p>{item.credit_amount !== null && <p className="text-sm">{money(item.credit_amount, item.currency)} dikreditkan ke {SUPPLIER_NAMES[supplier]}.</p>}</div>
         </div> : expired ? <p className="text-sm text-admin-muted">Jangan bayar tagihan ini. Jika sudah membayar setelah kedaluwarsa, kamu masih bisa mengecek statusnya.</p>
           : item.status === "failed" ? <p className="text-sm text-admin-muted">Topup ini gagal. Jangan bayar tagihan ini.{checkable && " Jika sudah membayar, cek status untuk memastikan saldo masuk."}</p>
-          : item.status === "unknown" ? <p className="text-sm text-admin-muted">Status tagihan belum pasti. Cek status sebelum membayar atau membuat tagihan lain.</p>
+          : item.status === "unknown" ? <p className="text-sm text-admin-muted">{item.error === "storebat_underpaid" ? "Nominal yang diterima kurang dari tagihan. Periksa di bot StoreBat atau hubungi dukungan supplier." : item.error === "storebat_review_required" ? "Tagihan memerlukan peninjauan di sisi StoreBat. Cek status atau hubungi dukungan supplier." : "Status tagihan belum pasti. Cek status sebelum membayar atau membuat tagihan lain."}</p>
           : item.status === "creating" ? <p className="text-sm text-admin-muted">Tagihan masih disiapkan. Cek status sebelum membayar.</p>
-          : isSk ? <SekalipayPayment item={item} checking={checking} onRefresh={() => void refresh(true)} /> : <TunvnPayment item={item} />}
+          : isSk ? <SekalipayPayment item={item} checking={checking} onRefresh={() => void refresh(true)} /> : <UsdtBep20Payment item={item} />}
         {error && <p role="alert" className="text-sm text-admin-danger">{error}</p>}
         {checkable && <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" className="h-11" disabled={checking} onClick={() => void refresh(true)}>{checking ? "Mengecek status…" : "Cek status"}</Button>

@@ -25,7 +25,7 @@ function errorResponse(error: unknown): NextResponse {
 export async function GET(request: NextRequest) {
   if (!await requireAdmin(request)) return json({ ok: false, error: "unauthorized" }, 401);
   const supplier = new URL(request.url).searchParams.get("supplier");
-  if (supplier !== null && supplier !== "" && supplier !== "sekalipay" && supplier !== "tunvn") {
+  if (supplier !== null && supplier !== "" && supplier !== "sekalipay" && supplier !== "tunvn" && supplier !== "storebat") {
     return json({ ok: false, error: "invalid_supplier" }, 400);
   }
   try {

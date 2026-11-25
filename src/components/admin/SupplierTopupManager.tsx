@@ -88,7 +88,7 @@ export function SupplierTopupManager() {
   }, [loadBalance, loadHistory]);
 
   const disableTopup = useCallback((supplier: SupplierTopupSupplier) => {
-    setGates(prev => ({ sekalipay: false, tunvn: false, ...prev, [supplier]: false }));
+    setGates(prev => ({ sekalipay: false, tunvn: false, storebat: false, ...prev, [supplier]: false }));
   }, []);
 
   function openDialog(button: HTMLButtonElement, supplier: SupplierTopupSupplier, initialItem?: SupplierTopupItem) {
@@ -97,13 +97,13 @@ export function SupplierTopupManager() {
   }
 
   return <div className="space-y-6">
-    <PageHeader title="Saldo & Topup" description="Pantau saldo supplier dan buat tagihan topup Sekalipay atau TUNVN. Pembayaran tetap kamu lakukan sendiri."
+    <PageHeader title="Saldo & Topup" description="Pantau saldo supplier dan buat tagihan topup Sekalipay, TUNVN, atau StoreBat. Pembayaran tetap kamu lakukan sendiri."
       actions={<Button variant="outline" className="h-11" onClick={loadAll}><RefreshCw aria-hidden="true" />Muat ulang semua</Button>} />
 
     <section aria-label="Saldo supplier" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {BALANCE_CARDS.map(card => {
         const balance = balances[card.id] ?? NEW_BALANCE;
-        const supplier = card.id === "sekalipay" || card.id === "tunvn" ? card.id : null;
+        const supplier = card.id === "sekalipay" || card.id === "tunvn" || card.id === "storebat" ? card.id : null;
         const enabled = supplier !== null && gates?.[supplier] === true;
         const retry = balance.stale && balance.state !== "loading";
         return <Card key={card.id} role="group" aria-label={card.name} className="flex min-w-0 flex-col gap-3 p-4">

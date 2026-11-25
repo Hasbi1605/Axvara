@@ -13,12 +13,17 @@ const pending = {
   pay_amount: 10.257391, credit_amount: 10, payment: { network: "BEP20", exact_amount: 10.257391, address },
   created_at: Date.now(), expires_at: Date.now() + 120_000,
 };
+const sbPending = {
+  id: 15, supplier: "storebat", ref_id: "AXVTU-SB-FIXTURE", supplier_ref: "dep_sb_ui", currency: "USDT", status: "pending",
+  pay_amount: 5.012345, credit_amount: 5, payment: { network: "BEP20", exact_amount: 5.012345, address, pay_currency: "USDTBSC", upstream_status: "CONFIRMING" },
+  created_at: Date.now(), expires_at: Date.now() + 290_000,
+};
 const channels = [
   { service: "off", name: "Transfer Bank", status: "off" },
   { service: "sk-topup", name: "QRIS", status: "on", minimum: 10000, maximum: 1000000, fee_flat: 150, fee_percentage: "0.7" },
 ];
 
-function setup({ gates = { sekalipay: true, tunvn: true }, items = [] as object[], createError = "", paidImmediately = false } = {}) {
+function setup({ gates = { sekalipay: true, tunvn: true, storebat: true }, items = [] as object[], createError = "", paidImmediately = false } = {}) {
   let miraiReads = 0;
   let checks = 0;
   const respond = (body: object, status = 200) => new Response(JSON.stringify(body), { status });
@@ -27,7 +32,7 @@ function setup({ gates = { sekalipay: true, tunvn: true }, items = [] as object[
       if (init?.method === "POST") {
         if (createError) return respond({ ok: false, error: createError }, 429);
         const body = JSON.parse(String(init.body));
-        return respond({ ok: true, item: body.supplier === "tunvn" ? pending : {
+        return respond({ ok: true, item: body.supplier === "tunvn" ? pending : body.supplier === "storebat" ? sbPending : {
           ...pending, id: 12, supplier: "sekalipay", currency: "IDR", pay_amount: 50500, credit_amount: 50000, fee_amount: 500,
           payment: { payment_link: "http://not-secure.invalid", payment_url: "https://example.test/pay", qr_link: "javascript:alert(0)" },
         } });
@@ -35,6 +40,7 @@ function setup({ gates = { sekalipay: true, tunvn: true }, items = [] as object[
       return respond({ ok: true, items, gates });
     }
     if (url.endsWith("/channels")) return respond({ ok: true, channels });
+    if (url.endsWith("/15/refresh")) return respond({ ok: true, item: { ...sbPending, status: "paid" } });
     if (url.endsWith("/refresh")) return ++checks === 1 && !paidImmediately ? respond({ ok: false, error: "too_soon" }, 429)
       : respond({ ok: true, item: { ...pending, status: "paid" } });
     if (url.includes("/warung/")) return respond({ ok: true, current: { balance: 1234567 }, stale: true });
@@ -51,7 +57,7 @@ function setup({ gates = { sekalipay: true, tunvn: true }, items = [] as object[
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 it("puts Saldo & Topup first in Supplier and isolates stale/error/retry from other balances", async () => {
-  const fetch = setup({ gates: { sekalipay: true, tunvn: false } });
+  const fetch = setup({ gates: { sekalipay: true, tunvn: false, storebat: true } });
   expect(SUPPLIER_ITEMS[0]).toMatchObject({ id: "topup", label: "Saldo & Topup" });
   const card = (name: string) => within(screen.getByRole("group", { name }));
   expect(await card("Warung Rebahan").findByText("Rp 1.234.567")).toBeTruthy();
@@ -194,4 +200,30 @@ it("polls a visible pending invoice every 15 s, silently handles auto 429, and s
 it("never rounds a TUNVN exact USDT amount in history/balance formatting", () => {
   expect(money(10.1234, "USDT")).toBe("10.1234 USDT");
   expect(money(32.5, "USDT")).toBe("32.50 USDT");
+});
+
+it("supports StoreBat USDT BEP20 topup, confirming state, underpaid notice, and reloads only StoreBat balance on paid", async () => {
+  const fetch = setup({
+    items: [{ ...sbPending, id: 16, ref_id: "AXVTU-SB-UNDERPAID", status: "unknown", error: "storebat_underpaid" }],
+  });
+  const user = userEvent.setup();
+  const underpaidBtn = await screen.findByRole("button", { name: "Lihat topup StoreBat AXVTU-SB-UNDERPAID" });
+  await user.click(underpaidBtn);
+  const underpaidDialog = within(screen.getByRole("dialog"));
+  expect(underpaidDialog.getByText(/kurang dari tagihan/)).toBeTruthy();
+  await user.click(underpaidDialog.getByRole("button", { name: "Tutup dialog" }));
+
+  const trigger = screen.getByRole("button", { name: "Topup StoreBat" });
+  await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false));
+  await user.click(trigger);
+  const dialog = within(screen.getByRole("dialog", { name: "Topup StoreBat" }));
+  expect(dialog.getByText(/berlaku 5 menit/)).toBeTruthy();
+  await user.type(dialog.getByLabelText("Nominal (USDT)"), "5");
+  await user.click(dialog.getByRole("button", { name: "Buat tagihan" }));
+  expect(await dialog.findByText("5.012345 USDT")).toBeTruthy();
+  expect(dialog.getByText(/menunggu konfirmasi jaringan BEP20/)).toBeTruthy();
+  await user.click(dialog.getByRole("button", { name: "Cek status" }));
+  expect(await dialog.findByText("Saldo masuk")).toBeTruthy();
+  expect(fetch.mock.calls.filter(([url]) => url.endsWith("storebat/balance"))).toHaveLength(2);
+  expect(fetch.mock.calls.filter(([url]) => url.endsWith("tunvn/balance"))).toHaveLength(1);
 });

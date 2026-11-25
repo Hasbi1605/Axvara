@@ -25,7 +25,7 @@ export function money(value: unknown): number | null {
 export type StorebatRaw = { status: number; text: string; etag?: string | null; retryAfter?: number };
 export async function storebatRequest(path: string, body?: object, etag?: string | null): Promise<StorebatRaw> {
   if (!isStorebatConfigured()) throw new Error("not_configured");
-  if (!/^\/(?:me|products|quote|orders(?:\/\d+|\/lookup\?idempotency_key=[A-Za-z0-9_-]{1,120})?|muse-buff(?:\/quote|\/orders(?:\/\d+)?)?)$/.test(path)) throw new Error("invalid_storebat_path");
+  if (!/^\/(?:me|products|quote|orders(?:\/\d+|\/lookup\?idempotency_key=[A-Za-z0-9_-]{1,120})?|muse-buff(?:\/quote|\/orders(?:\/\d+)?)?|wallet\/(?:deposit-methods|deposits(?:\/[A-Za-z0-9_-]{1,120}(?:\?refresh=true)?)?))$/.test(path)) throw new Error("invalid_storebat_path");
   const headers: Record<string, string> = { "X-Reseller-Key": key(), Accept: "application/json" };
   if (etag) headers["If-None-Match"] = etag;
   if (body) headers["Content-Type"] = "application/json";

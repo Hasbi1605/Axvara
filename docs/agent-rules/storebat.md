@@ -1,5 +1,11 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Topup saldo StoreBat (USDT BEP20) di Panel Admin — 25 November 2026 (lokal → CI)
+
+- Atas persetujuan owner, StoreBat ditambahkan ke **Admin → Supplier → Saldo & Topup** (`/admin?section=topup`) berdampingan dengan Sekalipay dan TUNVN. AXVARA hanya membuat invoice deposit idempoten & melacak status; owner mentransfer USDT BEP20 sendiri (tidak ada Binance Pay di API v1.2.0 StoreBat, tidak ada payout otomatis, tidak ada topup nyata untuk QA).
+- Migrasi `0166_storebat_supplier_topups.sql` (+ `drizzle/schema.sql` & `drizzle/bootstrap-baseline.json`) memperluas `supplier_topups.supplier` menjadi `CHECK(supplier IN ('sekalipay','tunvn','storebat'))` sambil menjaga seluruh baris existing & indeks.
+- `src/lib/storebat/client.ts` membuka jalur `/wallet/deposit-methods`, `/wallet/deposits`, dan `/wallet/deposits/<deposit_id>?refresh=true` (validasi ketat `[A-Za-z0-9_-]{1,120}`). `src/lib/storebat/topup.ts` + `src/lib/supplier/topup.ts` mempreflight `GET /wallet/deposit-methods` (`available===true` & `minimum_deposit_usd`), membuat deposit idempoten (`idempotency_key=reference=ref_id`, `network:"BEP20"`, batas UI/server `1–1000 USDT` maks 2 desimal), memvalidasi alamat EVM 20-byte & `pay_amount`, memulihkan create ambigu lewat replay `idempotency_key` sama pada refresh, serta memetakan status `CREDITED`→`paid`, `WAITING`/`CONFIRMING`→`pending`, `CREATING`→`creating`, `EXPIRED`→`expired`, `FAILED`/`REFUNDED`→`failed`, `UNDERPAID`/`REVIEW_REQUIRED`/`CREATION_UNKNOWN`→`unknown`. Gate: `isStorebatConfigured()` (tanpa env/secret baru). Detail ARCHITECTURE §16.65.
+
 ## Aktivasi ulang 26 produk StoreBat pasca deploy `batman.sarl` — 25 November 2026 (D1 produksi)
 
 - Deployment CI `3c8cf926` terbukti aktif di produksi: D1 `store_settings` mencatat `storebat_catalog_success_at` sukses pada `2026-11-25 03:17:33 UTC` (`10:17:33 WIB`, `ETag: W/"534d8edf943aa1005b763dd7"`) dengan `sync_stale_state_storebat.last_recovered_at` terisi `03:21:02 UTC`, dan stok/harga StoreBat tersinkron ulang (mis. `SB-137` stok `381`, `SB-60` restok `8`, `SB-143` stok `0`). Catatan monitoring: pada `03:20:38 UTC` sempat tercatat `products_http_429` dan `storebat_balance_error` (`streak: 42` pada `03:16:33 UTC`, tepat sebelum deploy/window pulih) — pantau bila 429 berulang dari IP Cloudflare bersama.
