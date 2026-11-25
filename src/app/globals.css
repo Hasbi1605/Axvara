@@ -354,3 +354,26 @@ body {
   .catalog-category-icon, .catalog-card-reveal, .catalog-card-reveal-mobile { animation: none !important; }
   .ax-card-sheen-hover { display: none; }
 }
+
+/* Lipatan paket habis native <details> (Opsi B Hybrid, 25 Nov 2026): default
+   tertutup namun tetap dapat ditemukan via Find-in-page, dengan transisi halus
+   progresif di browser modern. */
+details.ax-soldout-disclosure > summary {
+  list-style: none;
+}
+details.ax-soldout-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+details.ax-soldout-disclosure::details-content {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  contain: layout;
+}
+details.ax-soldout-disclosure:not([open])::details-content {
+  block-size: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  details.ax-soldout-disclosure::details-content {
+    transition: block-size 220ms ease-in-out, content-visibility 220ms allow-discrete;
+  }
+}

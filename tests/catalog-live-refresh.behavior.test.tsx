@@ -248,6 +248,10 @@ describe("ProductDetailClient silent live refresh", () => {
 
     expect(screen.queryByText("Memuat detail produk…")).toBeNull();
     expect(screen.queryByRole("button", { name: /3 Bulan/ })).toBeNull();
+    const disclosure = screen.getByTestId("soldout-variants-disclosure") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    expect(disclosure.textContent).toContain("Lihat 1 paket sedang habis");
+    expect(disclosure.textContent).toContain("3 Bulan");
     expect(getDesktopVariantBtn(/1 Bulan/).className).not.toContain("border-[#00E5FF]/50");
     const buy = () => screen.getAllByRole("button", { name: /Beli Langsung/i }).find((button) => button.textContent?.includes("Beli Langsung")) as HTMLButtonElement;
     expect(buy().disabled).toBe(true);
@@ -265,6 +269,7 @@ describe("ProductDetailClient silent live refresh", () => {
     });
 
     expect(screen.queryByRole("button", { name: /3 Bulan/ })).toBeNull();
+    expect(screen.queryByTestId("soldout-variants-disclosure")).toBeNull();
     expect(getDesktopVariantBtn(/1 Bulan/).className).toContain("border-[#00E5FF]/50");
     expect(screen.getAllByText(/Sisa 4|Tersedia \(4\)/i).length).toBeGreaterThan(0);
   });

@@ -150,10 +150,12 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
     return eff !== -1 && eff < variantMinQtyOf(v);
   };
   const isBuyable = (v: VariantOption): boolean => effOf(v) !== 0 && !isBelowMinimum(v);
-  // Owner 2026-11-24: sembunyikan varian habis saat masih ada varian siap beli
-  // agar daftar pilih paket tetap ringkas; jika semua habis, tetap tampil.
+  // Opsi B Hybrid (2026-11-25): saat masih ada varian siap beli, daftar pilih
+  // utama tetap bersih; varian aktif yang habis dilipat default tertutup di
+  // bawahnya (<details>). Jika semua habis, tampil terbuka tanpa lipatan ganda.
   const buyablePool = variants.filter(isBuyable);
   const displayPool = buyablePool.length > 0 ? buyablePool : variants;
+  const soldOutPool = buyablePool.length > 0 ? variants.filter((v) => !isBuyable(v)) : [];
 
   const isReviewable = mode !== "select";
   const compact = displayPool.length > COMPACT_VARIANTS_AFTER;
@@ -179,9 +181,10 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
     onVariantChange?.(variantId);
     if (mode === "select") onClose();
   };
-  const visibleVariants = searchable && needle
-    ? displayPool.filter((v) => `${formatVariantLabel(v)} ${formatVariantLabel(v, displayLocale)}`.toLowerCase().includes(needle))
-    : displayPool;
+  const matchesNeedle = (v: VariantOption) =>
+    `${formatVariantLabel(v)} ${formatVariantLabel(v, displayLocale)}`.toLowerCase().includes(needle);
+  const visibleVariants = searchable && needle ? displayPool.filter(matchesNeedle) : displayPool;
+  const visibleSoldOut = searchable && needle ? soldOutPool.filter(matchesNeedle) : soldOutPool;
 
   const selected = variants.find((v) => v.id === selectedId) || null;
   const currentPrice = selected ? selected.price : (product.minPrice ?? product.price);
@@ -402,9 +405,11 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                   className="mb-3 h-10 w-full rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm text-white placeholder:text-white/35 focus:border-[#00E5FF]/50 focus:outline-none"
                 />
               )}
-              {visibleVariants.length === 0 ? (
+              {visibleVariants.length === 0 && visibleSoldOut.length === 0 ? (
                 <p className="py-4 text-center text-xs text-white/45">{t.noVariantMatch(query.trim())}</p>
               ) : (
+              <>
+              {visibleVariants.length > 0 && (
               <div
                 role="radiogroup"
                 aria-label={t.pickPackageAria}
@@ -517,6 +522,63 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                   );
                 })}
               </div>
+              )}
+              {visibleSoldOut.length > 0 && (
+                <details
+                  data-testid="soldout-variants-disclosure"
+                  open={searchable && Boolean(needle) && visibleVariants.length === 0 ? true : undefined}
+                  className="ax-soldout-disclosure group mt-2.5 border-t border-white/[0.08] pt-2"
+                >
+                  <summary className="inline-flex min-h-9 cursor-pointer select-none items-center gap-1.5 rounded-lg px-2 py-1.5 -ml-2 text-xs font-medium text-white/55 transition hover:bg-white/[0.04] hover:text-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5 shrink-0 text-white/45 motion-safe:transition-transform motion-safe:duration-200 group-open:rotate-90"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M9 6l6 6-6 6" />
+                    </svg>
+                    <span className="group-open:hidden">{t.showSoldOutVariants(visibleSoldOut.length)}</span>
+                    <span className="hidden group-open:inline">{t.hideSoldOutVariants(visibleSoldOut.length)}</span>
+                  </summary>
+                  <ul className="mt-2 grid max-h-[140px] gap-1.5 overflow-y-auto pr-1">
+                    {visibleSoldOut.map((v) => {
+                      const eff = effOf(v);
+                      const belowMin = eff !== 0 && isBelowMinimum(v);
+                      return (
+                        <li
+                          key={v.id}
+                          className="flex items-start justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2 opacity-65"
+                        >
+                          <div className="min-w-0">
+                            <span className="block break-words text-xs font-medium text-white/80">
+                              {formatVariantLabel(v, displayLocale)}
+                            </span>
+                            {v.warranty_type && v.warranty_type !== "none" && catalogWarranty(v, prices.locale) && (
+                              <span className="mt-0.5 block text-[11px] text-white/45">
+                                {catalogWarranty(v, prices.locale)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className="block text-xs font-semibold tabular-nums text-white/65">
+                              <Price idr={v.price} prices={prices} />
+                            </span>
+                            <span className="mt-0.5 block text-[10px] font-semibold text-red-400/90">
+                              {belowMin ? t.stockBelowMin : t.outShort}
+                            </span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </details>
+              )}
+              </>
               )}
               {mode === "select" && (
                 <p className="mt-3 text-center text-[11px] text-white/40">{t.selectHint}</p>

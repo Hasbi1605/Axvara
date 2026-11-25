@@ -88,13 +88,18 @@ describe("QuickVariantModal — kontrak aksesibilitas", () => {
     expect(document.body.style.overflow).toBe("hidden");
   });
 
-  it("daftar varian memakai semantik radiogroup dan menyembunyikan varian habis saat ada varian tersedia", async () => {
+  it("daftar varian memakai semantik radiogroup dan melipat varian habis secara default tertutup saat ada varian tersedia", async () => {
     await renderModal();
     const group = screen.getByRole("radiogroup", { name: "Pilih paket atau varian" });
     expect(group).toBeTruthy();
-    // Hanya 2 varian tersedia (1 Bulan, 3 Bulan) yang tampil; varian Habis disembunyikan otomatis.
+    // Hanya 2 varian tersedia (1 Bulan, 3 Bulan) yang tampil sebagai radio; varian Habis dilipat di <details>.
     expect(screen.getAllByRole("radio")).toHaveLength(2);
     expect(screen.queryByRole("radio", { name: /stok habis/ })).toBeNull();
+    const disclosure = screen.getByTestId("soldout-variants-disclosure") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    expect(disclosure.textContent).toContain("Lihat 1 paket sedang habis");
+    expect(disclosure.textContent).toContain("Habis");
+    expect(disclosure.textContent).toContain("99.000");
   });
 
   it("varian terpilih ditandai aria-checked, bukan hanya warna", async () => {
@@ -107,13 +112,14 @@ describe("QuickVariantModal — kontrak aksesibilitas", () => {
     expect(first.getAttribute("aria-checked")).toBe("false");
   });
 
-  it("ketika semua varian habis, varian habis tetap tampil disabled dengan nama aksesibel", async () => {
+  it("ketika semua varian habis, varian habis tetap tampil disabled tanpa lipatan ganda", async () => {
     vi.stubGlobal("fetch", mockCatalog({
       product: { variants: [{ id: 13, label: "Habis", price: 99_000, compare_price: null, stock: 0, is_active: 1, warranty_type: "none" }] },
     }));
     render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);
     const sold = await screen.findByRole("radio", { name: /stok habis/ });
     expect((sold as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId("soldout-variants-disclosure")).toBeNull();
   });
 });
 
@@ -223,9 +229,13 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     await waitFor(() => expect(screen.getByRole("radio", { name: /Normal/ })).toBeTruthy());
     expect(screen.queryByRole("radio", { name: /Kecil/ })).toBeNull();
     expect(screen.getByRole("radio", { name: /Normal/ }).getAttribute("aria-checked")).toBe("true");
+    const disclosure = screen.getByTestId("soldout-variants-disclosure") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    expect(disclosure.textContent).toContain(locale === "en" ? "Show 1 out-of-stock plan" : "Lihat 1 paket sedang habis");
+    expect(disclosure.textContent).toContain(notice);
     firstRender.unmount();
 
-    // Bila hanya ada varian di bawah min, tetap tampil disabled + aksesibel.
+    // Bila hanya ada varian di bawah min, tetap tampil disabled + aksesibel tanpa lipatan.
     vi.stubGlobal("fetch", mockCatalog({
       product: { variants: [
         { id: 31, label: "Kecil", price: 10_000, stock: 3, is_active: 1, warranty_type: "none", min_qty: 50 },
@@ -236,6 +246,7 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     expect(kecil.disabled).toBe(true);
     await waitFor(() => expect(kecil.getAttribute("aria-label")).toMatch(aria));
     expect(screen.getByText(notice)).toBeTruthy();
+    expect(screen.queryByTestId("soldout-variants-disclosure")).toBeNull();
   });
 
   it("kegagalan fetch varian menampilkan pesan error, bukan modal kosong senyap", async () => {

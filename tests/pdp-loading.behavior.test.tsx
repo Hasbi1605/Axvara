@@ -162,4 +162,35 @@ describe("PDP loading", () => {
     const pending = screen.getAllByRole("button", { name: /Membuka checkout/ });
     expect(pending.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
   });
+
+  it("Opsi B Hybrid PDP: melipat varian habis secara default tertutup saat ada varian siap beli, dan tampil terbuka tanpa lipatan bila semua habis", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ products: [] }) })));
+    const soldOutVariant = {
+      ...variants[0],
+      id: 99,
+      label: "Plus 1 Bulan (Full Garansi)",
+      price: 128_000,
+      stock: 0,
+      is_active: 1,
+      warranty_type: "full",
+      warranty_value: 30,
+      warranty_unit: "day",
+    };
+    const mixed = { ...catalog, product: { ...catalog.product, variants: [variants[0], soldOutVariant] } };
+    const first = render(<ProductDetailClient slug="netflix-premium" initialProducts={[product]} initialCatalog={mixed as never} />);
+    const disclosure = screen.getByTestId("soldout-variants-disclosure") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    expect(disclosure.textContent).toContain("Lihat 1 paket sedang habis");
+    expect(disclosure.textContent).toContain("Plus 1 Bulan (Full Garansi)");
+    expect(disclosure.textContent).toContain("HABIS");
+    expect(disclosure.querySelectorAll("ul button")).toHaveLength(0);
+    first.unmount();
+
+    // Semua habis → fallback tampil terbuka tanpa lipatan ganda.
+    const allOut = { ...catalog, product: { ...catalog.product, variants: [soldOutVariant] } };
+    render(<ProductDetailClient slug="netflix-premium" initialProducts={[product]} initialCatalog={allOut as never} />);
+    expect(screen.queryByTestId("soldout-variants-disclosure")).toBeNull();
+    const outBtn = screen.getByRole("button", { name: /Plus 1 Bulan \(Full Garansi\)/ }) as HTMLButtonElement;
+    expect(outBtn.disabled).toBe(true);
+  });
 });

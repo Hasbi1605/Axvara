@@ -270,9 +270,11 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
 
   const activeVariants = (catalogDetail?.variants ?? []).filter((v) => v.is_active);
   const buyableVariants = activeVariants.filter(isPurchasable);
-  // Varian habis tetap aktif di D1 untuk restok otomatis. Tampilkan sebagai
-  // fallback hanya ketika seluruh varian habis.
+  // Opsi B Hybrid (2026-11-25): varian habis tetap aktif di D1 untuk restok
+  // otomatis; saat masih ada varian siap beli, varian habis dilipat default
+  // tertutup (<details>) di bawah daftar utama. Fallback penuh saat semua habis.
   const displayVariants = buyableVariants.length ? buyableVariants : activeVariants;
+  const soldOutVariants = buyableVariants.length ? activeVariants.filter((v) => !isPurchasable(v)) : [];
   const selectedVariant = displayVariants.find((v) => v.id === selectedVariantId) ?? null;
   const priceVariant = selectedVariant;
   const priceBase = priceVariant?.price ?? product?.price ?? 0;
@@ -857,6 +859,60 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6"/></svg>
                 </span>
               </button>
+              {soldOutVariants.length > 0 && (
+                <details
+                  key={slug}
+                  data-testid="soldout-variants-disclosure"
+                  className="ax-soldout-disclosure group mt-3 border-t border-white/[0.08] pt-2.5"
+                >
+                  <summary className="inline-flex min-h-9 cursor-pointer select-none items-center gap-1.5 rounded-lg px-2 py-1.5 -ml-2 text-xs font-medium text-white/55 transition hover:bg-white/[0.04] hover:text-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5 shrink-0 text-white/45 motion-safe:transition-transform motion-safe:duration-200 group-open:rotate-90"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M9 6l6 6-6 6" />
+                    </svg>
+                    <span className="group-open:hidden">{t.showSoldOutVariants(soldOutVariants.length)}</span>
+                    <span className="hidden group-open:inline">{t.hideSoldOutVariants(soldOutVariants.length)}</span>
+                  </summary>
+                  <ul className="mt-2 grid gap-1.5">
+                    {soldOutVariants.map((v: VariantItem) => {
+                      const belowMin = effectiveStockOf(v) !== 0 && isBelowMinimum(v);
+                      return (
+                        <li
+                          key={v.id}
+                          className="flex items-start justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2.5 opacity-65"
+                        >
+                          <div className="min-w-0">
+                            <span className="block break-words text-xs font-medium text-white/80">
+                              {formatVariantLabel(v, prices.locale)}
+                            </span>
+                            {v.warranty_type !== "none" && catalogWarranty(v, prices.locale) && (
+                              <span className="mt-0.5 block text-[11px] text-white/45">
+                                {catalogWarranty(v, prices.locale)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className="block text-xs font-semibold tabular-nums text-white/65">
+                              <Price idr={v.price} prices={prices} />
+                            </span>
+                            <span className="mt-0.5 block text-[10px] font-semibold text-red-400/90">
+                              {belowMin ? t.belowMinLabel : t.outLabel}
+                            </span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </details>
+              )}
             </>
           )}
 
