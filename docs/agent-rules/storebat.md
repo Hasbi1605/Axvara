@@ -1,5 +1,12 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Migrasi base URL API ke `https://batman.sarl/api/reseller` — 25 November 2026 (lokal + Pages secret; menunggu deploy CI)
+
+- Pasca *Emergency Maintenance* 25 Nov 2026, host Railway lama (`https://web-production-1c7b1.up.railway.app/api/reseller`) tetap HTTP 404 (`Application not found`); StoreBat/VenteBot memindahkan Reseller API v1.2.0 (di balik Cloudflare) ke **`https://batman.sarl/api/reseller`** (Swagger: `https://batman.sarl/api/swagger/`, OpenAPI: `/api/reseller/openapi.json`).
+- Kontrak OpenAPI v1.2.0 cocok 1-ke-1 dengan `src/lib/storebat/*`, dan `STOREBAT_API_KEY` lama terbukti valid lewat `GET /products` HTTP 200 (`ETag: W/"cbcdeb06fce0332727dbdb92"`, 98 produk, 68 berstok, 0 anomali parser) dan `POST /quote` HTTP 200 (`product_id=137`, `unit_price=1.1`, `stock=287`, `wallet_balance=8.59`).
+- `STOREBAT_DEFAULT_BASE_URL` di `src/lib/storebat/client.ts` diperbarui ke `https://batman.sarl/api/reseller`; `.storebat-credentials` (`chmod 600`) dan `.pages-env-backup` (`[production]`, `chmod 600`) diperbarui, lalu `STOREBAT_BASE_URL` dipasang ke Pages production sebagai `secret_text` lewat `scripts/pages-env-restore.mjs --apply --env production --only STOREBAT_BASE_URL` (88 nama production & 28 preview tetap utuh). Nilai env baru berlaku pada deployment CI berikutnya setelah push `main`.
+- **Produk tetap OFF sampai deploy CI + 1× sync katalog sukses:** ke-26 produk StoreBat di D1 sengaja belum diaktifkan ulang sebelum deployment Pages memakai host baru dan `storebat_catalog_success_at` menyegarkan stok/harga terbaru dari `batman.sarl`.
+
 ## Nonaktif sementara saat Emergency Maintenance upstream — 25 November 2026 (D1 produksi)
 
 - Pada 25 November 2026 ~06:28 WIB, StoreBat mengumumkan *Emergency Maintenance* (estimasi pemulihan ≤24 jam). Probe API baca-saja (`GET /me`, `GET /products`, `GET /muse-buff`, `POST /quote` ke `https://web-production-1c7b1.up.railway.app/api/reseller`) seluruhnya mengembalikan **HTTP 404** (`{"status":"error","code":404,"message":"Application not found"}`); D1 prod mencatat sinkronisasi katalog terakhir sukses pada `2026-11-24 23:22:35 UTC` (`06:22:35 WIB`), saldo terakhir `$8.59` (`23:20:36 UTC`), lalu error `products_http_404` & `storebat_balance_error` (`streak: 5`). Tidak ada order/link StoreBat terbuka (`storebat_order_links` non-completed = `0`, `orders` pending/paid/processing ber-SKU `SB-*` = `0`).
@@ -73,7 +80,7 @@
 
 ## Kredensial dan saklar Pages — 18 November 2026
 
-- Klien server di `src/lib/storebat/client.ts`: base URL bawaan `https://web-production-1c7b1.up.railway.app/api/reseller`, header `X-Reseller-Key`. HTTPS saja, redirect tidak diikuti. URL bawaan adalah konstanta publik kode, bukan salinan nilai berkas lokal.
+- Klien server di `src/lib/storebat/client.ts`: base URL bawaan `https://batman.sarl/api/reseller` (diperbarui 25 Nov 2026 dari `https://web-production-1c7b1.up.railway.app/api/reseller`), header `X-Reseller-Key`. HTTPS saja, redirect tidak diikuti. URL bawaan adalah konstanta publik kode, bukan salinan nilai berkas lokal.
 - Sumber lokal: `axvara/.storebat-credentials` (izin `chmod 600`; pola `.gitignore` `.storebat-credentials*` di checkout utama). Hanya nama kunci: `STOREBAT_API_KEY`, `STOREBAT_BASE_URL`. Jangan baca untuk QA dokumentasi, cetak, log, stage, atau commit isinya.
 - Empat env Pages, semuanya `secret_text`: `STOREBAT_API_KEY`, `STOREBAT_BASE_URL`, `STOREBAT_ENABLED`, `STOREBAT_SYNC_ENABLED`. Dispatch memakai `STOREBAT_ENABLED=true`; sync memakai `STOREBAT_SYNC_ENABLED=true` secara independen. Flag kosong/bukan `true` = OFF; keduanya tetap perlu API key dan URL valid. Baca saldo boleh berjalan bila terkonfigurasi, tanpa membuka pembelian. Ikuti [aturan env Pages](../ARCHITECTURE.md#162-env-pages-wajib-secret_text-bukan-plain_text).
 

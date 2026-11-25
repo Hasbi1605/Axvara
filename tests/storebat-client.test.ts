@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { fetchStorebatProducts, parseStorebatBalance, parseStorebatProducts } from "@/lib/storebat/client";
+import { fetchStorebatProducts, parseStorebatBalance, parseStorebatProducts, STOREBAT_DEFAULT_BASE_URL } from "@/lib/storebat/client";
 import { storebatFamily } from "@/lib/storebat/families";
 import { product } from "./helpers/storebat-fixture";
 beforeEach(()=>{vi.stubEnv("STOREBAT_API_KEY","test-key-only");vi.stubEnv("STOREBAT_BASE_URL","https://storebat.test/api/reseller");vi.stubGlobal("fetch",vi.fn());});
@@ -22,4 +22,5 @@ it("validates duplicate IDs and excludes test products while preserving tiers",(
   expect(storebatFamily(62,"test").key).toBe(storebatFamily(90,"test").key);
   expect(storebatFamily(123456,"same").slug).not.toBe(storebatFamily(123457,"same").slug);
   expect(storebatFamily(119,"ElevenReader")).toMatchObject({ key:"elevenreader", images:[], imageUrl:"/r2/products/90ceeb28e24ad380d45344dcd0ac71ac.webp" });
+  expect(STOREBAT_DEFAULT_BASE_URL).toBe("https://batman.sarl/api/reseller");
 });

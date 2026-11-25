@@ -1,5 +1,5 @@
 /** Server-side transport. Never retry or forward credentials across a redirect. */
-export const STOREBAT_DEFAULT_BASE_URL = "https://web-production-1c7b1.up.railway.app/api/reseller";
+export const STOREBAT_DEFAULT_BASE_URL = "https://batman.sarl/api/reseller";
 export const STOREBAT_BUFF_ID = 124;
 export const isStorebatEnabled = () => process.env.STOREBAT_ENABLED === "true";
 export const isStorebatSyncEnabled = () => process.env.STOREBAT_SYNC_ENABLED === "true";
