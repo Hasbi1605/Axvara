@@ -50,6 +50,10 @@
 - Copy produk (deskripsi, S&K, cara aktivasi) tersedia ID + EN, 100% whitelabel: proses disebut bot otomatis tanpa nama mitra. Menjelaskan kapan memilih Link Redeem (tukarkan sendiri, ±1–2 menit) vs Aktivasi Langsung (aktif tanpa langkah tambahan, ±3–5 menit), data yang diminta, syarat akun, dan kebijakan **gagal diproses = dana dikembalikan penuh** (refund oleh admin; coba lagi lewat pesanan baru; Gmail tidak memenuhi syarat tidak bisa dipesan ulang).
 - Histori/snapshot di bawah (PV-2a, PV-2b1) adalah keputusan tahap sebelumnya; blokir checkout PV-2b1 digantikan bagian ini di implementasi lokal.
 
+## Ketersediaan katalog Pixel Verification — 25 November 2026
+
+- Bila API pricing pindah ke durasi yang tidak didukung (misalnya 6 bulan), sinkronisasi tetap berhasil dan stok varian 3 bulan yang tidak ditawarkan menjadi nol. Jika API menandai paket nonaktif, stok tetap nol walau harga lama masih tercantum. Harga terakhir, status aktif di panel, dan pesanan historis dipertahankan. Paket 6 bulan tidak dipublikasikan atau dibuka untuk checkout oleh perubahan ini.
+
 ## Katalog Pixel Verification — PV-2a (lokal, histori)
 
 - Google AI Pro 3 Bulan memiliki dua varian, Link Redeem dan Aktivasi Langsung. Publikasi katalog membuat produk dan varian dalam keadaan nonaktif, khusus web (tidak ditawarkan di Telegram), dengan batas satu unit per varian. Tahap ini belum mengaktifkan checkout Pixel.

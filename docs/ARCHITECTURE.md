@@ -64,6 +64,11 @@
 - Full: `activation_status` `item_not_available` → `needs_admin` `ACTIVATION_ITEM_NOT_AVAILABLE`; `failed`/`invalid`/`error` → `ACTIVATION_FAILED`; tidak ada delivery. `activated`/`already_redeemed` dikirim sebagai link + label tetap.
 - Eskalasi: `escalateSupplierManual(..., buyerReason)` → `notifyBuyerDeliveryFailed(..., reason)` menambahkan teks tetap dari `pixelverifBuyerErrorMessage` (`src/lib/pixelverif/copy.ts`); teks supplier tidak diteruskan.
 
+## Sinkronisasi stok Pixel Verification — 25 November 2026
+
+- `syncPixelverifCatalog` menerima harga valid untuk durasi lain sebagai data katalog, tetapi `PIXELVERIF_VARIANTS` tetap menjadi daftar paket yang didukung. `disabled_plans` mengalahkan harga yang masih tercantum. Bila tidak ada harga valid maupun penonaktifan eksplisit untuk semua paket lokal, job tetap mencatat error. Modal terakhir disimpan; tidak ada harga fallback atau baris baru untuk paket yang tidak tersedia.
+- `projectPixelverifCatalog` memproyeksikan hanya layanan tersedia dan menutup stok varian lama secara terpisah dari CAS harga admin. Perubahan stok memicu revisi katalog; `pixelverif_catalog_success_at` tercatat setelah proyeksi tuntas. Tidak ada perubahan migrasi, jadwal cron, checkout, atau dispatch.
+
 ## Katalog Pixel Verification — PV-2a (lokal, histori)
 
 - Migrasi `0155_pixelverif_supplier.sql` menambah tabel dan identitas Pixel Verification; blok akhir `drizzle/schema.sql` memakai DDL yang sama, termasuk indeks keluarga unik. CHECK `product_variants.buyer_field_key` dari migrasi 0115 tetap khusus Muse; varian Pixel menyimpan `NULL`.

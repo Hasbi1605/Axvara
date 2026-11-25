@@ -68,6 +68,7 @@ export type PixelverifPricing = {
   default_validity: number;
   allowed_validities: number[];
   pricing: Record<string, Record<string, number>>;
+  disabled_plans?: string[];
 };
 
 export type PixelverifCredits = {
@@ -200,12 +201,15 @@ export function parsePixelverifPricing(v: unknown): PixelverifPricing | null {
       pricing[flow][k] = n;
     }
   }
+  const disabled = v.disabled_plans;
+  if (disabled !== undefined && (!Array.isArray(disabled) || disabled.some((plan) => typeof plan !== "string" || !plan.trim()))) return null;
   return {
     version,
     updated_at,
     default_validity: numeric(v.default_validity) ?? 3,
     allowed_validities,
     pricing,
+    ...(Array.isArray(disabled) ? { disabled_plans: disabled.map((plan: string) => plan.trim().toLowerCase()) } : {}),
   };
 }
 

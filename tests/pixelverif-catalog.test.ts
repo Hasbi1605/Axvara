@@ -1,14 +1,26 @@
 import { readFileSync } from "node:fs";
+import { Miniflare } from "miniflare";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import type { D1 } from "@/lib/db";
 import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import { projectPixelverifCatalog, publishPixelverifCatalog } from "@/lib/pixelverif/catalog";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
 let f: ReturnType<typeof createD1Fixture>;
 let normalCost: number;
+let pricingOverride: Record<string, unknown>;
+
+const sixMonthPricing = {
+  version: 31,
+  default_validity: 6,
+  allowed_validities: [6],
+  pricing: { normal: {}, full: { "6": 1.2 } },
+  disabled_plans: ["full:3", "link_validation", "normal:3", "normal:6"],
+};
 
 beforeEach(() => {
   normalCost = 1;
+  pricingOverride = {};
   vi.stubEnv("PIXELVERIF_ENABLED", "true");
   vi.stubEnv("PIXELVERIF_SYNC_ENABLED", "true");
   vi.stubEnv("PIXELVERIF_API_KEY", "pv-fixture");
@@ -25,6 +37,7 @@ beforeEach(() => {
           default_validity: 3,
           allowed_validities: [3],
           pricing: { normal: { "3": normalCost }, full: { "3": 1.5 } },
+          ...pricingOverride,
         });
       }
       return Response.json({ success: true, credits_remaining: 10 });
@@ -140,6 +153,96 @@ it("unavailable service -> stock 0, not deleted or deactivated", async () => {
   expect(fullStock).toBe(0);
   // Row still exists
   expect(f.sql.prepare("SELECT COUNT(*) as c FROM product_variants WHERE pixelverif_flow_type='full'").get()).toMatchObject({ c: 1 });
+});
+
+it("syncs the six-month-only feed without selling new plans or deleting previous costs", async () => {
+  setupFixture();
+  const db = createBudgetedDatabase(60, 2, f.db).access;
+  await publishPixelverifCatalog(db, 16000, { force: true });
+  f.sql.exec(`UPDATE products SET is_active=1, stock=-1 WHERE pixelverif_family='google_ai_pro_3m';
+              UPDATE product_variants SET is_active=1 WHERE pixelverif_flow_type IS NOT NULL;
+              INSERT INTO store_settings(key,value) VALUES ('pixelverif_catalog_last_error','old failure')
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value;`);
+  const revision = () => f.sql.prepare("SELECT value FROM store_settings WHERE key='catalog_revision_market'").get();
+  const previousRevision = revision();
+  pricingOverride = sixMonthPricing;
+  const now = Date.now();
+  expect(await publishPixelverifCatalog(db, 16000, { force: true, now })).toMatchObject({ ok: true, mirrored: 0 });
+  expect(f.sql.prepare("SELECT service_key, available, credit_cost, pricing_version FROM pixelverif_services ORDER BY service_key").all()).toEqual([
+    { service_key: "full_3", available: 0, credit_cost: 1.5, pricing_version: 31 },
+    { service_key: "normal_3", available: 0, credit_cost: 1, pricing_version: 31 },
+  ]);
+  expect(f.sql.prepare("SELECT sku, stock, price, is_active FROM product_variants WHERE pixelverif_flow_type IS NOT NULL ORDER BY sku").all()).toEqual([
+    { sku: "PV-FULL-3", stock: 0, price: 32400, is_active: 1 },
+    { sku: "PV-NORMAL-3", stock: 0, price: 21600, is_active: 1 },
+  ]);
+  expect(f.sql.prepare("SELECT stock FROM products WHERE pixelverif_family='google_ai_pro_3m'").get()).toEqual({ stock: 0 });
+  expect(revision()).not.toEqual(previousRevision);
+  expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='pixelverif_catalog_success_at'").get()).toEqual({ value: String(now) });
+  expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='pixelverif_catalog_last_error'").get()).toEqual({ value: "" });
+});
+
+it("does not create fallback services or variants on the first sync of a six-month-only feed", async () => {
+  setupFixture();
+  pricingOverride = sixMonthPricing;
+  expect(await publishPixelverifCatalog(createDatabaseAccess(f.db), 16000)).toMatchObject({ ok: true, mirrored: 0 });
+  expect(f.sql.prepare("SELECT COUNT(*) AS count FROM pixelverif_services").get()).toEqual({ count: 0 });
+  expect(f.sql.prepare("SELECT COUNT(*) AS count FROM products WHERE pixelverif_family IS NOT NULL").get()).toEqual({ count: 0 });
+});
+
+it("retires a previously sellable plan on native workerd D1", async () => {
+  setupFixture();
+  const runtime = new Miniflare({
+    modules: true,
+    script: "export default { fetch() { return new Response(null); } };",
+    d1Databases: ["DB"],
+  });
+  try {
+    const db = await runtime.getD1Database("DB");
+    const tables = ["categories", "products", "product_variants", "pixelverif_services", "store_settings"];
+    const ddl = f.sql.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?");
+    await db.batch([
+      ...tables.map((name) => db.prepare(String(ddl.get(name)?.sql))),
+      db.prepare("INSERT INTO categories (id, name, slug) VALUES (1, 'Fixture', 'fixture')"),
+    ]);
+    const access = createDatabaseAccess(db as unknown as D1);
+    expect(await publishPixelverifCatalog(access, 16000, { force: true })).toMatchObject({ ok: true, mirrored: 2 });
+    pricingOverride = sixMonthPricing;
+    expect(await publishPixelverifCatalog(access, 16000, { force: true })).toMatchObject({ ok: true, mirrored: 0 });
+    expect((await db.prepare("SELECT stock FROM product_variants ORDER BY sku").all()).results).toEqual([{ stock: 0 }, { stock: 0 }]);
+  } finally {
+    await runtime.dispose();
+  }
+}, 30_000);
+
+it("honors explicit disablement with stale prices and leaves a concurrent admin edit intact", async () => {
+  setupFixture();
+  const db = createDatabaseAccess(f.db);
+  await publishPixelverifCatalog(db, 16000, { force: true });
+  pricingOverride = { disabled_plans: ["FULL:3"], pricing: { normal: { "3": 1 }, full: { "3": 0.6 } } };
+  f.control.beforeRun = async (query) => {
+    if (!query.startsWith("UPDATE product_variants")) return;
+    f.control.beforeRun = null;
+    f.sql.exec("UPDATE product_variants SET price=66500, pixelverif_admin_price_idr=66500 WHERE sku='PV-FULL-3'");
+  };
+  expect(await publishPixelverifCatalog(db, 16000, { force: true })).toMatchObject({ ok: true, mirrored: 1 });
+  expect(f.sql.prepare("SELECT available, credit_cost FROM pixelverif_services WHERE service_key='full_3'").get()).toEqual({ available: 0, credit_cost: 1.5 });
+  expect(f.sql.prepare("SELECT stock, price FROM product_variants WHERE sku='PV-FULL-3'").get()).toEqual({ stock: 0, price: 66500 });
+  expect(f.sql.prepare("SELECT stock FROM product_variants WHERE sku='PV-NORMAL-3'").get()).toEqual({ stock: -1 });
+});
+
+it.each([
+  [{ pricing: {}, disabled_plans: ["normal:3", "full:3"] }, { ok: true, mirrored: 0 }, 0],
+  [{ pricing: {} }, { ok: false, error: "invalid_or_empty_catalog" }, -1],
+  [{ disabled_plans: "full:3" }, { ok: false, error: "pricing_ambiguous" }, -1],
+] as const)("handles missing or explicit availability data: %o", async (override, result, stock) => {
+  setupFixture();
+  const db = createDatabaseAccess(f.db);
+  await publishPixelverifCatalog(db, 16000, { force: true });
+  pricingOverride = override;
+  expect(await publishPixelverifCatalog(db, 16000, { force: true })).toMatchObject(result);
+  expect(f.sql.prepare("SELECT stock FROM product_variants WHERE pixelverif_flow_type IS NOT NULL ORDER BY sku").all())
+    .toEqual([{ stock }, { stock }]);
 });
 
 it("price formula rounds fractional prices up to the next Rp100", async () => {

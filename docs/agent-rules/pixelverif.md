@@ -1,5 +1,9 @@
 # Aturan agent — Pixel Verification (Google AI Pro 3 bulan)
 
+## Sinkronisasi stok — 25 November 2026
+
+- `/api/pricing` saat dicek mengiklankan `full:6` (1,2 kredit) dengan `allowed_validities: [6]`; ini bukan bukti checkout atau aktivasi. Sync membaca perubahan metadata tanpa menambah SKU 6 bulan. Paket lokal yang tidak lagi tersedia diproyeksikan stok nol, tanpa mengubah status aktif, copy atau harga terakhir. Jika payload rusak atau kosong tanpa sinyal penonaktifan, pertahankan alarm sync. Tidak ada perubahan alur aktivasi.
+
 ## Perbaikan progres realtime, delivery segera, & debounce checkout — 23 November 2026 (lokal, belum dideploy)
 
 - **Delivery segera begitu aktivasi selesai (`supplier-refresh.ts`, `ensure.ts`, `small-suppliers.ts`, `orders.ts`, `lacak-pesanan-client.tsx`):** saat `pollKnownPixelverifLinksForOrder` menyelesaikan link Pixel pada poll pembeli, `refreshSupplierOrderNow` langsung menjalankan `ensureFulfillmentForPaidOrder(code, deadline, db)` (kini menerima `database` opsional) agar email & `credentials_ready=true` muncul pada respons poll yang sama (tidak menunggu 20–60 dtk tick cron `lite:fulfillment`). Cron `runPixelverifOrders` juga menjadwalkan `schedulePaidFulfillment(..., "cron_pixelverif", "supplier_settled", undefined, db)` untuk item Pixel yang sudah memiliki ciphertext dan masih `queued`/`retry`; `interpretPoll` turut mereset `fulfillment_jobs` berstatus `queued`/`retry`; dan `/lacak-pesanan` tetap melanjutkan polling jika `stage==="ready"` sementara `credentialsReady===false`.

@@ -14,12 +14,10 @@ export const PIXELVERIF_PARENT_REFRESH = `SET price=COALESCE((SELECT MIN(price) 
   ELSE COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=products.id AND is_active=1),0) END`;
 
 export async function projectPixelverifCatalog(db: DatabaseAccess, fx: number) {
-  if (!db.d1 || !db.canSpend(9)) return { ok: false, error: "catalog_budget_exceeded" } as const;
+  if (!db.d1 || !db.canSpend(10)) return { ok: false, error: "catalog_budget_exceeded" } as const;
   if (!Number.isFinite(fx) || fx <= 0) return { ok: false, error: "fx_unavailable" } as const;
 
   const services = await db.queryAll(`SELECT * FROM pixelverif_services ORDER BY service_key ASC`);
-  // If no services yet, use variant specs with pricing from copy? But need credit_cost.
-  // If services empty, we still need to project from hardcoded variants with cost from services fallback.
   const byKey = new Map<string, Record<string, unknown>>();
   for (const s of services) byKey.set(String(s.service_key), s as Record<string, unknown>);
 
@@ -45,7 +43,8 @@ export async function projectPixelverifCatalog(db: DatabaseAccess, fx: number) {
 
   for (const spec of PIXELVERIF_VARIANTS) {
     const svc = byKey.get(spec.service_key);
-    const creditCost = svc ? Number(svc.credit_cost) : spec.flow_type === "normal" ? 1 : 1.5;
+    if (!svc || Number(svc.available) !== 1) continue;
+    const creditCost = Number(svc.credit_cost);
     // Join existing row for this flow
     const ex = existing.find((r) => String(r.pixelverif_flow_type) === spec.flow_type && Number(r.pixelverif_validity) === 3) as Record<string, unknown> | undefined;
     const vMarkup = ex?.v_markup == null ? null : Number(ex.v_markup);
@@ -53,10 +52,9 @@ export async function projectPixelverifCatalog(db: DatabaseAccess, fx: number) {
     const effectiveMarkup = vMarkup ?? 35;
     const adminPrice = ex?.admin_price ?? null;
     const price = adminPrice == null ? pixelverifSellPriceIdr(creditCost, fx, effectiveMarkup) : Number(adminPrice);
-    const available = svc ? Number(svc.available) : 1;
     // Unlimited mirror (-1) when available so order creation never drops stock
     // from 1 -> 0; per-order 1-unit limit is enforced by max_qty=1 + server checks.
-    const stock = available === 1 ? -1 : 0;
+    const stock = -1;
     const sortOrder = spec.flow_type === "normal" ? 1 : 2;
 
     if (
@@ -176,6 +174,20 @@ export async function projectPixelverifCatalog(db: DatabaseAccess, fx: number) {
     json,
   );
 
+  // Stock retirement must also win when a concurrent admin price edit skips the CAS above.
+  const retiredVarRes = await db.execRun(
+    `UPDATE product_variants
+     SET stock=0, updated_at=datetime('now')
+     WHERE stock<>0 AND pixelverif_validity=3
+       AND pixelverif_flow_type IN ('normal','full') AND sku='PV-' || upper(pixelverif_flow_type) || '-3'
+       AND fulfillment_mode='manual'
+       AND wr_variant_id IS NULL AND sk_variant_id IS NULL AND tunvn_buff_quantity_b IS NULL AND aivault_service_id IS NULL AND storebat_product_id IS NULL AND mirai_package_code IS NULL
+       AND EXISTS(SELECT 1 FROM products p WHERE p.id=product_variants.product_id AND p.archived_at IS NULL AND p.pixelverif_family=?)
+       AND NOT EXISTS(SELECT 1 FROM pixelverif_services s
+         WHERE s.service_key=product_variants.pixelverif_flow_type || '_3' AND s.available=1)`,
+    familyKey,
+  );
+
   await db.execRun(
     `UPDATE products
      SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=products.id AND is_active=1),price),
@@ -187,6 +199,7 @@ export async function projectPixelverifCatalog(db: DatabaseAccess, fx: number) {
   if (
     Number(newProdRes.changes ?? 0) > 0 ||
     Number(newVarRes.changes ?? 0) > 0 ||
+    Number(retiredVarRes.changes ?? 0) > 0 ||
     (anyVariantChanged && Number(updVarRes.changes ?? 0) > 0)
   ) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
@@ -209,7 +222,7 @@ export async function publishPixelverifCatalog(
     await recordSyncError(db, "pixelverif_catalog", "fx_unavailable", now);
     return { ok: false, error: "fx_unavailable" } as const;
   }
-  if (!db.canSpend(22)) {
+  if (!db.canSpend(23)) {
     await recordSyncError(db, "pixelverif_catalog", "catalog_budget_exceeded", now);
     return { ok: false, error: "catalog_budget_exceeded" } as const;
   }

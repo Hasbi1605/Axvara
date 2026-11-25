@@ -1,6 +1,7 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import { catalogFailureRecorder, catalogWriteFailure, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { fetchPixelverifPricing, isPixelverifConfigured, isPixelverifSyncEnabled } from "./client";
+import { PIXELVERIF_VARIANTS } from "./families";
 
 export const PIXELVERIF_SYNC_KEY = "pixelverif_catalog_sync_at";
 export const PIXELVERIF_RETRY_AFTER_KEY = "pixelverif_catalog_retry_until";
@@ -68,49 +69,55 @@ export async function syncPixelverifCatalog(
   }
 
   const pricing = response.data;
-  if (!pricing.allowed_validities.includes(3)) return fail("invalid_or_empty_catalog");
+  const disabled = new Set(pricing.disabled_plans);
+  const plans = PIXELVERIF_VARIANTS.map((spec) => {
+    const cost = pricing.pricing[spec.flow_type]?.[String(spec.validity)];
+    const explicitlyDisabled = disabled.has(`${spec.flow_type}:${spec.validity}`);
+    const available = pricing.allowed_validities.includes(spec.validity) && !explicitlyDisabled && Number.isFinite(cost) && cost > 0;
+    return { spec, cost, explicitlyDisabled, available };
+  });
+  // A priced plan of another duration is valid feed data, not a failed sync.
+  // An empty feed is only authoritative when every local plan is explicitly disabled.
+  const hasPublishedPrice = plans.some(({ spec }) => pricing.allowed_validities.some((validity) => {
+    const cost = pricing.pricing[spec.flow_type]?.[String(validity)];
+    return Number.isFinite(cost) && cost > 0;
+  }));
+  if (!hasPublishedPrice && !plans.every((plan) => plan.explicitlyDisabled)) return fail("invalid_or_empty_catalog");
   const at = new Date(now).toISOString();
   try {
-    const rows: { service_key: string; flow_type: string; validity: number; credit_cost: number; available: number; pricing_version: number }[] = [];
-    for (const flow of ["normal", "full"] as const) {
-      const cost = pricing.pricing[flow]?.["3"];
-      const available = pricing.allowed_validities.includes(3) && typeof cost === "number" && Number.isFinite(cost) && cost > 0 ? 1 : 0;
-      rows.push({
-        service_key: `${flow}_3`,
-        flow_type: flow,
-        validity: 3,
-        credit_cost: typeof cost === "number" && Number.isFinite(cost) && cost > 0 ? cost : 0.01,
-        available,
-        pricing_version: pricing.version,
-      });
-    }
-    // filter out unavailable from mirror? keep both but mark available flag
-    if (!db.canSpend(Math.ceil(rows.length / 50) + (opts.onFailure ? 10 : 11))) {
+    if (!db.canSpend(plans.length + (opts.onFailure ? 11 : 1))) {
       return fail("catalog_budget_exceeded");
     }
-    for (const r of rows) {
+    for (const { spec, cost, available } of plans) {
+      if (!available) {
+        // Retain the last real cost, and do not create unpriced services.
+        await db.execRun(
+          `UPDATE pixelverif_services SET available=0, pricing_version=?, synced_at=?, updated_at=datetime('now') WHERE service_key=?`,
+          pricing.version,
+          at,
+          spec.service_key,
+        );
+        continue;
+      }
       await db.execRun(
         `INSERT INTO pixelverif_services(service_key, flow_type, validity, credit_cost, available, pricing_version, synced_at, updated_at)
-         VALUES(?,?,?,?,?,?,?,datetime('now'))
+         VALUES(?,?,?,?,1,?,?,datetime('now'))
          ON CONFLICT(service_key) DO UPDATE SET
-           flow_type=excluded.flow_type,
-           validity=excluded.validity,
            credit_cost=excluded.credit_cost,
            available=excluded.available,
            pricing_version=excluded.pricing_version,
            synced_at=excluded.synced_at,
            updated_at=datetime('now')`,
-        r.service_key,
-        r.flow_type,
-        r.validity,
-        r.credit_cost,
-        r.available,
-        r.pricing_version,
+        spec.service_key,
+        spec.flow_type,
+        spec.validity,
+        cost,
+        pricing.version,
         at,
       );
     }
     if (!opts.onFailure) await recordSyncSuccess(db, "pixelverif_catalog", now);
-    return { ok: true, fetched: rows.length } as const;
+    return { ok: true, fetched: plans.filter((plan) => plan.available).length } as const;
   } catch (error) {
     return await fail(catalogWriteFailure(error));
   }
