@@ -52,7 +52,7 @@
 
 ## Ketersediaan katalog Pixel Verification — 25 November 2026
 
-- Markup → Semua (dan Disembunyikan otomatis) menampilkan paket Pixel yang pernah dilaporkan API meski sekarang nonaktif atau hilang. Paket yang belum terhubung ke AXVARA hanya untuk pantauan: tanpa saklar penjualan, harga jual, atau pilihan bulk markup. Paket historis yang tidak pernah muncul di respons API tidak ditebak.
+- Markup → Semua (dan Disembunyikan otomatis) menampilkan paket Pixel yang pernah dilaporkan API meski nonaktif atau hilang. Paket belum dipetakan, termasuk Full dan Link Redeem 6 bulan, memiliki kontrol yang sama dengan paket 3 bulan: pilihan bulk, markup, harga manual, harga jual, Simpan, dan Aktif. Nilai admin tersimpan setelah reload/sinkron; saklar paket belum dipetakan bukan izin jual. Harga yang belum bisa dihitung ditampilkan kosong. Paket yang tidak pernah dilaporkan API tidak ditebak.
 
 - Bila API pricing pindah ke durasi yang tidak didukung (misalnya 6 bulan), sinkronisasi tetap berhasil dan stok varian 3 bulan yang tidak ditawarkan menjadi nol. Jika API menandai paket nonaktif, stok tetap nol walau harga lama masih tercantum. Harga terakhir, status aktif di panel, dan pesanan historis dipertahankan. Paket 6 bulan tidak dipublikasikan atau dibuka untuk checkout oleh perubahan ini.
 

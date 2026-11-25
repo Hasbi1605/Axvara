@@ -33,12 +33,13 @@ import { purgeExpiredPixelverifInputs } from "@/lib/pixelverif/purge";
 import { PIXELVERIF_RETRYABLE_ERRORS } from "@/lib/pixelverif/retryable";
 import { refreshSupplierOrderNow } from "@/lib/orders/supplier-refresh";
 import { handleCommand } from "@/lib/telegram/handlers/command";
-import { handleBuyerInput, loadCompletedPixelverifStash, purgeExpiredTelegramPixelverifStashes, requestBuyerInput } from "@/lib/telegram/handlers/buyer-input";
+import { loadCompletedPixelverifStash, purgeExpiredTelegramPixelverifStashes, requestBuyerInput } from "@/lib/telegram/handlers/buyer-input";
 import { resolveCurrentPayq1Lines } from "@/lib/telegram/handlers/payment-lines";
 import { parsePayq1State } from "@/lib/telegram/payment-quote";
 import { runMaintenanceCleanup } from "@/lib/maintenance-cleanup";
 import { POST as bulkMarkupPost } from "@/app/api/admin/pixelverif/markup/bulk/route";
 import { GET as pixelProductsGet } from "@/app/api/admin/pixelverif/products/route";
+import { PATCH as pixelProductPatch } from "@/app/api/admin/pixelverif/products/[id]/route";
 import { GET as pixelOrdersGet } from "@/app/api/admin/pixelverif/orders/route";
 import { GET as adminOrdersGet } from "@/app/api/admin/orders/route";
 import { POST as queueFulfillPost } from "@/app/api/internal/queue/fulfill/route";
@@ -99,8 +100,9 @@ afterEach(() => {
 });
 
 describe("Pixel Verification peer-reviewed audit fixes", () => {
-  it("lists unmapped observations only in the private admin catalog without giving them a writable ID", async () => {
+  it("persists per-plan admin prices and activation without promoting unmapped Pixel plans", async () => {
     seedPixelCatalog();
+    fx.sql.prepare("INSERT INTO crypto_market_snapshot(id,fx_rate_text,fx_source,fx_effective_at) VALUES(1,'16000','nowpayments-estimate',?)").run(new Date().toISOString());
     fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES(?,?)").run(PIXELVERIF_OBSERVED_PLANS_KEY, JSON.stringify([
       { flow: "full", months: 3, cost: null, state: "disabled" },
       { flow: "full", months: 6, cost: 1.2, state: "available" },
@@ -113,11 +115,41 @@ describe("Pixel Verification peer-reviewed audit fixes", () => {
     expect(items).toHaveLength(4);
     expect(items).toEqual(expect.arrayContaining([
       expect.objectContaining({ service_key: "full_3", variant_id: 2 }),
-      expect.objectContaining({ service_key: "full_6", variant_id: null, variant_status: "hidden_nocatalog", credit_cost: 1.2, pixel_observed_state: "available" }),
-      expect.objectContaining({ service_key: "normal_6", variant_id: null, variant_status: "hidden_nocatalog", credit_cost: null, pixel_observed_state: "disabled" }),
+      expect.objectContaining({ service_key: "full_6", variant_id: null, variant_status: "hidden_nocatalog", credit_cost: 1.2, pixel_observed_state: "available", pixel_admin_active: false, variant_price: 26000 }),
+      expect.objectContaining({ service_key: "normal_6", variant_id: null, variant_status: "hidden_nocatalog", credit_cost: null, pixel_observed_state: "disabled", variant_price: null }),
     ]));
-    const bulk = await bulkMarkupPost(jsonReq("http://localhost/api/admin/pixelverif/markup/bulk", { variant_ids: ["full_6"], markup_percent: 46 }));
-    expect(await bulk.json()).toMatchObject({ updated: 0, failed: [{ id: "full_6", error: "invalid_id" }] });
+    const url = "http://localhost/api/admin/pixelverif/products";
+    const patch = (id: string, body: unknown) => pixelProductPatch(jsonReq(`${url}/${id}`, body, "PATCH"), { params: Promise.resolve({ id }) });
+    const bulkUrl = "http://localhost/api/admin/pixelverif/markup/bulk";
+    const read = async (id: string) => (await (await pixelProductsGet(new NextRequest(url))).json()).items.find((row: { service_key: string }) => row.service_key === id);
+    const untouched = () => ({
+      products: fx.sql.prepare("SELECT * FROM products").all(),
+      variants: fx.sql.prepare("SELECT * FROM product_variants").all(),
+      services: fx.sql.prepare("SELECT * FROM pixelverif_services").all(),
+    });
+    const before = untouched();
+    expect((await patch("full_6", { markup_percent: 62.5, admin_price_idr: 51000 })).status).toBe(200);
+    expect((await patch("normal_6", { markup_percent: 70, admin_price_idr: 42000 })).status).toBe(200);
+    expect((await patch("normal_6", { is_active: true })).status).toBe(200);
+    expect(await read("normal_6")).toMatchObject({ markup_percent: 70, pixel_admin_active: true, variant_active: 0, variant_status: "hidden_nocatalog", variant_price: 42000 });
+    expect((await patch("full_6", { admin_price_idr: null })).status).toBe(200);
+    expect(await read("full_6")).toMatchObject({ admin_price_idr: null, markup_percent: 62.5, variant_price: 31200 });
+    expect((await patch("full_6", { admin_price_idr: 47000 })).status).toBe(200);
+    const keep = await bulkMarkupPost(jsonReq(bulkUrl, { variant_ids: ["full_6", "normal_6", "full_99", "link_validation"], markup_percent: 46 }));
+    expect(await keep.json()).toMatchObject({ updated: 2, failed: [{ id: "full_99", error: "not_mapped" }, { id: "link_validation", error: "invalid_id" }] });
+    expect(await read("full_6")).toMatchObject({ markup_percent: 46, admin_price_idr: 47000, variant_price: 47000 });
+    expect(await read("normal_6")).toMatchObject({ markup_percent: 46, admin_price_idr: 42000, variant_price: 42000 });
+    const reset = await bulkMarkupPost(jsonReq(bulkUrl, { variant_ids: ["full_6", "normal_6"], markup_percent: 50, reset_manual: true }));
+    expect(await reset.json()).toMatchObject({ updated: 2, failed: [] });
+    expect(await read("full_6")).toMatchObject({ markup_percent: 50, admin_price_idr: null, variant_price: 28800 });
+    expect(await read("normal_6")).toMatchObject({ markup_percent: 50, admin_price_idr: null, variant_price: null, pixel_admin_active: true });
+    expect((await patch("normal_6", { is_active: false })).status).toBe(200);
+    expect(await read("normal_6")).toMatchObject({ pixel_admin_active: false });
+    expect((await patch("full_99", { is_active: true })).status).toBe(404);
+    expect((await patch("full_6", { admin_price_idr: 0 })).status).toBe(400);
+    expect(untouched()).toEqual(before);
+    expect((await patch("PV-FULL-3", { markup_percent: 50, is_active: false })).status).toBe(200);
+    expect(await read("full_3")).toMatchObject({ variant_id: 2, variant_active: 0, variant_price: 36000 });
   });
   it("[C1] projects available services as unlimited stock (-1) so concurrent pending orders do not cause STOK HABIS", async () => {
     seedPixelCatalog();
@@ -228,14 +260,15 @@ describe("Pixel Verification peer-reviewed audit fixes", () => {
   it("[H1] POST /api/admin/pixelverif/markup/bulk updates both variants, reports invalid IDs, and resets manual override", async () => {
     seedPixelCatalog();
     fx.sql.exec("UPDATE product_variants SET pixelverif_admin_price_idr=50000, price=50000 WHERE id=1");
+    fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES(?,?)").run(PIXELVERIF_OBSERVED_PLANS_KEY, '[{"flow":"full","months":6,"cost":null,"state":"unlisted"}]');
     const res = await bulkMarkupPost(jsonReq("http://localhost/api/admin/pixelverif/markup/bulk", {
-      variant_ids: ["normal_3", "full_3", "bogus_id"],
+      variant_ids: ["normal_3", "full_3", "full_6", "bogus_id"],
       markup_percent: 50,
       reset_manual: true,
     }));
     expect(res.status).toBe(200);
     const body = await res.json() as { ok: boolean; updated: number; failed: { id: string; error: string }[] };
-    expect(body).toEqual({ ok: true, updated: 2, failed: [{ id: "bogus_id", error: "invalid_id" }] });
+    expect(body).toEqual({ ok: true, updated: 3, failed: [{ id: "bogus_id", error: "invalid_id" }] });
     expect(fx.sql.prepare("SELECT sku, price, pixelverif_markup_percent, pixelverif_admin_price_idr FROM product_variants ORDER BY id").all()).toEqual([
       { sku: "PV-NORMAL-3", price: 24000, pixelverif_markup_percent: 50, pixelverif_admin_price_idr: null },
       { sku: "PV-FULL-3", price: 36000, pixelverif_markup_percent: 50, pixelverif_admin_price_idr: null },

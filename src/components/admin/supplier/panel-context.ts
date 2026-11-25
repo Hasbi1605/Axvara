@@ -616,7 +616,7 @@ export function useSupplierPanel(supplier: Supplier) {
     () => markupFiltered.slice((markupSafePage - 1) * markupPerPage, markupSafePage * markupPerPage),
     [markupFiltered, markupPerPage, markupSafePage],
   );
-  const markupPagedIds = useMemo(() => markupPaged.flatMap(e => e.kind === "item" && e.item.pixel_observed_state ? [] : [e.bulkId]), [markupPaged]);
+  const markupPagedIds = useMemo(() => markupPaged.map(e => e.bulkId), [markupPaged]);
 
   const pagedGroups = useMemo(() => {
     const groups: { key: string; name: string; archived: boolean; inactive: boolean; items: CatalogItem[] }[] = [];

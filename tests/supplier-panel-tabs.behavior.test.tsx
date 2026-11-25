@@ -62,26 +62,59 @@ function stubSupplierApi(opts: StubOptions = {}) {
   return calls;
 }
 
-it("shows observed Pixel plans under Semua but excludes them from active and bulk controls", async () => {
-  stubSupplierApi({ handlers: url => url.endsWith("/pixelverif/products") ? Response.json({
-    configured: true, items: [
+it("uses the standard price row, toggle, and bulk controls for unmapped Pixel plans", async () => {
+  let full = { markup_percent: 35, admin_price_idr: null as number | null, pixel_admin_active: false };
+  const calls = stubSupplierApi({ handlers: (url, init) => {
+    if (url.endsWith("/pixelverif/products/full_6") && init?.method === "PATCH") {
+      const { is_active, ...price } = JSON.parse(String(init.body));
+      full = { ...full, ...price, pixel_admin_active: is_active ?? full.pixel_admin_active };
+      return Response.json({ ok: true });
+    }
+    if (url.endsWith("/pixelverif/markup/bulk")) return Response.json({ updated: 1, failed: [] });
+    if (!url.endsWith("/pixelverif/products")) return null;
+    return Response.json({ configured: true, items: [
       { service_key: "full_3", label: "Aktivasi Langsung 3 Bulan", variant_id: 1, variant_status: "off", variant_active: 0, markup_percent: 35, family: { key: "three", name: "Google AI Pro 3 Bulan" } },
-      { service_key: "full_6", label: "Aktivasi Langsung 6 Bulan", variant_id: null, variant_status: "hidden_nocatalog", pixel_observed_state: "available", credit_cost: 1.2, markup_percent: 0, family: { key: "six", name: "Google AI Pro 6 Bulan" } },
-      { service_key: "normal_6", label: "Link Redeem 6 Bulan", variant_id: null, variant_status: "hidden_nocatalog", pixel_observed_state: "disabled", markup_percent: 0, family: { key: "six", name: "Google AI Pro 6 Bulan" } },
-    ],
-  }) : null });
+      { service_key: "full_6", label: "Aktivasi Langsung 6 Bulan", variant_id: null, variant_status: "hidden_nocatalog", pixel_observed_state: "available", credit_cost: 1.2, ...full, variant_price: full.admin_price_idr ?? 26000, family: { key: "six", name: "Google AI Pro 6 Bulan" } },
+      { service_key: "normal_6", label: "Link Redeem 6 Bulan", variant_id: null, variant_status: "hidden_nocatalog", pixel_observed_state: "disabled", markup_percent: 35, family: { key: "six", name: "Google AI Pro 6 Bulan" } },
+    ] });
+  } });
   renderAdmin(<ToastProvider><PixelverifManager /></ToastProvider>);
   await userEvent.click(screen.getByRole("tab", { name: "Markup" }));
   await userEvent.click(await screen.findByRole("tab", { name: "Semua (3)" }));
   expect(screen.getByText("Aktivasi Langsung 6 Bulan")).toBeTruthy();
   expect(screen.getByText("Tersedia di Pixel")).toBeTruthy();
   expect(screen.getByText("Nonaktif di Pixel")).toBeTruthy();
-  expect(screen.queryByRole("switch", { name: /6 Bulan/ })).toBeNull();
-  expect(screen.queryByRole("checkbox", { name: /6 Bulan/ })).toBeNull();
+  const row = within(screen.getByRole("form", { name: "Harga Aktivasi Langsung 6 Bulan" }));
+  const markup = row.getByLabelText("Markup %") as HTMLInputElement;
+  const manual = row.getByLabelText("Harga manual (Rp)") as HTMLInputElement;
+  expect(markup.value).toBe("35");
+  expect(row.getByText(/26\.000/)).toBeTruthy();
+  expect(within(screen.getByRole("form", { name: "Harga Link Redeem 6 Bulan" })).getByText("—")).toBeTruthy();
+  fireEvent.change(markup, { target: { value: "55.5" } });
+  fireEvent.change(manual, { target: { value: "35000" } });
+  await userEvent.click(row.getByRole("button", { name: "Simpan" }));
+  expect(await row.findByText(/35\.000/)).toBeTruthy();
+  fireEvent.change(manual, { target: { value: "" } });
+  await userEvent.click(row.getByRole("button", { name: "Simpan" }));
+  expect(await row.findByText(/26\.000/)).toBeTruthy();
+  const toggle = row.getByRole("switch", { name: "Aktif Aktivasi Langsung 6 Bulan" });
+  await userEvent.click(toggle);
+  await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
+  expect(screen.getByRole("tab", { name: "Live (0)" })).toBeTruthy();
+  expect(calls.filter(c => c.init?.method === "PATCH").map(c => JSON.parse(String(c.init?.body)))).toEqual([
+    { markup_percent: 55.5, admin_price_idr: 35000 }, { admin_price_idr: null }, { is_active: true },
+  ]);
   fireEvent.change(screen.getByRole("textbox", { name: "Cari varian" }), { target: { value: "normal_6" } });
   expect(screen.getByText("Link Redeem 6 Bulan")).toBeTruthy();
   expect(screen.queryByText("Aktivasi Langsung 6 Bulan")).toBeNull();
-  expect(screen.queryByText("Pilih halaman ini")).toBeNull();
+  await userEvent.click(screen.getByRole("checkbox", { name: "Pilih halaman ini" }));
+  expect(screen.getByRole("checkbox", { name: "Pilih Link Redeem 6 Bulan untuk bulk markup" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.change(screen.getByRole("textbox", { name: "Markup persen bulk" }), { target: { value: "45" } });
+  await userEvent.click(screen.getByRole("checkbox", { name: "reset harga manual ke rumus" }));
+  await userEvent.click(screen.getByRole("button", { name: "Terapkan ke 1 varian" }));
+  await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Terapkan markup" }));
+  await waitFor(() => expect(calls.some(c => c.url.endsWith("/pixelverif/markup/bulk"))).toBe(true));
+  expect(JSON.parse(String(calls.find(c => c.url.endsWith("/pixelverif/markup/bulk"))?.init?.body))).toEqual({ variant_ids: ["normal_6"], markup_percent: 45, reset_manual: true });
 });
 
 describe("tab dalam-halaman WR", () => {

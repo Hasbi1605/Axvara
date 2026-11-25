@@ -31,6 +31,7 @@ export function BulkMarkupToolbar({
   resetLabel = "reset Rp ke 0",
   resetTitle = "Bila dicentang, Rp per varian ikut direset ke 0. Bila mati, Rp dipertahankan.",
   resetConfirmText = " + reset Rp ke 0",
+  confirmPriceEffect = "Harga katalog ikut berubah.",
   selectionOnly = false,
   confirmApply,
   onError,
@@ -54,6 +55,7 @@ export function BulkMarkupToolbar({
   resetLabel?: string;
   resetTitle?: string;
   resetConfirmText?: string;
+  confirmPriceEffect?: string;
   selectionOnly?: boolean;
   confirmApply?: (message: string) => Promise<boolean>;
   onError?: (error: unknown) => void;
@@ -82,7 +84,7 @@ export function BulkMarkupToolbar({
   const apply = async () => {
     if (!pctValid || !effectiveIds.length || applying || disabled) return;
     const scope = useAllVisible ? "semua yang tampil" : `${effectiveIds.length} dipilih`;
-    const msg = `Terapkan markup ${pct}% ke ${scope}${totalCount != null && useAllVisible ? ` (total hasil ${totalCount})` : ""}${resetFixed ? resetConfirmText : ""}? Harga katalog ikut berubah.`;
+    const msg = `Terapkan markup ${pct}% ke ${scope}${totalCount != null && useAllVisible ? ` (total hasil ${totalCount})` : ""}${resetFixed ? resetConfirmText : ""}? ${confirmPriceEffect}`;
     if (!(confirmApply ? await confirmApply(msg) : window.confirm(msg))) return;
     setApplying(true);
     try {

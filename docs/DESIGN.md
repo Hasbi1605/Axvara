@@ -173,7 +173,7 @@ Keputusan owner untuk mengurangi kesan sesak pada transisi `CommunityBar` → `K
 
 ## Panel supplier admin terpadu (6 supplier) — 19 November 2026 (V3, lokal)
 
-Tambahan Pixel Verification (25 November 2026): baris paket yang belum terhubung muncul di Markup → Semua dan Disembunyikan otomatis, bisa dicari menurut nama/kode, dan dikelompokkan per durasi. Kartu menampilkan status supplier dan harga API bila diketahui; tidak menampilkan kontrol harga atau aktivasi untuk baris pantauan.
+Tambahan Pixel Verification (26 November 2026): paket belum dipetakan muncul di Markup → Semua dan Disembunyikan otomatis, bisa dicari menurut nama/kode, dan dikelompokkan per durasi. Baris memakai `SupplierPriceRow` dan kolom yang sama dengan paket 3 bulan, termasuk checkbox bulk, markup, harga manual, harga jual, Simpan, dan Aktif. Badge membedakan status Pixel dari pemetaan katalog. Jika modal/kurs belum diketahui dan tidak ada harga manual, harga jual ditampilkan `—`. Keterangan grup menjelaskan bahwa saklar paket belum dipetakan tidak membuka penjualan.
 
 Warung Rebahan (`warung`) dan Sekalipay (`sekalipay`) disatukan ke panel bersama
 `SupplierAdminPanel` (bersama `AIVault`, `TUNVN`, `StoreBat`, `Mirai`) dengan

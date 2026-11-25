@@ -5,6 +5,7 @@ import type { D1 } from "@/lib/db";
 import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import { projectPixelverifCatalog, publishPixelverifCatalog } from "@/lib/pixelverif/catalog";
 import { PIXELVERIF_OBSERVED_PLANS_KEY, parsePixelverifObservedPlans } from "@/lib/pixelverif/observed-plans";
+import { observedMarkupFields, PIXELVERIF_PLAN_ADMIN_PREFIX, saveObservedPixelverifMarkup } from "@/lib/pixelverif/observed-markup";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
 let f: ReturnType<typeof createD1Fixture>;
@@ -203,9 +204,17 @@ it("remembers priced, disabled, and subsequently delisted plans for admin only",
     { flow: "full", months: 6, cost: 1.2, state: "available" },
     { flow: "normal", months: 6, cost: null, state: "disabled" },
   ]);
-  pricingOverride = { ...sixMonthPricing, allowed_validities: [12], pricing: { full: { "12": 3 } } };
+  expect(await saveObservedPixelverifMarkup(db, ["full_6", "normal_6"], { markup_percent: 57.5, admin_price_idr: 35000, is_active: true })).toEqual(new Set(["full_6", "normal_6"]));
+  const readPrefs = (id: string) => f.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(`${PIXELVERIF_PLAN_ADMIN_PREFIX}${id}`)?.value;
+  pricingOverride = { ...sixMonthPricing, allowed_validities: [12], pricing: { full: { "12": 3 } }, disabled_plans: [] };
   expect(await publishPixelverifCatalog(db, 16000, { force: true })).toMatchObject({ ok: true });
   expect(readObserved()).toContainEqual({ flow: "full", months: 6, cost: 1.2, state: "unlisted" });
+  expect(readObserved()).toContainEqual({ flow: "normal", months: 6, cost: null, state: "unlisted" });
+  for (const id of ["full_6", "normal_6"]) {
+    expect(observedMarkupFields(readPrefs(id), null, null)).toEqual({ markup_percent: 57.5, admin_price_idr: 35000, variant_price: 35000, pixel_admin_active: true });
+    expect(await saveObservedPixelverifMarkup(db, [id], { is_active: false })).toEqual(new Set([id]));
+    expect(observedMarkupFields(readPrefs(id), null, null)).toMatchObject({ markup_percent: 57.5, admin_price_idr: 35000, pixel_admin_active: false });
+  }
   expect(readObserved()).toContainEqual({ flow: "full", months: 12, cost: 3, state: "available" });
   const latest = readObserved();
   pricingOverride = { pricing: null };
@@ -235,6 +244,10 @@ it("retires a previously sellable plan on native workerd D1", async () => {
     pricingOverride = sixMonthPricing;
     expect(await publishPixelverifCatalog(access, 16000, { force: true })).toMatchObject({ ok: true, mirrored: 0 });
     expect((await db.prepare("SELECT stock FROM product_variants ORDER BY sku").all()).results).toEqual([{ stock: 0 }, { stock: 0 }]);
+    expect(await saveObservedPixelverifMarkup(access, ["full_3", "full_6", "normal_6"], { admin_price_idr: null, markup_percent: 42, is_active: true })).toEqual(new Set(["full_6", "normal_6"]));
+    expect(await saveObservedPixelverifMarkup(access, ["full_6"], { admin_price_idr: 30000 })).toEqual(new Set(["full_6"]));
+    const prefs = await db.prepare("SELECT value FROM store_settings WHERE key=?").bind(`${PIXELVERIF_PLAN_ADMIN_PREFIX}full_6`).first("value");
+    expect(observedMarkupFields(prefs, 1.2, 16000)).toMatchObject({ markup_percent: 42, admin_price_idr: 30000, pixel_admin_active: true });
   } finally {
     await runtime.dispose();
   }

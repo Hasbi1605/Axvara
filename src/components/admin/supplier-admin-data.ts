@@ -30,6 +30,7 @@ type Product = {
   excluded?: number; supplier_description?: string | null; delivery_type?: string;
   variant_status?: VariantLiveStatus | string; variant_reason?: string;
   pixel_observed_state?: "available" | "disabled" | "unlisted";
+  pixel_admin_active?: boolean;
   bulk_markup_tiers?: MarkupTier[] | null; bulk_tiers_preview?: { min_qty: number; unit_price: number }[];
 };
 

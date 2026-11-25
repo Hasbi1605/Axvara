@@ -5,6 +5,7 @@ import { bumpCatalogRevision } from "@/lib/catalog-cache";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { applyPixelverifMarkupUpdate, PIXELVERIF_MARKUP_SELECT_FROM } from "@/lib/pixelverif/markup";
+import { resolvePixelverifMarkupId, saveObservedPixelverifMarkup } from "@/lib/pixelverif/observed-markup";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -21,21 +22,9 @@ const schema = z
   .strict()
   .refine((v) => Object.keys(v).length > 0);
 
-function validFlowId(id: string): boolean {
-  return id === "normal_3" || id === "full_3" || id === "PV-NORMAL-3" || id === "PV-FULL-3";
-}
-
-function flowFromId(id: string): { flow: string; validity: number } | null {
-  if (id === "normal_3" || id === "PV-NORMAL-3") return { flow: "normal", validity: 3 };
-  if (id === "full_3" || id === "PV-FULL-3") return { flow: "full", validity: 3 };
-  return null;
-}
-
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!(await requireAdmin(request))) return json({ error: "unauthorized" }, 401);
-  const rawId = (await params).id;
-  if (!validFlowId(rawId)) return json({ error: "invalid_id" }, 400);
-  const parsedFlow = flowFromId(rawId);
+  const parsedFlow = resolvePixelverifMarkupId((await params).id);
   if (!parsedFlow) return json({ error: "invalid_id" }, 400);
   const raw = await readJsonBody(request, 4096);
   if (!raw.ok) {
@@ -47,12 +36,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const db = createDatabaseAccess();
   if (!db.d1) return json({ error: "database_unavailable" }, 503);
   try {
-    const row = await db.queryFirst(
+    const row = parsedFlow.validity === 3 ? await db.queryFirst(
       `${PIXELVERIF_MARKUP_SELECT_FROM} AND v.pixelverif_flow_type = ? AND v.pixelverif_validity = ?`,
       parsedFlow.flow,
       parsedFlow.validity,
-    );
-    if (!row) return json({ error: "not_mapped" }, 404);
+    ) : null;
+    if (!row) {
+      const written = await saveObservedPixelverifMarkup(db, [parsedFlow.key], parsed.data);
+      return written.has(parsedFlow.key) ? json({ ok: true }) : json({ error: "not_mapped" }, 404);
+    }
     const outcome = await applyPixelverifMarkupUpdate(db, row, parsed.data);
     if (!outcome.ok) return json({ error: outcome.error }, outcome.status);
     if (outcome.changed) await bumpCatalogRevision("market", db);

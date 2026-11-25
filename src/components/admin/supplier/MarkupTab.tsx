@@ -37,9 +37,9 @@ function ProcessBadge({ process }: { process?: string | null }) {
   return process ? <Badge variant="secondary">{process}</Badge> : null;
 }
 
-function FamilyCard({ title, description, archived, parentInactive, mode = "manual", selectable = false, showPriceHeader = true, children }: {
+function FamilyCard({ title, description, archived, parentInactive, mode = "manual", selectable = false, children }: {
   title: string; description: ReactNode; archived?: boolean; parentInactive?: boolean;
-  mode?: "manual" | "fixed"; selectable?: boolean; showPriceHeader?: boolean; children: ReactNode;
+  mode?: "manual" | "fixed"; selectable?: boolean; children: ReactNode;
 }) {
   return <Card>
     <CardHeader className="flex-row flex-wrap items-center gap-2 space-y-0 p-4 pb-2">
@@ -48,7 +48,7 @@ function FamilyCard({ title, description, archived, parentInactive, mode = "manu
       <CardDescription className="w-full break-words text-xs">{description}</CardDescription>
     </CardHeader>
     <CardContent className="space-y-2 p-4 pt-0">
-      {showPriceHeader && <SupplierPriceHeader mode={mode} selectable={selectable} />}
+      <SupplierPriceHeader mode={mode} selectable={selectable} />
       {children}
     </CardContent>
   </Card>;
@@ -104,7 +104,9 @@ export function MarkupTab() {
         else next.delete(row.bulkId);
         return next;
       })}
-      onToggle={isWrSk ? undefined : () => void mutateStandard("Markup", row.path, { is_active: !row.active }, `${row.title} ${row.active ? "dinonaktifkan" : "diaktifkan"}.`, { patch: true })}
+      onToggle={isWrSk ? undefined : () => void mutateStandard("Markup", row.path, { is_active: !row.active }, row.item?.pixel_observed_state
+        ? `Status admin ${row.title} disimpan: ${row.active ? "nonaktif" : "aktif"}.`
+        : `${row.title} ${row.active ? "dinonaktifkan" : "diaktifkan"}.`, { patch: true })}
       onSave={async body => {
         if (isWrSk && row.item) await saveWrSkMarkup(row.item, body);
         else await mutateStandard("Markup", row.path, body, `Harga ${row.title} disimpan.`, { patch: true });
@@ -150,6 +152,7 @@ export function MarkupTab() {
       resetLabel={mode === "fixed" ? "reset Rp ke 0" : "reset harga manual ke rumus"}
       resetTitle={mode === "fixed" ? "Nolkan markup nominal." : "Hapus harga manual dari varian terpilih."}
       resetConfirmText={mode === "fixed" ? " + reset Rp ke 0" : " + reset harga manual ke rumus"}
+      confirmPriceEffect={supplier === "pixelverif" ? "Pengaturan harga paket terpilih akan diperbarui." : undefined}
       disabled={locked || wrSkMarkupLoading}
       confirmApply={message => new Promise<boolean>(resolve => setBulkConfirm({ message, resolve }))}
       onToggleOne={id => setBulkSelected(prev => {
@@ -175,22 +178,9 @@ export function MarkupTab() {
     )}
 
     {pagedGroups.groups.map(group => <FamilyCard key={group.key} title={group.name}
-      description={`${group.items.length} varian`}
-      archived={group.archived} parentInactive={group.inactive} mode={mode} selectable
-      showPriceHeader={group.items.some(item => !item.pixel_observed_state)}>
+      description={<>{group.items.length} varian{group.items.some(item => item.pixel_observed_state) && " · Pengaturan paket yang belum dipetakan disimpan di admin; saklar Aktif tidak membuka penjualan."}</>}
+      archived={group.archived} parentInactive={group.inactive} mode={mode} selectable>
       {group.items.map(item => {
-        if (item.pixel_observed_state) {
-          const available = item.pixel_observed_state === "available";
-          const availability = available ? "Tersedia di Pixel" : item.pixel_observed_state === "disabled" ? "Nonaktif di Pixel" : "Tidak tercantum lagi di API";
-          return <div key={`pixel-observed-${item.id}`} className="space-y-1 rounded-lg border border-admin-border bg-admin-subtle/40 p-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <p className="break-words font-medium text-admin-fg">{item.label}</p>
-              <Badge variant={available ? "success" : "secondary"}>{availability}</Badge>
-              <Badge variant="warning">Belum terhubung ke katalog</Badge>
-            </div>
-            <p className="break-words text-xs text-admin-muted">{item.id} · {item.cost == null ? "Harga API tidak tersedia" : `${available ? "Harga API" : "Harga API terakhir"} ${supplierMoney(currency, item.cost)}`}</p>
-          </div>;
-        }
         if (isWrSk) {
           const canEdit = item.product_archived !== 1;
           const stockText = item.stock === -1 ? "∞" : String(item.stock);
@@ -222,21 +212,23 @@ export function MarkupTab() {
             item,
           });
         }
-        const canEdit = item.variant_id != null && item.product_archived !== 1;
+        const observed = item.pixel_observed_state;
+        const canEdit = (Boolean(observed) || item.variant_id != null) && item.product_archived !== 1;
         const { cost, fx, label } = item;
-        const price = item.variant_price ?? item.manual ?? (cost != null && cost > 0 && fx != null && fx > 0 ? Math.ceil(cost * fx * (1 + item.markup_percent / 100) / 100) * 100 : null);
+        const price = item.variant_price ?? item.manual ?? (!observed && cost != null && cost > 0 && fx != null && fx > 0 ? Math.ceil(cost * fx * (1 + item.markup_percent / 100) / 100) * 100 : null);
         return priceRow({
           key: `${supplier}-${item.id}`,
           id: `${supplier}-${item.id}`,
           bulkId: item.bulkId,
           path: `products/${encodeURIComponent(String(item.id))}`,
           title: label,
-          meta: <>{item.name && item.name !== label ? `${item.name} · ` : ""}Modal {costWithIdr(supplierMoney(currency, cost), cost, fx)}{item.delivery_type === "muse_buff" ? " per 1 miliar token" : ""} · stok {item.stock === -1 ? "∞" : item.stock}
+          meta: <>{item.name && item.name !== label ? `${item.name} · ` : ""}{observed && observed !== "available" && cost != null ? "Modal terakhir" : "Modal"} {costWithIdr(supplierMoney(currency, cost), cost, fx)}{item.delivery_type === "muse_buff" ? " per 1 miliar token" : ""}{!observed && ` · stok ${item.stock === -1 ? "∞" : item.stock}`}
             {config.bulk && !!item.bulk_tiers_preview?.length && <span className="mt-1 block">Grosir: {item.bulk_tiers_preview.map(t => `${t.min_qty}+ ${formatRupiah(t.unit_price)}`).join(" · ")}</span>}
             {(item.variantStatus === "hidden_loser" || (item.variantStatus === "live" && item.variantReason?.startsWith("Gabung di "))) && item.variantReason ? ` · ${item.variantReason}` : ""}
           </>,
           badges: <>
             <VariantStatusBadge status={item.variantStatus} reason={item.variantReason} />
+            {observed && <Badge variant={observed === "available" ? "success" : "secondary"}>{observed === "available" ? "Tersedia di Pixel" : observed === "disabled" ? "Nonaktif di Pixel" : "Tidak tercantum lagi di API"}</Badge>}
             {item.variant_id == null && item.variantStatus !== "hidden_nocatalog" ? <Badge variant="warning">Belum dipetakan</Badge> : config.bulk && canEdit
               ? <Button type="button" variant="outline" size="sm" className="min-h-11 md:min-h-0" disabled={locked} onClick={event => { setBulkError(""); setBulk({ item, trigger: event.currentTarget }); }}>Grosir</Button> : null}
           </>,
@@ -246,8 +238,9 @@ export function MarkupTab() {
           manual: item.manual,
           fixed: 0,
           price,
-          active: item.variantActive,
+          active: observed ? item.pixel_admin_active === true : item.variantActive,
           canEdit,
+          item,
         });
       })}
     </FamilyCard>)}
