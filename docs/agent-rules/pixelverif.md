@@ -1,5 +1,10 @@
 # Aturan agent — Pixel Verification (Google AI Pro 3 bulan)
 
+## Draft Google AI Pro 6 bulan — 26 November 2026
+
+- `full_6` dan `normal_6` tetap bisa diatur di Markup meski snapshot hilang/rusak, tanpa menulis snapshot, memetakan draft di Google AI / Gemini, atau membuka checkout. Harga publik bukan bukti stok atau fulfillment; snapshot API v32 menaikkan modal `full:6` dari 1,2 menjadi 99 kredit dan masih menonaktifkan `normal:6`. Verifikasi ulang sebelum menetapkan harga jual.
+- Jangan gabungkan WIP `0168_pixelverif_multi_validity.sql` dengan perubahan Muse `0169` atau bawa alur password Gmail/kunci setup 2FA ke draft ini. Jika ada sumber terpisah yang sah dan resmi untuk redeem mandiri, gunakan label Link Redeem dan cek biaya serta masa berlaku sebelum jual. Bila memakai stok unik, uji isolasi per varian (jangan ambil unit umum dengan `variant_id IS NULL`), reservasi sekali, dan pengiriman hanya setelah pembayaran lunas. Jangan mengambil harga modal Pixel untuk stok dari sumber lain; pertahankan preferensi admin dan tinjau ulang override harga sebelum pemetaan/publikasi. Belum ada sumber atau implementasi pengiriman 6 bulan yang terverifikasi.
+
 ## Sinkronisasi stok — 25 November 2026
 
 - Markup menampilkan paket teramati dari snapshot `pixelverif_observed_plans`; paket yang hilang dari respons tetap ada sebagai tidak tercantum. Mulai 26 November, kontrol lengkap paket tanpa mirror menyimpan preferensi admin di `pixelverif_plan_admin:<service_key>`, bukan di snapshot sinkron atau katalog jual. Jangan gunakan `pixel_admin_active` untuk stok, eligibility checkout atau dispatch. Jangan tampilkan harga yang tidak diketahui sebagai nol.

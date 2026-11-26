@@ -244,6 +244,7 @@ it("retires a previously sellable plan on native workerd D1", async () => {
     pricingOverride = sixMonthPricing;
     expect(await publishPixelverifCatalog(access, 16000, { force: true })).toMatchObject({ ok: true, mirrored: 0 });
     expect((await db.prepare("SELECT stock FROM product_variants ORDER BY sku").all()).results).toEqual([{ stock: 0 }, { stock: 0 }]);
+    await db.prepare("DELETE FROM store_settings WHERE key=?").bind(PIXELVERIF_OBSERVED_PLANS_KEY).run();
     expect(await saveObservedPixelverifMarkup(access, ["full_3", "full_6", "normal_6"], { admin_price_idr: null, markup_percent: 42, is_active: true })).toEqual(new Set(["full_6", "normal_6"]));
     expect(await saveObservedPixelverifMarkup(access, ["full_6"], { admin_price_idr: 30000 })).toEqual(new Set(["full_6"]));
     const prefs = await db.prepare("SELECT value FROM store_settings WHERE key=?").bind(`${PIXELVERIF_PLAN_ADMIN_PREFIX}full_6`).first("value");

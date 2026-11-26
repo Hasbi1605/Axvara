@@ -5,8 +5,8 @@ import { isPixelverifConfigured, isPixelverifEnabled, isPixelverifSyncEnabled } 
 import { parseStoredSyncError } from "@/lib/sync-status";
 import { loadProductGroupLosers, computeVariantLiveStatus } from "@/lib/product-live-status";
 import { PIXELVERIF_FAMILY } from "@/lib/pixelverif/families";
-import { parsePixelverifObservedPlans, PIXELVERIF_OBSERVED_PLANS_KEY, pixelverifObservedKey } from "@/lib/pixelverif/observed-plans";
-import { observedMarkupFields, PIXELVERIF_PLAN_ADMIN_PREFIX } from "@/lib/pixelverif/observed-markup";
+import { PIXELVERIF_OBSERVED_PLANS_KEY, pixelverifObservedKey } from "@/lib/pixelverif/observed-plans";
+import { observedMarkupFields, PIXELVERIF_PLAN_ADMIN_PREFIX, pixelverifMarkupPlans } from "@/lib/pixelverif/observed-markup";
 import { loadPixelverifFxIdrPerUsd } from "@/lib/pixelverif/pricing";
 
 export const runtime = "edge";
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     });
     const mirrored = new Set(rows.map(row => row.service_key));
     const settingsByKey = new Map(settings.map(row => [row.key, row.value]));
-    const plans = parsePixelverifObservedPlans(settingsByKey.get(PIXELVERIF_OBSERVED_PLANS_KEY))
+    const plans = pixelverifMarkupPlans(settingsByKey.get(PIXELVERIF_OBSERVED_PLANS_KEY))
       .filter(plan => !mirrored.has(pixelverifObservedKey(plan.flow, plan.months)));
     const fx = plans.some(plan => plan.cost != null) ? await loadPixelverifFxIdrPerUsd(db.d1) : null;
     const observed = plans.map(plan => {

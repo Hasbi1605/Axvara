@@ -45,6 +45,7 @@ import { GET as adminOrdersGet } from "@/app/api/admin/orders/route";
 import { POST as queueFulfillPost } from "@/app/api/internal/queue/fulfill/route";
 import { POST as variantsPost, PUT as variantsPut } from "@/app/api/admin/variants/route";
 import { POST as quotePost } from "@/app/api/checkout/quote/route";
+import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 
 let fx: ReturnType<typeof createD1Fixture>;
 
@@ -100,6 +101,49 @@ afterEach(() => {
 });
 
 describe("Pixel Verification peer-reviewed audit fixes", () => {
+  it("keeps both six-month markup controls if the snapshot is unavailable without enabling the storefront draft", async () => {
+    seedPixelCatalog();
+    fx.sql.exec(`
+      INSERT INTO products(id, name, slug, category_id, price, stock, is_active, telegram_enabled)
+        VALUES(60, 'Google AI / Gemini', 'google-ai-pro-antigravity', 1, 20000, 1, 1, 1);
+      INSERT INTO product_variants(id, product_id, sku, label, price, stock, is_active)
+        VALUES(1210995, 60, 'OTHER-VARIANT', 'Other offer', 20000, 1, 1),
+          (1210996, 60, 'GOOGLE-AI-PRO-ANTIGRAVITY-FULL-6M-TEST', 'Full 6-month draft', 0, 0, 0);
+    `);
+    clearRateLimitBucketsForTest();
+    const url = "http://localhost/api/admin/pixelverif/products";
+    const getPlans = async () => (await (await pixelProductsGet(new NextRequest(url))).json()).items;
+    const patch = (id: string, body: unknown) => pixelProductPatch(jsonReq(`${url}/${id}`, body, "PATCH"), { params: Promise.resolve({ id }) });
+    const draft = () => fx.sql.prepare("SELECT * FROM product_variants WHERE id=1210996").get();
+    const before = draft();
+    for (const service_key of ["full_6", "normal_6"]) {
+      expect(await getPlans()).toContainEqual(expect.objectContaining({
+        service_key, pixel_observed_state: "unlisted", variant_status: "hidden_nocatalog", credit_cost: null, variant_price: null, variant_id: null,
+      }));
+      expect((await patch(service_key, { is_active: true, admin_price_idr: 45000 })).status).toBe(200);
+    }
+    expect((await patch("full_7", { is_active: true })).status).toBe(404);
+    const bulk = await bulkMarkupPost(jsonReq("http://localhost/api/admin/pixelverif/markup/bulk", { variant_ids: ["full_6", "normal_6"], markup_percent: 60 }));
+    expect(await bulk.json()).toMatchObject({ updated: 2, failed: [] });
+    // A damaged cache must not delete the admin settings, or make the draft sellable.
+    fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES(?,?)").run(PIXELVERIF_OBSERVED_PLANS_KEY, "not-json");
+    for (const service_key of ["full_6", "normal_6"]) {
+      expect(await getPlans()).toContainEqual(expect.objectContaining({
+        service_key, markup_percent: 60, admin_price_idr: 45000, pixel_admin_active: true, variant_active: 0,
+      }));
+    }
+    expect(draft()).toEqual(before);
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM pixelverif_services WHERE validity=6").get()).toEqual({ n: 0 });
+    const quote = await quotePost(jsonReq("http://localhost/api/checkout/quote", { items: [{ product_id: 60, variant_id: 1210996, qty: 1 }] }));
+    expect(quote.status).toBe(409);
+    expect(await quote.json()).toMatchObject({ ok: false, issues: [expect.objectContaining({ type: "inactive", variant_id: 1210996 })] });
+    await expect(resolveCurrentPayq1Lines("901", {
+      v: 1, nonce: "test-six-month-draft", exp: Date.now() + 60_000, tag: "fixture", locale: "id", idrSubtotal: 45000,
+      source: { kind: "single", productId: 60, variantId: 1210996, qty: 1 },
+      methods: [], sel: null, contact: { email: null, phone: null }, st: "quoted",
+    })).resolves.toEqual({ ok: false, reason: "variant_changed" });
+  });
+
   it("persists per-plan admin prices and activation without promoting unmapped Pixel plans", async () => {
     seedPixelCatalog();
     fx.sql.prepare("INSERT INTO crypto_market_snapshot(id,fx_rate_text,fx_source,fx_effective_at) VALUES(1,'16000','nowpayments-estimate',?)").run(new Date().toISOString());
@@ -170,7 +214,10 @@ describe("Pixel Verification peer-reviewed audit fixes", () => {
     // Admin products mirror also reports stock=-1 when available=1.
     const adminRes = await pixelProductsGet(new NextRequest("http://localhost/api/admin/pixelverif/products"));
     const adminBody = await adminRes.json() as { items: { service_key: string; stock: number }[] };
-    expect(adminBody.items.every((item) => item.stock === -1)).toBe(true);
+    expect(adminBody.items.filter((item) => item.service_key.endsWith("_3"))).toEqual([
+      expect.objectContaining({ service_key: "full_3", stock: -1 }),
+      expect.objectContaining({ service_key: "normal_3", stock: -1 }),
+    ]);
   });
 
   it("[C2 + Sol-Bonus-1] persists Telegram 3-step stash encrypted in D1, preserves leading/trailing spaces & slash passwords, and routes directly to single-item payment offer without cart", async () => {

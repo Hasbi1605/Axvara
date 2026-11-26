@@ -52,9 +52,11 @@
 
 ## Ketersediaan katalog Pixel Verification — 25 November 2026
 
-- Markup → Semua (dan Disembunyikan otomatis) menampilkan paket Pixel yang pernah dilaporkan API meski nonaktif atau hilang. Paket belum dipetakan, termasuk Full dan Link Redeem 6 bulan, memiliki kontrol yang sama dengan paket 3 bulan: pilihan bulk, markup, harga manual, harga jual, Simpan, dan Aktif. Nilai admin tersimpan setelah reload/sinkron; saklar paket belum dipetakan bukan izin jual. Harga yang belum bisa dihitung ditampilkan kosong. Paket yang tidak pernah dilaporkan API tidak ditebak.
+- Markup → Semua (dan Disembunyikan otomatis) menampilkan paket Pixel yang pernah dilaporkan API meski nonaktif atau hilang. Paket belum dipetakan memiliki kontrol yang sama dengan paket 3 bulan: pilihan bulk, markup, harga manual, harga jual, Simpan, dan Aktif. Nilai admin tersimpan setelah reload/sinkron; saklar paket belum dipetakan bukan izin jual. Jika snapshot kosong atau rusak, Full dan Link Redeem 6 bulan tetap dapat diatur dengan status tidak tercantum, tanpa menebak modal atau harga jual. Durasi lain tetap memerlukan bukti dari API.
 
 - Bila API pricing pindah ke durasi yang tidak didukung (misalnya 6 bulan), sinkronisasi tetap berhasil dan stok varian 3 bulan yang tidak ditawarkan menjadi nol. Jika API menandai paket nonaktif, stok tetap nol walau harga lama masih tercantum. Harga terakhir, status aktif di panel, dan pesanan historis dipertahankan. Paket 6 bulan tidak dipublikasikan atau dibuka untuk checkout oleh perubahan ini.
+
+- Draft 6 bulan di grup Google AI / Gemini bukan varian Pixel. Tetap nonaktif sampai sumber yang sah dan dapat dikirim tanpa password Gmail atau kunci setup 2FA terverifikasi, stok dan harga jual diperiksa, serta owner menyetujui pembukaan. Tautan untuk ditukar sendiri harus dilabeli Link Redeem, bukan Aktivasi Langsung.
 
 ## Katalog Pixel Verification — PV-2a (lokal, histori)
 

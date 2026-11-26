@@ -5,6 +5,17 @@ import { isValidPixelverifMarkup, PIXELVERIF_DEFAULT_MARKUP_PERCENT, pixelverifS
 
 export const PIXELVERIF_PLAN_ADMIN_PREFIX = "pixelverif_plan_admin:";
 
+/** Keep the two known six-month controls usable even without a readable sync snapshot. */
+export function pixelverifMarkupPlans(snapshot: unknown) {
+  const plans = parsePixelverifObservedPlans(snapshot);
+  for (const flow of ["full", "normal"] as const) {
+    if (!plans.some(plan => plan.months === 6 && plan.flow === flow)) {
+      plans.push({ flow, months: 6, cost: null, state: "unlisted" });
+    }
+  }
+  return plans.sort((a, b) => a.months - b.months || a.flow.localeCompare(b.flow));
+}
+
 export function resolvePixelverifMarkupId(id: string) {
   const canonical = id === "PV-NORMAL-3" ? "normal_3" : id === "PV-FULL-3" ? "full_3" : id;
   const match = /^(normal|full)_([1-9][0-9]{0,2})$/.exec(canonical);
@@ -27,7 +38,7 @@ export function observedMarkupFields(value: unknown, cost: number | null, fx: nu
   return { markup_percent: markup, admin_price_idr: manual, pixel_admin_active: prefs.is_active === true, variant_price: price };
 }
 
-/** Update only previously observed IDs that have no mirror, regardless of stock/FX. */
+/** Update only known Markup IDs that have no mirror, regardless of stock/FX. */
 export async function saveObservedPixelverifMarkup(
   db: DatabaseAccess,
   ids: string[],
@@ -35,7 +46,7 @@ export async function saveObservedPixelverifMarkup(
 ): Promise<Set<string>> {
   if (!ids.length) return new Set();
   const snapshot = await db.queryFirst("SELECT value FROM store_settings WHERE key=?", PIXELVERIF_OBSERVED_PLANS_KEY);
-  const known = new Set(parsePixelverifObservedPlans(snapshot?.value).map(plan => pixelverifObservedKey(plan.flow, plan.months)));
+  const known = new Set(pixelverifMarkupPlans(snapshot?.value).map(plan => pixelverifObservedKey(plan.flow, plan.months)));
   const eligible = [...new Set(ids.filter(id => known.has(id)))];
   if (!eligible.length) return new Set();
 
