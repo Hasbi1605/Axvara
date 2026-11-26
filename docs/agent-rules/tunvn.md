@@ -1,5 +1,10 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Aktivasi ulang Buff Token Muse AI (`TUNVN-BUFF-1B`) — 26 November 2026 (D1 produksi)
+
+- Atas instruksi owner, varian Buff `TUNVN-BUFF-1B` (id 279, induk `#112` `muse-ai-1-miliar-token`) diaktifkan kembali di D1 produksi setelah sebelumnya nonaktif: `is_active=1` dengan harga/modal/stok tidak diubah (Rp1.500/unit, modal 0,0581 USDT, stok `-1`, preset `muse_invite_code`, `max_qty=30`); agregat induk dihitung ulang dan `catalog_revision_market` dibump. Bundle arsip `TUNVN-BUFF-{5,10,20,30}B` tetap nonaktif dan tidak dibuat ulang; sync katalog mempertahankan saklar admin (`keepActive`) sehingga tidak menimpa keputusan ini.
+- Prasyarat terverifikasi sebelum aktivasi: probe tanpa debit `POST /api/buff/check` (`AXVARA 1`) membalas HTTP 200 `valid=true`, harga 0,0581 USDT/1B, `fundable=true` — sama persis dengan modal tersimpan, sehingga harga jual tidak berubah; `tunvn_buff_last_error` kosong pada saat aktivasi. Terverifikasi live lewat `GET https://axvara.tech/api/catalog?slug=muse-ai-1-miliar-token` (Buff tampil aktif Rp1.500 stok `-1` di samping 5 varian akun Muse).
+
 ## Penyelarasan label 1B/31B Gmail & S&K seluruh varian Muse AI (`#112`) — 26 November 2026
 
 - **Identitas `1B Gmail`:** `TUNVN-111` (`MUSE AI 1B - GMAIL (W2D)`, stok aktif `is_active=1`) sudah aktif di `#112` `muse-ai-1-miliar-token` sejak awal (tidak dibuat duplikat SKU/sumber baru agar menjaga indeks unik). Labelnya diperjelas menjadi `Akun 1B Token · Gmail (garansi 2 hari)` dan `TUNVN-112` menjadi `Akun 31B Token · Gmail (garansi 2 hari)` di `src/lib/tunvn/families.ts` dan migrasi data `0168_tunvn_muse_copy_and_gmail_label.sql`.
