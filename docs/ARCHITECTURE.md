@@ -1,5 +1,9 @@
 # ARCHITECTURE.md — AXVARA
 
+## Penyelarasan label & S&K ID/EN Muse AI (`0168`) — 26 November 2026
+
+- Migrasi data idempoten `drizzle/migrations/0168_tunvn_muse_copy_and_gmail_label.sql` (tanpa DDL; `+drizzle/bootstrap-baseline.json`) dan pembaruan label di `src/lib/tunvn/families.ts`: memperjelas label `TUNVN-111` (`Akun 1B Token · Gmail (garansi 2 hari)`) & `TUNVN-112` (`Akun 31B Token · Gmail (garansi 2 hari)`), menambah shortlink `supplier_links` `otp-haiproxy` → `https://otp.haiproxy.top/`, menyelaraskan `admin_terms`/`admin_terms_en`/`admin_activation`/`admin_activation_en` seluruh varian `#112` (`TUNVN-111`, `TUNVN-112`, `TUNVN-97`, `TUNVN-98`, `TUNVN-114`, `TUNVN-120` tetap `is_active=0`, `DEFAULT-MUSE-AI-1-MILIAR-TOKEN`) dengan `2fa.axvara.tech`, `axvara.tech/go/otp-haiproxy`, serta mempertahankan URL YouTube existing `https://youtu.be/Q6Bjf1wrDbs?si=VkOshNDkLq4bFjLd` pada ID & EN, memulihkan salinan Invite Code `TUNVN-BUFF-1B`, dan membump `catalog_revision_market` (`0168-muse-variant-copy`).
+
 ## Order AXVARA Pedia & AXVARA Games 100% Native di Bot Telegram (`@Axvara_bot`) — 25 November 2026 (lokal, publikasi via CI `main`)
 
 - **Nol env/secret Pages baru & nol migrasi D1 baru:** memakai gate produksi existing (`TELEGRAM_BOT_ENABLED`, `GAMES_SK_ENABLED` + `SEKALIPAY_ENABLED` via `gamesOrderingOpen()`, `PEDIA_ENABLED` + `PEDIA_ORDERS_ENABLED`, QRIS aktif `isActiveQrisConfigured()`, dan `NOWPAYMENTS_ENABLED`).

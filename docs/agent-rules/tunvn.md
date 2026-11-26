@@ -1,5 +1,10 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Penyelarasan label 1B/31B Gmail & S&K seluruh varian Muse AI (`#112`) — 26 November 2026
+
+- **Identitas `1B Gmail`:** `TUNVN-111` (`MUSE AI 1B - GMAIL (W2D)`, stok aktif `is_active=1`) sudah aktif di `#112` `muse-ai-1-miliar-token` sejak awal (tidak dibuat duplikat SKU/sumber baru agar menjaga indeks unik). Labelnya diperjelas menjadi `Akun 1B Token · Gmail (garansi 2 hari)` dan `TUNVN-112` menjadi `Akun 31B Token · Gmail (garansi 2 hari)` di `src/lib/tunvn/families.ts` dan migrasi data `0168_tunvn_muse_copy_and_gmail_label.sql`.
+- **S&K + Cara Aktivasi ID/EN (`0168`):** menyelaraskan seluruh varian Muse AI (`TUNVN-111`, `TUNVN-112`, `TUNVN-97`, `TUNVN-98`, `TUNVN-114`, `TUNVN-120`, `DEFAULT-MUSE-AI-1-MILIAR-TOKEN`) sesuai spesifikasi aktual upstream (`Email | Password | Kode 2FA` via `2fa.axvara.tech` + garansi 2 hari untuk Gmail; `Email | Password` NW untuk `#97`; `Email | Link baca mailbox` NW via shortlink `supplier_links` `otp-haiproxy` → `https://otp.haiproxy.top/` untuk `#98`/`#120`), mempertahankan link YouTube eksisting persis (`https://youtu.be/Q6Bjf1wrDbs?si=VkOshNDkLq4bFjLd`, sekaligus menyamakannya ke versi EN menggantikan `/go/muse-login-gmail`), memulihkan salinan `TUNVN-BUFF-1B` ke Invite Code 6 karakter, mengisi S&K ID/EN `TUNVN-120` sambil membiarkan `is_active=0`, dan membump `catalog_revision_market` (`0168-muse-variant-copy`).
+
 ## Aktivasi induk Microsoft 365 (`#132`) & Grup Claude API (`#47`) — 24 November 2026 (D1 produksi)
 
 - Atas instruksi owner (Paket A): induk `#132` `microsoft-365-tunvn` (`TUNVN-73` Admin 12 Bulan, stok 27, `duration=12 month`, `warranty=full 12 month`, `images` diselaraskan) diaktifkan sebagai backup di Grup `#38` (`Microsoft 365`, runner-up di bawah `#422` StoreBat).

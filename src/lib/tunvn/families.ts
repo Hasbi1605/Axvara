@@ -52,10 +52,10 @@ export const TUNVN_FAMILIES: readonly TunvnFamily[] = [
     markFamily: false,
     members: [
       { supplier_product_id: 97, label: "Akun 1B Token (tanpa garansi)", sort: 20 },
-      { supplier_product_id: 111, label: "Akun 1B Token (garansi 2 hari)", sort: 21 },
+      { supplier_product_id: 111, label: "Akun 1B Token · Gmail (garansi 2 hari)", sort: 21 },
       { supplier_product_id: 114, label: "Akun 25–28B Token (tanpa garansi)", sort: 22 },
       { supplier_product_id: 98, label: "Akun 31B Token (tanpa garansi)", sort: 23 },
-      { supplier_product_id: 112, label: "Akun 31B Token (garansi 2 hari)", sort: 24 },
+      { supplier_product_id: 112, label: "Akun 31B Token · Gmail (garansi 2 hari)", sort: 24 },
       { supplier_product_id: 120, label: "Akun 1B Token (tanpa garansi)", sort: 25 },
     ],
   },
