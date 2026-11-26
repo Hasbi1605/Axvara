@@ -43,7 +43,11 @@ function serializePromoProgress(progress: PromoProgress): string | undefined {
   return progress.photoId || progress.sentChunks > 0 ? JSON.stringify(progress) : undefined;
 }
 
-function classifyTelegramError(result: TelegramApiResponse<TelegramMessage>, providerId?: string): SendOutcome {
+function classifyTelegramError(
+  result: TelegramApiResponse<TelegramMessage>,
+  providerId?: string,
+  options?: { isChannel?: boolean },
+): SendOutcome {
   if (result.error_code === 429) {
     return {
       state: 'retry',
@@ -63,6 +67,13 @@ function classifyTelegramError(result: TelegramApiResponse<TelegramMessage>, pro
     };
   }
   if (result.error_code === 403) {
+    if (options?.isChannel) {
+      return {
+        state: 'failed',
+        error: 'telegram_channel_not_admin',
+        ...(providerId ? { providerId } : {}),
+      };
+    }
     return {
       state: 'skipped',
       error: 'telegram_blocked',
@@ -73,7 +84,7 @@ function classifyTelegramError(result: TelegramApiResponse<TelegramMessage>, pro
   if (result.error_code === 400) {
     return {
       state: 'failed',
-      error: 'telegram_recipient_unavailable',
+      error: options?.isChannel ? 'telegram_channel_unavailable' : 'telegram_recipient_unavailable',
       ...(providerId ? { providerId } : {}),
     };
   }
@@ -90,11 +101,14 @@ async function sendTelegramPromo(
   destination: string,
   promo: BroadcastPromoPayload,
   existingProviderId?: string | null,
+  options?: { isChannel?: boolean },
 ): Promise<SendOutcome> {
   const progress = parsePromoProgress(existingProviderId);
   if (Date.now() >= Date.parse(promo.expiresAt)) {
     return { state: 'skipped', error: 'promo_slot_expired', providerId: serializePromoProgress(progress) };
   }
+  const isChannel = options?.isChannel === true;
+  const messages = isChannel && promo.channelMessagesHtml?.length ? promo.channelMessagesHtml : promo.messagesHtml;
   let sentInCall = false;
   const linkPreview = promo.bannerMode === 'link_preview';
   if (!linkPreview && !progress.photoId) {
@@ -106,7 +120,7 @@ async function sendTelegramPromo(
         parse_mode: 'HTML',
       });
       if (!photoRes.ok || !photoRes.result?.message_id) {
-        return classifyTelegramError(photoRes, serializePromoProgress(progress));
+        return classifyTelegramError(photoRes, serializePromoProgress(progress), { isChannel });
       }
       progress.photoId = String(photoRes.result.message_id);
       sentInCall = true;
@@ -114,28 +128,33 @@ async function sendTelegramPromo(
       return { state: 'unknown', error: 'telegram_delivery_unknown', providerId: serializePromoProgress(progress) };
     }
   }
-  for (let i = progress.sentChunks; i < promo.messagesHtml.length; i++) {
+  for (let i = progress.sentChunks; i < messages.length; i++) {
     if (sentInCall) {
       await new Promise<void>((resolve) => setTimeout(resolve, TELEGRAM_SAME_CHAT_PACE_MS));
     }
     try {
+      const attachMarkup = isChannel && i === messages.length - 1 && promo.channelReplyMarkup
+        ? { reply_markup: promo.channelReplyMarkup }
+        : {};
       // Mode link_preview: chunk pertama membawa banner sebagai pratinjau
       // besar DI ATAS teks (satu bubble). Chunk lanjutan tanpa pratinjau.
       const msgRes = await sendMessage(linkPreview && i === 0
         ? {
             chat_id: destination,
-            text: promo.messagesHtml[i],
+            text: messages[i],
             parse_mode: 'HTML',
             link_preview_options: { url: promo.bannerUrl, prefer_large_media: true, show_above_text: true },
+            ...attachMarkup,
           }
         : {
             chat_id: destination,
-            text: promo.messagesHtml[i],
+            text: messages[i],
             parse_mode: 'HTML',
             disable_web_page_preview: true,
+            ...attachMarkup,
           });
       if (!msgRes.ok || !msgRes.result?.message_id) {
-        return classifyTelegramError(msgRes, serializePromoProgress(progress));
+        return classifyTelegramError(msgRes, serializePromoProgress(progress), { isChannel });
       }
       progress.sentChunks = i + 1;
       progress.lastMessageId = String(msgRes.result.message_id);
@@ -160,7 +179,8 @@ export async function sendBroadcast(
     if (result.error === 'idempotency_conflict') return { state: 'failed', error: 'idempotency_conflict' };
     return { state: 'retry', error: result.error === 'bot_configuration_changed' ? 'bot_changed_review_required' : 'whatsapp_not_ready', retryAfter: 60, consumeAttempt: false };
   }
-  if (channel === 'telegram') {
+  if (channel === 'telegram' || channel === 'telegram_channel') {
+    const isChannel = channel === 'telegram_channel';
     if (process.env.TELEGRAM_BOT_ENABLED !== 'true' || !process.env.TELEGRAM_BOT_TOKEN) {
       return {
         state: 'retry',
@@ -171,15 +191,17 @@ export async function sendBroadcast(
       };
     }
     if (snapshot.promo?.kind === 'telegram_promo') {
-      return sendTelegramPromo(row.destination, snapshot.promo, row.provider_id);
+      return sendTelegramPromo(row.destination, snapshot.promo, row.provider_id, { isChannel });
     }
     const result = await sendMessage({
       chat_id: row.destination,
-      text: snapshot.title + '\n\n' + snapshot.body + '\n\nBerhenti siaran: /stop',
+      text: isChannel
+        ? snapshot.title + '\n\n' + snapshot.body
+        : snapshot.title + '\n\n' + snapshot.body + '\n\nBerhenti siaran: /stop',
       ...(snapshot.cta_url ? { reply_markup: { inline_keyboard: [[{ text: snapshot.cta_label, url: snapshot.cta_url }]] } } : {}),
     });
     if (result.ok && result.result?.message_id) return { state: 'sent', providerId: String(result.result.message_id) };
-    return classifyTelegramError(result);
+    return classifyTelegramError(result, undefined, { isChannel });
   }
   const key = process.env.RESEND_API_KEY?.trim(), from = process.env.FORWARD_FROM_EMAIL?.trim();
   if (!key || !from) return { state: 'retry', error: 'email_not_configured', retryAfter: 3600, consumeAttempt: false };

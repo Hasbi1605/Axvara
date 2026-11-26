@@ -12,4 +12,4 @@ export const templateSchema = z.object({
   if (!data.cta_label || !data.cta_url) return false;
   try { const url=new URL(data.cta_url);return url.protocol==='https:' && !url.username && !url.password && !/[\r\n]/.test(data.cta_url); } catch { return false; }
 },'Isi label dan tautan HTTPS tombol, atau kosongkan keduanya.');
-export const targetSchema=z.object({templateId:z.string().regex(UUID),revision:z.number().int().positive(),channels:z.array(z.enum(CHANNELS)).min(1).max(3).refine(v=>new Set(v).size===v.length)}).strict();
+export const targetSchema=z.object({templateId:z.string().regex(UUID),revision:z.number().int().positive(),channels:z.array(z.enum(CHANNELS)).min(1).max(CHANNELS.length).refine(v=>new Set(v).size===v.length)}).strict();

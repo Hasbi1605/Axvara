@@ -132,7 +132,7 @@ export async function enqueueCampaignDeliveriesToQueue(
   try {
     const rows = await db.queryAll(
       `SELECT id, channel FROM broadcast_deliveries
-       WHERE campaign_id=? AND channel IN ('telegram','email') AND status='pending'
+       WHERE campaign_id=? AND channel IN ('telegram','telegram_channel','email') AND status='pending'
        ORDER BY channel, id`,
       campaignId,
     );

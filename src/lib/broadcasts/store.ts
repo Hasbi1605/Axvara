@@ -3,6 +3,7 @@ import { salesGatewayControl } from '@/lib/whatsapp/gateway';
 import { DEFAULT_SALES_BOT_NUMBER, normalizeBotNumber, validBotRevision } from '@/lib/whatsapp/bot-number';
 import { SALES_GROUP_NAME } from '@/lib/whatsapp/sales-notifications';
 import { isForwardEmailConfigured } from '@/lib/warung-rebahan/forward-sender';
+import { readTelegramChannelConfig } from '@/lib/telegram/force-sub';
 import { broadcastText, TELEGRAM_PROMO_TEMPLATE_ID, type BroadcastChannel, type BroadcastSnapshot, type BroadcastTemplate } from './model';
 import { enqueueCampaignDeliveriesToQueue } from './queue';
 
@@ -22,6 +23,12 @@ export async function reviewBroadcast(templateId:string,revision:number,channels
     } else if(channel==='telegram') {
       if(process.env.TELEGRAM_BOT_ENABLED!=='true'||!process.env.TELEGRAM_BOT_TOKEN)throw new BroadcastError('Bot Telegram belum aktif.');
       counts.telegram=Number((await db.queryFirst('SELECT count(*) AS n FROM telegram_users WHERE '+TELEGRAM_ELIGIBLE))?.n||0);
+    } else if(channel==='telegram_channel') {
+      if(process.env.TELEGRAM_BOT_ENABLED!=='true'||!process.env.TELEGRAM_BOT_TOKEN)throw new BroadcastError('Bot Telegram belum aktif.');
+      const tgCfg=await readTelegramChannelConfig(db);
+      if(!tgCfg.channelUsername)throw new BroadcastError('Username Channel Telegram belum diatur.');
+      snapshot.tgChannel={destination:'@'+tgCfg.channelUsername,title:tgCfg.channelTitle};
+      counts.telegram_channel=1;
     } else {
       const gateway=await salesGatewayControl('status');
       const revision=gateway.botRevision??(gateway.botNumber===DEFAULT_SALES_BOT_NUMBER?'initial':'');
@@ -52,6 +59,8 @@ export async function launchBroadcast(args:{id:string;templateId:string;revision
     WHERE c.id=? AND c.status='preparing' AND s.status='active' AND s.unsubscribe_token IS NOT NULL`).bind(nowIso,nowIso,args.id));
   if(channels.includes('telegram'))statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination,next_attempt_at,updated_at)
     SELECT c.id,'telegram',t.user_id,t.chat_id,?,? FROM broadcast_campaigns c,telegram_users t WHERE c.id=? AND c.status='preparing' AND ${TELEGRAM_ELIGIBLE}`).bind(nowIso,nowIso,args.id));
+  if(review.snapshot.tgChannel)statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination,next_attempt_at,updated_at)
+    SELECT id,'telegram_channel','channel',?,?,? FROM broadcast_campaigns WHERE id=? AND status='preparing'`).bind(review.snapshot.tgChannel.destination,nowIso,nowIso,args.id));
   if(review.snapshot.wa)statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination,next_attempt_at,updated_at)
     SELECT id,'whatsapp','group',?,?,? FROM broadcast_campaigns WHERE id=? AND status='preparing'`).bind(review.snapshot.wa.destination,nowIso,nowIso,args.id));
   statements.push(d1.prepare("UPDATE broadcast_campaigns SET status='queued' WHERE id=? AND status='preparing'").bind(args.id));
@@ -59,7 +68,7 @@ export async function launchBroadcast(args:{id:string;templateId:string;revision
   const saved=await db.queryFirst('SELECT fingerprint FROM broadcast_campaigns WHERE id=?',args.id);
   if(!saved||saved.fingerprint!==fingerprint)throw new BroadcastError('Template atau siaran berubah. Muat ulang lalu tinjau kembali.');
   const insertedCampaign=Number(batchResults[0]?.meta?.changes??0);
-  if(insertedCampaign>0&&(channels.includes('telegram')||channels.includes('email'))){
+  if(insertedCampaign>0&&(channels.includes('telegram')||channels.includes('telegram_channel')||channels.includes('email'))){
     await enqueueCampaignDeliveriesToQueue(args.id,db);
   }
   return {id:args.id,replayed:false};

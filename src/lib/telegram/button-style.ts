@@ -35,6 +35,7 @@ const SUCCESS_ACTIONS = new Set([
   "pds",
   "pdn",
   "pdrf",
+  "fsub",
 ]);
 const SUCCESS_TEXT_RE = /\b(?:bayar|pay|checkout|beli|konfirmasi|lanjut ke pembayaran|qris|crypto|ajukan)\b/i;
 

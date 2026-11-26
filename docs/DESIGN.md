@@ -1,5 +1,11 @@
 # DESIGN.md — AXVARA Design System
 
+## Permukaan Smart Force-Join Bot Telegram & Kontrol Channel Admin — 26 November 2026 (lokal)
+
+- **Kartu gerbang Smart Force-Join Bot (`src/lib/telegram/force-sub.ts`):** pesan HTML singkat bilingual ID/EN (`📢 Gabung Channel Resmi Dulu` / `📢 Join Official Channel First`, tanpa preview link, tanpa badge berlebihan) dengan tepat 2 tombol vertikal: baris 1 **`📢 Gabung @axvaratech`** (`style: "primary"`, URL `https://t.me/axvaratech`) dan baris 2 **`✅ Saya Sudah Gabung`** (`style: "success"`, `callback_data: "fsub:check"`). Penekanan sebelum bergabung menampilkan popup alert native Telegram (`show_alert: true`) tanpa menambah bubble baru.
+- **Kartu promo otomatis Channel (`src/lib/telegram/promo-digest.ts`):** memakai layout 1 bubble `link_preview` banner di atas teks katalog ready tanpa footer `/stop`, dilengkapi 1 baris 2 tombol inline `[🛒 Order di Bot (success) | 🌐 Website (primary)]`.
+- **Panel Admin (`BotAutomationManager.tsx` & `BroadcastManager.tsx`):** kartu **Channel Resmi Telegram & Wajib Join** di `/admin?section=bot` memakai primitif `./ui` (`Card`, `Badge`, `Button`, `Input`, `Label`, `Switch`) dan token semantik `admin-*` (bebas palet Tailwind mentah & simbol terlarang), menyediakan 3 saklar terpisah (`Wajib join channel`, `Auto-promo pagi & sore ke Channel`, `Auto-promo pagi & sore ke DM Bot`), input username/nama channel, serta umpan balik status verifikasi admin bot (`admin-success` / `admin-warning`). Dialog kirim & riwayat di `/admin?section=broadcasts` menampilkan tujuan `Channel Telegram` (`1 channel`), pratinjau target `@axvaratech`, serta peringatan jelas bila pengiriman gagal karena `telegram_channel_not_admin`.
+
 ## Permukaan Bot Telegram Native untuk AXVARA Pedia & AXVARA Games — 25 November 2026 (lokal)
 
 - **Beranda `/start` (`homeKeyboard` di `src/lib/telegram/keyboards.ts`):** mempertahankan seluruh susunan kategori dan utilitas existing secara utuh, dengan 1 baris tambahan berisi 2 tombol hijau (`style: "success"`) tepat di bawah **`🛍 Lihat Semua Katalog`**:

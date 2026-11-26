@@ -166,3 +166,19 @@ export interface WebhookInfo {
   last_error_message?: string;
   max_connections?: number;
 }
+
+export type TelegramChatMemberStatus =
+  | "creator"
+  | "administrator"
+  | "member"
+  | "restricted"
+  | "left"
+  | "kicked";
+
+export interface TelegramChatMember {
+  status: TelegramChatMemberStatus;
+  user?: TelegramUser;
+  is_member?: boolean;
+  can_post_messages?: boolean;
+  can_manage_chat?: boolean;
+}

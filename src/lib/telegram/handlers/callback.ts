@@ -41,6 +41,21 @@ import {
 import { handlePayWithQris } from "./invoice";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { readCheckoutEmail, checkoutEmailFingerprint } from "@/lib/telegram/checkout-email";
+import {
+  checkUserChannelMembership,
+  forceSubGateKeyboard,
+  forceSubGateMessage,
+  forceSubNotJoinedAlert,
+} from "@/lib/telegram/force-sub";
+
+// Hanya aksi masuk belanja/katalog yang dicek Smart Force-Join (memakai cache D1 6 jam).
+// Aksi pasca-bayar (order, cred, refresh, qrenew, cancel, claim, pdrf, wainput),
+// pengaturan (lang/settings), dan pembayaran aktif (pm/pgo/pay/epay/qty) tidak pernah diblokir.
+const FORCE_SUB_GATED_CALLBACKS = new Set([
+  "home", "catalog", "cats", "cat", "prd", "buy", "vars", "var", "search", "reorder",
+  "gmh", "gma", "gmg", "gmq", "gmo", "gmr", "gms", "gmt",
+  "pdh", "pda", "pdsrc", "pdp", "pdt",
+]);
 
 export async function handleCallback(
   data: string,
@@ -54,6 +69,61 @@ export async function handleCallback(
   const answer = async (text?: string, alert = false) => {
     if (callbackId) await answerCallbackQuery(callbackId, text, alert);
   };
+
+  // Smart Force-Join verification button (`fsub:check`): selalu cek live ke Telegram API.
+  if (action === "fsub") {
+    if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== from.id) {
+      await answer();
+      return;
+    }
+    const [check, prefs] = await Promise.all([
+      checkUserChannelMembership({ userId: from.id, bypassCache: true }),
+      readTgPreferences(String(from.id)),
+    ]);
+    if (!check.allowed) {
+      await answer(forceSubNotJoinedAlert(check.config, prefs.locale), true);
+      return;
+    }
+    await answer(prefs.locale === "en" ? "✅ Verified! Welcome to AXVARA." : "✅ Terverifikasi! Selamat berbelanja.");
+    if (!prefs.locale) {
+      await replaceWithText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: languageChooserMessage(),
+        parse_mode: "HTML",
+        reply_markup: languageChooserKeyboard(),
+      }, sourceMeta);
+      return;
+    }
+    const { consumeOnboardingPayload } = await import("@/lib/telegram/preferences");
+    const payload = await consumeOnboardingPayload(String(from.id));
+    if (payload) {
+      const prdMatch = /^prd_(\d+)$/i.exec(payload);
+      if (prdMatch) {
+        await handleShowProduct(chatId, messageId, Number(prdMatch[1]), from, sourceMeta);
+        return;
+      }
+      const { handleExtraStartPayload } = await import("./extras");
+      if (await handleExtraStartPayload(payload, chatId, from)) return;
+    }
+    await sendTgHome({
+      chatId,
+      firstName: from.first_name,
+      locale: prefs.locale,
+      userId: from.id,
+      replaceMessageId: messageId,
+      sourceMeta,
+      installMenu: true,
+    });
+    if (payload) {
+      await sendMessage({
+        chat_id: chatId,
+        text: resumePayloadMessage(prefs.locale, payload),
+        parse_mode: "HTML",
+      });
+    }
+    return;
+  }
 
   // Ownership guard (issue #5): callback sensitif order (bayar, batal, refresh,
   // status, wainput, qrenew) hanya boleh dieksekusi pemilik order.
@@ -207,6 +277,28 @@ export async function handleCallback(
     });
     return;
   }
+  if (action === "home" && (await notifyPaymentMaintenance(chatId))) return;
+
+  if (FORCE_SUB_GATED_CALLBACKS.has(action) && Number.isSafeInteger(chatId) && chatId > 0 && chatId === from.id) {
+    const check = await checkUserChannelMembership({ userId: from.id, bypassCache: false });
+    if (!check.allowed) {
+      if ((action === "prd" || action === "buy" || action === "reorder") && Number(params[0]) > 0) {
+        const { saveOnboardingPayload } = await import("@/lib/telegram/preferences");
+        await saveOnboardingPayload(String(from.id), `prd_${Number(params[0])}`);
+      }
+      const prefs = await readTgPreferences(String(from.id)).catch(() => ({ locale: null as "id" | "en" | null }));
+      await replaceWithText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: forceSubGateMessage(check.config, prefs.locale),
+        parse_mode: "HTML",
+        reply_markup: forceSubGateKeyboard(check.config, prefs.locale),
+        disable_web_page_preview: true,
+      }, sourceMeta);
+      return;
+    }
+  }
+
   if (["cats", "cat", "prd", "vars", "buy", "myorders", "help", "warranty", "gmh", "gma", "gmg", "gmo", "gmr", "pdh", "pda", "pdp"].includes(action)) {
     // Guard COMMON clear: preserve a durable creating intent (quoted stays
     // clearable); navigation away never silently discards the anchor.

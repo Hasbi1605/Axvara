@@ -11,6 +11,7 @@ import type {
   EditMessageCaptionParams,
   TelegramMessage,
   TelegramUser,
+  TelegramChatMember,
   WebhookInfo,
 } from "./types";
 import { applyButtonStyles } from "./button-style";
@@ -91,6 +92,16 @@ export async function sendMessage(params: SendMessageParams): Promise<TelegramAp
 
 export async function getMe(): Promise<TelegramApiResponse<TelegramUser>> {
   return callApi<TelegramUser>("getMe", undefined, 5_000);
+}
+
+const GET_CHAT_MEMBER_TIMEOUT_MS = 4_000;
+
+export async function getChatMember(
+  chatId: number | string,
+  userId: number,
+  timeoutMs = GET_CHAT_MEMBER_TIMEOUT_MS,
+): Promise<TelegramApiResponse<TelegramChatMember>> {
+  return callApi<TelegramChatMember>("getChatMember", { chat_id: chatId, user_id: userId }, timeoutMs);
 }
 
 export { classifyTelegramSend, type TelegramSendOutcome } from "./send-outcome";

@@ -319,6 +319,8 @@ CREATE TABLE IF NOT EXISTS telegram_users (
   -- TG1 (migrasi 0100): currency tampilan independen; nullable = belum seed.
   -- Di-seed sekali dari pilihan bahasa; perubahan berikutnya tidak menyentuh locale.
   display_currency TEXT CHECK (display_currency IN ('IDR','USD')),
+  -- Migrasi 0169: cache verifikasi keanggotaan channel resmi Telegram (@axvaratech).
+  channel_joined_checked_at TEXT DEFAULT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -1659,7 +1661,7 @@ CREATE TABLE IF NOT EXISTS broadcast_campaigns (
 CREATE INDEX IF NOT EXISTS idx_broadcast_campaigns_status ON broadcast_campaigns(status,created_at);
 CREATE TABLE IF NOT EXISTS broadcast_deliveries (
   id INTEGER PRIMARY KEY AUTOINCREMENT, campaign_id TEXT NOT NULL REFERENCES broadcast_campaigns(id),
-  channel TEXT NOT NULL CHECK(channel IN ('whatsapp','email','telegram')),
+  channel TEXT NOT NULL CHECK(channel IN ('whatsapp','email','telegram','telegram_channel')),
   recipient_id TEXT NOT NULL, destination TEXT NOT NULL, unsubscribe_token TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sending','sent','failed','unknown','skipped','canceled')),
   attempts INTEGER NOT NULL DEFAULT 0, first_attempt_at TEXT, next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),

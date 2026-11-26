@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getWebhookInfo } from "@/lib/telegram/api";
 import { TG_WEBHOOK_GUARD_STATE_KEY, parseWebhookGuardState } from "@/lib/telegram/webhook-guard";
+import { TELEGRAM_CHANNEL_CONFIG_KEY, parseTelegramChannelConfig } from "@/lib/telegram/force-sub";
+import { TELEGRAM_PROMO_SETTINGS_KEY } from "@/lib/telegram/promo-broadcast";
 import { queryAll, queryFirst } from "@/lib/db";
 import { QRIS_HEALTH_EVENTS_SQL } from "@/lib/service-health";
 
@@ -178,6 +180,22 @@ export async function GET(request: NextRequest) {
       const qrisEvents = await queryFirst(QRIS_HEALTH_EVENTS_SQL);
       health.qris_events_7d = qrisEvents ? { ...qrisEvents, unmatched: Number(qrisEvents.unmatched || 0) } : null;
     } catch { /* tabel lama tetap kompatibel */ }
+
+    // Pengaturan Channel Resmi Telegram (@axvaratech), Smart Force-Join & promo DM/channel.
+    try {
+      const channelRow = await queryFirst(
+        `SELECT
+           (SELECT value FROM store_settings WHERE key=?) AS channel_config,
+           (SELECT value FROM store_settings WHERE key=?) AS dm_promo`,
+        TELEGRAM_CHANNEL_CONFIG_KEY,
+        TELEGRAM_PROMO_SETTINGS_KEY,
+      );
+      const cfg = parseTelegramChannelConfig(channelRow?.channel_config);
+      health.telegram_channel = {
+        ...cfg,
+        dmPromoEnabled: String(channelRow?.dm_promo ?? "").trim().toLowerCase() !== "false",
+      };
+    } catch { /* store_settings opsional */ }
   } catch { /* ok if tables don't exist yet */ }
 
   return NextResponse.json(health);

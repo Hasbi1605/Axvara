@@ -25,6 +25,12 @@ import {
 } from "@/lib/telegram/messages/preferences";
 import { readTgPreferences, isValidTgLocale } from "@/lib/telegram/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
+import {
+  checkUserChannelMembership,
+  forceSubGateKeyboard,
+  forceSubGateMessage,
+} from "@/lib/telegram/force-sub";
+import type { Locale } from "@/lib/i18n/locale";
 import { clearPayq1DraftForCancel, clearPendingAction, runInBackground, sendTgHome } from "./shared";
 import { handleShowCatalog, handleShowProduct } from "./catalog";
 import {
@@ -51,6 +57,35 @@ async function clearPendingUnlessCreating(from?: { id: number }) {
   } else {
     await clearPendingAction(from);
   }
+}
+
+async function maybeBlockForceSubCommand(
+  chatId: number,
+  chatType: string,
+  from?: { id: number },
+  options?: { bypassCache?: boolean; startPayload?: string | null; locale?: Locale | null },
+): Promise<boolean> {
+  if (!from || chatType !== "private" || chatId !== from.id) return false;
+  const check = await checkUserChannelMembership({
+    userId: from.id,
+    bypassCache: options?.bypassCache,
+  });
+  if (check.allowed) return false;
+  if (options?.startPayload) {
+    const { saveOnboardingPayload } = await import("@/lib/telegram/preferences");
+    await saveOnboardingPayload(String(from.id), options.startPayload);
+  }
+  const locale = options && "locale" in options
+    ? (options.locale ?? null)
+    : (await readTgPreferences(String(from.id)).catch(() => ({ locale: null as Locale | null }))).locale;
+  await sendMessage({
+    chat_id: chatId,
+    text: forceSubGateMessage(check.config, locale),
+    parse_mode: "HTML",
+    reply_markup: forceSubGateKeyboard(check.config, locale),
+    disable_web_page_preview: true,
+  });
+  return true;
 }
 
 export async function handleCommand(
@@ -107,6 +142,9 @@ export async function handleCommand(
     const { normalizeStartPayload, saveOnboardingPayload } = await import("@/lib/telegram/preferences");
     const payload = normalizeStartPayload(rawPayload);
     const prefs = from ? await readTgPreferences(String(from.id)) : { locale: null, currency: null };
+    if (await maybeBlockForceSubCommand(chatId, chatType, from, { bypassCache: true, startPayload: payload, locale: prefs.locale })) {
+      return;
+    }
     if (!prefs.locale) {
       if (from) await saveOnboardingPayload(String(from.id), payload);
       await sendMessage({
@@ -216,12 +254,14 @@ export async function handleCommand(
 
   // Slash commands first (before pending input & free-text search).
   if (cmd === "/katalog") {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await clearPendingUnlessCreating(from);
     await handleShowCatalog(chatId, from);
     return;
   }
 
   if (cmd === "/games") {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await clearPendingUnlessCreating(from);
     const { handleGamesHome } = await import("./games");
     await handleGamesHome(chatId, 0, from);
@@ -229,6 +269,7 @@ export async function handleCommand(
   }
 
   if (cmd === "/pedia") {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await clearPendingUnlessCreating(from);
     const { handlePediaHome } = await import("./pedia");
     await handlePediaHome(chatId, 0, from);
@@ -236,6 +277,7 @@ export async function handleCommand(
   }
 
   if (cmd === "/cari" || cmd === "/search") {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await clearPendingUnlessCreating(from);
     const searchArg = trimmed.replace(/^\/(?:cari|search)(?:@\S+)?/i, "").trim();
     if (searchArg.length >= 2) {
@@ -282,12 +324,14 @@ export async function handleCommand(
 
   // Persistent reply-menu labels routed BEFORE pending-input handlers so buyers are never trapped.
   if (trimmed === MENU_LABEL_CATALOG || trimmed === MENU_LABEL_EN.catalog) {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await clearPendingUnlessCreating(from);
     await handleShowCatalog(chatId, from);
     return;
   }
 
   if (trimmed === MENU_LABEL_PEDIA || trimmed === MENU_LABEL_EN.pedia) {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await clearPendingUnlessCreating(from);
     const { handlePediaHome } = await import("./pedia");
     await handlePediaHome(chatId, 0, from);
@@ -295,6 +339,7 @@ export async function handleCommand(
   }
 
   if (trimmed === MENU_LABEL_GAMES || trimmed === MENU_LABEL_EN.games) {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await clearPendingUnlessCreating(from);
     const { handleGamesHome } = await import("./games");
     await handleGamesHome(chatId, 0, from);
@@ -302,6 +347,7 @@ export async function handleCommand(
   }
 
   if (trimmed === MENU_LABEL_SEARCH || trimmed === MENU_LABEL_EN.search) {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await clearPendingUnlessCreating(from);
     await handleSearchPrompt(chatId, from);
     return;
@@ -422,17 +468,21 @@ export async function handleCommand(
 
   // Killer UX Pedia: paste link sosmed langsung di chat -> auto-detect layanan cocok.
   if (!cmd.startsWith("/") && trimmed.length >= 8) {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     const { handlePediaPasteLink } = await import("./pedia");
     if (await handlePediaPasteLink(trimmed, chatId, from).catch(() => false)) return;
   }
 
   // Free-text search: plain text >= 2 chars directly searches catalog instead of dumping home.
   if (!cmd.startsWith("/") && trimmed.length >= 2) {
+    if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
     await handleSearchResults(chatId, trimmed, from);
     return;
   }
 
   if (photoFileId && !trimmed) return;
+
+  if (await maybeBlockForceSubCommand(chatId, chatType, from)) return;
 
   // Unknown command or single-character message: show welcome in saved locale.
   const [fallbackCtx, categories] = await Promise.all([

@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
   // Early non-alert callback ack immediately after dedup claim succeeds (before D1 user upsert/handlers).
   const cqEarly = update.callback_query;
   const cqEarlyData = typeof cqEarly?.data === "string" ? cqEarly.data : "";
-  const isPrefOrAlertCallback = cqEarlyData === "soldout" || cqEarlyData.startsWith("lang:") || cqEarlyData.startsWith("cur:");
+  const isPrefOrAlertCallback = cqEarlyData === "soldout" || cqEarlyData.startsWith("lang:") || cqEarlyData.startsWith("cur:") || cqEarlyData.startsWith("fsub:");
   let callbackAnsweredUpfront = false;
   if (cqEarly && isPrivateChat && cqEarlyData && !isPrefOrAlertCallback) {
     callbackAnsweredUpfront = true;
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
 
       if (cq.data === "soldout") {
         await answerCallbackQuery(cq.id, "Varian ini sedang habis.", true);
-      } else if (typeof cq.data === "string" && (cq.data === "lang:id" || cq.data === "lang:en" || cq.data.startsWith("lang:") || cq.data.startsWith("cur:"))) {
+      } else if (typeof cq.data === "string" && (cq.data === "lang:id" || cq.data === "lang:en" || cq.data.startsWith("lang:") || cq.data.startsWith("cur:") || cq.data.startsWith("fsub:"))) {
         await handleCallback(cq.data, cqChatId, messageId, cq.from, cq.id, sourceMeta);
       } else {
         if (!callbackAnsweredUpfront) runInBackground(answerCallbackQuery(cq.id));

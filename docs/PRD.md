@@ -1,5 +1,18 @@
 # PRD — AXVARA
 
+## Channel Resmi Telegram (`@axvaratech`), Smart Force-Join & Siaran Channel — 26 November 2026 (lokal, publikasi via CI `main`)
+
+- **Channel publik resmi:** **`Axvara Official` (`@axvaratech`)** tercatat sebagai single source of truth di `SITE.channelTelegram` (`TG_CHANNEL_HREF`), dengan konfigurasi dinamis di `store_settings.telegram_channel_config` (tanpa env/secret Pages baru).
+- **Smart Force-Join pada Bot Telegram (`@Axvara_bot`):**
+  - Saat aktif (`forceSubEnabled=true`), pembeli yang belum tergabung ke `@axvaratech` dan menjalankan `/start` atau alur masuk belanja (`/katalog`, `/games`, `/pedia`, `/cari`, navigasi katalog/produk, pencarian teks bebas) diarahkan ke layar gerbang bilingual ID/EN berisi tombol **`📢 Gabung @axvaratech`** dan **`✅ Saya Sudah Gabung`** (`fsub:check`).
+  - Deep-link awal (mis. `/start prd_<id>`) disimpan sementara di `onboarding:<payload>` sehingga setelah pembeli bergabung dan mengetuk **`✅ Saya Sudah Gabung`**, alur otomatis berlanjut ke pemilih bahasa / produk tujuan tanpa mencari ulang.
+  - Verifikasi keanggotaan di-cache di `telegram_users.channel_joined_checked_at` (default 6 jam) agar navigasi katalog tidak memanggil Telegram API di setiap klik, sementara `/start` dan `fsub:check` selalu mengecek live.
+  - **Bypass ketat & Fail-Open:** aksi pasca-bayar dan dukungan (`/orders`, `/pesanan`, `/riwayat`, `/bantuan`, `/garansi`, `/bahasa`, `/stop`, `order:*`, `cred:*`, `refresh:*`, `qrenew:*`, `cancel:*`, `claim:*`, `pdrf:*`, serta alur checkout/input pembeli yang sedang berjalan) **tidak pernah diblokir**. Bila `getChatMember` gagal (timeout, error jaringan, atau bot belum menjadi Administrator channel), bot bekerja **fail-open** (pembeli tetap dapat berbelanja) dan mengirim peringatan ter-throttle (maks. 1×/6 jam) ke grup admin `TELEGRAM_ADMIN_CHAT_ID`.
+- **Siaran manual & auto-promo Channel Telegram (`telegram_channel`):**
+  - Panel Admin **Siaran** (`/admin?section=broadcasts`) menambahkan tujuan **`Channel Telegram`** berdampingan dengan Grup WhatsApp, Subscriber Email, dan Pengguna Telegram (1 pengiriman ke `@axvaratech` tanpa footer opt-out `/stop`, dengan tombol CTA inline bila diisi).
+  - Auto-promo katalog ready pagi/sore (`09.00` & `17.00 WIB`) kini mendukung tujuan **Channel Telegram** (`channelPromoEnabled=true`, 1 bubble `link_preview` banner + tombol **`🛒 Order di Bot`** & **`🌐 Website`**, tanpa footer `/stop`) yang dapat diatur terpisah dari auto-promo DM (`telegram_promo_broadcast_enabled`).
+- **Kontrol Panel Admin (`/admin?section=bot`):** kartu **Channel Resmi Telegram & Wajib Join** menyediakan ubah username/nama tampil, saklar instan Smart Force-Join, saklar auto-promo Channel, saklar auto-promo DM, serta tombol **`Cek status admin bot`** baca-saja untuk memastikan `@Axvara_bot` sudah menjadi Administrator dengan izin kirim pesan di `@axvaratech`.
+
 ## Order AXVARA Pedia & AXVARA Games 100% Native di Bot Telegram (`@Axvara_bot`) — 25 November 2026 (lokal, publikasi via CI `main`)
 
 - **Satu bot terpadu, 100% native (tanpa Telegram Mini App):** pembeli kini dapat memesan **AXVARA Pedia** (layanan media sosial — IndoSMM) dan **AXVARA Games** (top up game instan — Sekalipay H2H) langsung di dalam chat pribadi `@Axvara_bot` memakai rail pembayaran **QRIS + Crypto (NOWPayments)** (`includeGateway: false`) tanpa formulir email/WhatsApp, tanpa env/secret Cloudflare Pages baru, dan tanpa migrasi D1 baru.

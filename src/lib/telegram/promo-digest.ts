@@ -2,6 +2,7 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import { SITE } from "@/lib/site";
 import { siteOrigin } from "@/lib/site-url";
 import { escapeHtml, formatRupiah } from "@/lib/telegram/messages/format";
+import type { InlineKeyboardMarkup } from "@/lib/telegram/types";
 import { mergedGroupCardJoinSql, notLoserProductSql, notLoserSlotVariantSql } from "@/lib/product-groups";
 
 export type PromoSlot = "morning" | "evening";
@@ -109,9 +110,11 @@ export function promoTelegramMessages(
   slot: PromoSlot,
   products: PromoProduct[],
   maxLen = TELEGRAM_MESSAGE_MAX_CHARS,
+  options?: { includeStopFooter?: boolean },
 ): string[] {
   const { headerFull, linesFull, ctaFull } = buildPromoParts(slot, products);
-  const tail = `${ctaFull}\n\n${TELEGRAM_PROMO_FOOTER}`;
+  const includeStop = options?.includeStopFooter !== false;
+  const tail = includeStop ? `${ctaFull}\n\n${TELEGRAM_PROMO_FOOTER}` : ctaFull;
   const single = `${headerFull}\n${linesFull.join("\n\n")}\n\n${tail}`;
   if (single.length <= maxLen) return [single];
 
@@ -155,6 +158,24 @@ export function promoTelegramMessages(
     messages.push(tail);
   }
   return messages;
+}
+
+/** Versi katalog ready untuk Channel Telegram resmi (tanpa footer /stop). */
+export function promoChannelMessages(
+  slot: PromoSlot,
+  products: PromoProduct[],
+  maxLen = TELEGRAM_MESSAGE_MAX_CHARS,
+): string[] {
+  return promoTelegramMessages(slot, products, maxLen, { includeStopFooter: false });
+}
+
+export function promoChannelKeyboard(): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [[
+      { text: "🛒 Order di Bot", url: `https://t.me/${SITE.adminTelegram}?start=beli`, style: "success" },
+      { text: "🌐 Website", url: siteOrigin(), style: "primary" },
+    ]],
+  };
 }
 
 export async function loadPromoProducts(database: DatabaseAccess): Promise<PromoProduct[]> {

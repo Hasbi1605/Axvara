@@ -12,6 +12,7 @@ export const SITE = {
   adminWaIntl: "6289519388264",
   adminTelegram: "Axvara_bot",
   supportTelegram: "axvara_support",
+  channelTelegram: "axvaratech",
   webUrl: "https://axvara.tech",
   pediaUrl: "https://pedia.axvara.tech",
   gamesUrl: "https://games.axvara.tech",
@@ -29,6 +30,7 @@ export const SITE = {
 
 export const WA_GROUP_HREF = "https://chat.whatsapp.com/DHgtU7q39TlCV6ToZ4JU39?mode=gi_t";
 export const TG_BOT_HREF = `https://t.me/${SITE.adminTelegram}?start=beli`;
+export const TG_CHANNEL_HREF = `https://t.me/${SITE.channelTelegram}`;
 
 export const AXVARA_SERVICES = [
   { id: "market", name: "AXVARA Market", description: "Aplikasi dan tools premium", href: `${SITE.webUrl}/`, icon: "/brand/axvara-mark.svg" },
@@ -117,4 +119,8 @@ export function adminTelegramLink(): string {
 
 export function supportTelegramLink(): string {
   return `https://t.me/${SITE.supportTelegram}`;
+}
+
+export function channelTelegramLink(): string {
+  return `https://t.me/${SITE.channelTelegram}`;
 }

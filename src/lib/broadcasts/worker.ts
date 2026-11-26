@@ -322,7 +322,7 @@ export async function processBroadcastDeliveryBatch(
         continue;
       }
 
-      const channelAfterMs = channel === 'telegram' ? telegramAfterMs : channel === 'email' ? emailAfterMs : 0;
+      const channelAfterMs = channel === 'telegram' || channel === 'telegram_channel' ? telegramAfterMs : channel === 'email' ? emailAfterMs : 0;
       const channelWaitMs = channelAfterMs - Date.now();
       if (channelWaitMs > MAX_INLINE_PACE_WAIT_MS) {
         rateLimitedRetrySec = Math.max(rateLimitedRetrySec ?? 0, Math.ceil(channelWaitMs / 1000));
@@ -396,7 +396,7 @@ export async function processBroadcastDeliveryBatch(
         result = { state: 'unknown', error: 'delivery_unknown' };
       }
 
-      if (result.blocked) {
+      if (result.blocked && channel === 'telegram') {
         await db.execRun(
           'UPDATE telegram_users SET is_blocked=1 WHERE user_id=? AND chat_id=?',
           row.recipient_id,
@@ -408,7 +408,7 @@ export async function processBroadcastDeliveryBatch(
       if (result.state === 'retry') {
         retrySec = Math.max(1, Math.min(86_400, Number(result.retryAfter) || 60));
         const nextAfterMs = Date.now() + retrySec * 1000;
-        if (channel === 'telegram') {
+        if (channel === 'telegram' || channel === 'telegram_channel') {
           telegramAfterMs = Math.max(telegramAfterMs, nextAfterMs);
           touchedTelegram = true;
         } else if (channel === 'email') {
@@ -424,7 +424,7 @@ export async function processBroadcastDeliveryBatch(
       } else {
         const paceMs = channel === 'email' ? EMAIL_RECIPIENT_PACE_MS : TELEGRAM_RECIPIENT_PACE_MS;
         const nextAfterMs = Date.now() + paceMs;
-        if (channel === 'telegram') {
+        if (channel === 'telegram' || channel === 'telegram_channel') {
           telegramAfterMs = Math.max(telegramAfterMs, nextAfterMs);
           touchedTelegram = true;
         } else if (channel === 'email') {
@@ -610,7 +610,7 @@ export async function processBroadcasts(
        FROM broadcast_deliveries d JOIN broadcast_campaigns c ON c.id=d.campaign_id
        WHERE d.status='pending' AND c.status='queued' AND julianday(d.next_attempt_at)<=julianday(?)
          AND (d.channel!='email' OR ? IS NULL OR julianday(?)<=julianday(?,'+1 second'))
-         AND (d.channel!='telegram' OR ? IS NULL OR julianday(?)<=julianday(?,'+1 second'))${graceClause}
+         AND (d.channel NOT IN ('telegram','telegram_channel') OR ? IS NULL OR julianday(?)<=julianday(?,'+1 second'))${graceClause}
        ORDER BY d.id LIMIT ?`,
       ...selectParams,
     );
@@ -651,7 +651,7 @@ export async function processBroadcasts(
         out.skipped++;
         continue;
       }
-      const afterMs = channel === 'email' ? emailAfterMs : channel === 'telegram' ? telegramAfterMs : 0;
+      const afterMs = channel === 'email' ? emailAfterMs : channel === 'telegram' || channel === 'telegram_channel' ? telegramAfterMs : 0;
       const delay = afterMs ? afterMs - Date.now() : 0;
       if (delay > MAX_INLINE_PACE_WAIT_MS) continue;
       if (Date.now() - started + Math.max(0, delay) >= timeBudgetMs) break;
@@ -700,7 +700,7 @@ export async function processBroadcasts(
         result = { state: 'unknown', error: 'delivery_unknown' };
       }
 
-      if (result.blocked && db.canSpend(2)) {
+      if (result.blocked && channel === 'telegram' && db.canSpend(2)) {
         await db.execRun(
           'UPDATE telegram_users SET is_blocked=1 WHERE user_id=? AND chat_id=?',
           row.recipient_id,
@@ -712,9 +712,9 @@ export async function processBroadcasts(
         result.state === 'retry'
           ? Math.max(1, Math.min(86_400, Number(result.retryAfter) || 60))
           : 60;
-      if (result.state === 'retry' && (channel === 'email' || channel === 'telegram')) {
+      if (result.state === 'retry' && (channel === 'email' || channel === 'telegram' || channel === 'telegram_channel')) {
         const nextAfterMs = Date.now() + retrySec * 1000;
-        if (channel === 'telegram') {
+        if (channel === 'telegram' || channel === 'telegram_channel') {
           telegramAfterMs = Math.max(telegramAfterMs, nextAfterMs);
           touchedTelegram = true;
         } else {
@@ -728,10 +728,10 @@ export async function processBroadcasts(
             token,
           );
         }
-      } else if (channel === 'email' || channel === 'telegram') {
+      } else if (channel === 'email' || channel === 'telegram' || channel === 'telegram_channel') {
         const paceMs = channel === 'email' ? EMAIL_RECIPIENT_PACE_MS : TELEGRAM_RECIPIENT_PACE_MS;
         const nextAfterMs = Date.now() + paceMs;
-        if (channel === 'telegram') {
+        if (channel === 'telegram' || channel === 'telegram_channel') {
           telegramAfterMs = Math.max(telegramAfterMs, nextAfterMs);
           touchedTelegram = true;
         } else {
