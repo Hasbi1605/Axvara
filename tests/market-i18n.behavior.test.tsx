@@ -111,8 +111,8 @@ describe("shared services menu / cross promo EN", () => {
     expect(text()).toContain("AXVARA Market");
     expect(text()).toContain("Premium apps and AI tools");
     expect(text()).toContain("AXVARA Pedia");
-    expect(text()).toContain("Grow followers, likes & views");
-    expect(text()).not.toMatch(/Layanan|Aplikasi dan tools premium|Followers, likes, dan views/);
+    expect(text()).toContain("Instant social boost");
+    expect(text()).not.toMatch(/Layanan|Aplikasi dan tools premium|Boost sosmed instan/);
     document.cookie = "axv_locale=; Max-Age=0; Path=/";
   });
 });
@@ -121,14 +121,14 @@ describe("home community cards EN", () => {
   it("Games + Pedia cards are English under axv_locale=en while ID stays Indonesian", async () => {
     document.cookie = "axv_locale=en; Path=/";
     const { unmount } = render(<DisplayPreferencesProvider><CommunityBar /></DisplayPreferencesProvider>);
-    await waitFor(() => expect(text()).toContain("Grow followers, likes & views"));
+    await waitFor(() => expect(text()).toContain("Instant social boost"));
     expect(text()).toContain("AXVARA Games");
     expect(text()).toContain("Instant game top-ups");
     expect(text()).not.toMatch(/Naikkan followers|Bot Telegram/);
     unmount();
     document.cookie = "axv_locale=; Max-Age=0; Path=/";
     render(<DisplayPreferencesProvider><CommunityBar /></DisplayPreferencesProvider>);
-    await waitFor(() => expect(text()).toContain("Followers, likes, dan views"));
+    await waitFor(() => expect(text()).toContain("Boost sosmed instan"));
     expect(text()).toContain("Top up game instan");
   });
 });
