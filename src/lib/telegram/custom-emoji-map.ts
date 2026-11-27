@@ -90,7 +90,9 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "✈": "5364125616801073577", // IconsEmoji_JABA
   "📞": "5233354831984353090", // IconsEmoji_JABA
   "🤖": "5310170944843579391", // IconsEmoji_JABA
-  "💻": "5350374755016909685", // IslomjonAnimeEmoji (laptop; dulu logo GitHub)
+  "👤": "5819154994967874788", // iconemoji1 (orang dengan laptop)
+  "💻": "6129469062163471210", // getmodpc (laptop)
+  "📱": "6053360738439798205", // getmodpc (ponsel)
   "🖥": "5282843764451195532", // NewsEmoji
   "✍": "5197269100878907942", // FinanceEmoji
   "✏": "5395444784611480792", // NewsEmoji
@@ -105,7 +107,7 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "🎤": "5224736245665511429", // NewsEmoji
   "🎥": "5348125953090403204", // NewsEmoji (tombol play; dulu logo YouTube)
   "📸": "5364310996179503764", // IconsEmoji_JABA
-  "🎨": "5395444784611480792", // NewsEmoji (krayon; dulu logo Photoshop)
+  "🎨": "5819016409258135133", // iconemoji1 (kuas cat)
   "🎯": "5310278924616356636", // FinanceEmoji
   "🎬": "5348125953090403204", // NewsEmoji (tombol play)
   "🛠": "5341715473882955310", // NewsEmoji

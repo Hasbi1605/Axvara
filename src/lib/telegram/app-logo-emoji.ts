@@ -25,13 +25,13 @@ const LOGO = {
   github: "5319084384962248505", // JABA
   kiro: "6066586789580118982", // ApplicationEmojiCheapLuxuryAIBot (statis)
   cursor: "6298374487939227752", // ApplicationEmojiCheapLuxuryAIBot (statis)
-  office: "5841694833013431870", // cnmojis (statis)
+  office: "5354834915345048029", // KorysnostiIcons
   m365: "5879540508572783398", // AppsIconsWB (statis)
-  windows: "5949526051473334692", // bunnytoolss (statis)
-  microsoft: "5334769678541672643", // JABA brands
-  word: "5879737140765527783", // AppsIconsWB (statis)
-  excel: "5877198664769736986", // AppsIconsWB (statis)
-  powerpoint: "5877662216295025964", // AppsIconsWB (statis)
+  windows: "5307728023280166199", // KorysnostiIcons
+  microsoft: "5309880373126113150", // KorysnostiIcons
+  word: "5357433404918866587", // KorysnostiIcons
+  excel: "5357379528849106868", // KorysnostiIcons
+  powerpoint: "5355272843095449523", // KorysnostiIcons
   msproject: "5253610035191234471", // JABA soft
   netflix: "5366477429223209600", // JABA
   spotify: "5233578612665375810", // JABA
@@ -74,6 +74,12 @@ const LOGO = {
   jetbrains: "5300808388584678952", // dev_emojis_solid (statis)
   tradingview: "5870756282545213172", // AppsIconsWB (statis)
   card: "5445353829304387411", // FinanceEmoji
+  getcontact: "6183630429422094747", // Random_bebaspakai (statis)
+  dramabox: "6102843344419819687", // Random_bebaspakai (statis)
+  drakor: "6172461238119828547", // Random_bebaspakai (statis)
+  fizzo: "6143365708022550941", // Random_bebaspakai (statis)
+  visionplus: "6179306432442142921", // Random_bebaspakai (statis)
+  loklok: "6154496081410397543", // Random_bebaspakai (statis)
   leonardo: "6133975818591805751", // namlc1Emoji (statis)
   gamma: "5988084597114543318", // AppsLog
   udemy: "5228729521573764600", // UdemyMasterStore (statis)
@@ -124,7 +130,7 @@ const LOGO = {
   wetv: "6210892326311562345",
   vidio: "6212786664587135856",
   remini: "6212911124149439872",
-  wink: "5879738562399703023", // AppsIconsWB (statis)
+  wink: "6057739384583628047", // violastore_bot (statis)
   scribd: "6210943865919114393",
   bilibili: "5335012820935261564", // ApplicationEmoji
   iflix: "6192694876295923684",
@@ -171,6 +177,12 @@ const RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/vidio/i, LOGO.vidio],
   [/bilibili|bstation/i, LOGO.bilibili],
   [/iflix/i, LOGO.iflix],
+  [/loklok/i, LOGO.loklok],
+  [/vision\s*(\+|plus)/i, LOGO.visionplus],
+  [/fizzo/i, LOGO.fizzo],
+  [/drakor/i, LOGO.drakor],
+  [/drama\s*box/i, LOGO.dramabox],
+  [/get\s*contact/i, LOGO.getcontact],
   // Produktivitas — Microsoft dibedakan per produk
   [/zoom/i, LOGO.zoom],
   [/notion/i, LOGO.notion],

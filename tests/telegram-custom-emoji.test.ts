@@ -175,7 +175,12 @@ describe("app logos and stripping", () => {
     expect(appLogoEmojiId("ElevenReader Ultra")).toBe("5949555742582251295");
     expect(appLogoEmojiId("ElevenLabs")).toBe("5987854309558066066");
     expect(appLogoEmojiId("Gamma AI")).toBe("5988084597114543318");
-    expect(appLogoEmojiId("Vision Plus")).toBeUndefined(); // bukan Microsoft Visio
+    // Vision+ punya logo sendiri, bukan logo Microsoft Visio.
+    expect(appLogoEmojiId("Vision Plus")).toBeDefined();
+    expect(appLogoEmojiId("Vision Plus")).not.toBe(appLogoEmojiId("Microsoft Visio"));
+    for (const name of ["Loklok", "Fizzo Novel", "Drakor ID", "Dramabox", "Getcontact Premium", "Wink VIP"]) {
+      expect(appLogoEmojiId(name), name).toBeDefined();
+    }
     const ms = ["Office365 Lifetime", "Microsoft 365", "Microsoft Visio", "Microsoft Project", "Windows 10 / 11 Pro", "Microsoft Copilot Premium", "GitHub Copilot"]
       .map((name) => appLogoEmojiId(name));
     expect(ms.every(Boolean)).toBe(true);
