@@ -61,6 +61,8 @@ export interface InlineKeyboardButton {
   callback_data?: string;
   url?: string;
   style?: "primary" | "success" | "danger";
+  /** Bot API 9.4+: ikon custom emoji (animasi) sebelum teks tombol. */
+  icon_custom_emoji_id?: string;
 }
 
 export interface InlineKeyboardMarkup {
@@ -72,6 +74,8 @@ export interface InlineKeyboardMarkup {
 export interface ReplyKeyboardButton {
   text: string;
   style?: "primary" | "success" | "danger";
+  /** Bot API 9.4+: ikon custom emoji (animasi) sebelum teks tombol. */
+  icon_custom_emoji_id?: string;
 }
 
 export interface ReplyKeyboardMarkup {

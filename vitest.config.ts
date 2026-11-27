@@ -18,7 +18,7 @@ export default defineConfig({
     // `.tsx` sebelumnya TIDAK termasuk, sehingga test komponen apa pun akan
     // diam-diam tidak pernah dijalankan.
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
-    setupFiles: ["./tests/setup/jsdom-storage.ts"],
+    setupFiles: ["./tests/setup/jsdom-storage.ts", "./tests/setup/telegram-custom-emoji-off.ts"],
   },
   resolve: {
     alias: {

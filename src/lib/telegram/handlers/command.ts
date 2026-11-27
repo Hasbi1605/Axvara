@@ -12,7 +12,7 @@ import { sendMessage } from "@/lib/telegram/api";
 import { SITE } from "@/lib/site";
 import {
   cb, homeKeyboard, warrantyKeyboard, languageChooserKeyboard, settingsKeyboard,
-  helpKeyboard, mainReplyMenu, MENU_LABEL_CATALOG, MENU_LABEL_PEDIA, MENU_LABEL_GAMES,
+  helpKeyboard, mainReplyMenu, canonicalMenuLabel, MENU_LABEL_CATALOG, MENU_LABEL_PEDIA, MENU_LABEL_GAMES,
   MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
   MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY,
   MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_GLOBE_LEGACY, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_EN,
@@ -96,7 +96,9 @@ export async function handleCommand(
   photoFileId?: string,
   messageId?: number,
 ) {
-  const trimmed = text.trim();
+  // Reply-menu bertombol ikon animasi mengirim label tanpa emoji; kanonisasi
+  // dulu agar pencocokan label menu di bawah tetap persis.
+  const trimmed = canonicalMenuLabel(text.trim());
   const cmd = trimmed.toLowerCase().split(/\s+/)[0]?.split("@")[0] ?? "";
 
   if ((cmd === '/stop' || cmd === '/siaran_on') && from && chatType === 'private' && chatId === from.id) {

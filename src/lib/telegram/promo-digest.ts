@@ -3,6 +3,7 @@ import { SITE } from "@/lib/site";
 import { siteOrigin } from "@/lib/site-url";
 import { escapeHtml, formatRupiah } from "@/lib/telegram/messages/format";
 import type { InlineKeyboardMarkup } from "@/lib/telegram/types";
+import { appLogoHtml } from "@/lib/telegram/app-logo-emoji";
 import { mergedGroupCardJoinSql, notLoserProductSql, notLoserSlotVariantSql } from "@/lib/product-groups";
 
 export type PromoSlot = "morning" | "evening";
@@ -75,7 +76,8 @@ function buildPromoParts(slot: PromoSlot, products: PromoProduct[]) {
   }
   const linesFull = groups.map((group) =>
     [`${iconFor(group.category)} <b>${escapeHtml(group.category.toUpperCase())}</b>`,
-      ...group.items.map((product) => `✅ ${escapeHtml(product.name)} — ${formatRupiah(product.price)}`)].join("\n"),
+      // Telegram: logo aplikasi animasi (custom emoji) bila dikenal, ✅ bila tidak.
+      ...group.items.map((product) => `${appLogoHtml(product.name, "✅")} ${escapeHtml(product.name)} — ${formatRupiah(product.price)}`)].join("\n"),
   );
   const linesWa = groups.map((group) =>
     [`${iconFor(group.category)} *${group.category.toUpperCase()}*`,

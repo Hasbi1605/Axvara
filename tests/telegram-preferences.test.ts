@@ -72,14 +72,14 @@ describe("TG1 onboarding chooser + independent preferences", () => {
     expect(prefs(userA.id)).toMatchObject({ locale: "en", display_currency: "USD" });
     expect(api.answer).toHaveBeenCalledWith("cb-1", undefined, false);
     expect(String(api.photo.mock.calls.at(-1)?.[0]?.caption ?? "")).toBe(
-      "Hi, A 👋\nWelcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.\n\nPick a category below to start shopping, or type a product name to search.",
+      "🙂 <b>Hi, A!</b>\n<i>Premium apps &amp; tools — delivered automatically, 24/7.</i>\n\n⚡ Instant delivery · ✅ Live stock · 💬 24/7 support\n🛡 Warranty · 🔐 Secure payment · 💳 QRIS, VA, e-wallet, crypto\n\n<i>Pick a category below or type a product name</i> ⬇️",
     );
     vi.clearAllMocks();
     await handleCommand("/start", userA.id, "private", userA);
     expect(api.send.mock.calls.filter((c) => /Pilih bahasa/.test(String(c[0]?.text ?? "")))).toHaveLength(0);
     const homeCaption = String(api.photo.mock.calls.at(-1)?.[0]?.caption ?? "");
     expect(homeCaption).toBe(
-      "Hi, A 👋\nWelcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.\n\nPick a category below to start shopping, or type a product name to search.",
+      "🙂 <b>Hi, A!</b>\n<i>Premium apps &amp; tools — delivered automatically, 24/7.</i>\n\n⚡ Instant delivery · ✅ Live stock · 💬 24/7 support\n🛡 Warranty · 🔐 Secure payment · 💳 QRIS, VA, e-wallet, crypto\n\n<i>Pick a category below or type a product name</i> ⬇️",
     );
   });
 

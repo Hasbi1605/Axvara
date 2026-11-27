@@ -15,6 +15,7 @@ import type {
   WebhookInfo,
 } from "./types";
 import { applyButtonStyles } from "./button-style";
+import { applyCustomEmoji, hasCustomEmoji, stripCustomEmoji } from "./custom-emoji";
 import { siteOrigin } from "@/lib/site-url";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
@@ -56,12 +57,34 @@ async function callApi<T>(
   const token = getToken();
   const url = `${TELEGRAM_API_BASE}/bot${token}/${method}`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  const payload = body && "reply_markup" in body && body.reply_markup != null
+  const styled = body && "reply_markup" in body && body.reply_markup != null
     ? { ...body, reply_markup: applyButtonStyles(body.reply_markup as AnyReplyMarkup) }
     : body;
+  // Custom emoji animasi (Bot API 9.4+, pemilik bot Premium). Bila Telegram
+  // menolak payload berhias (400, mis. Premium pemilik habis atau ID emoji
+  // tidak valid), kirim ulang sekali dengan emoji standar agar pesan tetap
+  // sampai. "message is not modified" bukan kegagalan emoji; jangan diulang.
+  const decorated = applyCustomEmoji(styled);
+  const first = await postToTelegram<T>(url, decorated, timeoutMs, signal);
+  if (
+    hasCustomEmoji(decorated) &&
+    !first.ok &&
+    first.error_code === 400 &&
+    !/message is not modified/i.test(String(first.description || ""))
+  ) {
+    return postToTelegram<T>(url, stripCustomEmoji(styled), timeoutMs, signal);
+  }
+  return first;
+}
+
+async function postToTelegram<T>(
+  url: string,
+  payload: Record<string, unknown> | undefined,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<TelegramApiResponse<T>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {

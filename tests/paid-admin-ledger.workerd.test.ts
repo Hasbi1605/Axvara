@@ -36,6 +36,8 @@ it("migrates the notice ledger and claims one labelled recovery on native D1", a
       "process.env.TELEGRAM_BOT_ENABLED": JSON.stringify("true"),
       "process.env.TELEGRAM_ADMIN_CHAT_ID": JSON.stringify("-1234"),
       "process.env.TELEGRAM_BOT_TOKEN": JSON.stringify("fixture"),
+      // Setup Node (tests/setup/telegram-custom-emoji-off.ts) tidak sampai ke bundle workerd.
+      "process.env.TELEGRAM_CUSTOM_EMOJI": JSON.stringify("off"),
     },
     bundle: true, write: false, format: "esm", platform: "neutral", target: "es2022",
   });

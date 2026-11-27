@@ -14,6 +14,7 @@ import { tgDisplayPrice } from "./render-prefs";
 import { formatIdr } from "@/lib/i18n/format";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { invoiceItems } from "./messages/format";
+import { appLogoIcon } from "./app-logo-emoji";
 import { isQrisOfferMethod, isUsdtOfferMethod, pickRepresentativeCryptoMethod } from "./messages/purchase";
 
 export type OfferMethodView = {
@@ -261,6 +262,29 @@ export const MENU_LABEL_EN = {
   settingsLegacy: "⚙️ Settings",
 } as const;
 
+/**
+ * Tombol reply-menu kini menampilkan emoji sebagai ikon animasi
+ * (`icon_custom_emoji_id`) sehingga teks yang dikirim Telegram saat diketuk
+ * TANPA emoji ("Katalog"). Petakan teks itu kembali ke label lengkap agar
+ * routing persis-sama di command.ts tetap bekerja.
+ */
+const MENU_LABELS_ALL: readonly string[] = [
+  MENU_LABEL_CATALOG, MENU_LABEL_PEDIA, MENU_LABEL_GAMES, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
+  MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY, MENU_LABEL_SETTINGS,
+  MENU_LABEL_SETTINGS_GLOBE_LEGACY, MENU_LABEL_SETTINGS_LEGACY,
+  ...Object.values(MENU_LABEL_EN), "📦 Pesanan Saya", "📦 My Orders",
+];
+const LEADING_EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\uFE0F|\u200D|\s)+/u;
+const MENU_LABEL_BY_PLAIN = new Map<string, string>();
+for (const label of MENU_LABELS_ALL) {
+  const plain = label.replace(LEADING_EMOJI_RE, "").trim();
+  if (plain && !MENU_LABEL_BY_PLAIN.has(plain)) MENU_LABEL_BY_PLAIN.set(plain, label);
+}
+
+export function canonicalMenuLabel(text: string): string {
+  return MENU_LABEL_BY_PLAIN.get(text) ?? text;
+}
+
 export type TelegramCategoryItem = { id: number; name: string; slug?: string | null };
 
 const HOME_MAX_CATEGORIES = 6;
@@ -372,7 +396,7 @@ export function catalogFlatKeyboard(
   const en = ctx?.locale === "en";
 
   const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
-    return [{ text: productButtonText(p, ctx, 28), callback_data: cb.product(p.id) }];
+    return [{ text: productButtonText(p, ctx, 28), callback_data: cb.product(p.id), ...appLogoIcon(p.name) }];
   });
 
   // Pagination (prev | 1/3 | next)
@@ -428,7 +452,7 @@ export function productsKeyboard(
 
   // Single-column for products (longer labels with price + stock)
   const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
-    return [{ text: productButtonText(p, ctx, 25), callback_data: cb.product(p.id) }];
+    return [{ text: productButtonText(p, ctx, 25), callback_data: cb.product(p.id), ...appLogoIcon(p.name) }];
   });
 
   // Pagination
@@ -475,7 +499,7 @@ export function searchResultsKeyboard(
 ): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
   const rows: InlineKeyboardButton[][] = products.slice(0, 10).map((p) => {
-    return [{ text: productButtonText(p, ctx, 28), callback_data: cb.product(p.id) }];
+    return [{ text: productButtonText(p, ctx, 28), callback_data: cb.product(p.id), ...appLogoIcon(p.name) }];
   });
   rows.push([
     { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },

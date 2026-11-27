@@ -53,19 +53,28 @@ export function welcomeMessageLocalized(
   _bestsellers: { name: string; price?: number }[] = [],
 ): string {
   const name = escapeHtml(truncate(firstName, 50));
+  // Gaya kartu sambutan (referensi owner 27 Nov 2026: AI Vault Hub). Emoji
+  // standar di sini dihias otomatis menjadi custom emoji animasi oleh
+  // custom-emoji.ts saat dikirim; tanpa Premium/peta tetap terbaca normal.
   if (locale === "en") {
     return [
-      `Hi, ${name} 👋`,
-      "Welcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.",
+      `🙂 <b>Hi, ${name}!</b>`,
+      "<i>Premium apps &amp; tools — delivered automatically, 24/7.</i>",
       "",
-      "Pick a category below to start shopping, or type a product name to search.",
+      "⚡ Instant delivery · ✅ Live stock · 💬 24/7 support",
+      "🛡 Warranty · 🔐 Secure payment · 💳 QRIS, VA, e-wallet, crypto",
+      "",
+      "<i>Pick a category below or type a product name</i> ⬇️",
     ].join("\n");
   }
   return [
-    `Halo, ${name} 👋`,
-    "Selamat datang di <b>AXVARA</b>, toko aplikasi &amp; tools premium dengan pengiriman otomatis 24 jam.",
+    `🙂 <b>Halo, ${name}!</b>`,
+    "<i>Aplikasi &amp; tools premium — dikirim otomatis 24 jam.</i>",
     "",
-    "Pilih kategori di bawah untuk mulai belanja, atau ketik nama produk untuk mencari.",
+    "⚡ Kirim instan · ✅ Stok real-time · 💬 Support 24/7",
+    "🛡 Bergaransi · 🔐 Pembayaran aman · 💳 QRIS, VA, e-wallet, crypto",
+    "",
+    "<i>Pilih kategori di bawah atau ketik nama produk</i> ⬇️",
   ].join("\n");
 }
 

@@ -1,5 +1,6 @@
 import { escapeHtml, escapeItemSummary, formatRupiah, truncate, formatSoldCountLabel, paymentLabels, fulfillmentLabels } from "./format";
 import type { Locale } from "@/lib/i18n/locale";
+import { appLogoEmojiId } from "../app-logo-emoji";
 
 // TG2a read-surface localization: tiny optional render opts threaded through
 // existing messages (default id keeps admin/group callers compiling).
@@ -162,7 +163,10 @@ export function productDetailMessage(product: {
   const en = locale === "en";
   const name = escapeHtml(truncate(product.name, 100));
   const sold = Math.max(0, Math.floor(product.sold_count ?? 0));
-  const titleLine = sold > 0 ? `<b>${name}</b> · ${formatSoldCountLabel(sold, locale)}` : `<b>${name}</b>`;
+  // Logo aplikasi animasi (custom emoji) di depan nama bila produk dikenal.
+  const logoId = appLogoEmojiId(product.name);
+  const logo = logoId ? `<tg-emoji emoji-id="${logoId}">📱</tg-emoji> ` : "";
+  const titleLine = sold > 0 ? `${logo}<b>${name}</b> · ${formatSoldCountLabel(sold, locale)}` : `${logo}<b>${name}</b>`;
   const ctaLine = en ? "Choose a variant 👇" : "Pilih varian 👇";
   const shortDesc = extractShortProductDescription(product.description, 180);
   if (!shortDesc) return `${titleLine}\n${ctaLine}`;

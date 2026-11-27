@@ -342,7 +342,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     const photoCall = tg.sendPhoto.mock.calls[0]?.[0];
     expect(photoCall?.photo).toContain("/banners/tg-welcome.jpg");
     expect(photoCall?.caption).toBe(
-      "Halo, Tester 👋\nSelamat datang di <b>AXVARA</b>, toko aplikasi &amp; tools premium dengan pengiriman otomatis 24 jam.\n\nPilih kategori di bawah untuk mulai belanja, atau ketik nama produk untuk mencari.",
+      "🙂 <b>Halo, Tester!</b>\n<i>Aplikasi &amp; tools premium — dikirim otomatis 24 jam.</i>\n\n⚡ Kirim instan · ✅ Stok real-time · 💬 Support 24/7\n🛡 Bergaransi · 🔐 Pembayaran aman · 💳 QRIS, VA, e-wallet, crypto\n\n<i>Pilih kategori di bawah atau ketik nama produk</i> ⬇️",
     );
     expect(photoCall?.caption).not.toContain("Paling laris");
     const welcomeKb = photoCall?.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string; style?: string }[][] };
@@ -409,7 +409,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     await flushWaitUntil(waitUntilTasks.splice(0));
     expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
     expect(tg.sendPhoto.mock.calls[0]?.[0]?.caption).toBe(
-      "Hi, Tester 👋\nWelcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.\n\nPick a category below to start shopping, or type a product name to search.",
+      "🙂 <b>Hi, Tester!</b>\n<i>Premium apps &amp; tools — delivered automatically, 24/7.</i>\n\n⚡ Instant delivery · ✅ Live stock · 💬 24/7 support\n🛡 Warranty · 🔐 Secure payment · 💳 QRIS, VA, e-wallet, crypto\n\n<i>Pick a category below or type a product name</i> ⬇️",
     );
     expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 77);
     expect(tg.sendMessage).toHaveBeenCalledTimes(1);

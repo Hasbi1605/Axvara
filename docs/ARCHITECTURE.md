@@ -1,5 +1,13 @@
 # ARCHITECTURE.md — AXVARA
 
+## Custom emoji animasi Bot Telegram (Premium pemilik bot) — 27 November 2026 (lokal, publikasi via CI `main`)
+
+- **Titik integrasi tunggal:** `callApi` (`src/lib/telegram/api.ts`) menerapkan `applyButtonStyles` lalu `applyCustomEmoji` (`src/lib/telegram/custom-emoji.ts`) ke setiap request. Teks/caption ber-`parse_mode: "HTML"` (termasuk `media.caption`) dibungkus `<tg-emoji emoji-id="…">` untuk emoji yang ada di `CUSTOM_EMOJI_MAP` (`custom-emoji-map.ts`, kunci tanpa U+FE0F, maks 50/pesan). Emoji pembuka teks tombol inline/reply dipindah ke `icon_custom_emoji_id` lalu dibuang dari teks; tombol emoji-saja atau yang sudah berikon dibiarkan.
+- **Logo produk:** `app-logo-emoji.ts` (`appLogoEmojiId/appLogoHtml/appLogoIcon`) mencocokkan nama produk dengan aturan regex berurutan (spesifik dulu). Dipakai `catalogFlatKeyboard`/`productsKeyboard`/`searchResultsKeyboard`, `productDetailMessage`, dan baris produk `promo-digest.ts` (Telegram DM + Channel; teks WA tidak pernah memuat custom emoji).
+- **Reply menu:** tombol reply berikon terkirim tanpa emoji saat diketuk; `canonicalMenuLabel()` (`keyboards.ts`) memetakan teks polos kembali ke label `MENU_LABEL_*`/`MENU_LABEL_EN` sebelum routing persis di `handlers/command.ts`.
+- **Fallback & saklar:** respons 400 atas payload yang memuat custom emoji (kecuali `message is not modified`) memicu satu kirim ulang via `stripCustomEmoji()` (emoji standar, `style` tombol utuh). Env opsional `TELEGRAM_CUSTOM_EMOJI=off|false|0` mematikan dekorasi + logo; tanpa env = aktif. Test mematikannya default lewat `tests/setup/telegram-custom-emoji-off.ts`.
+- **Syarat:** Bot API 9.4+ dan pemilik bot berlangganan Telegram Premium. Regenerasi peta: `node scripts/telegram-custom-emoji-pack.mjs <pack> [...]` (butuh `TELEGRAM_BOT_TOKEN` lokal, menulis ulang `custom-emoji-map.ts`).
+
 ## Channel Resmi Telegram (`@axvaratech`), Smart Force-Join & Siaran Channel (`0169`) — 26 November 2026 (lokal, publikasi via CI `main`)
 
 - **Nol env/secret Cloudflare Pages baru:** seluruh konfigurasi channel tersimpan di `store_settings.telegram_channel_config` (JSON: `{ channelUsername, channelTitle, forceSubEnabled, channelPromoEnabled, cacheTtlSeconds }`) bersama `store_settings.telegram_promo_broadcast_enabled` (DM promo). Single source of truth publik di `src/lib/site.ts` (`SITE.channelTelegram = "axvaratech"`, `TG_CHANNEL_HREF`, `channelTelegramLink()`).
