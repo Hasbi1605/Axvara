@@ -66,6 +66,13 @@ describe("Games screens copy (owner 28 Nov 2026)", () => {
 
 });
 
+describe("No-banner trial (owner 28 Nov 2026)", () => {
+  it("is limited to Mobile Legends", async () => {
+    const { GAMES_NO_BANNER_SLUGS } = await import("@/lib/telegram/handlers/games");
+    expect([...GAMES_NO_BANNER_SLUGS]).toEqual(["mobile-legends"]);
+  });
+});
+
 describe("Region flag icons (owner 28 Nov 2026)", () => {
   it("maps ISO-2, Europe and global regions to animated flags/globe", async () => {
     const { FLAG_EMOJI, regionIcon, regionFlagHtml } = await import("@/lib/telegram/flag-emoji");

@@ -121,6 +121,14 @@ function compactSkuButtonLabel(name: string, price: number, ctx: TgPriceCtx): st
   return `${truncateBtn(short, 16)} · ${priceStr}`;
 }
 
+/**
+ * Uji coba tanpa banner (owner 28 Nov 2026): di Telegram Desktop pesan foto
+ * dibatasi lebar fotonya sehingga tombol sempit. Game di set ini dikirim
+ * sebagai teks biasa tanpa gambar agar tombol bisa selebar mungkin.
+ * Kosongkan untuk kembali ke foto.
+ */
+export const GAMES_NO_BANNER_SLUGS: ReadonlySet<string> = new Set(["mobile-legends"]);
+
 /** "Diamond · 💎 Diamond" → cukup sekali: label tipe sudah menyebut mata uangnya. */
 export function sameAsTypeLabel(currency: string | null, typeLabel: string | null | undefined): boolean {
   const word = currency?.replace(/^\S+\s+/, "").trim().toLowerCase();
@@ -551,7 +559,7 @@ export async function handleGamesOpen(
   const assetPath = detail.game.banner || detail.game.icon;
   const photoUrl = assetPath && assetPath.startsWith("/") ? `${siteUrl}${assetPath}` : null;
 
-  if (photoUrl && caption.length <= 1024) {
+  if (photoUrl && !GAMES_NO_BANNER_SLUGS.has(detail.game.slug) && caption.length <= 1024) {
     const res = await replaceWithPhoto({
       chat_id: chatId,
       message_id: messageId,

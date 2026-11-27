@@ -339,8 +339,13 @@ describe("Native Telegram AXVARA Games end-to-end", () => {
     expect(webIdx).toBe(homeIdx - 1);
 
     // 2. Open Mobile Legends -> default Indonesia, price filter, SKU search, Region switch (no Pass tab, owner 28 Nov 2026)
+    tg.sendPhoto.mockClear();
+    tg.editMessageMedia.mockClear();
     await click("gmo:mobile-legends");
     const mlUi = lastUiPayload();
+    // Uji coba tanpa banner (owner 28 Nov 2026): ML dikirim teks biasa, bukan foto.
+    expect(tg.sendPhoto).not.toHaveBeenCalled();
+    expect(tg.editMessageMedia).not.toHaveBeenCalled();
     expect(mlUi.text).toContain("Mobile Legends");
     // Owner 28 Nov 2026: region aktif berbendera + mata uang di caption.
     expect(mlUi.text).toContain("🇮🇩");
