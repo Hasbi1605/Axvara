@@ -10,19 +10,19 @@
 //
 // Sumber pack (dipilih owner 27 Nov 2026 + pelengkap):
 //   NewsEmoji, ZEROX_660_by_TgEmodziBot (ZNV CLAN), IconsEmoji_JABA,
-//   FinanceEmoji, FlagsEmoji — lihat https://t.me/addemoji/<nama>.
+//   FinanceEmoji, FlagsEmoji, IslomjonAnimeEmoji — lihat https://t.me/addemoji/<nama>.
 // Regenerasi dari pack lain: node scripts/telegram-custom-emoji-pack.mjs <pack>
 
 export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   // Navigasi
   "🏠": "5416041192905265756", // NewsEmoji
-  "◀": "5332819376842226496", // IconsEmoji_JABA
-  "▶": "5332722143077613679", // IconsEmoji_JABA
-  "⬅": "5332348837405145999", // IconsEmoji_JABA
-  "➡": "5416117059207572332", // NewsEmoji
+  "◀": "5332348837405145999", // IconsEmoji_JABA (panah kiri tebal)
+  "▶": "5332684922891025384", // IconsEmoji_JABA (panah kanan tebal)
+  "⬅": "5332348837405145999", // IconsEmoji_JABA (panah kiri tebal)
+  "➡": "5332684922891025384", // IconsEmoji_JABA (panah kanan tebal)
   "⬇": "5406745015365943482", // NewsEmoji
-  "🔄": "5375338737028841420", // NewsEmoji
-  "🔁": "5375338737028841420", // NewsEmoji
+  "🔄": "6282685788450721937", // DSPSIR_by_TgEmojis_bot (panah refresh)
+  "🔁": "6282685788450721937", // DSPSIR_by_TgEmojis_bot (panah refresh)
   "🔎": "5231012545799666522", // NewsEmoji
   "🔍": "5231012545799666522", // NewsEmoji
   "📂": "5332586662629227075", // IconsEmoji_JABA
@@ -36,10 +36,10 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "🌍": "5224450179368767019", // FinanceEmoji
   "🌎": "5224450179368767019", // FinanceEmoji
   // Status
-  "✅": "6267008582294705964", // ZNV CLAN
+  "✅": "6267225207560214192", // ZNV CLAN (gaya centang Viola, pilihan owner)
   "✔": "5206607081334906820", // NewsEmoji
   "❌": "5210952531676504517", // NewsEmoji
-  "✖": "5363975280060812479", // IconsEmoji_JABA
+  "✖": "5271934564699226262", // IconsEmoji_JABA (silang merah)
   "⚠": "5447644880824181073", // NewsEmoji
   "🚨": "5395695537687123235", // NewsEmoji
   "⏳": "6267229004311303657", // ZNV CLAN
@@ -57,10 +57,10 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "🔵": "5332571076192910271", // IconsEmoji_JABA
   "🟣": "5332694612337244014", // IconsEmoji_JABA
   // Belanja & pembayaran
-  "🛍": "5406683434124859552", // NewsEmoji
+  "🛍": "5278702045883292456", // FinanceEmoji (toko; dulu stiker SALE)
   "🛒": "5312361253610475399", // FinanceEmoji
-  "📦": "5348149223223211884", // IconsEmoji_JABA
-  "💳": "5389078268689265131", // IconsEmoji_JABA
+  "📦": "5429263077927300012", // IslomjonAnimeEmoji (kotak; dulu logo Nova Poshta)
+  "💳": "5445353829304387411", // FinanceEmoji (kartu polos, bukan VISA)
   "🪙": "5377505475015235101", // FinanceEmoji
   "💰": "6267068789146260253", // ZNV CLAN
   "💵": "5409048419211682843", // NewsEmoji
@@ -84,15 +84,13 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "💬": "5443038326535759644", // NewsEmoji
   "📧": "5366201992970518798", // IconsEmoji_JABA
   "✉": "5253742260054409879", // NewsEmoji
-  "📩": "5332369758190845562", // IconsEmoji_JABA
+  "📩": "5253742260054409879", // NewsEmoji (amplop)
   "📢": "5424818078833715060", // NewsEmoji
   "📣": "5424818078833715060", // NewsEmoji
   "✈": "5364125616801073577", // IconsEmoji_JABA
   "📞": "5233354831984353090", // IconsEmoji_JABA
-  "👤": "5389064576333527180", // IconsEmoji_JABA
   "🤖": "5310170944843579391", // IconsEmoji_JABA
-  "📱": "5319228768877839193", // IconsEmoji_JABA
-  "💻": "5319084384962248505", // IconsEmoji_JABA
+  "💻": "5350374755016909685", // IslomjonAnimeEmoji (laptop; dulu logo GitHub)
   "🖥": "5282843764451195532", // NewsEmoji
   "✍": "5197269100878907942", // FinanceEmoji
   "✏": "5395444784611480792", // NewsEmoji
@@ -102,14 +100,14 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "🗑": "5445267414562389170", // NewsEmoji
   "➕": "5397916757333654639", // NewsEmoji
   // Kategori & hiburan
-  "🎮": "5361741454685256344", // NewsEmoji
+  "🎮": "5319120041780726017", // IslomjonAnimeEmoji (stik analog, pilihan owner)
   "🎵": "5463107823946717464", // NewsEmoji
   "🎤": "5224736245665511429", // NewsEmoji
-  "🎥": "5321505140199418151", // IconsEmoji_JABA
+  "🎥": "5348125953090403204", // NewsEmoji (tombol play; dulu logo YouTube)
   "📸": "5364310996179503764", // IconsEmoji_JABA
-  "🎨": "5352556692892564574", // IconsEmoji_JABA
+  "🎨": "5395444784611480792", // NewsEmoji (krayon; dulu logo Photoshop)
   "🎯": "5310278924616356636", // FinanceEmoji
-  "🎬": "6264778055454036969", // ZNV CLAN
+  "🎬": "5348125953090403204", // NewsEmoji (tombol play)
   "🛠": "5341715473882955310", // NewsEmoji
   // Ekspresi & promo
   "🔥": "6264785189394717307", // ZNV CLAN

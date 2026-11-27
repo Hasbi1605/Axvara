@@ -14,7 +14,7 @@ import { tgDisplayPrice } from "./render-prefs";
 import { formatIdr } from "@/lib/i18n/format";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { invoiceItems } from "./messages/format";
-import { appLogoIcon } from "./app-logo-emoji";
+import { appLogoIcon, brandIcon } from "./app-logo-emoji";
 import { isQrisOfferMethod, isUsdtOfferMethod, pickRepresentativeCryptoMethod } from "./messages/purchase";
 
 export type OfferMethodView = {
@@ -1184,7 +1184,10 @@ export function paymentMethodOfferKeyboard(
     const data = `pm:${state.nonce}:${index}`;
     if (isQrisOfferMethod(method)) {
       const label = rpTotal ? `📱 QRIS · ${rpTotal}` : "📱 QRIS";
-      qrisRows.push([{ text: label, callback_data: data }]);
+      const qris = brandIcon("qris");
+      qrisRows.push([qris.icon_custom_emoji_id
+        ? { text: label.replace(/^📱 /u, ""), callback_data: data, ...qris }
+        : { text: label, callback_data: data }]);
       return;
     }
     if (method.kind === "gateway" && method.gateway) {
@@ -1240,7 +1243,7 @@ export function paymentMethodOfferKeyboard(
   return { inline_keyboard: rows };
 }
 
-// Standard emoji only: custom coin-logo emoji require Telegram Premium support.
+// Standard emoji fallback; coin logos come from brandIcon() (custom emoji, Premium owner).
 const CRYPTO_COIN_EMOJI = new Map([
   ["USDT", "💵"], ["USDC", "🔵"], ["BTC", "🟠"], ["ETH", "🔷"],
   ["BNB", "🟡"], ["TRX", "🔴"], ["TON", "💎"], ["LTC", "⚪"],
@@ -1271,8 +1274,9 @@ export function cryptoCoinKeyboard(
     for (const symbol of list) {
       const options = forSymbol(symbol);
       const emoji = CRYPTO_COIN_EMOJI.get(symbol);
-      rows.push([{ text: emoji ? `${emoji} ${symbol}` : symbol,
-        callback_data: options.length === 1 ? select(options[0].index) : open(symbol) }]);
+      const logo = brandIcon(symbol);
+      rows.push([{ text: emoji && !logo.icon_custom_emoji_id ? `${emoji} ${symbol}` : symbol,
+        callback_data: options.length === 1 ? select(options[0].index) : open(symbol), ...logo }]);
     }
     if (page) back = open();
     else if (others.length) rows.push([{ text: en ? "➕ Others" : "➕ Lainnya", callback_data: open("others") }]);
@@ -1280,7 +1284,7 @@ export function cryptoCoinKeyboard(
     const options = forSymbol(page);
     if (options.length < 2) return null;
     for (const { asset, index } of options) {
-      rows.push([{ text: `${asset.symbol} · ${asset.network.toUpperCase()}`, callback_data: select(index) }]);
+      rows.push([{ text: `${asset.symbol} · ${asset.network.toUpperCase()}`, callback_data: select(index), ...brandIcon(asset.symbol) }]);
     }
     back = open(CRYPTO_COIN_EMOJI.has(page) ? undefined : "others");
   }

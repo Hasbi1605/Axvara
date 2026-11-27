@@ -12,6 +12,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { execRun, isD1Mode, queryAll, queryFirst } from "@/lib/db";
 import { loadPublicPediaProducts, type PediaCatalogProduct, type PediaCatalogTier } from "@/lib/pedia/public-catalog";
 import { detectPediaLink, PEDIA_PLATFORM_LABEL, pediaTargetMatches, type PediaPlatform } from "@/lib/pedia/link";
+import { brandIcon } from "@/lib/telegram/app-logo-emoji";
 import { pediaMatches, pediaPlatform, pediaTargetExample } from "@/lib/pedia/platforms";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { computePediaPrice } from "@/lib/pedia/pricing";
@@ -94,6 +95,14 @@ function platformLabelOf(platformId: string): string {
 
 function platformIconOf(platformId: string): string {
   return PLATFORM_ICON_MAP.get(platformId) ?? "📱";
+}
+
+/** Tombol platform: logo merek animasi bila ada (tanpa emoji standar ganda). */
+function platformButton(platformId: string, label: string, callback_data: string): InlineKeyboardButton {
+  const icon = brandIcon(platformId);
+  return icon.icon_custom_emoji_id
+    ? { text: label, callback_data, ...icon }
+    : { text: `${platformIconOf(platformId)} ${label}`, callback_data };
 }
 
 function twoColGrid<T>(items: T[], toButton: (item: T) => InlineKeyboardButton): InlineKeyboardButton[][] {
@@ -249,10 +258,7 @@ export async function handlePediaHome(
     ? popularItems
     : platformsPresent.slice(0, 8).map((id) => ({ id, icon: platformIconOf(id) }));
 
-  const rows = twoColGrid(shownPlatforms, (p) => ({
-    text: `${p.icon} ${platformLabelOf(p.id)}`,
-    callback_data: cb.pediaPlatform(p.id, 0),
-  }));
+  const rows = twoColGrid(shownPlatforms, (p) => platformButton(p.id, platformLabelOf(p.id), cb.pediaPlatform(p.id, 0)));
   rows.push([
     { text: en ? `📂 All Platforms (${platformsPresent.length})` : `📂 Semua Platform (${platformsPresent.length})`, callback_data: cb.pediaAll(0), style: "primary" },
     { text: en ? "🔎 Search" : "🔎 Cari Layanan", callback_data: cb.pediaSearch(), style: "primary" },
@@ -291,10 +297,8 @@ export async function handlePediaAllPlatforms(
   const totalPages = Math.max(1, Math.ceil(platforms.length / PLATFORMS_PER_PAGE));
   const page = Math.min(Math.max(0, Math.floor(Number(requestedPage) || 0)), totalPages - 1);
   const slice = platforms.slice(page * PLATFORMS_PER_PAGE, (page + 1) * PLATFORMS_PER_PAGE);
-  const rows = twoColGrid(slice, (id) => ({
-    text: `${platformIconOf(id)} ${truncateBtn(platformLabelOf(id), 14)} (${countByPlatform.get(id) ?? 0})`,
-    callback_data: cb.pediaPlatform(id, 0),
-  }));
+  const rows = twoColGrid(slice, (id) =>
+    platformButton(id, `${truncateBtn(platformLabelOf(id), 14)} (${countByPlatform.get(id) ?? 0})`, cb.pediaPlatform(id, 0)));
   const nav: InlineKeyboardButton[] = [];
   if (page > 0) nav.push({ text: "◀️", callback_data: cb.pediaAll(page - 1) });
   if (totalPages > 1) nav.push({ text: `${page + 1}/${totalPages}`, callback_data: "noop" });

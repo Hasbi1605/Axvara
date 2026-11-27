@@ -162,20 +162,51 @@ describe("callApi custom emoji integration", () => {
 describe("app logos and stripping", () => {
   it("maps product names to app logos, most specific rule first", async () => {
     const { appLogoEmojiId, appLogoHtml, appLogoIcon } = await import("@/lib/telegram/app-logo-emoji");
-    expect(appLogoEmojiId("ChatGPT Plus Private")).toBe("5359726582447487916");
-    expect(appLogoEmojiId("YouTube Music Premium")).toBe("5870597514784150136");
-    expect(appLogoEmojiId("YouTube Premium")).toBe("5334681713316479679");
-    expect(appLogoEmojiId("Adobe Express 12M")).toBe("5240231297963565442");
-    expect(appLogoEmojiId("Disney+ Hotstar")).toBe("5332394707655869572");
-    expect(appLogoEmojiId("iLovePDF Premium")).toBe("6165591004138180323");
-    expect(appLogoEmojiId("Surfshark VPN")).toBe("5841245343211069842");
+    expect(appLogoEmojiId("ChatGPT Plus Private")).toBe("5310259124817134249");
+    expect(appLogoEmojiId("YouTube Music Premium")).toBe("5335036005168728789");
+    expect(appLogoEmojiId("YouTube Premium")).toBe("5321505140199418151");
+    expect(appLogoEmojiId("Adobe Express 12M")).toBe("5278668274555436578");
+    expect(appLogoEmojiId("Disney+ Hotstar")).toBe("5884437729067932014");
+    expect(appLogoEmojiId("iLovePDF Premium")).toBe("6206155660283879718");
+    expect(appLogoEmojiId("Surfshark VPN")).toBe("5879507561878654934");
+    // Owner 27 Nov: logo yang dulu kosong/kembar kini terpetakan & berbeda.
+    expect(appLogoEmojiId("Grok + Cursor Premium")).toBe("5319288443153445517");
+    expect(appLogoEmojiId("Muse AI")).toBe("5891219692881714411");
+    expect(appLogoEmojiId("ElevenReader Ultra")).toBe("5949555742582251295");
+    expect(appLogoEmojiId("ElevenLabs")).toBe("5987854309558066066");
+    expect(appLogoEmojiId("Gamma AI")).toBe("5988084597114543318");
+    expect(appLogoEmojiId("Vision Plus")).toBeUndefined(); // bukan Microsoft Visio
+    const ms = ["Office365 Lifetime", "Microsoft 365", "Microsoft Visio", "Microsoft Project", "Windows 10 / 11 Pro", "Microsoft Copilot Premium", "GitHub Copilot"]
+      .map((name) => appLogoEmojiId(name));
+    expect(ms.every(Boolean)).toBe(true);
+    expect(new Set(ms).size).toBe(ms.length);
     expect(appLogoEmojiId("Password Manager")).toBeUndefined();
     expect(appLogoEmojiId("Produk Misterius")).toBeUndefined();
-    expect(appLogoHtml("Netflix", "✅")).toBe('<tg-emoji emoji-id="5318911503938634641">✅</tg-emoji>');
+    expect(appLogoHtml("Netflix", "✅")).toBe('<tg-emoji emoji-id="5366477429223209600">✅</tg-emoji>');
     expect(appLogoHtml("Produk Misterius", "✅")).toBe("✅");
     expect(appLogoIcon("Produk Misterius")).toEqual({});
     vi.stubEnv("TELEGRAM_CUSTOM_EMOJI", "off");
     expect(appLogoEmojiId("Netflix")).toBeUndefined();
+  });
+
+  it("gives Pedia platforms, coins and QRIS their brand logos", async () => {
+    const { brandIcon } = await import("@/lib/telegram/app-logo-emoji");
+    expect(brandIcon("instagram")).toEqual({ icon_custom_emoji_id: "5364310996179503764" });
+    expect(brandIcon("USDT")).toEqual({ icon_custom_emoji_id: "5413589900450625318" });
+    expect(brandIcon("qris")).toEqual({ icon_custom_emoji_id: "6339136888674192137" });
+    expect(brandIcon("unknown")).toEqual({});
+    const { paymentMethodOfferKeyboard, cryptoCoinKeyboard } = await import("@/lib/telegram/keyboards");
+    const methods = [
+      { id: "qris", kind: "qris", label: "QRIS" },
+      { id: "usdtbsc", kind: "crypto", pay_currency: "usdtbsc", amount_text: "2.61" },
+    ] as never;
+    const offer = paymentMethodOfferKeyboard({ nonce: "n", methods, idrSubtotal: 20000 });
+    const qris = offer.inline_keyboard.flat().find((b) => b.text.includes("QRIS"));
+    expect(qris).toMatchObject({ text: "QRIS · Rp20.000", icon_custom_emoji_id: "6339136888674192137" });
+    const coins = cryptoCoinKeyboard({ nonce: "n", methods });
+    expect(coins?.inline_keyboard[0][0]).toMatchObject({ text: "USDT", icon_custom_emoji_id: "5413589900450625318" });
+    vi.stubEnv("TELEGRAM_CUSTOM_EMOJI", "off");
+    expect(brandIcon("instagram")).toEqual({});
   });
 
   it("strips every custom emoji for the standard-emoji fallback", async () => {
@@ -208,7 +239,7 @@ describe("logo placement in catalog and promo", () => {
   it("prefixes product detail title and promo lines with app logos", async () => {
     const { productDetailMessage } = await import("@/lib/telegram/messages/catalog");
     expect(productDetailMessage({ name: "Netflix Premium", price: 20000, stock: 3 })).toMatch(
-      /^<tg-emoji emoji-id="5318911503938634641">📱<\/tg-emoji> <b>Netflix Premium<\/b>/,
+      /^<tg-emoji emoji-id="5366477429223209600">📱<\/tg-emoji> <b>Netflix Premium<\/b>/,
     );
     expect(productDetailMessage({ name: "Produk Misterius", price: 1, stock: 1 })).toMatch(/^<b>Produk Misterius<\/b>/);
 
@@ -218,7 +249,7 @@ describe("logo placement in catalog and promo", () => {
       { id: 2, name: "Produk Misterius", category: "Streaming & Hiburan", price: 1000 },
     ];
     const [msg] = promoTelegramMessages("evening", products);
-    expect(msg).toContain('<tg-emoji emoji-id="5318911503938634641">✅</tg-emoji> Netflix');
+    expect(msg).toContain('<tg-emoji emoji-id="5366477429223209600">✅</tg-emoji> Netflix');
     expect(msg).toContain("✅ Produk Misterius");
     // Versi WhatsApp tidak pernah memuat custom emoji.
     expect(promoMessages("evening", products).short).not.toContain("tg-emoji");
