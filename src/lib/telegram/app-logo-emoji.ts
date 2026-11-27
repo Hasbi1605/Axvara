@@ -74,6 +74,15 @@ const LOGO = {
   jetbrains: "5300808388584678952", // dev_emojis_solid (statis)
   tradingview: "5870756282545213172", // AppsIconsWB (statis)
   card: "5445353829304387411", // FinanceEmoji
+  kick: "5206341617996300902", // AppLogosEmoji
+  roblox: "6129532198182723368", // namlc1Emoji (statis)
+  coinmarketcap: "5336953394533780524", // JABA
+  vimeo: "5334764984142412896", // ApplicationEmoji
+  tumblr: "5328242556612395440", // ApplicationEmoji
+  medium: "5325647210954637197", // ApplicationEmoji
+  dribbble: "5334666109700294414", // JABA brands
+  reddit: "5319276623403458717", // JABA
+  qriscode: "5440410042773824003", // kode QR animasi pilihan owner (baris QRIS pesan sambutan)
   getcontact: "6183630429422094747", // Random_bebaspakai (statis)
   dramabox: "6102843344419819687", // Random_bebaspakai (statis)
   drakor: "6172461238119828547", // Random_bebaspakai (statis)
@@ -264,9 +273,13 @@ const BRAND_KEYS: Readonly<Record<string, string>> = {
   threads: LOGO.threads, x: LOGO.x, telegram: LOGO.telegram, linkedin: LOGO.linkedin,
   pinterest: LOGO.pinterest, discord: LOGO.discord, spotify: LOGO.spotify, soundcloud: LOGO.soundcloud,
   twitch: LOGO.twitch, github: LOGO.github, website: LOGO.website, shopee: LOGO.shopee,
+  whatsapp: LOGO.whatsapp, reddit: LOGO.reddit, dribbble: LOGO.dribbble, medium: LOGO.medium,
+  tumblr: LOGO.tumblr, vimeo: LOGO.vimeo, tidal: LOGO.tidal, coinmarketcap: LOGO.coinmarketcap,
+  roblox: LOGO.roblox, kick: LOGO.kick,
   USDT: LOGO.usdt, USDC: LOGO.usdc, BTC: LOGO.btc, ETH: LOGO.eth, BNB: LOGO.bnb, TRX: LOGO.trx,
   TON: LOGO.ton, LTC: LOGO.ltc, SOL: LOGO.sol, DOGE: LOGO.doge, XRP: LOGO.xrp,
   qris: LOGO.qris,
+  qriscode: LOGO.qriscode,
 };
 
 /** Spread ke tombol untuk kunci merek tetap: `{ text, ...brandIcon("BTC") }`. */
@@ -274,6 +287,12 @@ export function brandIcon(key: string | null | undefined): { icon_custom_emoji_i
   if (!key || disabled()) return {};
   const id = BRAND_KEYS[key];
   return id ? { icon_custom_emoji_id: id } : {};
+}
+
+/** Potongan HTML ikon merek tetap (`<tg-emoji>`), atau `fallback` bila tidak dikenal/dimatikan. */
+export function brandHtml(key: string, fallback: string): string {
+  const id = disabled() ? undefined : BRAND_KEYS[key];
+  return id ? `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>` : fallback;
 }
 
 /** custom_emoji_id logo aplikasi untuk nama produk, atau undefined. */

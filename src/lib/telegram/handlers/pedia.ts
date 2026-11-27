@@ -47,6 +47,7 @@ import { pediaApprovalTag } from "@/lib/telegram/pedia-checkout";
 import { replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
 import type { InlineKeyboardButton } from "@/lib/telegram/types";
 import type { Locale } from "@/lib/i18n/locale";
+import { SITE } from "@/lib/site";
 
 const PLATFORMS_PER_PAGE = 10;
 const PRODUCTS_PER_PAGE = 6;
@@ -263,6 +264,8 @@ export async function handlePediaHome(
     { text: en ? `📂 All Platforms (${platformsPresent.length})` : `📂 Semua Platform (${platformsPresent.length})`, callback_data: cb.pediaAll(0), style: "primary" },
     { text: en ? "🔎 Search" : "🔎 Cari Layanan", callback_data: cb.pediaSearch(), style: "primary" },
   ]);
+  // Owner 27 Nov 2026: alternatif order lewat web, tepat di atas Home.
+  rows.push([{ text: "🌐 Order Pedia via Web", url: `${SITE.pediaUrl}/`, style: "success" }]);
   rows.push([{ text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home(), style: "primary" }]);
 
   await replaceWithText({

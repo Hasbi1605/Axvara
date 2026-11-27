@@ -354,7 +354,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
       ],
       [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
-        { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
+        { text: "💬 Bantuan", url: "https://t.me/axvara_support", style: "primary" },
       ],
       [
         { text: "🇮🇩 Bahasa", callback_data: "settings" },
@@ -549,7 +549,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
       ],
       [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
-        { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
+        { text: "💬 Bantuan", url: "https://t.me/axvara_support", style: "primary" },
       ],
       [
         { text: "🇮🇩 Bahasa", callback_data: "settings" },

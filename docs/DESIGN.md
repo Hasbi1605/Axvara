@@ -11,6 +11,7 @@
 - **Beranda `/start` (`homeKeyboard` di `src/lib/telegram/keyboards.ts`):** mempertahankan seluruh susunan kategori dan utilitas existing secara utuh, dengan 1 baris tambahan berisi 2 tombol hijau (`style: "success"`) tepat di bawah **`🛍 Lihat Semua Katalog`**:
   - ID: `📈 Sosmed Pedia` (`pdh`, 15 char) | `🎮 Top Up Games` (`gmh`, 15 char)
   - EN: `📈 Social Media` (`pdh`, 15 char) | `🎮 Top Up Games` (`gmh`, 15 char)
+  - 27 Nov 2026: beranda Games/Pedia di bot punya tombol hijau `🌐 Order Games via Web` / `🌐 Order Pedia via Web` (URL web) tepat di atas baris Home; layar kategori punya `🛍 Lihat Semua Katalog` hijau di atas `🏠 Menu Utama`.
   - Batas ≤15 karakter menjaga kedua tombol bebas elipsis di layar HP 2 kolom.
 - **Reply keyboard 2×3 (`mainReplyMenu`):** baris 1 `[🛍 Katalog | 📈 Sosmed | 🎮 Games]` (EN `[🛍 Catalog | 📈 Social | 🎮 Games]`), baris 2 `[📦 Pesanan | 💬 Bantuan | 🇮🇩 Bahasa]` (EN `[📦 Orders | 💬 Help | 🇬🇧 Language]`), dengan placeholder input `"Cari produk/game atau tempel link sosmed…"`.
 - **Pola navigasi ramah-HP di chat native:**
@@ -74,7 +75,7 @@ Keputusan owner untuk mengurangi kesan sesak pada transisi `CommunityBar` → `K
 - **Susunan inline keyboard beranda (`homeKeyboard`):**
   1. Grid 2 kolom kategori aktif siap beli (maksimal 6 kategori / 3 baris, `cat:<id>:0`, biru `primary`), otomatis diterjemahkan ke EN lewat `marketCategoryName` (`Streaming & Entertainment`, `Productivity & Office`, `Design & Video`, `Value Bundles`, dll.) baik di beranda, layar `cats:0`, maupun judul daftar produk kategori (`cat:<id>:0`).
   2. Satu baris penuh CTA hijau (`style: "success"`): `🛍 Lihat Semua Katalog` / `🛍 View All Catalog` (`catalog:0`) sebagai pemisah visual antara blok kategori dan utilitas.
-  3. Dua baris utilitas biru (`primary`): `[📦 Pesanan Saya | 💬 Bantuan]` (`myorders` | `${SITE.webUrl}/wa`) dan `[🇮🇩 Bahasa | 🌐 Web]` / `[🇬🇧 Language | 🌐 Web]` (`settings` | `https://axvara.tech`).
+  3. Dua baris utilitas biru (`primary`): `[📦 Pesanan Saya | 💬 Bantuan]` (`myorders` | `https://t.me/axvara_support`, sejak 27 Nov 2026; sebelumnya `${SITE.webUrl}/wa`) dan `[🇮🇩 Bahasa | 🌐 Web]` / `[🇬🇧 Language | 🌐 Web]` (`settings` | `https://axvara.tech`).
 - **Ikon bendera Bahasa:** tombol Bahasa di `homeKeyboard` dan reply menu 2×2 (`mainReplyMenu`) memakai bendera bahasa aktif (`🇮🇩 Bahasa` / `🇬🇧 Language`) agar tidak kembar dengan `🌐 Web`; label reply lama (`🌐 Bahasa`, `🌐 Language`, `⚙️ Pengaturan`, `⚙️ Settings`) tetap dirutekan ke layar Bahasa.
 
 ## Foto katalog Market — 23–24 November 2026
@@ -139,10 +140,10 @@ Keputusan owner untuk mengurangi kesan sesak pada transisi `CommunityBar` → `K
 
 - **`/start` home minimal (`sendTgHome` & `homeKeyboard`):** satu banner foto (`public/banners/tg-welcome.jpg`) + caption sapaan singkat saja (`Halo, <Nama> 👋` / `Hi, <Nama> 👋`, tanpa daftar terlaris maupun query `getBestsellers`), dan inline keyboard tepat 3 baris:
   1. `[🛍 Katalog]` (`catalog:0`, `style: "success"`)
-  2. `[📦 Pesanan Saya]` (`myorders`, `primary`) + `[💬 Bantuan]` (URL `${SITE.webUrl}/wa`, `primary`)
+  2. `[📦 Pesanan Saya]` (`myorders`, `primary`) + `[💬 Bantuan]` (URL `https://t.me/axvara_support`, `primary`)
   3. `[⚙️ Pengaturan]` (`settings`, `primary`, membuka `settingsKeyboard` Bahasa + Mata Uang) + `[🌐 Web]` (`https://axvara.tech`, `primary`)
 - **Reply menu 2×2 (`mainReplyMenu`, `is_persistent: false`):** ID `[[🛍 Katalog, 📦 Pesanan], [💬 Bantuan, ⚙️ Pengaturan]]` dan EN `[[🛍 Catalog, 📦 Orders], [💬 Help, ⚙️ Settings]]` (placeholder input tetap `"Cari produk atau ketik nama produk…"`). Mengetuk `💬 Bantuan` membalas 1 pesan singkat (`"Butuh bantuan? Chat admin di WhatsApp."` / `"Need help? Chat admin on WhatsApp."`) dengan tombol `[💬 WhatsApp Admin → ${SITE.webUrl}/wa]` + `[🏠 Menu]`. Label reply lama non-keranjang (`🔎 Cari`, `🛡 Garansi`, `❓ Bantuan`, padanan EN) tetap dirutekan di `command.ts`; skema keranjang Telegram (`🛒 Keranjang`, `/cart`, `/keranjang`) telah dihapus penuh (23 Nov 2026 — keranjang hanya di web).
-- **Pembersihan entry point UI & `setMyCommands`:** seluruh fitur keranjang Telegram dihapus penuh (keranjang hanya di web); tombol Cari Produk (`home`, `catalogFlatKeyboard`, `searchResultsKeyboard` `"Cari Lagi"`) dan Garansi (`home`, `mainReplyMenu`) disembunyikan dari UI (`/cari`, `/garansi`, serta callback non-keranjang tetap berfungsi). Baris bawah katalog datar menjadi `[📂 Kategori | 🏠 Menu]`; kartu produk menjadi varian tersedia, `❌` sold-out, `🔔` restok, `📋 Detail & Ketentuan`, `[🛍 Katalog | 🏠 Menu]`; hasil pencarian menjadi `[🛍 Katalog | 🏠 Menu]`; seluruh tombol inline `💬 Bantuan` (`homeKeyboard`, `searchNoResultsKeyboard`) memakai URL `${SITE.webUrl}/wa`. `setMyCommands()` disederhanakan menjadi 5 perintah (`start`, `katalog`, `orders`, `bantuan`, `settings`).
+- **Pembersihan entry point UI & `setMyCommands`:** seluruh fitur keranjang Telegram dihapus penuh (keranjang hanya di web); tombol Cari Produk (`home`, `catalogFlatKeyboard`, `searchResultsKeyboard` `"Cari Lagi"`) dan Garansi (`home`, `mainReplyMenu`) disembunyikan dari UI (`/cari`, `/garansi`, serta callback non-keranjang tetap berfungsi). Baris bawah katalog datar menjadi `[📂 Kategori | 🏠 Menu]`; kartu produk menjadi varian tersedia, `❌` sold-out, `🔔` restok, `📋 Detail & Ketentuan`, `[🛍 Katalog | 🏠 Menu]`; hasil pencarian menjadi `[🛍 Katalog | 🏠 Menu]`; seluruh tombol inline `💬 Bantuan` (`homeKeyboard`, `searchNoResultsKeyboard`, pesanan menunggu bayar) memakai `TG_SUPPORT_URL` = `https://t.me/axvara_support` (27 Nov 2026; histori: `${SITE.webUrl}/wa`). `setMyCommands()` disederhanakan menjadi 5 perintah (`start`, `katalog`, `orders`, `bantuan`, `settings`).
 
 ## Welcome satu pesan & hierarki warna tombol Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-WELCOME, lokal)
 

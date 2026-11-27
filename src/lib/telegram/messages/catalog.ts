@@ -52,7 +52,7 @@ export function catalogFlatMessage(total: number, opts?: { locale?: Locale }): s
 }
 
 export function categoriesMessage(opts?: { locale?: Locale }): string {
-  return opts?.locale === "en" ? "<b>Product categories</b>" : "<b>Kategori produk</b>";
+  return opts?.locale === "en" ? "📂 <b>Product categories</b>" : "📂 <b>Kategori produk</b>";
 }
 
 export function categoryProductsMessage(categoryName: string, total: number, opts?: { locale?: Locale }): string {

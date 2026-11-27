@@ -38,7 +38,7 @@ describe("TG-QTYREVIEW unit layouts, copy, colors, and truncation", () => {
   it("renders simple qty screen without min line when min=1, with tier blockquote when enabled, and hides duplicate variant line", () => {
     const plain = chooseQtyMessage({ productName: "Canva Pro", variantLabel: "1 Bulan", price: 15000, stock: -1 });
     expect(plain).toBe(
-      "🛒 <b>Pilih jumlah</b>\nProduk : <b>Canva Pro</b>\nVarian : 1 Bulan\nHarga  : Rp\u00a015.000 / pcs\nStok   : ∞",
+      "🛒 <b>Pilih jumlah</b>\n✨ Produk : <b>Canva Pro</b>\n🏷️ Varian : 1 Bulan\n💵 Harga  : Rp\u00a015.000 / pcs\n📦 Stok   : ∞",
     );
     expect(plain).not.toContain("Minimal pembelian");
     expect(plain).not.toContain("<blockquote>");
@@ -50,7 +50,7 @@ describe("TG-QTYREVIEW unit layouts, copy, colors, and truncation", () => {
       stock: 12,
     });
     expect(dupVariant).toBe(
-      "🛒 <b>Pilih jumlah</b>\nProduk : <b>ChatGPT Go 3 Bulan</b>\nHarga  : Rp\u00a050.000 / pcs\nStok   : 12",
+      "🛒 <b>Pilih jumlah</b>\n✨ Produk : <b>ChatGPT Go 3 Bulan</b>\n💵 Harga  : Rp\u00a050.000 / pcs\n📦 Stok   : 12",
     );
     expect(dupVariant).not.toContain("Varian :");
 
@@ -76,7 +76,7 @@ describe("TG-QTYREVIEW unit layouts, copy, colors, and truncation", () => {
       { locale: "en", formatPrice: () => "$0.65" },
     );
     expect(enMsg).toBe(
-      "🛒 <b>Choose quantity</b>\nProduct : <b>Workspace</b>\nVariant : 1 Month\nPrice   : $0.65 / pcs\nStock   : ∞\n\nMinimum purchase 3",
+      "🛒 <b>Choose quantity</b>\n✨ Product : <b>Workspace</b>\n🏷️ Variant : 1 Month\n💵 Price   : $0.65 / pcs\n📦 Stock   : ∞\n\nMinimum purchase 3",
     );
 
     const enDup = chooseQtyMessage(

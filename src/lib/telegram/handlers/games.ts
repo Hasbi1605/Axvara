@@ -44,6 +44,7 @@ import { gamesApprovalTag } from "@/lib/telegram/games-checkout";
 import { replaceWithPhoto, replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from "@/lib/telegram/types";
 import type { Locale } from "@/lib/i18n/locale";
+import { SITE } from "@/lib/site";
 
 const GAMES_PER_PAGE = 10;
 const SKUS_PER_PAGE = 10;
@@ -198,6 +199,8 @@ export async function handleGamesHome(
     { text: en ? `📂 All Games (${sellable.length})` : `📂 Semua Game (${sellable.length})`, callback_data: cb.gamesAll(0), style: "primary" },
     { text: en ? "🔎 Search Game" : "🔎 Cari Game", callback_data: cb.gamesSearch(), style: "primary" },
   ]);
+  // Owner 27 Nov 2026: alternatif order lewat web, tepat di atas baris Home.
+  rows.push([{ text: "🌐 Order Games via Web", url: `${SITE.gamesUrl}/`, style: "success" }]);
   rows.push([
     { text: en ? "🏷 Genres" : "🏷 Genre", callback_data: cb.gamesGenre("menu", 0), style: "primary" },
     { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home(), style: "primary" },

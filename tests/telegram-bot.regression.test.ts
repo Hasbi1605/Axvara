@@ -141,7 +141,7 @@ describe("Telegram keyboards", () => {
       ],
       [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
-        { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
+        { text: "💬 Bantuan", url: "https://t.me/axvara_support", style: "primary" },
       ],
       [
         { text: "🇮🇩 Bahasa", callback_data: "settings" },
@@ -158,7 +158,7 @@ describe("Telegram keyboards", () => {
       ],
       [
         { text: "📦 My Orders", callback_data: "myorders", style: "primary" },
-        { text: "💬 Help", url: "https://axvara.tech/wa", style: "primary" },
+        { text: "💬 Help", url: "https://t.me/axvara_support", style: "primary" },
       ],
       [
         { text: "🇬🇧 Language", callback_data: "settings" },
@@ -191,7 +191,7 @@ describe("Telegram keyboards", () => {
       ],
       [
         { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
-        { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
+        { text: "💬 Bantuan", url: "https://t.me/axvara_support", style: "primary" },
       ],
       [
         { text: "🇮🇩 Bahasa", callback_data: "settings" },
@@ -230,7 +230,7 @@ describe("Telegram keyboards", () => {
 
     const snr = searchNoResultsKeyboard({ locale: "id" });
     const helpBtn = snr.inline_keyboard.flat().find((b) => b.text.includes("Bantuan"));
-    expect(helpBtn).toEqual({ text: "💬 Bantuan", url: "https://axvara.tech/wa" });
+    expect(helpBtn).toEqual({ text: "💬 Bantuan", url: "https://t.me/axvara_support" });
   });
 
   it("warranty keyboard routes back to catalog and home", () => {
@@ -253,6 +253,10 @@ describe("Telegram keyboards", () => {
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
     expect(allTexts.some(t => t.includes("🤖"))).toBe(true); // AI Gateway icon (owner 27 Nov: ⚡ → 🤖)
     expect(allTexts.some(t => t.includes("👑"))).toBe(true); // Akun Premium icon
+    // Owner 27 Nov 2026: tombol hijau Lihat Semua Katalog tepat di atas Menu Utama.
+    const rowsCat = kb.inline_keyboard;
+    expect(rowsCat[rowsCat.length - 2]).toEqual([{ text: "🛍 Lihat Semua Katalog", callback_data: "catalog:0", style: "success" }]);
+    expect(rowsCat[rowsCat.length - 1][0].callback_data).toBe("home");
 
     const enKb = categoriesKeyboard(
       [

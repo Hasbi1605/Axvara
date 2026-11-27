@@ -60,7 +60,7 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "🛍": "5406683434124859552", // NewsEmoji (stiker SALE, dikembalikan atas permintaan owner)
   "🛒": "5312361253610475399", // FinanceEmoji
   "📦": "5429263077927300012", // IslomjonAnimeEmoji (kotak; dulu logo Nova Poshta)
-  "💳": "5445353829304387411", // FinanceEmoji (kartu polos, bukan VISA)
+  "💳": "5472250091332993630", // TONEmoji (kartu hijau + koin animasi, pilihan owner)
   "🪙": "5377505475015235101", // FinanceEmoji
   "💰": "6267068789146260253", // ZNV CLAN
   "💵": "5409048419211682843", // NewsEmoji
@@ -107,7 +107,7 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "🎤": "5224736245665511429", // NewsEmoji
   "🎥": "5348125953090403204", // NewsEmoji (tombol play; dulu logo YouTube)
   "📸": "5364310996179503764", // IconsEmoji_JABA
-  "🎨": "5819016409258135133", // iconemoji1 (kuas cat)
+  "🎨": "5321030241370531982", // Top Hat @GiftChanges (topi animasi, pilihan owner; kategori Desain & Video)
   "🎯": "5310278924616356636", // FinanceEmoji
   "🎬": "5794077849157636817", // editing_club (clapperboard animasi, pilihan owner)
   "🛠": "5341715473882955310", // NewsEmoji

@@ -4,6 +4,7 @@
 // onboarding + preference surfaces.
 import type { DisplayCurrency, Locale } from "@/lib/i18n/locale";
 import { escapeHtml, truncate } from "./format";
+import { brandHtml } from "../app-logo-emoji";
 
 export type TgPrefTextKey =
   | "choose_language"
@@ -62,7 +63,7 @@ export function welcomeMessageLocalized(
       "<i>Premium apps &amp; tools — delivered automatically, 24/7.</i>",
       "",
       "⚡ Instant delivery · ✅ Live stock · 💬 24/7 support",
-      "🛡 Warranty · 🔐 Secure payment · 💳 QRIS, VA, e-wallet, crypto",
+      `🛡 Warranty · 🔐 Secure payment · ${brandHtml("qriscode", "💳")} QRIS, VA, e-wallet, crypto`,
       "",
       "<i>Pick a category below or type a product name</i> ⬇️",
     ].join("\n");
@@ -72,7 +73,7 @@ export function welcomeMessageLocalized(
     "<i>Aplikasi &amp; tools premium — dikirim otomatis 24 jam.</i>",
     "",
     "⚡ Kirim instan · ✅ Stok real-time · 💬 Support 24/7",
-    "🛡 Bergaransi · 🔐 Pembayaran aman · 💳 QRIS, VA, e-wallet, crypto",
+    `🛡 Bergaransi · 🔐 Pembayaran aman · ${brandHtml("qriscode", "💳")} QRIS, VA, e-wallet, crypto`,
     "",
     "<i>Pilih kategori di bawah atau ketik nama produk</i> ⬇️",
   ].join("\n");

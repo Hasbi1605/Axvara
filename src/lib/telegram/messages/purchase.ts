@@ -4,6 +4,7 @@ import { parseExpiry } from "@/lib/expiry";
 import type { Locale } from "@/lib/i18n/locale";
 import type { BulkTier } from "@/lib/bulk-pricing";
 import { formatIdr } from "@/lib/i18n/format";
+import { appLogoHtml } from "../app-logo-emoji";
 
 export const TELEGRAM_QRIS_DEADLINE_NOTICE = {
   id: "Lewat batas? Jangan bayar QR lama; hubungi admin untuk pemeriksaan manual.",
@@ -51,10 +52,10 @@ export function tgTierPreview(params: {
     TIER_RANGE_QTY_CAP,
     params.stock != null && params.stock !== -1 ? Math.max(1, params.stock) : TIER_RANGE_QTY_CAP,
   );
-  const out = [en ? "Bulk price (per pcs, all units):" : "Harga grosir (per pcs, semua unit):"];
+  const out = [en ? "🔥 Bulk price (per pcs, all units):" : "🔥 Harga grosir (per pcs, semua unit):"];
   for (const [index, tier] of tiers.entries()) {
     const unreachable = tier.min_qty > reachLimit;
-    out.push(`• ${tierRangeLabel(tier, tiers[index + 1], locale)}: ${format(tier.unit_price)}${unreachable ? (en ? " (exceeds stock)" : " (melebihi stok)") : ""}`);
+    out.push(`• ${tierRangeLabel(tier, tiers[index + 1], locale)}: ${format(tier.unit_price)}${unreachable ? (en ? " ⚠️ exceeds stock" : " ⚠️ melebihi stok") : ""}`);
   }
   return out;
 }
@@ -217,20 +218,22 @@ export function chooseQtyMessage(params: {
     formatPrice: formatPrimary,
   });
 
+  // Logo produk animasi bila dikenal (custom emoji), selain itu ✨ standar.
+  const productIcon = appLogoHtml(productName, "✨");
   const lines = en
     ? [
         "🛒 <b>Choose quantity</b>",
-        `Product : <b>${escapeHtml(truncate(productName, 80))}</b>`,
-        ...(showVariant ? [`Variant : ${escapeHtml(truncate(variantWithDur, 80))}`] : []),
-        `Price   : ${escapeHtml(formatPrimary(unitPrice))} / pcs`,
-        `Stock   : ${stockVal}`,
+        `${productIcon} Product : <b>${escapeHtml(truncate(productName, 80))}</b>`,
+        ...(showVariant ? [`🏷️ Variant : ${escapeHtml(truncate(variantWithDur, 80))}`] : []),
+        `💵 Price   : ${escapeHtml(formatPrimary(unitPrice))} / pcs`,
+        `📦 Stock   : ${stockVal}`,
       ]
     : [
         "🛒 <b>Pilih jumlah</b>",
-        `Produk : <b>${escapeHtml(truncate(productName, 80))}</b>`,
-        ...(showVariant ? [`Varian : ${escapeHtml(truncate(variantWithDur, 80))}`] : []),
-        `Harga  : ${escapeHtml(formatPrimary(unitPrice))} / pcs`,
-        `Stok   : ${stockVal}`,
+        `${productIcon} Produk : <b>${escapeHtml(truncate(productName, 80))}</b>`,
+        ...(showVariant ? [`🏷️ Varian : ${escapeHtml(truncate(variantWithDur, 80))}`] : []),
+        `💵 Harga  : ${escapeHtml(formatPrimary(unitPrice))} / pcs`,
+        `📦 Stok   : ${stockVal}`,
       ];
   if (opts?.usdUnavailable) {
     lines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");

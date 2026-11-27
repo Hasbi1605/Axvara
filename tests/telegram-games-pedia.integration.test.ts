@@ -331,6 +331,12 @@ describe("Native Telegram AXVARA Games end-to-end", () => {
     expect(homeUi.text).toContain("2 game");
     expect(buttonsOf(homeUi).some((b) => b.callback_data === "gmo:mobile-legends")).toBe(true);
     expect(buttonsOf(homeUi).some((b) => b.callback_data === "gmo:free-fire")).toBe(true);
+    // Owner 27 Nov 2026: tombol order via web tepat di atas baris Home.
+    const homeRows = (homeUi.reply_markup as { inline_keyboard: { text: string; url?: string; callback_data?: string }[][] }).inline_keyboard;
+    const webIdx = homeRows.findIndex((r) => r.some((b) => b.url === "https://games.axvara.tech/"));
+    const homeIdx = homeRows.findIndex((r) => r.some((b) => b.callback_data === "home"));
+    expect(webIdx).toBeGreaterThan(-1);
+    expect(webIdx).toBe(homeIdx - 1);
 
     // 2. Open Mobile Legends -> default Indonesia, has Pass tab, price filter, SKU search, Region switch
     await click("gmo:mobile-legends");
@@ -519,6 +525,16 @@ describe("Native Telegram AXVARA Games end-to-end", () => {
 });
 
 describe("Native Telegram AXVARA Pedia end-to-end", () => {
+  it("shows Order Pedia via Web right above Home on the Pedia home screen", async () => {
+    await click("pdh");
+    const ui = lastUiPayload();
+    const rows = (ui.reply_markup as { inline_keyboard: { url?: string; callback_data?: string }[][] }).inline_keyboard;
+    const webIdx = rows.findIndex((r) => r.some((b) => b.url === "https://pedia.axvara.tech/"));
+    const homeIdx = rows.findIndex((r) => r.some((b) => b.callback_data === "home"));
+    expect(webIdx).toBeGreaterThan(-1);
+    expect(webIdx).toBe(homeIdx - 1);
+  });
+
   it("auto-detects pasted Instagram Reel link -> adaptive numbered tiers -> skips link prompt -> QRIS AXP order -> completed DM + in-chat Refill + 24h cooldown", async () => {
     // 1. Paste Instagram Reel link directly in chat!
     await handleCommand("https://www.instagram.com/reel/ABCDE12345/", buyer.id, "private", buyer);

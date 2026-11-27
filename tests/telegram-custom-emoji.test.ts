@@ -200,6 +200,9 @@ describe("app logos and stripping", () => {
     expect(brandIcon("USDT")).toEqual({ icon_custom_emoji_id: "5413589900450625318" });
     expect(brandIcon("qris")).toEqual({ icon_custom_emoji_id: "6339136888674192137" });
     expect(brandIcon("unknown")).toEqual({});
+    for (const key of ["whatsapp", "reddit", "dribbble", "medium", "tumblr", "vimeo", "tidal", "coinmarketcap", "roblox", "kick", "shopee"]) {
+      expect(brandIcon(key).icon_custom_emoji_id, key).toBeDefined();
+    }
     const { paymentMethodOfferKeyboard, cryptoCoinKeyboard } = await import("@/lib/telegram/keyboards");
     const methods = [
       { id: "qris", kind: "qris", label: "QRIS" },
@@ -241,6 +244,25 @@ describe("reply-menu label canonicalization", () => {
 });
 
 describe("logo placement in catalog and promo", () => {
+  it("uses the green card for 💳 everywhere except the welcome QRIS line", async () => {
+    const { paymentMethodOfferMessage } = await import("@/lib/telegram/messages/purchase");
+    const { CUSTOM_EMOJI_MAP: realMap } = await vi.importActual<typeof import("@/lib/telegram/custom-emoji-map")>("@/lib/telegram/custom-emoji-map");
+    expect(realMap["💳"]).toBe("5472250091332993630");
+    expect(decorateHtmlText(paymentMethodOfferMessage({ productName: "X", subtotal: 2000 }, { locale: "en" }), realMap))
+      .toMatch(/^<tg-emoji emoji-id="5472250091332993630">💳<\/tg-emoji> <b>Choose payment<\/b>/);
+    const { welcomeMessageLocalized } = await import("@/lib/telegram/messages/preferences");
+    const welcome = String(welcomeMessageLocalized("id" as never, "Budi" as never));
+    expect(welcome).toContain('<tg-emoji emoji-id="5440410042773824003">💳</tg-emoji> QRIS, VA, e-wallet, crypto');
+  });
+
+  it("shows the product logo on the choose-quantity screen", async () => {
+    const { chooseQtyMessage } = await import("@/lib/telegram/messages/purchase");
+    const msg = chooseQtyMessage({ productName: "Netflix Premium", variantLabel: "1 Bulan", price: 20000, stock: 5 } as never);
+    expect(msg).toContain("🛒 <b>Pilih jumlah</b>");
+    expect(msg).toContain('<tg-emoji emoji-id="5366477429223209600">✨</tg-emoji> Produk : <b>Netflix Premium</b>');
+    expect(msg).toContain("📦 Stok   : 5");
+  });
+
   it("prefixes product detail title and promo lines with app logos", async () => {
     const { productDetailMessage } = await import("@/lib/telegram/messages/catalog");
     expect(productDetailMessage({ name: "Netflix Premium", price: 20000, stock: 3 })).toMatch(

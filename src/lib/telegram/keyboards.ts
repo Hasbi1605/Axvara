@@ -49,6 +49,8 @@ export const MENU_LABEL_GAMES = "🎮 Games";
 export const MENU_LABEL_SEARCH = "🔎 Cari";
 export const MENU_LABEL_ORDERS = "📦 Pesanan";
 export const MENU_LABEL_WARRANTY = "🛡 Garansi";
+/** Tombol Bantuan bot → akun Telegram support dulu, bukan langsung WhatsApp (owner 27 Nov 2026). */
+export const TG_SUPPORT_URL = `https://t.me/${SITE.supportTelegram}`;
 export const MENU_LABEL_HELP = "💬 Bantuan";
 export const MENU_LABEL_HELP_LEGACY = "❓ Bantuan";
 export const MENU_LABEL_SETTINGS = "🇮🇩 Bahasa";
@@ -373,7 +375,7 @@ export function homeKeyboard(
       ],
       [
         { text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: cb.myOrders(), style: "primary" },
-        { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa`, style: "primary" },
+        { text: en ? "💬 Help" : "💬 Bantuan", url: TG_SUPPORT_URL, style: "primary" },
       ],
       [
         { text: en ? "🇬🇧 Language" : "🇮🇩 Bahasa", callback_data: cb.settings() },
@@ -435,6 +437,8 @@ export function categoriesKeyboard(
   if (nav.length) rows.push(nav);
 
   // Home
+  // Owner 27 Nov 2026: tombol hijau Lihat Semua Katalog seperti beranda, di atas Menu Utama.
+  rows.push([{ text: en ? "🛍 View All Catalog" : "🛍 Lihat Semua Katalog", callback_data: cb.catalog(), style: "success" }]);
   rows.push([{ text: en ? "🏠 Main Menu" : "🏠 Menu Utama", callback_data: cb.home() }]);
   return { inline_keyboard: rows };
 }
@@ -517,7 +521,7 @@ export function searchNoResultsKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMarkup
         { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog(), style: "primary" },
       ],
       [
-        { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa` },
+        { text: en ? "💬 Help" : "💬 Bantuan", url: TG_SUPPORT_URL },
         { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
       ],
     ],
@@ -756,7 +760,7 @@ export function qrisInvoiceKeyboard(orderCode: string, ctx?: TgLocaleCtx): Inlin
       // memuat kode/produk/total/batas; cukup Cek Pembayaran | Bantuan + Batalkan.
       [
         { text: en ? "🔄 Check Payment" : "🔄 Cek Pembayaran", callback_data: cb.refresh(orderCode), style: "primary" },
-        { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` },
+        { text: en ? "💬 Help" : "💬 Bantuan", url: `${TG_SUPPORT_URL}?text=${encodeURIComponent(`Pesanan ${orderCode}`)}` },
       ],
       [{ text: en ? "Cancel Order" : "Batalkan Pesanan", callback_data: cb.cancel(orderCode), style: "danger" }],
     ],

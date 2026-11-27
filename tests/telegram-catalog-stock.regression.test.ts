@@ -99,7 +99,7 @@ describe("katalog Telegram = produk yang bisa dibeli saja", () => {
     vi.clearAllMocks();
     await handleShowCategoriesEdit(42, 77, 0, undefined, { isPhoto: true, isCatalogPhoto: true });
     expect(vi.mocked(editMessageCaption)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(editMessageCaption).mock.calls[0][0]?.caption).toBe("<b>Kategori produk</b>");
+    expect(vi.mocked(editMessageCaption).mock.calls[0][0]?.caption).toBe("📂 <b>Kategori produk</b>");
 
     vi.clearAllMocks();
     fx.sql.prepare("UPDATE products SET category_id=1 WHERE id=1").run();
