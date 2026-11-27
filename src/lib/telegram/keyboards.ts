@@ -292,19 +292,19 @@ const HOME_MAX_CATEGORIES = 6;
 // Category icon mapping — taksonomi 6 kategori (migrasi 0046).
 // Kunci slug & nama lama dipertahankan agar fixture/data pra-migrasi tetap berikon.
 const CATEGORY_ICON_BY_KEY: Record<string, string> = {
-  "ai-chatbot": "⚡",
+  "ai-chatbot": "🤖",
   "streaming-hiburan": "🎬",
   "produktivitas-office": "💼",
   "desain-video": "🎨",
   "developer-tools": "🛠️",
   "bundle-hemat": "📦",
-  "AI & Chatbot": "⚡",
+  "AI & Chatbot": "🤖",
   "Streaming & Hiburan": "🎬",
   "Produktivitas & Office": "💼",
   "Desain & Video": "🎨",
   "Developer & Tools": "🛠️",
   "Bundle Hemat": "📦",
-  "AI Gateway": "⚡",
+  "AI Gateway": "🤖",
   "Akun Premium": "👑",
   "Tools Pro": "🛡",
   "Bundle Kucing": "📦",

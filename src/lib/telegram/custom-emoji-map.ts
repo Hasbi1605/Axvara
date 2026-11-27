@@ -57,7 +57,7 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "🔵": "5332571076192910271", // IconsEmoji_JABA
   "🟣": "5332694612337244014", // IconsEmoji_JABA
   // Belanja & pembayaran
-  "🛍": "5278702045883292456", // FinanceEmoji (toko; dulu stiker SALE)
+  "🛍": "5406683434124859552", // NewsEmoji (stiker SALE, dikembalikan atas permintaan owner)
   "🛒": "5312361253610475399", // FinanceEmoji
   "📦": "5429263077927300012", // IslomjonAnimeEmoji (kotak; dulu logo Nova Poshta)
   "💳": "5445353829304387411", // FinanceEmoji (kartu polos, bukan VISA)
@@ -89,7 +89,7 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "📣": "5424818078833715060", // NewsEmoji
   "✈": "5364125616801073577", // IconsEmoji_JABA
   "📞": "5233354831984353090", // IconsEmoji_JABA
-  "🤖": "5310170944843579391", // IconsEmoji_JABA
+  "🤖": "5287684458881756303", // DogsEmoji (robot, pilihan owner; ikon kategori AI)
   "👤": "5819154994967874788", // iconemoji1 (orang dengan laptop)
   "💻": "6129469062163471210", // getmodpc (laptop)
   "📱": "6053360738439798205", // getmodpc (ponsel)
@@ -109,7 +109,7 @@ export const CUSTOM_EMOJI_MAP: Readonly<Record<string, string>> = {
   "📸": "5364310996179503764", // IconsEmoji_JABA
   "🎨": "5819016409258135133", // iconemoji1 (kuas cat)
   "🎯": "5310278924616356636", // FinanceEmoji
-  "🎬": "5348125953090403204", // NewsEmoji (tombol play)
+  "🎬": "5794077849157636817", // editing_club (clapperboard animasi, pilihan owner)
   "🛠": "5341715473882955310", // NewsEmoji
   // Ekspresi & promo
   "🔥": "6264785189394717307", // ZNV CLAN

@@ -176,7 +176,7 @@ describe("Telegram keyboards", () => {
     const idWithCats = homeKeyboard("id", cats);
     expect(idWithCats.inline_keyboard).toEqual([
       [
-        { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
+        { text: "🤖 AI & Chatbot", callback_data: "cat:1:0" },
         { text: "🎬 Streaming & Hiburan", callback_data: "cat:2:0" },
       ],
       [
@@ -208,7 +208,7 @@ describe("Telegram keyboards", () => {
     expect(enWithCats.inline_keyboard).toHaveLength(7);
     expect(enWithCats.inline_keyboard.slice(0, 3)).toEqual([
       [
-        { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
+        { text: "🤖 AI & Chatbot", callback_data: "cat:1:0" },
         { text: "🎬 Streaming & Entertainment", callback_data: "cat:2:0" },
       ],
       [
@@ -251,7 +251,7 @@ describe("Telegram keyboards", () => {
     // Should be 2 per row (2 rows of categories + 1 row home)
     expect(kb.inline_keyboard[0].length).toBe(2);
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
-    expect(allTexts.some(t => t.includes("⚡"))).toBe(true); // AI Gateway icon
+    expect(allTexts.some(t => t.includes("🤖"))).toBe(true); // AI Gateway icon (owner 27 Nov: ⚡ → 🤖)
     expect(allTexts.some(t => t.includes("👑"))).toBe(true); // Akun Premium icon
 
     const enKb = categoriesKeyboard(

@@ -534,7 +534,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     };
     expect(idKb.inline_keyboard).toEqual([
       [
-        { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
+        { text: "🤖 AI & Chatbot", callback_data: "cat:1:0" },
         { text: "🎬 Streaming & Hiburan", callback_data: "cat:2:0" },
       ],
       [
@@ -566,7 +566,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     };
     expect(enEditKb.inline_keyboard.slice(0, 5)).toEqual([
       [
-        { text: "⚡ AI & Chatbot", callback_data: "cat:1:0" },
+        { text: "🤖 AI & Chatbot", callback_data: "cat:1:0" },
         { text: "🎬 Streaming & Entertainment", callback_data: "cat:2:0" },
       ],
       [
