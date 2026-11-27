@@ -45,6 +45,7 @@ import { replaceWithPhoto, replaceWithText, setPendingActionUnlessCreating, type
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from "@/lib/telegram/types";
 import type { Locale } from "@/lib/i18n/locale";
 import { SITE } from "@/lib/site";
+import { gameItemIcon, gameLogoHtml, gameLogoIcon } from "@/lib/telegram/games-emoji";
 
 const GAMES_PER_PAGE = 10;
 const SKUS_PER_PAGE = 10;
@@ -117,6 +118,12 @@ function compactSkuButtonLabel(name: string, price: number, ctx: TgPriceCtx): st
     .trim();
   const priceStr = gameDisplayPrice(price, ctx);
   return `${truncateBtn(short, 16)} · ${priceStr}`;
+}
+
+/** Peringkat harga dalam kategori yang sama (sama dengan web) untuk memilih ikon nominal. */
+function itemRank<T extends { category: string; price: number }>(scope: readonly T[], p: T): { index: number; total: number } {
+  const same = scope.filter((x) => x.category === p.category).sort((a, b) => a.price - b.price);
+  return { index: Math.max(0, same.indexOf(p)), total: Math.max(1, same.length) };
 }
 
 /** Encoding token game aman ≤ 38 char untuk callback_data ≤ 64 byte. */
@@ -193,6 +200,7 @@ export async function handleGamesHome(
   const rows: InlineKeyboardButton[][] = twoColGrid(popularRefs, ({ game, ref }) => ({
     text: truncateBtn(game.name, 19),
     callback_data: cb.gamesOpen(ref),
+    ...gameLogoIcon(game.slug),
   }));
 
   rows.push([
@@ -233,6 +241,7 @@ export async function handleGamesAll(
   const rows = twoColGrid(refs, ({ game, ref }) => ({
     text: truncateBtn(game.name, 19),
     callback_data: cb.gamesOpen(ref),
+    ...gameLogoIcon(game.slug),
   }));
   const nav: InlineKeyboardButton[] = [];
   if (page > 0) nav.push({ text: "◀️", callback_data: cb.gamesAll(page - 1) });
@@ -305,6 +314,7 @@ export async function handleGamesGenre(
   const rows = twoColGrid(refs, ({ game, ref }) => ({
     text: truncateBtn(game.name, 19),
     callback_data: cb.gamesOpen(ref),
+    ...gameLogoIcon(game.slug),
   }));
   const nav: InlineKeyboardButton[] = [];
   if (page > 0) nav.push({ text: "◀️", callback_data: cb.gamesGenre(typedGenre, page - 1) });
@@ -478,6 +488,7 @@ export async function handleGamesOpen(
       text: compactSkuButtonLabel(p.name, p.price, ctx),
       callback_data: cb.gamesVariant(idMap.get(p.buyer_sku_code)!),
       style: "success",
+      ...gameItemIcon(detail.game.slug, { ...p, currency: detail.game.currency }, itemRank(bucketProducts, p)),
     })),
   );
 
@@ -511,7 +522,7 @@ export async function handleGamesOpen(
     { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home(), style: "primary" },
   ]);
 
-  const caption = gamesDetailMessage({
+  const captionRaw = gamesDetailMessage({
     gameName: detail.game.name,
     description: detail.game.description,
     activeTypeLabel: buckets.length > 1 ? activeBucket?.label : (activeBucket?.label !== "Utama" ? activeBucket?.label : null),
@@ -525,6 +536,8 @@ export async function handleGamesOpen(
     locale: ctx.locale,
   });
 
+  // Logo game animasi (pack AXVARA Games) menggantikan 🎮 di judul caption.
+  const caption = captionRaw.replace(/^<b>🎮 /, `<b>${gameLogoHtml(detail.game.slug)} `);
   const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
   const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
   const assetPath = detail.game.banner || detail.game.icon;
@@ -1033,6 +1046,7 @@ export async function handleGamesPendingInput(
     const rows = twoColGrid(refs, ({ game, ref }) => ({
       text: truncateBtn(game.name, 19),
       callback_data: cb.gamesOpen(ref),
+      ...gameLogoIcon(game.slug),
     }));
     rows.push([
       { text: en ? "◀️ Games" : "◀️ Daftar Game", callback_data: cb.gamesHome() },
@@ -1094,6 +1108,7 @@ export async function handleGamesPendingInput(
       text: compactSkuButtonLabel(p.name, p.price, ctx),
       callback_data: cb.gamesVariant(idMap.get(p.buyer_sku_code)!),
       style: "success",
+      ...gameItemIcon(detail.game.slug, { ...p, currency: detail.game.currency }, itemRank(scope, p)),
     }));
     rows.push([
       { text: en ? "◀️ Back" : "◀️ Kembali", callback_data: cb.gamesOpen(ref) },
