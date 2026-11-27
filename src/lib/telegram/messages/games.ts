@@ -7,6 +7,7 @@ import { escapeHtml, formatRupiah, truncate } from "./format";
 import { formatIdr } from "@/lib/i18n/format";
 import type { TgPriceCtx } from "@/lib/telegram/keyboards";
 import { tgDisplayPrice } from "@/lib/telegram/render-prefs";
+import { gameLogoHtml } from "@/lib/telegram/games-emoji";
 
 function priceText(amount: number, ctx?: TgPriceCtx): string {
   const locale = ctx?.locale ?? "id";
@@ -56,6 +57,10 @@ export function gamesDetailMessage(params: {
   activeTypeLabel?: string | null;
   activeCategoryLabel?: string | null;
   activeRangeLabel?: string | null;
+  /** Bendera region aktif (mis. 🇮🇩), ditempel di depan label region. */
+  regionFlag?: string | null;
+  /** Mata uang game (mis. "💎 Diamond"), ditampilkan di baris meta. */
+  currencyLabel?: string | null;
   shownCount: number;
   totalInScope: number;
   page: number;
@@ -66,7 +71,8 @@ export function gamesDetailMessage(params: {
   const en = params.locale === "en";
   const lines = [`<b>🎮 ${escapeHtml(params.gameName)}</b>`];
   const metaParts: string[] = [];
-  if (params.activeTypeLabel) metaParts.push(escapeHtml(params.activeTypeLabel));
+  if (params.activeTypeLabel) metaParts.push(`${params.regionFlag ? `${params.regionFlag} ` : ""}${escapeHtml(params.activeTypeLabel)}`);
+  if (params.currencyLabel) metaParts.push(escapeHtml(params.currencyLabel));
   if (params.activeCategoryLabel) metaParts.push(escapeHtml(params.activeCategoryLabel));
   if (params.activeRangeLabel) metaParts.push(escapeHtml(params.activeRangeLabel));
   if (metaParts.length) lines.push(metaParts.join(" · "));
@@ -87,6 +93,8 @@ export function gamesDetailMessage(params: {
 
 export function gamesSavedAccountPromptMessage(params: {
   gameName: string;
+  /** Slug game untuk logo animasi di judul (fallback 🎮). */
+  gameSlug?: string | null;
   packageName: string;
   price: number;
   savedDisplay: string;
@@ -97,7 +105,7 @@ export function gamesSavedAccountPromptMessage(params: {
   const en = locale === "en";
   const nick = params.savedNickname ? ` · ${escapeHtml(params.savedNickname)}` : "";
   return [
-    `<b>🎮 ${escapeHtml(params.gameName)}</b>`,
+    `<b>${gameLogoHtml(params.gameSlug)} ${escapeHtml(params.gameName)}</b>`,
     `${en ? "Package" : "Nominal"}: ${escapeHtml(params.packageName)}`,
     `${en ? "Price" : "Harga"}: <b>${priceText(params.price, params.ctx)}</b>`,
     "",
@@ -108,6 +116,7 @@ export function gamesSavedAccountPromptMessage(params: {
 
 export function gamesAccountInputPromptMessage(params: {
   gameName: string;
+  gameSlug?: string | null;
   packageName: string;
   price: number;
   requiresZone: boolean;
@@ -120,7 +129,7 @@ export function gamesAccountInputPromptMessage(params: {
   const locale = params.ctx?.locale ?? "id";
   const en = locale === "en";
   const lines = [
-    `<b>🎮 ${escapeHtml(params.gameName)}</b> · ${escapeHtml(params.packageName)}`,
+    `<b>${gameLogoHtml(params.gameSlug)} ${escapeHtml(params.gameName)}</b> · ${escapeHtml(params.packageName)}`,
     `${en ? "Price" : "Harga"}: <b>${priceText(params.price, params.ctx)}</b>`,
     "",
   ];
@@ -145,7 +154,8 @@ export function gamesAccountInputPromptMessage(params: {
     );
   }
   if (params.idGuide) {
-    lines.push(`<i>💡 ${escapeHtml(truncate(params.idGuide, 180))}</i>`);
+    // Owner 28 Nov 2026: panduan lengkap (admin maks 600 karakter), bukan dipotong 180.
+    lines.push(`💡 <b>${en ? "How to find your ID" : "Cara cek ID"}:</b> <i>${escapeHtml(truncate(params.idGuide, 600))}</i>`);
   }
   lines.push("", en ? "Type /batal to cancel." : "Ketik /batal untuk membatalkan.");
   return lines.join("\n");
@@ -153,6 +163,7 @@ export function gamesAccountInputPromptMessage(params: {
 
 export function gamesReviewMessage(params: {
   gameName: string;
+  gameSlug?: string | null;
   packageName: string;
   typeLabel?: string | null;
   accountDisplay: string;
@@ -168,7 +179,7 @@ export function gamesReviewMessage(params: {
   const lines = [
     en ? "<b>🧾 Confirm Game Top Up</b>" : "<b>🧾 Konfirmasi Top Up Game</b>",
     "━━━━━━━━━━━━━━━━",
-    `Game     : <b>${escapeHtml(params.gameName)}</b>`,
+    `Game     : ${gameLogoHtml(params.gameSlug)} <b>${escapeHtml(params.gameName)}</b>`,
     `${en ? "Package " : "Nominal "} : ${escapeHtml(pkg)}`,
     `${en ? "Account " : "ID Akun "} : <code>${escapeHtml(params.accountDisplay)}</code>`,
   ];

@@ -1038,3 +1038,10 @@ AXVARA Games kini dapat dipesan langsung di chat pribadi `@Axvara_bot` (tombol h
 ## 16. Custom emoji Games di Bot Telegram (27 November 2026, owner)
 
 Atas persetujuan owner, bot membuat dua pack custom emoji milik akun owner dari aset web yang sudah ada: `https://t.me/addemoji/axvara_games_by_Axvara_bot` (48 logo game, `public/brand/games/<slug>-icon.webp`, 100×100 sudut membulat) dan `https://t.me/addemoji/axvara_game_items_by_Axvara_bot` (55 ikon nominal, `public/brand/games/items/*.webp`). ID dipetakan di `src/lib/telegram/games-emoji.ts`: tombol game (beranda, semua game, genre, hasil cari) memakai logo, judul caption detail memakai logo menggantikan 🎮, dan tombol nominal memakai ikon yang sama dengan web (`gamesItemIcon`, tier 1–3 menurut peringkat harga dalam kategori; pass/membership/hadiah memakai ikon bernama). Game/ikon baru wajib diunggah ke pack (`addStickerToSet`) lalu ID-nya ditambahkan; test `tests/telegram-games-emoji.test.ts` gagal bila ada aset web tanpa ID.
+
+## 17. Hierarki & kenyamanan Games di Bot Telegram + uji banner lebar (28 November 2026, owner)
+
+- Beranda Games bot menampilkan **8** game populer (grid 2 kolom genap).
+- Caption detail game: baris meta region aktif berbendera + mata uang (mis. `🇮🇩 Indonesia · 💎 Diamond`; `uc` → `🪙 UC`; top up umum tanpa label).
+- Layar input ID, ID tersimpan, dan review memakai logo game (`gameLogoHtml`). Panduan cek ID tampil lengkap (maks 600 karakter, sesuai editor admin) dengan judul `💡 Cara cek ID:`. Tombol inline terpisah **tidak** dipakai karena pesan input memakai `force_reply`, dan Telegram tidak mengizinkan keduanya di satu pesan.
+- Uji banner lebar: `GAMES_WIDE_BANNER_SLUGS` (`handlers/games.ts`, saat ini hanya `mobile-legends`) mengirim detail game sebagai pesan teks dengan `link_preview_options` (`url` banner, `prefer_large_media`, `show_above_text`), sehingga di Telegram Desktop bubble dan tombol mengikuti lebar teks, bukan batas lebar foto ±420–480 px. Bila gagal, alur jatuh ke foto lalu teks seperti biasa. Game lain tetap memakai foto. Perluas atau kosongkan set setelah owner menilai hasilnya.

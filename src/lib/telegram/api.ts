@@ -180,6 +180,7 @@ export async function safeEditOrSend(params: EditMessageTextParams): Promise<Tel
     parse_mode: params.parse_mode,
     reply_markup: params.reply_markup,
     disable_web_page_preview: params.disable_web_page_preview,
+    link_preview_options: params.link_preview_options,
   });
 }
 

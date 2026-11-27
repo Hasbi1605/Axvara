@@ -37,3 +37,27 @@ describe("AXVARA Games custom emoji packs", () => {
     expect(gameItemIcon("mobile-legends", { name: "5 Diamonds", category: "topup" } as never)).toEqual({});
   });
 });
+
+describe("Games screens copy (owner 28 Nov 2026)", () => {
+  it("shows region flag + currency on the game detail caption", async () => {
+    const { gamesDetailMessage } = await import("@/lib/telegram/messages/games");
+    const msg = gamesDetailMessage({ gameName: "Mobile Legends", activeTypeLabel: "Indonesia", regionFlag: "🇮🇩", currencyLabel: "💎 Diamond", shownCount: 10, totalInScope: 20, page: 0, totalPages: 2, orderingOpen: true, locale: "id" });
+    expect(msg).toContain("🇮🇩 Indonesia · 💎 Diamond");
+  });
+
+  it("puts the game logo on input/review titles and shows the full ID guide", async () => {
+    const { gamesAccountInputPromptMessage, gamesReviewMessage } = await import("@/lib/telegram/messages/games");
+    const guide = "Buka profil di pojok kiri atas. ".repeat(10).trim();
+    const input = gamesAccountInputPromptMessage({ gameName: "Mobile Legends", gameSlug: "mobile-legends", packageName: "5 Diamonds", price: 2000, requiresZone: true, noteLabel: "User ID", zoneLabel: "Zone ID", idGuide: guide });
+    expect(input).toContain(`<b><tg-emoji emoji-id="${GAME_LOGO_EMOJI["mobile-legends"]}">🎮</tg-emoji> Mobile Legends</b>`);
+    expect(input).toContain("💡 <b>Cara cek ID:</b>");
+    expect(input).toContain(guide);
+    const review = gamesReviewMessage({ gameName: "Mobile Legends", gameSlug: "mobile-legends", packageName: "5 Diamonds", accountDisplay: "123 (45)", total: 2000 });
+    expect(review).toContain(`Game     : <tg-emoji emoji-id="${GAME_LOGO_EMOJI["mobile-legends"]}">🎮</tg-emoji> <b>Mobile Legends</b>`);
+  });
+
+  it("keeps the wide-banner experiment limited to Mobile Legends", async () => {
+    const { GAMES_WIDE_BANNER_SLUGS } = await import("@/lib/telegram/handlers/games");
+    expect([...GAMES_WIDE_BANNER_SLUGS]).toEqual(["mobile-legends"]);
+  });
+});

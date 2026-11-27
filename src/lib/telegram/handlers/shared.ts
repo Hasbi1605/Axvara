@@ -171,6 +171,7 @@ export async function replaceWithText(
     parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
     reply_markup?: InlineKeyboardMarkup;
     disable_web_page_preview?: boolean;
+    link_preview_options?: SendMessageParams["link_preview_options"];
   },
   sourceMeta?: ScreenSourceMeta,
 ): Promise<TelegramApiResponse> {
@@ -182,6 +183,7 @@ export async function replaceWithText(
       parse_mode: params.parse_mode,
       reply_markup: params.reply_markup,
       disable_web_page_preview: params.disable_web_page_preview,
+      link_preview_options: params.link_preview_options,
     };
     const sent = await tgApi.sendMessage(sendParams);
     if (sent.ok) runInBackground(safeDeleteOldMessage(params.chat_id, msgId));
@@ -194,6 +196,7 @@ export async function replaceWithText(
     parse_mode: params.parse_mode,
     reply_markup: params.reply_markup,
     disable_web_page_preview: params.disable_web_page_preview,
+    link_preview_options: params.link_preview_options,
   });
   return edited;
 }

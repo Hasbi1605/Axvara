@@ -130,6 +130,7 @@ export interface EditMessageTextParams {
   parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
   reply_markup?: InlineKeyboardMarkup;
   disable_web_page_preview?: boolean;
+  link_preview_options?: SendMessageParams["link_preview_options"];
 }
 
 export interface InputMediaPhoto {

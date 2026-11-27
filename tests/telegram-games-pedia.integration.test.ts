@@ -342,6 +342,8 @@ describe("Native Telegram AXVARA Games end-to-end", () => {
     await click("gmo:mobile-legends");
     const mlUi = lastUiPayload();
     expect(mlUi.text).toContain("Mobile Legends");
+    // Owner 28 Nov 2026: region aktif berbendera + mata uang di caption.
+    expect(mlUi.text).toContain("🇮🇩");
     expect(mlUi.text).toContain("Indonesia");
     const mlBtns = buttonsOf(mlUi);
     expect(mlBtns.some((b) => b.callback_data === "gmv:1")).toBe(true); // 86 Diamonds ID

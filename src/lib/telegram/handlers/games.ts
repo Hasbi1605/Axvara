@@ -120,6 +120,29 @@ function compactSkuButtonLabel(name: string, price: number, ctx: TgPriceCtx): st
   return `${truncateBtn(short, 16)} · ${priceStr}`;
 }
 
+/**
+ * Uji coba banner lebar (owner 28 Nov 2026): di Telegram Desktop pesan foto
+ * dibatasi ±420–480 px sehingga tombol ikut sempit. Game di daftar ini
+ * dikirim sebagai pesan TEKS dengan banner sebagai pratinjau besar di atas
+ * teks (bubble & tombol mengikuti lebar teks). Kosongkan untuk kembali ke
+ * foto; game lain tetap memakai foto.
+ */
+export const GAMES_WIDE_BANNER_SLUGS: ReadonlySet<string> = new Set(["mobile-legends"]);
+
+/** Bendera emoji dari kode negara ISO-2 (ID → 🇮🇩); null bila tidak valid. */
+function regionFlag(code: string | null | undefined): string | null {
+  const c = String(code ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return null;
+  return String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
+}
+
+/** Label mata uang game untuk caption detail (topup umum tidak ditampilkan). */
+function currencyLabel(currency: string | null | undefined): string | null {
+  if (currency === "diamond") return "💎 Diamond";
+  if (currency === "uc") return "🪙 UC";
+  return null;
+}
+
 /** Peringkat harga dalam kategori yang sama (sama dengan web) untuk memilih ikon nominal. */
 function itemRank<T extends { category: string; price: number }>(scope: readonly T[], p: T): { index: number; total: number } {
   const same = scope.filter((x) => x.category === p.category).sort((a, b) => a.price - b.price);
@@ -194,7 +217,7 @@ export async function handleGamesHome(
   const en = ctx.locale === "en";
   const catalog = await getGamesCatalog();
   const sellable = catalog.filter((g) => g.sellable_count > 0);
-  const popular = selectPopularGames(sellable.length ? sellable : catalog).slice(0, 9);
+  const popular = selectPopularGames(sellable.length ? sellable : catalog).slice(0, 8); // owner 28 Nov: grid 2 kolom genap
 
   const popularRefs = await Promise.all(popular.map(async (g) => ({ game: g, ref: await gameCallbackRef(g.slug) })));
   const rows: InlineKeyboardButton[][] = twoColGrid(popularRefs, ({ game, ref }) => ({
@@ -528,6 +551,8 @@ export async function handleGamesOpen(
     activeTypeLabel: buckets.length > 1 ? activeBucket?.label : (activeBucket?.label !== "Utama" ? activeBucket?.label : null),
     activeCategoryLabel: activeCat === "p" ? "🎫 Pass & Membership" : null,
     activeRangeLabel: rangeLabel(activeRange, ctx.locale),
+    regionFlag: regionFlag(activeBucket?.regionCode),
+    currencyLabel: currencyLabel(detail.game.currency),
     shownCount: validPageItems.length,
     totalInScope: finalList.length,
     page,
@@ -542,6 +567,18 @@ export async function handleGamesOpen(
   const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
   const assetPath = detail.game.banner || detail.game.icon;
   const photoUrl = assetPath && assetPath.startsWith("/") ? `${siteUrl}${assetPath}` : null;
+
+  if (photoUrl && GAMES_WIDE_BANNER_SLUGS.has(detail.game.slug)) {
+    const res = await replaceWithText({
+      chat_id: chatId,
+      message_id: messageId,
+      text: caption,
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: rows },
+      link_preview_options: { url: photoUrl, prefer_large_media: true, show_above_text: true },
+    }, sourceMeta).catch(() => ({ ok: false as const }));
+    if (res?.ok) return;
+  }
 
   if (photoUrl && caption.length <= 1024) {
     const res = await replaceWithPhoto({
@@ -723,6 +760,7 @@ export async function handleGamesSelectVariant(
           chat_id: chatId,
           message_id: messageId,
           text: gamesSavedAccountPromptMessage({
+            gameSlug: slug,
             gameName,
             packageName,
             price,
@@ -753,6 +791,7 @@ export async function handleGamesSelectVariant(
   await sendMessage({
     chat_id: chatId,
     text: gamesAccountInputPromptMessage({
+      gameSlug: slug,
       gameName,
       packageName,
       price,
@@ -968,6 +1007,7 @@ async function showGamesReviewAndPaymentOffer(
     : validated.target.note;
 
   const reviewText = gamesReviewMessage({
+    gameSlug: slug,
     gameName,
     packageName,
     typeLabel,
@@ -1154,6 +1194,7 @@ export async function handleGamesPendingInput(
       await sendMessage({
         chat_id: chatId,
         text: gamesAccountInputPromptMessage({
+      gameSlug: slug,
           gameName,
           packageName,
           price: Number(row.sell_price),
