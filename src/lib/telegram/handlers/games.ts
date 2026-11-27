@@ -1,15 +1,15 @@
 // src/lib/telegram/handlers/games.ts — Alur 100% native AXVARA Games di Bot Telegram.
 // Mendukung 48+ game & 1.600+ SKU dengan:
 // - 9 Game Populer (2 kolom) + Semua Game + Filter Genre + Cari Game (alias ml/ff/valo/dll)
-// - Default region Indonesia / utama + pintasan 🎫 Pass & Membership + 🌏 Region Lain
-// - Grid nominal 2 kolom (10/halaman) + filter rentang harga + 🔢 Cari Nominal
+// - Default region Indonesia / utama + 🌏 Region Lain (bendera animasi per region)
+// - Grid nominal 2 kolom (10/halaman) + filter rentang harga + 🔎 Cari Nominal
 // - 1-klik pakai ID terakhir dari riwayat order sendiri (tanpa tabel/migrasi baru)
 // - Input 1 pesan (`12345678 1234` / `12345678(1234)`) + Cek Nickname gratis + peringatan region
 // - Konfirmasi & freeze payq1 (QRIS + Crypto)
 
 import { createDatabaseAccess } from "@/lib/db-access";
 import { execRun, isD1Mode, queryFirst } from "@/lib/db";
-import { getGamesCatalog, getGamesDetail, type GamesCatalogItem, type GamesDetailProduct } from "@/lib/games/catalog";
+import { getGamesCatalog, getGamesDetail, type GamesCatalogItem, type GamesDetailGame, type GamesDetailProduct } from "@/lib/games/catalog";
 import { selectPopularGames } from "@/lib/games/popular";
 import { GAMES_GENRES, GAMES_GENRE_BY_SLUG, type GamesGenre } from "@/lib/games/genres";
 import { gamesOrderingOpen, gamesPreviewMessage } from "@/lib/games/ordering";
@@ -46,6 +46,7 @@ import type { InlineKeyboardButton, InlineKeyboardMarkup } from "@/lib/telegram/
 import type { Locale } from "@/lib/i18n/locale";
 import { SITE } from "@/lib/site";
 import { gameItemIcon, gameLogoHtml, gameLogoIcon } from "@/lib/telegram/games-emoji";
+import { regionFlagHtml, regionIcon } from "@/lib/telegram/flag-emoji";
 
 const GAMES_PER_PAGE = 10;
 const SKUS_PER_PAGE = 10;
@@ -120,20 +121,21 @@ function compactSkuButtonLabel(name: string, price: number, ctx: TgPriceCtx): st
   return `${truncateBtn(short, 16)} · ${priceStr}`;
 }
 
-/**
- * Uji coba banner lebar (owner 28 Nov 2026): di Telegram Desktop pesan foto
- * dibatasi ±420–480 px sehingga tombol ikut sempit. Game di daftar ini
- * dikirim sebagai pesan TEKS dengan banner sebagai pratinjau besar di atas
- * teks (bubble & tombol mengikuti lebar teks). Kosongkan untuk kembali ke
- * foto; game lain tetap memakai foto.
- */
-export const GAMES_WIDE_BANNER_SLUGS: ReadonlySet<string> = new Set(["mobile-legends"]);
+/** "Diamond · 💎 Diamond" → cukup sekali: label tipe sudah menyebut mata uangnya. */
+export function sameAsTypeLabel(currency: string | null, typeLabel: string | null | undefined): boolean {
+  const word = currency?.replace(/^\S+\s+/, "").trim().toLowerCase();
+  return Boolean(word && word === String(typeLabel ?? "").trim().toLowerCase());
+}
 
-/** Bendera emoji dari kode negara ISO-2 (ID → 🇮🇩); null bila tidak valid. */
-function regionFlag(code: string | null | undefined): string | null {
-  const c = String(code ?? "").trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(c)) return null;
-  return String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
+/**
+ * Ikon tombol region/tipe (owner 28 Nov 2026): bendera animasi untuk negara,
+ * globe untuk region gabungan, ikon nominal game untuk tipe (Diamond/Membership/UC).
+ */
+function bucketIcon(slug: string, currency: GamesDetailGame["currency"], b: TypeBucket): { icon_custom_emoji_id?: string } {
+  const flag = regionIcon(b.regionCode, b.label);
+  if (flag.icon_custom_emoji_id) return flag;
+  const member = /member|pass|langganan|starlight|weekly|monthly|mingguan|bulanan/i.test(b.label);
+  return gameItemIcon(slug, { name: b.label, category: member ? "pass" : "topup", currency }, { index: 1, total: 3 });
 }
 
 /** Label mata uang game untuk caption detail (topup umum tidak ditampilkan). */
@@ -456,10 +458,10 @@ export async function handleGamesOpen(
   const activeBucket = buckets[safeTypeIdx];
   const bucketProducts = activeBucket ? activeBucket.products : available;
 
-  const passProducts = bucketProducts.filter((p) => p.category === "pass" || p.category === "first_topup" || p.category === "pack");
-  const hasPassTab = passProducts.length > 0 && bucketProducts.length > 12;
-  const activeCat: "a" | "p" = opts.cat === "p" && hasPassTab ? "p" : "a";
-  const catFiltered = activeCat === "p" ? passProducts : bucketProducts;
+  // Tab "Semua Nominal / Pass & Member" dihapus (owner 28 Nov 2026): pass tetap
+  // di grid (urut harga) dan lewat Cari Nominal. Callback lama `cat=p` → semua.
+  const activeCat = "a" as const;
+  const catFiltered = bucketProducts;
 
   const activeRange: PriceRangeCode = opts.range && ["0", "1", "2", "3"].includes(opts.range) ? opts.range : "0";
   const showRangeFilter = catFiltered.length > 10 || activeRange !== "0";
@@ -470,24 +472,6 @@ export async function handleGamesOpen(
   const pageItems = finalList.slice(page * SKUS_PER_PAGE, (page + 1) * SKUS_PER_PAGE);
 
   const rows: InlineKeyboardButton[][] = [];
-
-  // Shortcut Pass & Membership di baris teratas untuk game besar
-  if (hasPassTab) {
-    rows.push([
-      {
-        text: activeCat === "a" ? (en ? "• All Packages" : "• Semua Nominal") : (en ? "All Packages" : "Semua Nominal"),
-        callback_data: cb.gamesTab(ref, safeTypeIdx, "a", "0", 0),
-        style: "primary",
-      },
-      {
-        text: activeCat === "p"
-          ? `• 🎫 Pass (${passProducts.length})`
-          : `🎫 Pass & Member (${passProducts.length})`,
-        callback_data: cb.gamesTab(ref, safeTypeIdx, "p", "0", 0),
-        style: "primary",
-      },
-    ]);
-  }
 
   // Filter rentang harga dinamis
   if (showRangeFilter) {
@@ -526,7 +510,7 @@ export async function handleGamesOpen(
   const quickRow: InlineKeyboardButton[] = [];
   if (available.length > 6) {
     quickRow.push({
-      text: en ? "🔢 Search Package" : "🔢 Cari Nominal",
+      text: en ? "🔎 Search Package" : "🔎 Cari Nominal",
       callback_data: cb.gamesSearchSku(ref, safeTypeIdx),
       style: "primary",
     });
@@ -549,10 +533,9 @@ export async function handleGamesOpen(
     gameName: detail.game.name,
     description: detail.game.description,
     activeTypeLabel: buckets.length > 1 ? activeBucket?.label : (activeBucket?.label !== "Utama" ? activeBucket?.label : null),
-    activeCategoryLabel: activeCat === "p" ? "🎫 Pass & Membership" : null,
     activeRangeLabel: rangeLabel(activeRange, ctx.locale),
-    regionFlag: regionFlag(activeBucket?.regionCode),
-    currencyLabel: currencyLabel(detail.game.currency),
+    regionFlag: regionFlagHtml(activeBucket?.regionCode, activeBucket?.label),
+    currencyLabel: sameAsTypeLabel(currencyLabel(detail.game.currency), activeBucket?.label) ? null : currencyLabel(detail.game.currency),
     shownCount: validPageItems.length,
     totalInScope: finalList.length,
     page,
@@ -567,18 +550,6 @@ export async function handleGamesOpen(
   const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
   const assetPath = detail.game.banner || detail.game.icon;
   const photoUrl = assetPath && assetPath.startsWith("/") ? `${siteUrl}${assetPath}` : null;
-
-  if (photoUrl && GAMES_WIDE_BANNER_SLUGS.has(detail.game.slug)) {
-    const res = await replaceWithText({
-      chat_id: chatId,
-      message_id: messageId,
-      text: caption,
-      parse_mode: "HTML",
-      reply_markup: { inline_keyboard: rows },
-      link_preview_options: { url: photoUrl, prefer_large_media: true, show_above_text: true },
-    }, sourceMeta).catch(() => ({ ok: false as const }));
-    if (res?.ok) return;
-  }
 
   if (photoUrl && caption.length <= 1024) {
     const res = await replaceWithPhoto({
@@ -624,6 +595,7 @@ export async function handleGamesRegions(
     ({ b, idx }) => ({
       text: `${truncateBtn(b.label, 16)} (${b.products.length})`,
       callback_data: cb.gamesTab(ref, idx, "a", "0", 0),
+      ...bucketIcon(detail.game.slug, detail.game.currency, b),
     }),
   );
   rows.push([
@@ -1137,7 +1109,7 @@ export async function handleGamesPendingInput(
         parse_mode: "HTML",
         reply_markup: {
           inline_keyboard: [[
-            { text: en ? "🔢 Search Again" : "🔢 Cari Lagi", callback_data: cb.gamesSearchSku(ref, typeIdx) },
+            { text: en ? "🔎 Search Again" : "🔎 Cari Lagi", callback_data: cb.gamesSearchSku(ref, typeIdx) },
             { text: en ? "◀️ All Packages" : "◀️ Lihat Nominal", callback_data: cb.gamesOpen(ref) },
           ]],
         },

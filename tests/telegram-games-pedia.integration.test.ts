@@ -338,7 +338,7 @@ describe("Native Telegram AXVARA Games end-to-end", () => {
     expect(webIdx).toBeGreaterThan(-1);
     expect(webIdx).toBe(homeIdx - 1);
 
-    // 2. Open Mobile Legends -> default Indonesia, has Pass tab, price filter, SKU search, Region switch
+    // 2. Open Mobile Legends -> default Indonesia, price filter, SKU search, Region switch (no Pass tab, owner 28 Nov 2026)
     await click("gmo:mobile-legends");
     const mlUi = lastUiPayload();
     expect(mlUi.text).toContain("Mobile Legends");
@@ -352,13 +352,16 @@ describe("Native Telegram AXVARA Games end-to-end", () => {
     const range3Btn = mlBtns.find((b) => b.callback_data?.endsWith(":3:0"));
     const regionBtn = mlBtns.find((b) => b.callback_data === "gmr:mobile-legends");
     const skuSearchBtn = mlBtns.find((b) => b.callback_data?.startsWith("gms:mobile-legends"));
-    expect(passBtn).toBeTruthy();
+    expect(passBtn).toBeUndefined();
+    expect(mlBtns.some((b) => /All Packages|Semua Nominal/.test(b.text))).toBe(false);
     expect(range3Btn).toBeTruthy();
     expect(regionBtn).toBeTruthy();
     expect(skuSearchBtn).toBeTruthy();
 
-    // Switch to Pass tab -> shows Weekly Diamond Pass
-    await click(passBtn!.callback_data!);
+    // Weekly Diamond Pass stays in the main grid; a legacy Pass-tab callback falls back to all packages
+    expect(mlBtns.some((b) => b.callback_data === "gmv:2")).toBe(true);
+    await click(range3Btn!.callback_data!.replace(/:a:3:0$/, ":p:0:0"));
+    expect(buttonsOf().some((b) => b.callback_data === "gmv:1")).toBe(true);
     expect(buttonsOf().some((b) => b.callback_data === "gmv:2")).toBe(true);
 
     // Filter >100rb -> shows 514 Diamonds (125k) only

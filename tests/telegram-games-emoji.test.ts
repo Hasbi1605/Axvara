@@ -56,8 +56,29 @@ describe("Games screens copy (owner 28 Nov 2026)", () => {
     expect(review).toContain(`Game     : <tg-emoji emoji-id="${GAME_LOGO_EMOJI["mobile-legends"]}">🎮</tg-emoji> <b>Mobile Legends</b>`);
   });
 
-  it("keeps the wide-banner experiment limited to Mobile Legends", async () => {
-    const { GAMES_WIDE_BANNER_SLUGS } = await import("@/lib/telegram/handlers/games");
-    expect([...GAMES_WIDE_BANNER_SLUGS]).toEqual(["mobile-legends"]);
+  it("drops the currency word when the region/type label already says it", async () => {
+    const { sameAsTypeLabel } = await import("@/lib/telegram/handlers/games");
+    expect(sameAsTypeLabel("💎 Diamond", "Diamond")).toBe(true);
+    expect(sameAsTypeLabel("🪙 UC", "UC")).toBe(true);
+    expect(sameAsTypeLabel("💎 Diamond", "Indonesia")).toBe(false);
+    expect(sameAsTypeLabel(null, "Diamond")).toBe(false);
+  });
+
+});
+
+describe("Region flag icons (owner 28 Nov 2026)", () => {
+  it("maps ISO-2, Europe and global regions to animated flags/globe", async () => {
+    const { FLAG_EMOJI, regionIcon, regionFlagHtml } = await import("@/lib/telegram/flag-emoji");
+    const { CUSTOM_EMOJI_MAP } = await vi.importActual<typeof import("@/lib/telegram/custom-emoji-map")>("@/lib/telegram/custom-emoji-map");
+    for (const c of ["ID", "MY", "SG", "PH", "TH", "BR", "BD", "EU"]) expect(FLAG_EMOJI[c]).toMatch(/^\d+$/);
+    expect(regionIcon("MY", "Malaysia")).toEqual({ icon_custom_emoji_id: FLAG_EMOJI.MY });
+    expect(regionIcon(null, "Europe")).toEqual({ icon_custom_emoji_id: FLAG_EMOJI.EU });
+    expect(regionIcon("GLOBAL", "Global")).toEqual({ icon_custom_emoji_id: CUSTOM_EMOJI_MAP["🌏"] });
+    expect(regionIcon(null, "Latin America")).toEqual({ icon_custom_emoji_id: CUSTOM_EMOJI_MAP["🌏"] });
+    expect(regionIcon(null, "Diamond")).toEqual({});
+    expect(regionFlagHtml("ID", "Indonesia")).toBe(`<tg-emoji emoji-id="${FLAG_EMOJI.ID}">🇮🇩</tg-emoji>`);
+    vi.stubEnv("TELEGRAM_CUSTOM_EMOJI", "off");
+    expect(regionIcon("MY", "Malaysia")).toEqual({});
+    expect(regionFlagHtml("ID", "Indonesia")).toBe("🇮🇩");
   });
 });
