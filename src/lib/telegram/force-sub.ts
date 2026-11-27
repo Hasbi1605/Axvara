@@ -415,7 +415,7 @@ export function forceSubGateMessage(config: TelegramChannelConfig, locale: Local
   const handle = escapeHtml(config.channelUsername);
   if (locale === "en") {
     return [
-      "<b>📢 Join Official Channel First</b>",
+      "<b>📢 Join Channel First</b>",
       "",
       `Join <b>${title}</b> (@${handle}) for restock alerts, promos, and full access to the AXVARA bot.`,
       "",
@@ -423,7 +423,7 @@ export function forceSubGateMessage(config: TelegramChannelConfig, locale: Local
     ].join("\n");
   }
   return [
-    "<b>📢 Gabung Channel Resmi Dulu</b>",
+    "<b>📢 Gabung Channel Dulu</b>",
     "",
     `Gabung ke <b>${title}</b> (@${handle}) untuk info restock, promo &amp; akses penuh bot AXVARA.`,
     "",

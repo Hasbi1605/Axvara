@@ -204,7 +204,7 @@ describe("Smart Force-Join & Telegram Channel broadcasts", () => {
     }));
     expect(res.status).toBe(200);
     expect(tgCalls.some((c) => c.method === "getChatMember" && c.body.chat_id === "@axvaratech" && c.body.user_id === 7001)).toBe(true);
-    const gateMsg = tgCalls.find((c) => c.method === "sendMessage" && String(c.body.text).includes("Gabung Channel Resmi Dulu"));
+    const gateMsg = tgCalls.find((c) => c.method === "sendMessage" && String(c.body.text).includes("Gabung Channel Dulu"));
     expect(gateMsg).toBeTruthy();
     const kb = (gateMsg?.body.reply_markup as { inline_keyboard: { text: string; url?: string; callback_data?: string }[][] }).inline_keyboard;
     expect(kb[0][0].url).toBe("https://t.me/axvaratech");
@@ -288,7 +288,7 @@ describe("Smart Force-Join & Telegram Channel broadcasts", () => {
       }));
       expect(res.status).toBe(200);
       expect(tgCalls.filter((c) => c.method === "getChatMember")).toHaveLength(0);
-      expect(tgCalls.some((c) => String(c.body.text || "").includes("Gabung Channel Resmi Dulu"))).toBe(false);
+      expect(tgCalls.some((c) => String(c.body.text || "").includes("Gabung Channel Dulu"))).toBe(false);
     }
   });
 
@@ -412,7 +412,7 @@ describe("Smart Force-Join & Telegram Channel broadcasts", () => {
         date: 1700000000,
       },
     }));
-    expect(tgCalls.some((c) => String(c.body.text || "").includes("Gabung Channel Resmi Dulu"))).toBe(true);
+    expect(tgCalls.some((c) => String(c.body.text || "").includes("Gabung Channel Dulu"))).toBe(true);
 
     // Joins channel -> taps fsub:check -> shows language chooser while keeping onboarding:prd_42
     memberStatus = "member";
