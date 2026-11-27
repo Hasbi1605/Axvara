@@ -6,8 +6,11 @@ import {
   checkSupplierLowBalance,
   checkTunvnLowBalance,
   parseBalanceThreshold,
+  SUPPLIER_BALANCE_ALERT_STEP_DEFAULT,
   tunvnBalanceAlertThreshold,
 } from "@/lib/supplier-balance-alert";
+import { miraiBalanceAlertOptions } from "@/lib/mirai/balance";
+import { pixelverifBalanceAlertOptions } from "@/lib/pixelverif/balance";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { stubStorebatEnv } from "./helpers/storebat-fixture";
 
@@ -113,7 +116,7 @@ it("StoreBat cron records USD balance, throttles checks and stores a safe error 
 });
 
 describe("checkSupplierLowBalance", () => {
-  it("below threshold alerts once, uses <=5 D1 statements, and repeats within 6h only on drop >= step", async () => {
+  it("below threshold alerts once, uses <=5 D1 statements, and repeats only on drop >= step", async () => {
     const fx = createD1Fixture();
     try {
       stubTelegramEnv();
@@ -128,7 +131,7 @@ describe("checkSupplierLowBalance", () => {
         label: "TUNVN",
         fetchBalance: async () => 4.1,
         threshold: 5,
-        step: 1,
+        step: 2,
         format,
         now: t0,
       });
@@ -143,56 +146,75 @@ describe("checkSupplierLowBalance", () => {
       );
       expect(messages[0].parse_mode).toBe("HTML");
 
-      // Repeat after 30m checkpoint without further drop (within 6h) -> no alert.
+      // Smaller drop (4.1 -> 2.5, diff 1.6 < 2) -> no alert.
       const db = createDatabaseAccess(fx.db);
       const r2 = await checkSupplierLowBalance(db, {
         supplier: "tunvn",
         label: "TUNVN",
-        fetchBalance: async () => 3.5,
+        fetchBalance: async () => 2.5,
         threshold: 5,
-        step: 1,
+        step: 2,
         format,
         now: t0 + thirtyOneMin,
       });
-      expect(r2).toEqual({ checked: true, balance: 3.5, alerted: false });
+      expect(r2).toEqual({ checked: true, balance: 2.5, alerted: false });
       expect(messages).toHaveLength(1);
 
-      // Drop >= step (4.1 -> 3.1, float-safe) within 6h -> alerts again.
+      // Drop >= step (4.1 -> 2.1, float-safe) -> alerts again.
       const r3 = await checkSupplierLowBalance(db, {
         supplier: "tunvn",
         label: "TUNVN",
-        fetchBalance: async () => 3.1,
+        fetchBalance: async () => 2.1,
         threshold: 5,
-        step: 1,
+        step: 2,
         format,
         now: t0 + 2 * thirtyOneMin,
       });
-      expect(r3).toEqual({ checked: true, balance: 3.1, alerted: true });
+      expect(r3).toEqual({ checked: true, balance: 2.1, alerted: true });
       expect(messages).toHaveLength(2);
     } finally {
       fx.close();
     }
   });
 
-  it("alerts again after 6h even without further balance drop", async () => {
+  it("stays silent when balance is stagnant even after 6h/48h, and re-arms after recovery >= threshold", async () => {
     const fx = createD1Fixture();
     try {
       stubTelegramEnv();
       const { messages } = stubTelegramFetch();
       const db = createDatabaseAccess(fx.db);
       const t0 = 1_800_000_000_000;
+      const HOUR = 60 * 60 * 1000;
+      let current = 3.2;
       const opts = {
         supplier: "aivault" as const,
         label: "AIVault",
-        fetchBalance: async () => 3.2,
+        fetchBalance: async () => current,
         threshold: 5,
-        step: 1,
+        step: 2,
         format: (n: number) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`,
       };
 
       expect(await checkSupplierLowBalance(db, { ...opts, now: t0 })).toMatchObject({ alerted: true });
-      expect(await checkSupplierLowBalance(db, { ...opts, now: t0 + 5 * 60 * 60 * 1000 })).toMatchObject({ alerted: false });
-      expect(await checkSupplierLowBalance(db, { ...opts, now: t0 + 6 * 60 * 60 * 1000 })).toMatchObject({ alerted: true });
+      expect(await checkSupplierLowBalance(db, { ...opts, now: t0 + 6 * HOUR })).toMatchObject({ alerted: false });
+      expect(await checkSupplierLowBalance(db, { ...opts, now: t0 + 48 * HOUR })).toMatchObject({ alerted: false });
+      expect(messages).toHaveLength(1);
+
+      // Owner tops up >= threshold -> marker resets (using <= 3 statements).
+      current = 12;
+      const budgeted = createBudgetedDatabase(3, 0, fx.db);
+      expect(await checkSupplierLowBalance(budgeted.access, { ...opts, now: t0 + 49 * HOUR })).toMatchObject({
+        checked: true,
+        balance: 12,
+        alerted: false,
+      });
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='aivault_balance_alert_at'").get()).toEqual({
+        value: "",
+      });
+
+      // Drops below threshold again later -> alerts once for the new episode.
+      current = 4.9;
+      expect(await checkSupplierLowBalance(db, { ...opts, now: t0 + 50 * HOUR })).toMatchObject({ alerted: true });
       expect(messages).toHaveLength(2);
     } finally {
       fx.close();
@@ -466,6 +488,9 @@ describe("env threshold parsing and supplier adapters", () => {
     vi.stubEnv("AIVAULT_BALANCE_ALERT_USD", "bad");
     expect(tunvnBalanceAlertThreshold()).toBe(7.5);
     expect(aivaultBalanceAlertThreshold()).toBe(5);
+    expect(SUPPLIER_BALANCE_ALERT_STEP_DEFAULT).toBe(2);
+    expect(miraiBalanceAlertOptions().step).toBe(2);
+    expect(pixelverifBalanceAlertOptions().step).toBe(2);
   });
 
   it("formats TUNVN and AIVault alert messages per spec", async () => {

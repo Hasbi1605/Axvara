@@ -21,7 +21,7 @@ export interface SupplierBalanceCheckResult {
 }
 
 export const SUPPLIER_BALANCE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-export const SUPPLIER_BALANCE_ALERT_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const SUPPLIER_BALANCE_ALERT_STEP_DEFAULT = 2;
 export const TUNVN_BALANCE_ALERT_USDT_DEFAULT = 5;
 export const AIVAULT_BALANCE_ALERT_USD_DEFAULT = 5;
 export const STOREBAT_BALANCE_ALERT_USD_DEFAULT = 5;
@@ -72,9 +72,11 @@ const formatUsdt = (n: number): string => `${formatNumber(n)} USDT`;
 const formatUsd = (n: number): string => `$${formatNumber(n)}`;
 
 /**
- * Cek saldo supplier secara bounded (<= 4 statement D1 per run) dengan
- * checkpoint 30 menit sebelum panggilan API dan throttle alert Telegram
- * 6 jam atau turun >= step via CAS store_settings.
+ * Cek saldo supplier secara bounded (<= 5 statement D1 per run) dengan
+ * checkpoint 5 menit sebelum panggilan API. Alert Telegram dikirim sekali
+ * saat pertama turun di bawah ambang (tidak mengulang bila saldo stagnan),
+ * lalu berbunyi lagi hanya jika saldo turun >= step atau setelah pulih
+ * (>= ambang, marker direset otomatis) lalu menipis kembali — via CAS store_settings.
  */
 export async function checkSupplierLowBalance(
   db: DatabaseAccess,
@@ -86,18 +88,21 @@ export async function checkSupplierLowBalance(
   const checkedKey = `${opts.supplier}_balance_checked_at`;
   const errorKey = `${opts.supplier}_balance_error`;
   const lastOkKey = `${opts.supplier}_balance_last_ok_at`;
+  const alertKey = `${opts.supplier}_balance_alert_at`;
   const { parseExpiry } = await import("@/lib/expiry");
 
   const settingsRows = await db.queryAll(
-    `SELECT key, value FROM store_settings WHERE key IN (?, ?)`,
+    `SELECT key, value FROM store_settings WHERE key IN (?, ?, ?)`,
     checkedKey,
     errorKey,
+    alertKey,
   );
   const lastRaw = settingsRows.find((r) => r.key === checkedKey)?.value;
   const lastCheckedMs = parseExpiry(lastRaw);
   if (lastCheckedMs !== null && now - lastCheckedMs < SUPPLIER_BALANCE_CHECK_INTERVAL_MS) {
     return { checked: false };
   }
+  const prevAlertRaw = String(settingsRows.find((r) => r.key === alertKey)?.value ?? "").trim();
   let prevStreak = 0;
   const prevErrRaw = settingsRows.find((r) => r.key === errorKey)?.value;
   if (typeof prevErrRaw === "string" && prevErrRaw.trim()) {
@@ -153,17 +158,33 @@ export async function checkSupplierLowBalance(
   }
 
   // Sukses fetch: simpan timestamp sukses terakhir, nilai terakhir, + kosongkan error/streak (1 statement).
+  // Bila saldo pulih (>= ambang) sesudah sempat rendah, sekalian reset marker alert agar episode berikutnya tetap mengabari.
   const lastValueKey = `${opts.supplier}_balance_last_value`;
-  await db.execRun(
-    `INSERT INTO store_settings (key, value, updated_at)
-     VALUES (?, ?, datetime('now')), (?, '', datetime('now')), (?, ?, datetime('now'))
-     ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
-    lastOkKey,
-    String(now),
-    errorKey,
-    lastValueKey,
-    String(balance),
-  );
+  const clearRecoveredAlert = !(balance < opts.threshold) && prevAlertRaw !== "";
+  if (clearRecoveredAlert) {
+    await db.execRun(
+      `INSERT INTO store_settings (key, value, updated_at)
+       VALUES (?, ?, datetime('now')), (?, '', datetime('now')), (?, ?, datetime('now')), (?, '', datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+      lastOkKey,
+      String(now),
+      errorKey,
+      lastValueKey,
+      String(balance),
+      alertKey,
+    );
+  } else {
+    await db.execRun(
+      `INSERT INTO store_settings (key, value, updated_at)
+       VALUES (?, ?, datetime('now')), (?, '', datetime('now')), (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+      lastOkKey,
+      String(now),
+      errorKey,
+      lastValueKey,
+      String(balance),
+    );
+  }
 
   if (!(balance < opts.threshold)) {
     return { checked: true, balance, alerted: false };
@@ -174,7 +195,6 @@ export async function checkSupplierLowBalance(
     return { checked: true, balance, alerted: false };
   }
 
-  const alertKey = `${opts.supplier}_balance_alert_at`;
   try {
     const row = await db.queryFirst(`SELECT value FROM store_settings WHERE key=?`, alertKey);
     const raw = row ? String(row.value ?? "") : "";
@@ -196,7 +216,7 @@ export async function checkSupplierLowBalance(
       lastMs = Number(t);
     }
 
-    if (Number.isFinite(lastMs) && now - lastMs < SUPPLIER_BALANCE_ALERT_INTERVAL_MS) {
+    if (Number.isFinite(lastMs)) {
       if (!Number.isFinite(lastBalance)) {
         await claim(`${balance}|${lastMs}`);
         return { checked: true, balance, alerted: false };
@@ -242,7 +262,7 @@ export async function checkTunvnLowBalance(
       return res.balance_usdt;
     },
     threshold: tunvnBalanceAlertThreshold(),
-    step: 1,
+    step: SUPPLIER_BALANCE_ALERT_STEP_DEFAULT,
     format: formatUsdt,
     now,
   });
@@ -265,7 +285,7 @@ export async function checkAivaultLowBalance(
       return parsed.balance;
     },
     threshold: aivaultBalanceAlertThreshold(),
-    step: 1,
+    step: SUPPLIER_BALANCE_ALERT_STEP_DEFAULT,
     format: formatUsd,
     now,
   });
@@ -288,7 +308,7 @@ export async function checkStorebatLowBalance(
       return parsed.balance;
     },
     threshold: storebatBalanceAlertThreshold(),
-    step: 1,
+    step: SUPPLIER_BALANCE_ALERT_STEP_DEFAULT,
     format: formatUsd,
     now,
   });

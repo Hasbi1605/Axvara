@@ -6,9 +6,9 @@ const INDOSMM_BALANCE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 // pedia_orders (PEDIA M4, PD-30–33): dispatch + poll + alert saldo.
 // Budget: klaim atomik + ≤20 item + poll ≤20 + saldo maks. 1×/5 mnt + penanda.
 // Saldo dicek via proxy /indosmm/balance; bila < ambang (env
-// PEDIA_BALANCE_ALERT_RP) → ping admin dengan throttle 1:1 WR/SK (6 jam ATAU
-// turun Rp5.000 — `notifyPediaLowBalance`, kunci store_settings
-// pedia_indosmm_balance_alert_at format `amount|ms`).
+// PEDIA_BALANCE_ALERT_RP) → ping admin sekali + ulang hanya jika turun
+// ≥ Rp25.000 atau sesudah pulih (>= ambang, marker direset) — `notifyPediaLowBalance`
+// & `clearPediaLowBalanceMarker`, kunci store_settings `pedia_indosmm_balance_alert_at`.
 export async function run(ctx: LiteContext): Promise<Record<string, unknown>> {
   const { db, failedCore } = ctx;
   const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
@@ -48,6 +48,9 @@ export async function run(ctx: LiteContext): Promise<Record<string, unknown>> {
           if (v < pediaBalanceAlertRp()) {
             const { notifyPediaLowBalance } = await import("@/lib/pedia/notify");
             out.indosmm_balance_alerted = await notifyPediaLowBalance(v, db, "indosmm");
+          } else if (db.canSpend(1)) {
+            const { clearPediaLowBalanceMarker } = await import("@/lib/pedia/notify");
+            await clearPediaLowBalanceMarker(db, "indosmm");
           }
         } else {
           const err = res.ok ? "unsupported_currency_or_balance" : res.kind;

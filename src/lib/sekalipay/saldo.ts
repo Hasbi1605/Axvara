@@ -4,24 +4,35 @@
 import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import { fetchSkBalance, isSkEnabled } from "./client";
 
-const LOW_SALDO_REPEAT_MS = 6 * 60 * 60 * 1000;
-const LOW_SALDO_STEP_IDR = 5000;
+const LOW_SALDO_STEP_IDR = 50_000;
 
 export function skSaldoAlertThreshold(): number {
   const raw = Number(process.env.SEKALIPAY_SALDO_ALERT_THRESHOLD ?? 250000);
   return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 250000;
 }
 
-/** Policy tetap: kirim ulang hanya bila belum pernah kirim dalam 6 jam, atau
- * saldo TURUN melewati kelipatan Rp5.000. State rusak/kosong = due. */
-function skLowSaldoDue(raw: string, balance: number, now: number): boolean {
+/** Policy: kirim sekali saat pertama turun di bawah ambang; tidak mengulang
+ * saat saldo stagnan. Bunyi lagi hanya bila saldo turun ≥ Rp50.000 dari alert
+ * terakhir, atau sesudah top up (≥ ambang, marker direset) lalu menipis lagi.
+ * State rusak/kosong = due. */
+function skLowSaldoDue(raw: string, balance: number): boolean {
   if (!raw) return true;
   const [lastBalanceStr, lastTsStr] = raw.split("|");
   const lastBalance = Number(lastBalanceStr);
   const lastTs = Number(lastTsStr);
   if (!Number.isFinite(lastBalance) || !Number.isFinite(lastTs)) return true;
-  if (lastTs < now - LOW_SALDO_REPEAT_MS) return true;
-  return balance <= Math.floor(lastBalance / LOW_SALDO_STEP_IDR) * LOW_SALDO_STEP_IDR - LOW_SALDO_STEP_IDR;
+  return lastBalance - balance >= LOW_SALDO_STEP_IDR;
+}
+
+async function clearSkLowSaldoMarker(db: DatabaseAccess): Promise<void> {
+  try {
+    await db.execRun(
+      `UPDATE sk_sync_state SET value='', updated_at=datetime('now')
+       WHERE key='low_saldo_notified' AND COALESCE(value,'')<>''`,
+    );
+  } catch (error) {
+    if (error instanceof QueryBudgetExceeded) throw error;
+  }
 }
 
 /**
@@ -38,7 +49,7 @@ async function alertSkLowSaldo(db: DatabaseAccess, balance: number, threshold: n
     const row = await db.queryFirst(`SELECT value FROM sk_sync_state WHERE key='low_saldo_notified'`);
     const raw = row ? String(row.value ?? "") : "";
     const now = Date.now();
-    if (!skLowSaldoDue(raw, balance, now)) return;
+    if (!skLowSaldoDue(raw, balance)) return;
     const reserved = await db.execRun(
       `INSERT INTO sk_sync_state (key, value) VALUES ('low_saldo_notified',?)
        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')
@@ -81,6 +92,7 @@ export async function checkAndLogSkSaldo(database?: DatabaseAccess): Promise<{
     .execRun(`INSERT INTO sk_saldo_log (balance, source, note) VALUES (?,'api_check',NULL)`, balance)
     .catch(() => undefined);
   if (isLow) await alertSkLowSaldo(db, balance, threshold);
+  else await clearSkLowSaldoMarker(db);
   return { balance, isLow, threshold };
 }
 

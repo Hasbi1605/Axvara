@@ -4439,6 +4439,14 @@ Insiden `AXV-20261019-98C8****`: probe 12 order lunas terbaru berjalan dua kali 
    kirim" dan marker ditulis sesudah kirim tanpa CAS. `sk_saldo_log
    source='low_alert'` tetap ditulis sesudah reservasi (best-effort, tidak
    membuka jalur kirim), refresh saldo/admin/order gating tidak berubah.
+   **Revisi 27 November 2026 (keputusan owner, lokal → CI):** pengulangan berkala
+   6 jam saat saldo stagnan dihapus di seluruh 8 supplier (WR, SK, IndoSMM,
+   TUNVN, AIVault, StoreBat, Mirai, Pixel — Ringkasan Harian 07:00 WIB sudah
+   merekap seluruh saldo). Alert dikirim sekali saat pertama turun di bawah
+   ambang (CAS fail-closed tetap), berbunyi lagi hanya jika saldo turun
+   signifikan dari alert terakhir (**≥ Rp50.000** WR/SK, **≥ Rp25.000** IndoSMM,
+   **≥ 2 unit** USD/USDT/credit), dan marker alert direset otomatis ke `''` saat
+   saldo pulih (`≥ ambang`) agar episode menipis berikutnya kembali mengabari.
 
 ## 16. Insiden operasional 2026-09-14 + arsitektur proxy terpisah (WAJIB DIBACA agent)
 
@@ -7015,7 +7023,7 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 
 ### 16.51 Pengingat saldo rendah Telegram admin TUNVN + AIVault — 17 November 2026 (lokal)
 
-- **Modul bersama** `src/lib/supplier-balance-alert.ts`: `checkSupplierLowBalance(db, opts)` memakai maksimal 4 statement D1 per run (`store_settings.<supplier>_balance_checked_at` ditulis sebelum panggilan API, maks 1×/30 menit via `parseExpiry`; `store_settings.<supplier>_balance_alert_at` format `amount|ms` dengan CAS seperti `notifyPediaLowBalance`, alert ulang hanya setelah 6 jam atau saldo turun `>= 1` unit). Mengirim HTML Telegram via `@/lib/telegram/api` hanya bila `TELEGRAM_ADMIN_CHAT_ID` terisi dan `TELEGRAM_BOT_ENABLED === "true"`.
+- **Modul bersama** `src/lib/supplier-balance-alert.ts`: `checkSupplierLowBalance(db, opts)` memakai maksimal 5 statement D1 per run (3 statement saat sehat/pulih, ≤ 5 saat alert; `store_settings.<supplier>_balance_checked_at` ditulis sebelum panggilan API, maks 1×/5 menit via `parseExpiry`; `store_settings.<supplier>_balance_alert_at` format `amount|ms` dengan CAS seperti `notifyPediaLowBalance`). **Revisi 27 November 2026 (keputusan owner):** tidak lagi mengulang tiap 6 jam saat saldo stagnan; alert hanya bunyi sekali saat pertama di bawah ambang, mengulang bila saldo turun `>= 2` unit (`SUPPLIER_BALANCE_ALERT_STEP_DEFAULT`), dan marker direset ke `''` dalam upsert sukses yang sama ketika saldo pulih (`>= ambang`). Mengirim HTML Telegram via `@/lib/telegram/api` hanya bila `TELEGRAM_ADMIN_CHAT_ID` terisi dan `TELEGRAM_BOT_ENABLED === "true"`.
 - **Integrasi cron lite** (`src/lib/cron/lite/jobs/small-suppliers.ts`, dimuat dinamis dari route): `runTunvnOrders` (`job=tunvn_orders`) dan `runAivaultOrders` (`job=aivault_orders`) menjalankan cek saldo di `try/catch` terpisah dengan gate `db.canSpend(5)` (tetap rethrow `QueryBudgetExceeded`) setelah dispatch order. Budget induk ditentukan route; tidak ada env/jadwal Worker baru. Mengekspos `tunvn_balance`, `tunvn_balance_alerted`, `tunvn_balance_error` dan pasangan `aivault_*`.
 - **Env opsional** (tidak dipasang di Cloudflare Pages; memakai default `5`): `TUNVN_BALANCE_ALERT_USDT` (default `5` USDT, finite `>= 0`) dan `AIVAULT_BALANCE_ALERT_USD` (default `5` USD, finite `>= 0`).
 

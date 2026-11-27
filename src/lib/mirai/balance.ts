@@ -2,6 +2,7 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import {
   checkSupplierLowBalance,
   parseBalanceThreshold,
+  SUPPLIER_BALANCE_ALERT_STEP_DEFAULT,
   type CheckSupplierLowBalanceOptions,
   type SupplierBalanceCheckResult,
 } from "@/lib/supplier-balance-alert";
@@ -31,7 +32,7 @@ export function miraiBalanceAlertOptions(now?: number): Omit<CheckSupplierLowBal
     label: "Mirai",
     fetchBalance: fetchMiraiBalanceUsdt,
     threshold: miraiBalanceAlertThreshold(),
-    step: 1,
+    step: SUPPLIER_BALANCE_ALERT_STEP_DEFAULT,
     format: formatMiraiBalanceUsdt,
     now,
   };

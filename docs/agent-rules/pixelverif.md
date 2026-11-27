@@ -1,5 +1,9 @@
 # Aturan agent — Pixel Verification (Google AI Pro 3 bulan)
 
+## Feed v33 semua paket nonaktif (`allowed_validities: []`) — 27 November 2026 (keputusan owner, lokal → publikasi via CI)
+
+- Pada 26 Nov 2026 14:54 WIB, `GET /api/pricing` v33 menonaktifkan seluruh paket (`allowed_validities: []`, `pricing: { normal: {}, full: {} }`, `disabled_plans: ["full:3","full:6","link_validation","normal:3","normal:6"]`). `parsePixelverifPricing()` di `src/lib/pixelverif/client.ts` kini menerima `allowed_validities: []` **hanya** bila `allowed_validities` benar-benar array kosong (tanpa elemen cacat) **dan** `disabled_plans` valid serta non-kosong; payload kosong/cacat tanpa sinyal penonaktifan tetap ditolak (`invalid_pricing_shape`), dan `syncPixelverifCatalog()` tetap mewajibkan seluruh paket lokal (`normal:3`, `full:3`) tercantum di `disabled_plans` sebelum menganggap feed sah, memproyeksikan stok 0, dan menandai seluruh `pixelverif_observed_plans` sebagai `disabled`.
+
 ## Draft Google AI Pro 6 bulan — 26 November 2026
 
 - `full_6` dan `normal_6` tetap bisa diatur di Markup meski snapshot hilang/rusak, tanpa menulis snapshot, memetakan draft di Google AI / Gemini, atau membuka checkout. Harga publik bukan bukti stok atau fulfillment; snapshot API v32 menaikkan modal `full:6` dari 1,2 menjadi 99 kredit dan masih menonaktifkan `normal:6`. Verifikasi ulang sebelum menetapkan harga jual.

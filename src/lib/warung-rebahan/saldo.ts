@@ -26,19 +26,30 @@ export function getSaldoThreshold(): number {
   return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : SALDO_THRESHOLD_DEFAULT;
 }
 
-const LOW_SALDO_REPEAT_MS = 6 * 60 * 60 * 1000;
-const LOW_SALDO_STEP_IDR = 5000;
+const LOW_SALDO_STEP_IDR = 50_000;
 
-/** Policy tetap: kirim ulang hanya bila belum pernah kirim dalam 6 jam, atau
- * saldo TURUN melewati kelipatan Rp5.000. State rusak/kosong = due. */
-function lowSaldoDue(raw: string, balance: number, now: number): boolean {
+/** Policy: kirim sekali saat pertama turun di bawah ambang; tidak mengulang
+ * saat saldo stagnan. Bunyi lagi hanya bila saldo turun ≥ Rp50.000 dari alert
+ * terakhir, atau sesudah top up (≥ ambang, marker direset) lalu menipis lagi.
+ * State rusak/kosong = due. */
+function lowSaldoDue(raw: string, balance: number): boolean {
   if (!raw) return true;
   const [lastBalanceStr, lastTsStr] = raw.split("|");
   const lastBalance = Number(lastBalanceStr);
   const lastTs = Number(lastTsStr);
   if (!Number.isFinite(lastBalance) || !Number.isFinite(lastTs)) return true;
-  if (lastTs < now - LOW_SALDO_REPEAT_MS) return true;
-  return balance <= Math.floor(lastBalance / LOW_SALDO_STEP_IDR) * LOW_SALDO_STEP_IDR - LOW_SALDO_STEP_IDR;
+  return lastBalance - balance >= LOW_SALDO_STEP_IDR;
+}
+
+async function clearLowSaldoMarker(db: DatabaseAccess): Promise<void> {
+  try {
+    await db.execRun(
+      `UPDATE wr_sync_state SET value='', updated_at=datetime('now')
+       WHERE key='low_saldo_notified' AND COALESCE(value,'')<>''`,
+    );
+  } catch (error) {
+    if (error instanceof QueryBudgetExceeded) throw error;
+  }
 }
 
 /**
@@ -55,7 +66,7 @@ async function alertLowSaldo(db: DatabaseAccess, balance: number, threshold: num
     const row = await db.queryFirst(`SELECT value FROM wr_sync_state WHERE key='low_saldo_notified'`);
     const raw = row ? String(row.value ?? "") : "";
     const now = Date.now();
-    if (!lowSaldoDue(raw, balance, now)) return;
+    if (!lowSaldoDue(raw, balance)) return;
     const reserved = await db.execRun(
       `INSERT INTO wr_sync_state (key, value) VALUES ('low_saldo_notified',?)
        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')
@@ -98,6 +109,7 @@ export async function checkAndLogSaldo(
   const threshold = getSaldoThreshold();
   const isLow = amount < threshold;
   if (isLow) await alertLowSaldo(db, amount, threshold);
+  else await clearLowSaldoMarker(db);
   await db.execRun(
     `INSERT INTO wr_sync_log (sync_type, status, saldo_amount, duration_ms)
      VALUES ('saldo','success',?,0)`,

@@ -5,7 +5,7 @@
 // TIDAK ADA spam per-paket kecil. Email pembeli dikirim bersamaan (M5).
 
 import { escapeHtml } from "@/lib/telegram/messages/format";
-import type { createDatabaseAccess } from "@/lib/db-access";
+import { QueryBudgetExceeded, type createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
 import { SITE } from "@/lib/site";
 import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
@@ -485,15 +485,30 @@ export async function notifyPediaNeedsCheck(db: Db, orderCode: string, reason: s
   return result && [400,403,429].includes(Number(result.error_code)) ? "rejected" : "unknown";
 }
 
-/** Admin: saldo supplier < ambang (throttle 1:1 WR/SK — 2026-10-09).
+const PEDIA_LOW_BALANCE_STEP_IDR = 25_000;
+
+/** Reset marker alert saldo IndoSMM saat saldo pulih (>= ambang) agar episode
+ * menipis berikutnya tetap memberi kabar sekali. */
+export async function clearPediaLowBalanceMarker(db?: Db, supplier: PediaProvider = "indosmm"): Promise<void> {
+  if (!db || !isPediaProvider(supplier)) return;
+  try {
+    await db.execRun(
+      `UPDATE store_settings SET value='', updated_at=datetime('now')
+       WHERE key='pedia_indosmm_balance_alert_at' AND COALESCE(value,'')<>''`,
+    );
+  } catch (error) {
+    if (error instanceof QueryBudgetExceeded) throw error;
+  }
+}
+
+/** Admin: saldo supplier < ambang (keputusan owner 2026-11-27).
  *
- * Dulu ping tiap 1 jam (tanpa syarat turun) → spam 9×/8 jam saat saldo Rp 0
- * stagnan. Kini cermin `warung-rebahan/saldo.ts` + `sekalipay/saldo.ts`:
- * kirim ulang hanya bila (a) belum pernah kirim dalam 6 jam terakhir, atau
- * (b) saldo TURUN melewati kelipatan Rp5.000. State `amount|timestamp_ms`
- * disimpan di `store_settings.pedia_indosmm_balance_alert_at` (tanpa migrasi
- * skema; format datetime lama tetap dibaca: timestamp tak diketahui → tulis
- * format baru, tanpa spam ganda).
+ * Kirim sekali saat pertama turun di bawah ambang; tidak mengulang saat saldo
+ * stagnan. Bunyi lagi hanya bila saldo TURUN ≥ Rp25.000 dari alert terakhir,
+ * atau setelah pulih (>= ambang, marker direset oleh `clearPediaLowBalanceMarker`)
+ * lalu menipis kembali. State `amount|timestamp_ms` disimpan di
+ * `store_settings.pedia_indosmm_balance_alert_at` (tanpa migrasi skema; format
+ * datetime lama dimigrasi diam-diam tanpa spam ganda).
  *
  * State wajib tersedia dan diklaim atomik SEBELUM jaringan. Saat D1/budget
  * gagal, alert saldo ditunda; jangan menganggap error baca sebagai belum ada
@@ -520,9 +535,6 @@ export async function notifyPediaLowBalance(balance: number, db?: Db, supplier: 
       key, value, raw,
     );
     // Format baru `amount|ms`; format lama datetime `datetime('now')`.
-    // Pakai parseExpiry kanonis (SQLite `YYYY-MM-DD HH:MM:SS` = UTC):
-    // `Date.parse` mentah menganggapnya waktu LOKAL (WIB = UTC+7) sehingga
-    // selisihnya 7 jam > 6 jam → state kemarin dianggap basi → spam.
     const { parseExpiry } = await import("@/lib/expiry");
     const parseLegacy = (s: string): number => parseExpiry(s) ?? NaN;
     let lastBalance = NaN;
@@ -533,16 +545,13 @@ export async function notifyPediaLowBalance(balance: number, db?: Db, supplier: 
       lastMs = Number(t);
     }
     if (Number.isFinite(lastMs)) {
-      if (now - lastMs < 6 * 60 * 60 * 1000) {
-        // Dalam 6 jam: hanya bunyi lagi bila turun melewati kelipatan Rp5.000.
-        // Format lama (amount tak diketahui) → bungkam + migrasi state di
-        // bawah, JANGAN kirim (return sebelum tulis agar tidak spam ganda).
-        if (!Number.isFinite(lastBalance)) {
-          await claim(`${amount}|${lastMs}`);
-          return false;
-        }
-        if (!(amount <= Math.floor(lastBalance / 5000) * 5000 - 5000)) return false;
+      // Format lama (amount tak diketahui) → bungkam + migrasi state agar
+      // cek berikut konsisten tanpa spam ganda.
+      if (!Number.isFinite(lastBalance)) {
+        await claim(`${amount}|${lastMs}`);
+        return false;
       }
+      if (!(lastBalance - amount >= PEDIA_LOW_BALANCE_STEP_IDR)) return false;
     }
     const reserved = await claim(`${amount}|${now}`);
     if (reserved.changes !== 1) return false;

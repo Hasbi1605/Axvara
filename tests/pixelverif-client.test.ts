@@ -81,6 +81,31 @@ describe("Pixel Verification client contracts", () => {
     };
     expect(parsePixelverifPricing(pricingJson)).toMatchObject({ version: 25, pricing: { normal: { "3": 1 } } });
 
+    // v33 all-disabled feed (empty allowed_validities with explicit disabled_plans) is valid.
+    const allDisabledV33 = {
+      success: true,
+      version: 33,
+      updated_at: 1795679681691,
+      default_validity: 6,
+      allowed_validities: [],
+      pricing: { normal: {}, full: {} },
+      disabled_plans: ["FULL:3", "full:6", "link_validation", "normal:3", "normal:6"],
+      link_validation: null,
+    };
+    expect(parsePixelverifPricing(allDisabledV33)).toEqual({
+      version: 33,
+      updated_at: 1795679681691,
+      default_validity: 6,
+      allowed_validities: [],
+      pricing: { normal: {}, full: {} },
+      disabled_plans: ["full:3", "full:6", "link_validation", "normal:3", "normal:6"],
+    });
+    // Empty/missing/malformed allowed_validities without valid disablement signal stays rejected.
+    expect(parsePixelverifPricing({ ...allDisabledV33, disabled_plans: [] })).toBeNull();
+    expect(parsePixelverifPricing({ ...allDisabledV33, disabled_plans: undefined })).toBeNull();
+    expect(parsePixelverifPricing({ ...allDisabledV33, allowed_validities: null })).toBeNull();
+    expect(parsePixelverifPricing({ ...allDisabledV33, allowed_validities: ["bad"] })).toBeNull();
+
     const creditsJson = { success: true, credits_remaining: 10, name: "Axvara" };
     expect(parsePixelverifCredits(creditsJson)).toMatchObject({ credits_remaining: 10 });
 

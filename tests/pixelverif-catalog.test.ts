@@ -270,8 +270,46 @@ it("honors explicit disablement with stale prices and leaves a concurrent admin 
   expect(f.sql.prepare("SELECT stock FROM product_variants WHERE sku='PV-NORMAL-3'").get()).toEqual({ stock: -1 });
 });
 
+it("syncs v33 all-disabled feed (empty allowed_validities + disabled_plans) without alarming and marks observed plans disabled", async () => {
+  setupFixture();
+  const db = createDatabaseAccess(f.db);
+  await publishPixelverifCatalog(db, 16000, { force: true });
+  pricingOverride = sixMonthPricing;
+  expect(await publishPixelverifCatalog(db, 16000, { force: true })).toMatchObject({ ok: true, mirrored: 0 });
+  f.sql.exec(`INSERT INTO store_settings(key,value) VALUES ('pixelverif_catalog_last_error','pricing_ambiguous:invalid_pricing_shape')
+              ON CONFLICT(key) DO UPDATE SET value=excluded.value;`);
+  pricingOverride = {
+    version: 33,
+    default_validity: 6,
+    allowed_validities: [],
+    pricing: { normal: {}, full: {} },
+    disabled_plans: ["full:3", "full:6", "link_validation", "normal:3", "normal:6"],
+    link_validation: null,
+  };
+  const now = Date.now();
+  expect(await publishPixelverifCatalog(db, 16000, { force: true, now })).toMatchObject({ ok: true, mirrored: 0 });
+  expect(f.sql.prepare("SELECT service_key, available, pricing_version FROM pixelverif_services ORDER BY service_key").all()).toEqual([
+    { service_key: "full_3", available: 0, pricing_version: 33 },
+    { service_key: "normal_3", available: 0, pricing_version: 33 },
+  ]);
+  expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='pixelverif_catalog_success_at'").get()).toEqual({ value: String(now) });
+  expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='pixelverif_catalog_last_error'").get()).toEqual({ value: "" });
+  const observed = parsePixelverifObservedPlans(
+    f.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(PIXELVERIF_OBSERVED_PLANS_KEY)?.value,
+  );
+  expect(observed).toEqual([
+    { flow: "full", months: 3, cost: 1.5, state: "disabled" },
+    { flow: "normal", months: 3, cost: 1, state: "disabled" },
+    { flow: "full", months: 6, cost: 1.2, state: "disabled" },
+    { flow: "normal", months: 6, cost: null, state: "disabled" },
+  ]);
+});
+
 it.each([
   [{ pricing: {}, disabled_plans: ["normal:3", "full:3"] }, { ok: true, mirrored: 0 }, 0],
+  [{ allowed_validities: [], pricing: { normal: {}, full: {} }, disabled_plans: ["normal:3", "full:3"] }, { ok: true, mirrored: 0 }, 0],
+  [{ allowed_validities: [], pricing: { normal: {}, full: {} }, disabled_plans: ["link_validation"] }, { ok: false, error: "invalid_or_empty_catalog" }, -1],
+  [{ allowed_validities: [], pricing: { normal: {}, full: {} }, disabled_plans: [] }, { ok: false, error: "pricing_ambiguous" }, -1],
   [{ pricing: {} }, { ok: false, error: "invalid_or_empty_catalog" }, -1],
   [{ disabled_plans: "full:3" }, { ok: false, error: "pricing_ambiguous" }, -1],
 ] as const)("handles missing or explicit availability data: %o", async (override, result, stock) => {

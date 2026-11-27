@@ -2,6 +2,7 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import {
   checkSupplierLowBalance,
   parseBalanceThreshold,
+  SUPPLIER_BALANCE_ALERT_STEP_DEFAULT,
   type CheckSupplierLowBalanceOptions,
   type SupplierBalanceCheckResult,
 } from "@/lib/supplier-balance-alert";
@@ -30,7 +31,7 @@ export function pixelverifBalanceAlertOptions(now?: number): Omit<CheckSupplierL
     label: "Pixel Verification",
     fetchBalance: fetchPixelverifBalanceCredits,
     threshold: pixelverifBalanceAlertThreshold(),
-    step: 1,
+    step: SUPPLIER_BALANCE_ALERT_STEP_DEFAULT,
     format: formatPixelverifBalanceCredits,
     now,
   };

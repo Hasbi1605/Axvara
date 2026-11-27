@@ -34,21 +34,21 @@ function stubSaldoApi(balance: number, telegram: { sent: unknown[] }) {
   );
 }
 
-function skEnv() {
+function skEnv(threshold = "250000") {
   vi.stubEnv("SEKALIPAY_ENABLED", "true");
   vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
   vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
-  vi.stubEnv("SEKALIPAY_SALDO_ALERT_THRESHOLD", "50000");
+  vi.stubEnv("SEKALIPAY_SALDO_ALERT_THRESHOLD", threshold);
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
   vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "-1000");
   vi.stubEnv("TELEGRAM_BOT_TOKEN", "t");
 }
 
 describe("anti-spam notif saldo SK (cermin WR 1:1)", () => {
-  it("3x cek saldo sama dalam <6 jam → hanya 1 notifikasi", async () => {
+  it("3x cek saldo sama → hanya 1 notifikasi", async () => {
     const fx = createD1Fixture();
     try {
-      skEnv();
+      skEnv("50000");
       const telegram = { sent: [] as unknown[] };
       stubSaldoApi(10000, telegram);
       const db = createDatabaseAccess(fx.db);
@@ -61,20 +61,24 @@ describe("anti-spam notif saldo SK (cermin WR 1:1)", () => {
     }
   });
 
-  it("saldo turun melewati kelipatan Rp5.000 → notifikasi kedua keluar", async () => {
+  it("saldo turun ≥Rp50.000 → notifikasi kedua keluar; turun kecil / stagnan → bungkam", async () => {
     const fx = createD1Fixture();
     try {
       skEnv();
       const telegram = { sent: [] as unknown[] };
-      stubSaldoApi(41900, telegram);
+      stubSaldoApi(240000, telegram);
       const db = createDatabaseAccess(fx.db);
       await checkAndLogSkSaldo(db);
       expect(telegram.sent.length).toBe(1);
-      // Turun 41900 → 34500: melewati kelipatan 40000 (batas 35000) → bunyi lagi.
-      stubSaldoApi(34500, telegram);
+      // Turun 240000 → 200000 (selisih 40000 < 50000) → bungkam.
+      stubSaldoApi(200000, telegram);
+      await checkAndLogSkSaldo(db);
+      expect(telegram.sent.length).toBe(1);
+      // Turun 240000 → 190000 (selisih 50000) → bunyi lagi.
+      stubSaldoApi(190000, telegram);
       await checkAndLogSkSaldo(db);
       expect(telegram.sent.length).toBe(2);
-      // Stagnan di 34500 → bungkam (kasus screenshot owner Rp41.900 × 5).
+      // Stagnan di 190000 → bungkam.
       await checkAndLogSkSaldo(db);
       expect(telegram.sent.length).toBe(2);
     } finally {

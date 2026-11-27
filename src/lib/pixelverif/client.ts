@@ -187,9 +187,8 @@ export function parsePixelverifPricing(v: unknown): PixelverifPricing | null {
   const updated_at = numeric(v.updated_at);
   if (version === null || !Number.isSafeInteger(version) || version < 0) return null;
   if (updated_at === null || !Number.isFinite(updated_at) || updated_at < 0) return null;
-  const allowed = Array.isArray(v.allowed_validities) ? v.allowed_validities : [];
-  const allowed_validities = allowed.map((x) => numeric(x)).filter((n): n is number => n !== null && Number.isSafeInteger(n) && n > 0);
-  if (allowed_validities.length === 0) return null;
+  if (!Array.isArray(v.allowed_validities)) return null;
+  const allowed_validities = v.allowed_validities.map((x) => numeric(x)).filter((n): n is number => n !== null && Number.isSafeInteger(n) && n > 0);
   if (!record(v.pricing)) return null;
   const pricing: Record<string, Record<string, number>> = {};
   for (const [flow, map] of Object.entries(v.pricing)) {
@@ -203,13 +202,17 @@ export function parsePixelverifPricing(v: unknown): PixelverifPricing | null {
   }
   const disabled = v.disabled_plans;
   if (disabled !== undefined && (!Array.isArray(disabled) || disabled.some((plan) => typeof plan !== "string" || !plan.trim()))) return null;
+  const disabled_plans = Array.isArray(disabled) ? disabled.map((plan: string) => plan.trim().toLowerCase()) : undefined;
+  // An empty allowed_validities array is only valid when upstream explicitly publishes disabled_plans
+  // (e.g. v33 when all plans are temporarily disabled) and allowed_validities contains no malformed items.
+  if (allowed_validities.length === 0 && (v.allowed_validities.length > 0 || !disabled_plans?.length)) return null;
   return {
     version,
     updated_at,
     default_validity: numeric(v.default_validity) ?? 3,
     allowed_validities,
     pricing,
-    ...(Array.isArray(disabled) ? { disabled_plans: disabled.map((plan: string) => plan.trim().toLowerCase()) } : {}),
+    ...(disabled_plans ? { disabled_plans } : {}),
   };
 }
 

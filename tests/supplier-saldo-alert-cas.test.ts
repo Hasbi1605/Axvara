@@ -129,7 +129,7 @@ describe.each(suppliers)("alert saldo $name fail-closed", ({ env, check, stateTa
     }
   });
 
-  it("same balance next minute and next hour → 0 further sends; after 6 h → 1", async () => {
+  it("same balance stays silent after 1m, 1h, 6h, and 48h; recovery >= threshold re-arms next dip", async () => {
     const fx = createD1Fixture();
     const clock = frozenClock(Date.UTC(2026, 10, 21, 1, 0));
     try {
@@ -142,8 +142,19 @@ describe.each(suppliers)("alert saldo $name fail-closed", ({ env, check, stateTa
       await check(db);
       clock.advance(HOUR);
       await check(db);
-      expect(tg.sent).toHaveLength(1);
       clock.advance(6 * HOUR);
+      await check(db);
+      clock.advance(48 * HOUR);
+      await check(db);
+      expect(tg.sent).toHaveLength(1);
+      // Owner tops up >= 250.000 -> clears marker without alerting.
+      setBalance(300000);
+      await check(db);
+      expect(tg.sent).toHaveLength(1);
+      const cleared = fx.sql.prepare(`SELECT value FROM ${stateTable} WHERE key='low_saldo_notified'`).get() as { value: string };
+      expect(cleared.value).toBe("");
+      // Next dip below threshold alerts once again.
+      setBalance(240000);
       await check(db);
       expect(tg.sent).toHaveLength(2);
     } finally {
@@ -151,21 +162,27 @@ describe.each(suppliers)("alert saldo $name fail-closed", ({ env, check, stateTa
     }
   });
 
-  it("a further downward step of ≥Rp5.000 re-alerts; a smaller drift does not", async () => {
+  it("a further downward step of ≥Rp50.000 re-alerts; a smaller drift does not", async () => {
     const fx = createD1Fixture();
     frozenClock(Date.UTC(2026, 10, 21, 1, 0));
     try {
-      setBalance(41900);
+      setBalance(240000);
       const tg = stubTelegram();
       const db = createDatabaseAccess(fx.db);
       await check(db);
       expect(tg.sent).toHaveLength(1);
-      setBalance(38000); // still in the 40000 bucket
+      setBalance(195000); // dropped 45.000 (< 50.000) -> silent
       await check(db);
       expect(tg.sent).toHaveLength(1);
-      setBalance(34500); // crosses into the 35000 bucket
+      setBalance(190000); // dropped 50.000 from 240.000 -> re-alerts
       await check(db);
       expect(tg.sent).toHaveLength(2);
+      setBalance(141000); // dropped 49.000 from 190.000 -> silent
+      await check(db);
+      expect(tg.sent).toHaveLength(2);
+      setBalance(140000); // dropped 50.000 from 190.000 -> re-alerts
+      await check(db);
+      expect(tg.sent).toHaveLength(3);
     } finally {
       fx.close();
     }
