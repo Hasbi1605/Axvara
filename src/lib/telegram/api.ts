@@ -12,6 +12,8 @@ import type {
   TelegramMessage,
   TelegramUser,
   TelegramChatMember,
+  TelegramChat,
+  InlineKeyboardMarkup,
   WebhookInfo,
 } from "./types";
 import { applyButtonStyles } from "./button-style";
@@ -148,6 +150,18 @@ export async function editMessageMedia(params: EditMessageMediaParams): Promise<
 
 export async function editMessageCaption(params: EditMessageCaptionParams): Promise<TelegramApiResponse<TelegramMessage>> {
   return callApi<TelegramMessage>("editMessageCaption", params as unknown as Record<string, unknown>);
+}
+
+export async function editMessageReplyMarkup(params: {
+  chat_id: number | string;
+  message_id: number;
+  reply_markup: InlineKeyboardMarkup;
+}): Promise<TelegramApiResponse> {
+  return callApi("editMessageReplyMarkup", params as unknown as Record<string, unknown>);
+}
+
+export async function getChat(chatId: number | string): Promise<TelegramApiResponse<TelegramChat>> {
+  return callApi<TelegramChat>("getChat", { chat_id: chatId }, 5_000);
 }
 
 export async function deleteMessage(chatId: number | string, messageId: number): Promise<TelegramApiResponse> {

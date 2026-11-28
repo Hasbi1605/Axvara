@@ -1,0 +1,18 @@
+{
+  "name": "axvara-tg-userbot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Userbot Telegram sempit untuk AXVARA: hanya forward drop_author dari grup staging ke channel.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "big-integer": "^1.6.48",
+    "telegram": "^2.26.22"
+  }
+}

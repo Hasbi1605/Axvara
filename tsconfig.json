@@ -35,6 +35,6 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules", "gateway"
+    "node_modules", "gateway", "tg-userbot"
   ]
 }

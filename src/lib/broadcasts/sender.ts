@@ -1,4 +1,5 @@
-import { sendMessage, sendPhoto } from '@/lib/telegram/api';
+import { editMessageReplyMarkup, getChat, sendMessage, sendPhoto } from '@/lib/telegram/api';
+import { getWrProxyUrl } from '@/lib/warung-rebahan/client';
 import type { TelegramApiResponse, TelegramMessage } from '@/lib/telegram/types';
 import { sendTextMessage } from '@/lib/whatsapp/gateway';
 import {
@@ -23,16 +24,31 @@ type PromoProgress = {
   photoId: string | null;
   sentChunks: number;
   lastMessageId?: string;
+  /** Jalur userbot (channel saja): id numerik channel hasil getChat. */
+  channelChatId?: string;
+  stagingMessageId?: string;
+  channelMessageId?: string;
+  buttonsAttached?: boolean;
+  buttonsFailed?: boolean;
 };
 
 function parsePromoProgress(raw?: string | null): PromoProgress {
   if (!raw) return { photoId: null, sentChunks: 0 };
   try {
     const parsed = JSON.parse(raw) as Partial<PromoProgress>;
+    const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+    const channelChatId = str(parsed.channelChatId);
+    const stagingMessageId = str(parsed.stagingMessageId);
+    const channelMessageId = str(parsed.channelMessageId);
     return {
       photoId: typeof parsed.photoId === 'string' && parsed.photoId ? parsed.photoId : null,
       sentChunks: typeof parsed.sentChunks === 'number' && Number.isInteger(parsed.sentChunks) && parsed.sentChunks >= 0 ? parsed.sentChunks : 0,
       ...(typeof parsed.lastMessageId === 'string' && parsed.lastMessageId ? { lastMessageId: parsed.lastMessageId } : {}),
+      ...(channelChatId ? { channelChatId } : {}),
+      ...(stagingMessageId ? { stagingMessageId } : {}),
+      ...(channelMessageId ? { channelMessageId } : {}),
+      ...(parsed.buttonsAttached === true ? { buttonsAttached: true } : {}),
+      ...(parsed.buttonsFailed === true ? { buttonsFailed: true } : {}),
     };
   } catch {
     return { photoId: null, sentChunks: 0 };
@@ -40,7 +56,9 @@ function parsePromoProgress(raw?: string | null): PromoProgress {
 }
 
 function serializePromoProgress(progress: PromoProgress): string | undefined {
-  return progress.photoId || progress.sentChunks > 0 ? JSON.stringify(progress) : undefined;
+  return progress.photoId || progress.sentChunks > 0 || progress.channelChatId || progress.stagingMessageId || progress.channelMessageId
+    ? JSON.stringify(progress)
+    : undefined;
 }
 
 function classifyTelegramError(
@@ -97,6 +115,131 @@ function classifyTelegramError(
 
 export const TELEGRAM_SAME_CHAT_PACE_MS = 300;
 
+const USERBOT_FORWARD_TIMEOUT_MS = 25_000;
+const STAGING_CHAT_ID_PATTERN = /^-100\d{5,20}$/;
+const CHANNEL_NUMERIC_ID_PATTERN = /^-100\d{5,20}$/;
+// Status proxy yang BERARTI userbot pasti tidak memposting apa pun, sehingga
+// aman jatuh ke jalur bot langsung. Selain ini (502 outcome_unknown, 5xx lain,
+// 429, timeout) hasilnya ambigu: JANGAN fallback agar tidak dobel posting.
+const USERBOT_DEFINITE_REJECT_STATUSES = new Set([400, 401, 403, 404, 409, 503]);
+
+function userbotConfig(): { stagingChatId: string; proxyUrl: string; proxyToken: string } | null {
+  if (process.env.TELEGRAM_CHANNEL_USERBOT_ENABLED !== 'true') return null;
+  const stagingChatId = (process.env.TELEGRAM_PROMO_STAGING_CHAT_ID || '').trim();
+  if (!STAGING_CHAT_ID_PATTERN.test(stagingChatId)) return null;
+  const proxyUrl = getWrProxyUrl();
+  const proxyToken = (process.env.WARUNG_REBAHAN_PROXY_TOKEN || '').trim();
+  if (!proxyUrl || !proxyToken) return null;
+  return { stagingChatId, proxyUrl, proxyToken };
+}
+
+/**
+ * Jalur channel via userbot (bot tidak bisa memposting custom emoji ke channel):
+ * bot kirim ke supergroup staging -> userbot Premium forward (drop_author) ke
+ * channel lewat proxy VPS `/tgu/forward` -> bot pasang tombol inline.
+ * Mengembalikan `null` bila harus jatuh ke jalur bot langsung (tidak ada post
+ * di channel), atau SendOutcome final.
+ */
+async function sendChannelPromoViaUserbot(
+  destination: string,
+  promo: BroadcastPromoPayload,
+  message: string,
+  progress: PromoProgress,
+  config: { stagingChatId: string; proxyUrl: string; proxyToken: string },
+): Promise<SendOutcome | null> {
+  const linkPreview = promo.bannerMode === 'link_preview';
+  if (!progress.channelMessageId) {
+    if (!progress.channelChatId) {
+      if (CHANNEL_NUMERIC_ID_PATTERN.test(destination)) {
+        progress.channelChatId = destination;
+      } else {
+        try {
+          const chat = await getChat(destination);
+          const id = chat.ok && chat.result ? String(chat.result.id) : '';
+          if (!CHANNEL_NUMERIC_ID_PATTERN.test(id)) return null;
+          progress.channelChatId = id;
+        } catch {
+          return null;
+        }
+      }
+    }
+    if (!progress.stagingMessageId) {
+      try {
+        const staged = await sendMessage(linkPreview
+          ? {
+              chat_id: config.stagingChatId,
+              text: message,
+              parse_mode: 'HTML',
+              link_preview_options: { url: promo.bannerUrl, prefer_large_media: true, show_above_text: true },
+            }
+          : {
+              chat_id: config.stagingChatId,
+              text: message,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true,
+            });
+        if (!staged.ok || !staged.result?.message_id) return null;
+        progress.stagingMessageId = String(staged.result.message_id);
+      } catch {
+        return null;
+      }
+    }
+    // VPS hanya menerima ^[A-Za-z0-9:_-]{8,128}$ — buang '@' dan karakter lain dari username channel.
+    const idempotencyKey = ['promo', destination.toLowerCase().replace(/[^a-z0-9_-]/g, ''), promo.businessDate, promo.slot, progress.stagingMessageId].join(':').slice(0, 128);
+    let response: Response;
+    try {
+      response = await fetch(config.proxyUrl + '/tgu/forward', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-proxy-token': config.proxyToken },
+        body: JSON.stringify({
+          fromChatId: config.stagingChatId,
+          messageId: Number(progress.stagingMessageId),
+          toChatId: progress.channelChatId,
+          idempotencyKey,
+        }),
+        redirect: 'manual',
+        signal: AbortSignal.timeout(USERBOT_FORWARD_TIMEOUT_MS),
+      });
+    } catch {
+      return { state: 'unknown', error: 'telegram_userbot_outcome_unknown', providerId: serializePromoProgress(progress) };
+    }
+    if (USERBOT_DEFINITE_REJECT_STATUSES.has(response.status)) return null;
+    const body = response.status === 200
+      ? await response.json().catch(() => null) as { ok?: boolean; messageId?: unknown; channelMessageId?: unknown } | null
+      : null;
+    const rawId = body?.messageId ?? body?.channelMessageId;
+    const channelMessageId = typeof rawId === 'number' && Number.isInteger(rawId) && rawId > 0
+      ? String(rawId)
+      : typeof rawId === 'string' && /^\d+$/.test(rawId) ? rawId : '';
+    if (response.status !== 200 || !channelMessageId) {
+      return { state: 'unknown', error: 'telegram_userbot_outcome_unknown', providerId: serializePromoProgress(progress) };
+    }
+    progress.channelMessageId = channelMessageId;
+    progress.sentChunks = 1;
+    progress.lastMessageId = channelMessageId;
+  }
+  if (!progress.buttonsAttached && !progress.buttonsFailed && promo.channelReplyMarkup) {
+    let attached = false;
+    try {
+      const edited = await editMessageReplyMarkup({
+        chat_id: progress.channelChatId!,
+        message_id: Number(progress.channelMessageId),
+        reply_markup: promo.channelReplyMarkup,
+      });
+      attached = edited.ok;
+    } catch {
+      attached = false;
+    }
+    if (attached) progress.buttonsAttached = true;
+    else {
+      // Post sudah ada di channel: jangan pernah diposting ulang.
+      progress.buttonsFailed = true;
+      return { state: 'sent', error: 'telegram_userbot_buttons_failed', providerId: serializePromoProgress(progress) };
+    }
+  }
+  return { state: 'sent', providerId: serializePromoProgress(progress) };
+}
+
 async function sendTelegramPromo(
   destination: string,
   promo: BroadcastPromoPayload,
@@ -109,6 +252,19 @@ async function sendTelegramPromo(
   }
   const isChannel = options?.isChannel === true;
   const messages = isChannel && promo.channelMessagesHtml?.length ? promo.channelMessagesHtml : promo.messagesHtml;
+  // Hanya snapshot link_preview (satu bubble tanpa sendPhoto) yang punya satu
+  // pesan utuh untuk di-stage; snapshot foto+caption lama tetap jalur langsung.
+  if (
+    isChannel && messages.length === 1 && promo.bannerMode === 'link_preview' &&
+    !progress.photoId && (progress.sentChunks === 0 || progress.channelMessageId)
+  ) {
+    const userbot = userbotConfig();
+    if (userbot) {
+      const outcome = await sendChannelPromoViaUserbot(destination, promo, messages[0], progress, userbot);
+      if (outcome) return outcome;
+      // null = pasti tidak ada post userbot; lanjut jalur bot langsung di bawah.
+    }
+  }
   let sentInCall = false;
   const linkPreview = promo.bannerMode === 'link_preview';
   if (!linkPreview && !progress.photoId) {

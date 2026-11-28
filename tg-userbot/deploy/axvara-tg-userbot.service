@@ -1,0 +1,20 @@
+[Unit]
+Description=AXVARA Telegram userbot (forward drop_author, loopback only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/axvara-tg-userbot
+EnvironmentFile=/home/ec2-user/axvara-tg-userbot/.env
+ExecStart=/usr/bin/node src/server.mjs
+Restart=on-failure
+RestartSec=5
+MemoryMax=150M
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

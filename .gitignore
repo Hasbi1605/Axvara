@@ -90,3 +90,8 @@ pdp-mobile-375.png
 # StoreBat (VenteBot) + MiraiAPI reseller credentials (local only)
 .storebat-credentials*
 .mirai-credentials*
+
+# tg-userbot (Telegram userbot service)
+tg-userbot/node_modules
+*.session
+session.string
