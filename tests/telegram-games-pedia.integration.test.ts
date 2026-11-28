@@ -343,9 +343,8 @@ describe("Native Telegram AXVARA Games end-to-end", () => {
     tg.editMessageMedia.mockClear();
     await click("gmo:mobile-legends");
     const mlUi = lastUiPayload();
-    // Uji coba tanpa banner (owner 28 Nov 2026): ML dikirim teks biasa, bukan foto.
-    expect(tg.sendPhoto).not.toHaveBeenCalled();
-    expect(tg.editMessageMedia).not.toHaveBeenCalled();
+    // Uji coba tanpa banner dicabut (owner 28 Nov 2026): ML kembali foto seperti game lain.
+    expect(tg.sendPhoto.mock.calls.length + tg.editMessageMedia.mock.calls.length).toBeGreaterThan(0);
     expect(mlUi.text).toContain("Mobile Legends");
     // Owner 28 Nov 2026: region aktif berbendera + mata uang di caption.
     expect(mlUi.text).toContain("🇮🇩");

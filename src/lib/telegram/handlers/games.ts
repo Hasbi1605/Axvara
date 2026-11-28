@@ -21,7 +21,7 @@ import {
   type GamesSkContract,
 } from "@/lib/games/registry";
 import { checkSkGamesNickname } from "@/lib/games/nickname";
-import { splitNicknameRegion } from "@/lib/games/variant-kind";
+import { gamesRegionCode, splitNicknameRegion } from "@/lib/games/variant-kind";
 import { gamesVariantName } from "@/lib/games/display-name";
 import { sendChatAction, sendMessage } from "@/lib/telegram/api";
 import {
@@ -46,7 +46,7 @@ import type { InlineKeyboardButton, InlineKeyboardMarkup } from "@/lib/telegram/
 import type { Locale } from "@/lib/i18n/locale";
 import { SITE } from "@/lib/site";
 import { gameItemIcon, gameLogoHtml, gameLogoIcon } from "@/lib/telegram/games-emoji";
-import { regionFlagHtml, regionIcon } from "@/lib/telegram/flag-emoji";
+import { flagChar, regionFlagHtml, regionIcon } from "@/lib/telegram/flag-emoji";
 
 const GAMES_PER_PAGE = 10;
 const SKUS_PER_PAGE = 10;
@@ -108,26 +108,26 @@ function truncateBtn(text: string, max: number): string {
 }
 
 /** Bentuk label pendek nominal di tombol 2 kolom agar jelas & tidak terpotong. */
-function compactSkuButtonLabel(name: string, price: number, ctx: TgPriceCtx): string {
-  const short = name
+export function compactSkuButtonLabel(name: string, price: number, ctx: TgPriceCtx): string {
+  // "(Indonesia)", "(Malaysia)", … → bendera saja agar label tidak terpotong (owner 28 Nov 2026).
+  let flag = "";
+  const withoutRegion = name.replace(/\s*\(([^()]+)\)\s*/g, (all, inner: string) => {
+    const code = gamesRegionCode(inner);
+    if (!code) return all;
+    if (!flag) flag = code === "GLOBAL" ? "🌏" : flagChar(code) ?? "";
+    return " ";
+  });
+  const short = withoutRegion
+    .replace(/\bWeekly Diamond Pass\b/gi, "WDP")
     .replace(/\bDiamonds?\b/gi, "DM")
-    .replace(/\bWeekly Diamond Pass\b/gi, "Weekly Pass")
     .replace(/\bMembership\b/gi, "Member")
     .replace(/\bGenesis Crystals?\b/gi, "GC")
     .replace(/\bValorant Points?\b/gi, "VP")
     .replace(/\s+/g, " ")
     .trim();
   const priceStr = gameDisplayPrice(price, ctx);
-  return `${truncateBtn(short, 16)} · ${priceStr}`;
+  return `${truncateBtn(short, flag ? 13 : 16)}${flag ? ` ${flag}` : ""} · ${priceStr}`;
 }
-
-/**
- * Uji coba tanpa banner (owner 28 Nov 2026): di Telegram Desktop pesan foto
- * dibatasi lebar fotonya sehingga tombol sempit. Game di set ini dikirim
- * sebagai teks biasa tanpa gambar agar tombol bisa selebar mungkin.
- * Kosongkan untuk kembali ke foto.
- */
-export const GAMES_NO_BANNER_SLUGS: ReadonlySet<string> = new Set(["mobile-legends"]);
 
 /** "Diamond · 💎 Diamond" → cukup sekali: label tipe sudah menyebut mata uangnya. */
 export function sameAsTypeLabel(currency: string | null, typeLabel: string | null | undefined): boolean {
@@ -559,7 +559,7 @@ export async function handleGamesOpen(
   const assetPath = detail.game.banner || detail.game.icon;
   const photoUrl = assetPath && assetPath.startsWith("/") ? `${siteUrl}${assetPath}` : null;
 
-  if (photoUrl && !GAMES_NO_BANNER_SLUGS.has(detail.game.slug) && caption.length <= 1024) {
+  if (photoUrl && caption.length <= 1024) {
     const res = await replaceWithPhoto({
       chat_id: chatId,
       message_id: messageId,

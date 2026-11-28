@@ -66,10 +66,14 @@ describe("Games screens copy (owner 28 Nov 2026)", () => {
 
 });
 
-describe("No-banner trial (owner 28 Nov 2026)", () => {
-  it("is limited to Mobile Legends", async () => {
-    const { GAMES_NO_BANNER_SLUGS } = await import("@/lib/telegram/handlers/games");
-    expect([...GAMES_NO_BANNER_SLUGS]).toEqual(["mobile-legends"]);
+describe("SKU button labels (owner 28 Nov 2026)", () => {
+  it("replaces the region name with its flag", async () => {
+    const { compactSkuButtonLabel } = await import("@/lib/telegram/handlers/games");
+    const ctx = { locale: "en", displayCurrency: "IDR" } as never;
+    expect(compactSkuButtonLabel("5 Diamonds (Indonesia)", 1500, ctx)).toMatch(/^5 DM 🇮🇩 · /);
+    expect(compactSkuButtonLabel("14 Diamonds (Malaysia)", 1500, ctx)).toMatch(/^14 DM 🇲🇾 · /);
+    expect(compactSkuButtonLabel("86 Diamonds (5+0)", 1500, ctx)).toMatch(/^86 DM \(5\+0\) · /);
+    expect(compactSkuButtonLabel("Weekly Diamond Pass", 1500, ctx)).toMatch(/^WDP · /);
   });
 });
 
