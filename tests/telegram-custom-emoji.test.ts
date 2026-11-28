@@ -168,6 +168,8 @@ describe("app logos and stripping", () => {
     expect(appLogoEmojiId("YouTube Premium")).toBe("5321505140199418151");
     expect(appLogoEmojiId("Adobe Express 12M")).toBe("5278668274555436578");
     expect(appLogoEmojiId("Disney+ Hotstar")).toBe("5884437729067932014");
+    expect(appLogoEmojiId("Viu")).toBe("6172215587465334604");
+    expect(appLogoEmojiId("Vision Plus")).not.toBe("6172215587465334604");
     expect(appLogoEmojiId("iLovePDF Premium")).toBe("6206155660283879718");
     expect(appLogoEmojiId("Surfshark VPN")).toBe("5879507561878654934");
     // Owner 27 Nov: logo yang dulu kosong/kembar kini terpetakan & berbeda.

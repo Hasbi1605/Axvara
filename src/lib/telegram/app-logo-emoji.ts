@@ -43,6 +43,7 @@ const LOGO = {
   youku: "6174919776184311543", // namlc1Emoji (statis)
   iqiyi: "6165677491894624269", // namlc1Emoji (statis)
   crunchyroll: "4958988936681620024", // streaming_emojis (statis)
+  viu: "6172215587465334604", // Random_bebaspakai (statis, kiriman owner 28 Nov 2026)
   canva: "5900192223160438756", // AppsIconsWB (statis)
   capcut: "5364339557712020484", // ApplicationEmoji
   zoom: "5334934296048193646", // JABA brands
@@ -182,6 +183,7 @@ const RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/youku/i, LOGO.youku],
   [/iqiyi/i, LOGO.iqiyi],
   [/crunchyroll/i, LOGO.crunchyroll],
+  [/\bviu\b/i, LOGO.viu],
   [/we\s*tv/i, LOGO.wetv],
   [/vidio/i, LOGO.vidio],
   [/bilibili|bstation/i, LOGO.bilibili],
