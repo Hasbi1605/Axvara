@@ -4,7 +4,11 @@ import { siteOrigin } from "@/lib/site-url";
 import { escapeHtml, formatRupiah } from "@/lib/telegram/messages/format";
 import type { InlineKeyboardMarkup } from "@/lib/telegram/types";
 import { appLogoHtml } from "@/lib/telegram/app-logo-emoji";
+import { PLAIN_EMOJI_MARK } from "@/lib/telegram/custom-emoji";
 import { mergedGroupCardJoinSql, notLoserProductSql, notLoserSlotVariantSql } from "@/lib/product-groups";
+
+/** Panjang garis pemisah promo Telegram (sebelumnya 66 → terlipat). */
+export const TELEGRAM_PROMO_SEPARATOR_LEN = 34;
 
 export type PromoSlot = "morning" | "evening";
 
@@ -17,6 +21,19 @@ export type PromoProduct = {
 
 export const TELEGRAM_PROMO_FOOTER = "Ketik /stop untuk berhenti menerima promo.";
 export const TELEGRAM_MESSAGE_MAX_CHARS = 4096;
+
+/**
+ * Panjang teks yang dihitung Telegram (setelah parse HTML): tag — termasuk
+ * `<tg-emoji emoji-id="…">` logo produk — tidak ikut dihitung. Menghitung HTML
+ * mentah membuat promo berlogo terpecah jadi 2 pesan walau muat (owner 28 Nov 2026).
+ */
+export function telegramVisibleLength(html: string): number {
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(?:lt|gt|amp|quot|#39|apos);/g, "x")
+    .split(PLAIN_EMOJI_MARK).join("")
+    .length;
+}
 
 export function promoSlotAt(now = new Date()): { businessDate: string; slot: PromoSlot } | null {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -38,13 +55,14 @@ export function promoBannerCaption(slot: PromoSlot): string {
   return `🔥 <b>${slotLabel}</b>`;
 }
 
-function buildPromoParts(slot: PromoSlot, products: PromoProduct[]) {
+function buildPromoParts(slot: PromoSlot, products: PromoProduct[], options?: { includeCtaLinks?: boolean }) {
   const slotLabel = slot === "morning" ? "PRODUK AXVARA READY PAGI INI" : "PRODUK AXVARA READY SORE INI";
   const titleFull = `🔥 <b>${slotLabel}</b>`;
   // Varian WA: sama persis, bold pakai * agar tinggal copy-paste ke WA.
   const titleWa = `🔥 *${slotLabel}*`;
   // Garis pemisah + intro dua baris sesuai contoh manual owner (2026-10-03).
-  const separator = "------------------------------------------------------------------";
+  // 28 Nov 2026: dipendekkan agar tidak terlipat (bertingkat) di Telegram mobile/desktop.
+  const separator = "-".repeat(TELEGRAM_PROMO_SEPARATOR_LEN);
   const introFull = "Sedia semua kebutuhan aplikasi dan tools premium favorit anda.\nMurah, mudah, cepat, dan bergaransi.";
   const introWa = introFull;
   // Ikon per kategori taksonomi (bukan per indeks — tidak ada lagi
@@ -75,7 +93,8 @@ function buildPromoParts(slot: PromoSlot, products: PromoProduct[]) {
     else groups.push({ category: product.category, items: [product] });
   }
   const linesFull = groups.map((group) =>
-    [`${iconFor(group.category)} <b>${escapeHtml(group.category.toUpperCase())}</b>`,
+    // Header kategori tetap emoji standar (tanpa animasi), keputusan owner 28 Nov 2026.
+    [`${PLAIN_EMOJI_MARK}${iconFor(group.category)} <b>${escapeHtml(group.category.toUpperCase())}</b>`,
       // Telegram: logo aplikasi animasi (custom emoji) bila dikenal, ✅ bila tidak.
       ...group.items.map((product) => `${appLogoHtml(product.name, "✅")} ${escapeHtml(product.name)} — ${formatRupiah(product.price)}`)].join("\n"),
   );
@@ -89,7 +108,10 @@ function buildPromoParts(slot: PromoSlot, products: PromoProduct[]) {
   const pediaLine = process.env.PEDIA_PROMO_DIGEST_ENABLED === "true";
   const pediaFull = pediaLine ? `\n\n🚀 <b>Axvara Pedia</b> — naikkan followers, likes & views: https://pedia.axvara.tech?utm_source=digest&utm_medium=telegram` : "";
   const pediaWa = pediaLine ? `\n\n🚀 *Axvara Pedia* — naikkan followers, likes & views: https://pedia.axvara.tech?utm_source=digest&utm_medium=telegram` : "";
-  const ctaFull = `🌐 <b>Order melalui Website:</b> ${webUrl}\n\n🤖 <b>Order melalui Bot Telegram:</b> ${botUrl}${pediaFull}`;
+  // Channel sudah punya tombol Order di Bot + Website → tanpa baris link (owner 28 Nov 2026).
+  const ctaFull = options?.includeCtaLinks === false
+    ? pediaFull.replace(/^\n\n/, "")
+    : `🌐 <b>Order melalui Website:</b> ${webUrl}\n\n🤖 <b>Order melalui Bot Telegram:</b> ${botUrl}${pediaFull}`;
   const ctaWa = `🌐 *Order melalui Website:* ${webUrl}\n\n🤖 *Order melalui Bot Telegram:* ${botUrl}${pediaWa}`;
   const headerFull = `${titleFull}\n${separator}\n${introFull}\n${separator}`;
   return { headerFull, linesFull, ctaFull, titleWa, introWa, linesWa, ctaWa };
@@ -112,13 +134,15 @@ export function promoTelegramMessages(
   slot: PromoSlot,
   products: PromoProduct[],
   maxLen = TELEGRAM_MESSAGE_MAX_CHARS,
-  options?: { includeStopFooter?: boolean },
+  options?: { includeStopFooter?: boolean; includeCtaLinks?: boolean },
 ): string[] {
-  const { headerFull, linesFull, ctaFull } = buildPromoParts(slot, products);
+  const { headerFull, linesFull, ctaFull } = buildPromoParts(slot, products, { includeCtaLinks: options?.includeCtaLinks });
   const includeStop = options?.includeStopFooter !== false;
-  const tail = includeStop ? `${ctaFull}\n\n${TELEGRAM_PROMO_FOOTER}` : ctaFull;
-  const single = `${headerFull}\n${linesFull.join("\n\n")}\n\n${tail}`;
-  if (single.length <= maxLen) return [single];
+  const tail = [ctaFull, includeStop ? TELEGRAM_PROMO_FOOTER : ""].filter(Boolean).join("\n\n");
+  const withTail = (body: string) => (tail ? `${body}\n\n${tail}` : body);
+  const len = telegramVisibleLength;
+  const single = withTail(`${headerFull}\n${linesFull.join("\n\n")}`);
+  if (len(single) <= maxLen) return [single];
 
   const messages: string[] = [];
   let current = headerFull;
@@ -126,11 +150,11 @@ export function promoTelegramMessages(
   for (const block of linesFull) {
     const sep = current === headerFull ? "\n" : current ? "\n\n" : "";
     const candidate = current ? `${current}${sep}${block}` : block;
-    if (candidate.length <= maxLen) {
+    if (len(candidate) <= maxLen) {
       current = candidate;
       continue;
     }
-    if (block.length <= maxLen) {
+    if (len(block) <= maxLen) {
       if (current) messages.push(current);
       current = block;
       continue;
@@ -140,7 +164,7 @@ export function promoTelegramMessages(
     for (const line of block.split("\n")) {
       const lineSep = current ? "\n" : "";
       const next = current ? `${current}${lineSep}${line}` : line;
-      if (next.length <= maxLen) {
+      if (len(next) <= maxLen) {
         current = next;
       } else {
         if (current) messages.push(current);
@@ -150,25 +174,25 @@ export function promoTelegramMessages(
   }
 
   if (current) {
-    if (current.length + 2 + tail.length <= maxLen) {
-      messages.push(`${current}\n\n${tail}`);
+    if (len(withTail(current)) <= maxLen) {
+      messages.push(withTail(current));
     } else {
       messages.push(current);
-      messages.push(tail);
+      if (tail) messages.push(tail);
     }
-  } else {
+  } else if (tail) {
     messages.push(tail);
   }
   return messages;
 }
 
-/** Versi katalog ready untuk Channel Telegram resmi (tanpa footer /stop). */
+/** Versi katalog ready untuk Channel Telegram resmi (tanpa footer /stop dan tanpa link CTA — ada tombol). */
 export function promoChannelMessages(
   slot: PromoSlot,
   products: PromoProduct[],
   maxLen = TELEGRAM_MESSAGE_MAX_CHARS,
 ): string[] {
-  return promoTelegramMessages(slot, products, maxLen, { includeStopFooter: false });
+  return promoTelegramMessages(slot, products, maxLen, { includeStopFooter: false, includeCtaLinks: false });
 }
 
 export function promoChannelKeyboard(): InlineKeyboardMarkup {

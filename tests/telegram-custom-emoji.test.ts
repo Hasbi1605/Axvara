@@ -16,6 +16,7 @@ import {
   customEmojiEnabled,
   decorateButton,
   decorateHtmlText,
+  PLAIN_EMOJI_MARK,
 } from "@/lib/telegram/custom-emoji";
 
 beforeEach(() => {
@@ -280,5 +281,11 @@ describe("logo placement in catalog and promo", () => {
     expect(msg).toContain("✅ Produk Misterius");
     // Versi WhatsApp tidak pernah memuat custom emoji.
     expect(promoMessages("evening", products).short).not.toContain("tg-emoji");
+  });
+
+  it("keeps emoji after PLAIN_EMOJI_MARK static and drops the mark (promo category headers)", () => {
+    const out = decorateHtmlText(`${PLAIN_EMOJI_MARK}✅ <b>HEADER</b>\n✅ item`);
+    expect(out).toBe('✅ <b>HEADER</b>\n<tg-emoji emoji-id="1003">✅</tg-emoji> item');
+    expect(out).not.toContain(PLAIN_EMOJI_MARK);
   });
 });

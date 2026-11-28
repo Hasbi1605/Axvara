@@ -14,6 +14,13 @@
 import { CUSTOM_EMOJI_MAP } from "./custom-emoji-map";
 
 const VS16 = "️";
+/**
+ * Penanda "biarkan emoji ini statis" (U+2063 INVISIBLE SEPARATOR) tepat di
+ * depan emoji. Dekorator tidak membungkus emoji itu dan penandanya dibuang.
+ * Dipakai header kategori promo (owner 28 Nov 2026).
+ */
+export const PLAIN_EMOJI_MARK = "\u2063";
+
 /** Batas aman jumlah custom emoji per pesan; sisanya tetap emoji standar. */
 export const MAX_CUSTOM_EMOJI_PER_TEXT = 50;
 
@@ -74,7 +81,8 @@ export function decorateHtmlText(text: string, map: CustomEmojiMap = CUSTOM_EMOJ
   if (!pattern || !text) return text;
   let budget = MAX_CUSTOM_EMOJI_PER_TEXT;
   const replacePlain = (segment: string) =>
-    segment.replace(pattern, (match) => {
+    segment.replace(pattern, (match, offset: number, whole: string) => {
+      if (offset > 0 && whole[offset - 1] === PLAIN_EMOJI_MARK) return match;
       if (budget <= 0) return match;
       const id = ids.get(stripVs(match));
       if (!id) return match;
@@ -89,7 +97,7 @@ export function decorateHtmlText(text: string, map: CustomEmojiMap = CUSTOM_EMOJ
     out += replacePlain(text.slice(last, m.index)) + m[0];
     last = m.index + m[0].length;
   }
-  return out + replacePlain(text.slice(last));
+  return (out + replacePlain(text.slice(last))).split(PLAIN_EMOJI_MARK).join("");
 }
 
 interface ButtonLike {

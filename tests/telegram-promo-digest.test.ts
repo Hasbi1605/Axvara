@@ -5,9 +5,13 @@ import {
   promoMessages,
   promoSlotAt,
   promoTelegramMessages,
+  TELEGRAM_PROMO_SEPARATOR_LEN,
   TELEGRAM_PROMO_FOOTER,
+  promoChannelMessages,
+  telegramVisibleLength,
 } from "@/lib/telegram/promo-digest";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { PLAIN_EMOJI_MARK } from "@/lib/telegram/custom-emoji";
 import { createD1Fixture } from "./helpers/d1-fixture";
 
 const products = Array.from({ length: 16 }, (_, i) => ({
@@ -35,7 +39,9 @@ describe("Telegram promo digest helpers", () => {
     const message = promoMessages("morning", products.slice(0, 3)).full;
     expect(message).toContain("🔥 <b>PRODUK AXVARA READY PAGI INI</b>");
     expect(message).not.toContain("PRODUK AXVARA\n");
-    expect(message).toContain("------------------------------------------------------------------");
+    // 28 Nov 2026: garis dipendekkan agar tidak terlipat.
+    expect(message).toContain(`\n${"-".repeat(TELEGRAM_PROMO_SEPARATOR_LEN)}\n`);
+    expect(message).not.toContain("-".repeat(TELEGRAM_PROMO_SEPARATOR_LEN + 1));
     expect(message).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda.\nMurah, mudah, cepat, dan bergaransi.");
     expect(message).toContain("ChatGPT &lt;Pro&gt;");
     expect(message).toContain("✅ Produk 2");
@@ -78,7 +84,7 @@ describe("Telegram promo digest helpers", () => {
     expect(short).toContain("*Order melalui Website:*");
     expect(short).toContain("*Order melalui Bot Telegram:*");
     expect(short.split("\n").filter(line => /^-+$/.test(line))).toEqual(["-".repeat(52), "-".repeat(52)]);
-    expect(full).toContain("-".repeat(66));
+    expect(full).toContain("-".repeat(TELEGRAM_PROMO_SEPARATOR_LEN));
     expect(short).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda.\nMurah, mudah, cepat, dan bergaransi.");
     expect(short).toContain("AI & CHATBOT");
     expect(short).toContain("ChatGPT <Pro>");
@@ -91,9 +97,9 @@ describe("Telegram promo digest helpers", () => {
     const unescape = (text: string) => text
       .replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"')
       .replaceAll("&amp;", "&");
-    const normalize = (text: string) => unescape(text).replaceAll(/<\/?b>/g, "*");
+    const normalize = (text: string) => unescape(text).replaceAll(/<\/?b>/g, "*").replaceAll(PLAIN_EMOJI_MARK, "");
     const stripUrls = (text: string) => text.replaceAll("https://t.me/Axvara_bot?start=beli", "BOT").replaceAll("https://axvara.tech", "WEB");
-    expect(stripUrls(short)).toBe(stripUrls(normalize(full)).replaceAll("-".repeat(66), "-".repeat(52)));
+    expect(stripUrls(short)).toBe(stripUrls(normalize(full)).replaceAll("-".repeat(TELEGRAM_PROMO_SEPARATOR_LEN), "-".repeat(52)));
   });
 
   it("promoTelegramMessages appends /stop footer and splits >4096 chars at category boundaries without breaking HTML or lines", () => {
@@ -111,7 +117,8 @@ describe("Telegram promo digest helpers", () => {
     const chunks = promoTelegramMessages("evening", manyProducts);
     expect(chunks.length).toBeGreaterThan(1);
     for (const chunk of chunks) {
-      expect(chunk.length).toBeLessThanOrEqual(4096);
+      // Batas Telegram dihitung dari teks tampil (setelah parse HTML), bukan HTML mentah.
+      expect(telegramVisibleLength(chunk)).toBeLessThanOrEqual(4096);
       const opens = (chunk.match(/<b>/g) || []).length;
       const closes = (chunk.match(/<\/b>/g) || []).length;
       expect(opens).toBe(closes);
@@ -126,6 +133,29 @@ describe("Telegram promo digest helpers", () => {
     }
     expect(chunks[chunks.length - 1]).toContain(TELEGRAM_PROMO_FOOTER);
     expect(chunks[chunks.length - 1]).toContain("Order melalui Website:");
+  });
+
+  it("tidak memecah promo berlogo yang teks tampilnya muat 4096 (owner 28 Nov 2026)", () => {
+    const logoTag = '<tg-emoji emoji-id="5368324170671202286">✅</tg-emoji>';
+    expect(telegramVisibleLength(`${logoTag} Netflix &amp; <b>Co</b>`)).toBe("✅ Netflix & Co".length);
+    // ~70 produk ≈ 3.000 char tampil; tag logo menambah ±3.500 char HTML mentah.
+    vi.stubEnv("TELEGRAM_CUSTOM_EMOJI", "on");
+    const many = Array.from({ length: 70 }, (_, i) => ({ id: i + 1, name: `Netflix Premium ${i + 1}`, category: `Kategori ${Math.floor(i / 14) + 1}`, price: 20500 }));
+    const msgs = promoTelegramMessages("morning", many);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toContain("<tg-emoji");
+    expect(msgs[0].length).toBeGreaterThan(4096);
+    expect(telegramVisibleLength(msgs[0])).toBeLessThanOrEqual(4096);
+  });
+
+  it("channel: tanpa link Order melalui Website/Bot (sudah ada tombol) dan tanpa /stop", () => {
+    const [msg, ...rest] = promoChannelMessages("morning", products.slice(0, 4));
+    expect(rest).toHaveLength(0);
+    expect(msg).not.toContain("Order melalui");
+    expect(msg).not.toContain(TELEGRAM_PROMO_FOOTER);
+    expect(msg.trimEnd().endsWith("— Rp4.000")).toBe(true);
+    const [dm] = promoTelegramMessages("morning", products.slice(0, 4));
+    expect(dm).toContain("Order melalui Website:");
   });
 
   it("loadPromoProducts mengurutkan kategori sesuai categories.sort_order (lalu nama/id), produk urut sort_order lalu id, tanpa kategori terakhir", async () => {
