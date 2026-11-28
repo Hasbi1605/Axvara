@@ -6,6 +6,14 @@ import { getWebhookInfo } from "@/lib/telegram/api";
 import { TG_WEBHOOK_GUARD_STATE_KEY, parseWebhookGuardState } from "@/lib/telegram/webhook-guard";
 import { TELEGRAM_CHANNEL_CONFIG_KEY, parseTelegramChannelConfig } from "@/lib/telegram/force-sub";
 import { TELEGRAM_PROMO_SETTINGS_KEY } from "@/lib/telegram/promo-broadcast";
+import {
+  TELEGRAM_CHANNEL_LAST_DELIVERY_KEY,
+  checkUserbotHealth,
+  getUserbotConfig,
+  parseChannelLastDelivery,
+  userbotModeEnabled,
+  type ChannelSenderStatus,
+} from "@/lib/telegram/channel-sender-status";
 import { queryAll, queryFirst } from "@/lib/db";
 import { QRIS_HEALTH_EVENTS_SQL } from "@/lib/service-health";
 
@@ -186,15 +194,28 @@ export async function GET(request: NextRequest) {
       const channelRow = await queryFirst(
         `SELECT
            (SELECT value FROM store_settings WHERE key=?) AS channel_config,
-           (SELECT value FROM store_settings WHERE key=?) AS dm_promo`,
+           (SELECT value FROM store_settings WHERE key=?) AS dm_promo,
+           (SELECT value FROM store_settings WHERE key=?) AS last_delivery`,
         TELEGRAM_CHANNEL_CONFIG_KEY,
         TELEGRAM_PROMO_SETTINGS_KEY,
+        TELEGRAM_CHANNEL_LAST_DELIVERY_KEY,
       );
       const cfg = parseTelegramChannelConfig(channelRow?.channel_config);
       health.telegram_channel = {
         ...cfg,
         dmPromoEnabled: String(channelRow?.dm_promo ?? "").trim().toLowerCase() !== "false",
       };
+
+      // "Pengirim channel": mode (userbot akun owner / bot), cek langsung userbot
+      // di VPS (hanya mode userbot, timeout 5 dtk) dan catatan pengiriman terakhir.
+      const mode: ChannelSenderStatus["mode"] = userbotModeEnabled() ? "userbot" : "bot";
+      const sender: ChannelSenderStatus = {
+        mode,
+        configured: mode === "userbot" ? getUserbotConfig() !== null : Boolean(process.env.TELEGRAM_BOT_TOKEN),
+        userbot: mode === "userbot" ? await checkUserbotHealth() : null,
+        lastDelivery: parseChannelLastDelivery(channelRow?.last_delivery),
+      };
+      health.telegram_channel_sender = sender;
     } catch { /* store_settings opsional */ }
   } catch { /* ok if tables don't exist yet */ }
 

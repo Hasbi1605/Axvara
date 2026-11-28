@@ -61,7 +61,11 @@ describe('channel promo via userbot forward', () => {
     vi.stubGlobal('fetch', fetcher);
     vi.mocked(sendMessage).mockResolvedValueOnce({ ok: true, result: { message_id: 7 } as never });
     const out = await sendBroadcast('telegram_channel', row, snapshot);
-    expect(out).toEqual({ state: 'sent', providerId: JSON.stringify({ photoId: null, sentChunks: 1, lastMessageId: '7' }) });
+    expect(out).toEqual({
+      state: 'sent',
+      providerId: JSON.stringify({ photoId: null, sentChunks: 1, lastMessageId: '7' }),
+      channelDelivery: { via: 'bot', buttons: 'attached' },
+    });
     expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(vi.mocked(sendMessage).mock.calls[0][0]).toMatchObject({ chat_id: '@axvaratech', reply_markup: markup });
     expect(getChat).not.toHaveBeenCalled();
@@ -108,6 +112,7 @@ describe('channel promo via userbot forward', () => {
       idempotencyKey: 'promo:axvaratech:2026-11-28:morning:55',
     });
     expect(editMessageReplyMarkup).toHaveBeenCalledWith({ chat_id: CHANNEL_ID, message_id: 321, reply_markup: markup });
+    expect(out.channelDelivery).toEqual({ via: 'userbot', buttons: 'attached' });
   });
 
   it.each([503, 409, 403, 400])('falls back to the direct bot path on definite rejection %i', async (status) => {
@@ -121,6 +126,20 @@ describe('channel promo via userbot forward', () => {
     expect(vi.mocked(sendMessage).mock.calls[1][0]).toMatchObject({ chat_id: '@axvaratech', reply_markup: markup });
     expect(editMessageReplyMarkup).not.toHaveBeenCalled();
     expect(JSON.parse(out.providerId!)).toMatchObject({ sentChunks: 1, lastMessageId: '9', stagingMessageId: '55' });
+    expect(out.channelDelivery).toEqual({
+      via: 'bot_fallback',
+      buttons: 'attached',
+      reason: status === 409 ? 'telegram_rejected' : 'userbot_not_ready',
+    });
+  });
+
+  it('derives a safe fallback reason from the status when the proxy body has no usable code', async () => {
+    enableUserbot();
+    mockStagingOk();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>nope</html>', { status: 404 })));
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: true, result: { message_id: 9 } as never });
+    const out = await sendBroadcast('telegram_channel', row, snapshot);
+    expect(out.channelDelivery).toEqual({ via: 'bot_fallback', buttons: 'attached', reason: 'userbot_route_missing' });
   });
 
   it('falls back when the staging send or getChat fails', async () => {
@@ -131,11 +150,15 @@ describe('channel promo via userbot forward', () => {
     vi.mocked(sendMessage)
       .mockResolvedValueOnce({ ok: false, error_code: 400 })
       .mockResolvedValueOnce({ ok: true, result: { message_id: 9 } as never });
-    expect((await sendBroadcast('telegram_channel', row, snapshot)).state).toBe('sent');
+    const stagingFailed = await sendBroadcast('telegram_channel', row, snapshot);
+    expect(stagingFailed.state).toBe('sent');
+    expect(stagingFailed.channelDelivery).toMatchObject({ via: 'bot_fallback', reason: 'staging_failed' });
     expect(fetcher).not.toHaveBeenCalled();
     vi.mocked(getChat).mockResolvedValue({ ok: false, error_code: 400 });
     vi.mocked(sendMessage).mockClear().mockResolvedValueOnce({ ok: true, result: { message_id: 10 } as never });
-    expect((await sendBroadcast('telegram_channel', row, snapshot)).state).toBe('sent');
+    const lookupFailed = await sendBroadcast('telegram_channel', row, snapshot);
+    expect(lookupFailed.state).toBe('sent');
+    expect(lookupFailed.channelDelivery).toMatchObject({ via: 'bot_fallback', reason: 'channel_lookup_failed' });
     expect(vi.mocked(sendMessage).mock.calls).toHaveLength(1);
     expect(vi.mocked(sendMessage).mock.calls[0][0].chat_id).toBe('@axvaratech');
   });
@@ -146,6 +169,7 @@ describe('channel promo via userbot forward', () => {
     vi.stubGlobal('fetch', forwardResponse(502, { error: 'outcome_unknown' }));
     const out = await sendBroadcast('telegram_channel', row, snapshot);
     expect(out).toMatchObject({ state: 'unknown', error: 'telegram_userbot_outcome_unknown' });
+    expect(out.channelDelivery).toEqual({ via: 'userbot', buttons: 'n/a', reason: 'telegram_userbot_outcome_unknown' });
     expect(JSON.parse(out.providerId!)).toMatchObject({ channelChatId: CHANNEL_ID, stagingMessageId: '55' });
     expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(editMessageReplyMarkup).not.toHaveBeenCalled();
@@ -213,6 +237,17 @@ describe('channel promo via userbot forward', () => {
     expect(getChat).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
     expect(sendPhoto).not.toHaveBeenCalled();
+    expect(out.channelDelivery).toEqual({ via: 'bot', buttons: 'attached' });
+  });
+
+  it('reports a failed direct send after a userbot fallback', async () => {
+    enableUserbot();
+    mockStagingOk();
+    vi.stubGlobal('fetch', forwardResponse(503, { error: 'userbot_not_ready' }));
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, error_code: 403 });
+    const out = await sendBroadcast('telegram_channel', row, snapshot);
+    expect(out).toMatchObject({ state: 'failed', error: 'telegram_channel_not_admin' });
+    expect(out.channelDelivery).toEqual({ via: 'bot_fallback', buttons: 'n/a', reason: 'telegram_channel_not_admin' });
   });
 
   it('buttons failure still reports sent and never reposts', async () => {
@@ -224,6 +259,7 @@ describe('channel promo via userbot forward', () => {
     const out = await sendBroadcast('telegram_channel', row, snapshot);
     expect(out).toMatchObject({ state: 'sent', error: 'telegram_userbot_buttons_failed' });
     expect(JSON.parse(out.providerId!)).toMatchObject({ channelMessageId: '321', buttonsFailed: true });
+    expect(out.channelDelivery).toEqual({ via: 'userbot', buttons: 'failed', reason: 'telegram_userbot_buttons_failed' });
     expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
@@ -235,6 +271,7 @@ describe('channel promo via userbot forward', () => {
     vi.mocked(sendMessage).mockResolvedValue({ ok: true, result: { message_id: 4 } as never });
     const out = await sendBroadcast('telegram', { ...row, destination: '11' }, snapshot);
     expect(out.state).toBe('sent');
+    expect(out).not.toHaveProperty('channelDelivery');
     expect(vi.mocked(sendMessage).mock.calls[0][0]).toMatchObject({ chat_id: '11', text: '<b>DM</b>' });
     expect(getChat).not.toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();

@@ -36,6 +36,19 @@ export async function run(ctx: LiteContext): Promise<Record<string, unknown>> {
       daily_summary = { due: false, sent: false, error: "summary_failed" };
     }
   }
+  // Pemantau kesehatan userbot channel: no-op tanpa mode userbot; selain itu
+  // gerbang memo isolate + interval 30 menit (1 baca + 1 tulis per cek).
+  let userbot_watch: Record<string, unknown> | undefined;
+  if (process.env.TELEGRAM_CHANNEL_USERBOT_ENABLED === "true" && db.canSpend(2)) {
+    try {
+      const { watchUserbotHealth } = await import("@/lib/telegram/channel-sender-status");
+      const watch = await watchUserbotHealth(db);
+      if (watch.checked) userbot_watch = { state: watch.state, ...(watch.alerted ? { alerted: watch.alerted } : {}) };
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      userbot_watch = { error: "watch_failed" };
+    }
+  }
   // Paid: broadcast backstop gets its own generous 400-statement budget and ~40s
   // wall-time envelope separate from the 300-statement promo/summary DB.
   const broadcastDb = createBudgetedDatabase(400, 4, unwrapD1(db.getD1())).access;
@@ -56,5 +69,6 @@ export async function run(ctx: LiteContext): Promise<Record<string, unknown>> {
     promo_skipped: promo.skipped ?? null,
     ...(promo.queuedMessages ? { promo_queued_messages: promo.queuedMessages } : {}),
     daily_summary,
+    ...(userbot_watch ? { userbot_watch } : {}),
   };
 }

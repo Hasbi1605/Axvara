@@ -1,5 +1,5 @@
 import { editMessageReplyMarkup, getChat, sendMessage, sendPhoto } from '@/lib/telegram/api';
-import { getWrProxyUrl } from '@/lib/warung-rebahan/client';
+import { getUserbotConfig, type ChannelDeliveryMeta } from '@/lib/telegram/channel-sender-status';
 import type { TelegramApiResponse, TelegramMessage } from '@/lib/telegram/types';
 import { sendTextMessage } from '@/lib/whatsapp/gateway';
 import {
@@ -18,6 +18,8 @@ export type SendOutcome = {
   retryAfter?: number;
   blocked?: boolean;
   consumeAttempt?: boolean;
+  /** Hanya promo channel: jalur kirim + status tombol, dicatat worker ke admin. */
+  channelDelivery?: ChannelDeliveryMeta;
 };
 
 type PromoProgress = {
@@ -122,23 +124,31 @@ const CHANNEL_NUMERIC_ID_PATTERN = /^-100\d{5,20}$/;
 // aman jatuh ke jalur bot langsung. Selain ini (502 outcome_unknown, 5xx lain,
 // 429, timeout) hasilnya ambigu: JANGAN fallback agar tidak dobel posting.
 const USERBOT_DEFINITE_REJECT_STATUSES = new Set([400, 401, 403, 404, 409, 503]);
+const USERBOT_REJECT_REASON_BY_STATUS: Record<number, string> = {
+  400: 'userbot_bad_request',
+  401: 'userbot_unauthorized',
+  403: 'userbot_forbidden',
+  404: 'userbot_route_missing',
+  409: 'telegram_rejected',
+  503: 'userbot_not_ready',
+};
 
-function userbotConfig(): { stagingChatId: string; proxyUrl: string; proxyToken: string } | null {
-  if (process.env.TELEGRAM_CHANNEL_USERBOT_ENABLED !== 'true') return null;
-  const stagingChatId = (process.env.TELEGRAM_PROMO_STAGING_CHAT_ID || '').trim();
-  if (!STAGING_CHAT_ID_PATTERN.test(stagingChatId)) return null;
-  const proxyUrl = getWrProxyUrl();
-  const proxyToken = (process.env.WARUNG_REBAHAN_PROXY_TOKEN || '').trim();
-  if (!proxyUrl || !proxyToken) return null;
-  return { stagingChatId, proxyUrl, proxyToken };
+/** Hasil jalur userbot: SendOutcome final, atau alasan jatuh ke jalur bot langsung. */
+type UserbotResult = { outcome: SendOutcome } | { fallbackReason: string };
+
+/** Ambil kode alasan pendek dari body error proxy; selain itu pakai peta status. */
+function userbotRejectReason(status: number, body: unknown): string {
+  const code = body && typeof body === 'object' ? (body as { error?: unknown }).error : undefined;
+  if (typeof code === 'string' && /^[a-z0-9_]{1,40}$/.test(code)) return code;
+  return USERBOT_REJECT_REASON_BY_STATUS[status] ?? 'userbot_rejected';
 }
 
 /**
  * Jalur channel via userbot (bot tidak bisa memposting custom emoji ke channel):
  * bot kirim ke supergroup staging -> userbot Premium forward (drop_author) ke
  * channel lewat proxy VPS `/tgu/forward` -> bot pasang tombol inline.
- * Mengembalikan `null` bila harus jatuh ke jalur bot langsung (tidak ada post
- * di channel), atau SendOutcome final.
+ * Mengembalikan `fallbackReason` bila harus jatuh ke jalur bot langsung (tidak
+ * ada post di channel), atau SendOutcome final.
  */
 async function sendChannelPromoViaUserbot(
   destination: string,
@@ -146,7 +156,7 @@ async function sendChannelPromoViaUserbot(
   message: string,
   progress: PromoProgress,
   config: { stagingChatId: string; proxyUrl: string; proxyToken: string },
-): Promise<SendOutcome | null> {
+): Promise<UserbotResult> {
   const linkPreview = promo.bannerMode === 'link_preview';
   if (!progress.channelMessageId) {
     if (!progress.channelChatId) {
@@ -156,10 +166,10 @@ async function sendChannelPromoViaUserbot(
         try {
           const chat = await getChat(destination);
           const id = chat.ok && chat.result ? String(chat.result.id) : '';
-          if (!CHANNEL_NUMERIC_ID_PATTERN.test(id)) return null;
+          if (!CHANNEL_NUMERIC_ID_PATTERN.test(id)) return { fallbackReason: 'channel_lookup_failed' };
           progress.channelChatId = id;
         } catch {
-          return null;
+          return { fallbackReason: 'channel_lookup_failed' };
         }
       }
     }
@@ -178,10 +188,10 @@ async function sendChannelPromoViaUserbot(
               parse_mode: 'HTML',
               disable_web_page_preview: true,
             });
-        if (!staged.ok || !staged.result?.message_id) return null;
+        if (!staged.ok || !staged.result?.message_id) return { fallbackReason: 'staging_failed' };
         progress.stagingMessageId = String(staged.result.message_id);
       } catch {
-        return null;
+        return { fallbackReason: 'staging_failed' };
       }
     }
     // VPS hanya menerima ^[A-Za-z0-9:_-]{8,128}$ — buang '@' dan karakter lain dari username channel.
@@ -201,9 +211,12 @@ async function sendChannelPromoViaUserbot(
         signal: AbortSignal.timeout(USERBOT_FORWARD_TIMEOUT_MS),
       });
     } catch {
-      return { state: 'unknown', error: 'telegram_userbot_outcome_unknown', providerId: serializePromoProgress(progress) };
+      return { outcome: { state: 'unknown', error: 'telegram_userbot_outcome_unknown', providerId: serializePromoProgress(progress) } };
     }
-    if (USERBOT_DEFINITE_REJECT_STATUSES.has(response.status)) return null;
+    if (USERBOT_DEFINITE_REJECT_STATUSES.has(response.status)) {
+      const rejectBody = await response.json().catch(() => null);
+      return { fallbackReason: userbotRejectReason(response.status, rejectBody) };
+    }
     const body = response.status === 200
       ? await response.json().catch(() => null) as { ok?: boolean; messageId?: unknown; channelMessageId?: unknown } | null
       : null;
@@ -212,7 +225,7 @@ async function sendChannelPromoViaUserbot(
       ? String(rawId)
       : typeof rawId === 'string' && /^\d+$/.test(rawId) ? rawId : '';
     if (response.status !== 200 || !channelMessageId) {
-      return { state: 'unknown', error: 'telegram_userbot_outcome_unknown', providerId: serializePromoProgress(progress) };
+      return { outcome: { state: 'unknown', error: 'telegram_userbot_outcome_unknown', providerId: serializePromoProgress(progress) } };
     }
     progress.channelMessageId = channelMessageId;
     progress.sentChunks = 1;
@@ -234,10 +247,29 @@ async function sendChannelPromoViaUserbot(
     else {
       // Post sudah ada di channel: jangan pernah diposting ulang.
       progress.buttonsFailed = true;
-      return { state: 'sent', error: 'telegram_userbot_buttons_failed', providerId: serializePromoProgress(progress) };
+      return { outcome: { state: 'sent', error: 'telegram_userbot_buttons_failed', providerId: serializePromoProgress(progress) } };
     }
   }
-  return { state: 'sent', providerId: serializePromoProgress(progress) };
+  return { outcome: { state: 'sent', providerId: serializePromoProgress(progress) } };
+}
+
+type PromoRoute = { via: 'userbot' | 'bot_fallback' | 'bot'; fallbackReason?: string };
+
+/** Ringkas jalur + status tombol hasil kirim promo channel untuk catatan admin. */
+function describeChannelDelivery(outcome: SendOutcome, promo: BroadcastPromoPayload, route: PromoRoute): ChannelDeliveryMeta {
+  let buttons: ChannelDeliveryMeta['buttons'] = 'n/a';
+  if (outcome.state === 'sent' && promo.channelReplyMarkup) {
+    if (route.via === 'userbot') {
+      const progress = parsePromoProgress(outcome.providerId);
+      buttons = progress.buttonsAttached ? 'attached' : progress.buttonsFailed ? 'failed' : 'n/a';
+    } else {
+      buttons = 'attached';
+    }
+  }
+  const reason = outcome.state === 'sent'
+    ? route.via === 'bot_fallback' ? route.fallbackReason : buttons === 'failed' ? outcome.error : undefined
+    : outcome.error;
+  return { via: route.via, buttons, ...(reason ? { reason } : {}) };
 }
 
 async function sendTelegramPromo(
@@ -245,6 +277,19 @@ async function sendTelegramPromo(
   promo: BroadcastPromoPayload,
   existingProviderId?: string | null,
   options?: { isChannel?: boolean },
+): Promise<SendOutcome> {
+  const route: PromoRoute = { via: 'bot' };
+  const outcome = await sendTelegramPromoRouted(destination, promo, existingProviderId, options, route);
+  if (options?.isChannel !== true) return outcome;
+  return { ...outcome, channelDelivery: describeChannelDelivery(outcome, promo, route) };
+}
+
+async function sendTelegramPromoRouted(
+  destination: string,
+  promo: BroadcastPromoPayload,
+  existingProviderId: string | null | undefined,
+  options: { isChannel?: boolean } | undefined,
+  route: PromoRoute,
 ): Promise<SendOutcome> {
   const progress = parsePromoProgress(existingProviderId);
   if (Date.now() >= Date.parse(promo.expiresAt)) {
@@ -258,11 +303,16 @@ async function sendTelegramPromo(
     isChannel && messages.length === 1 && promo.bannerMode === 'link_preview' &&
     !progress.photoId && (progress.sentChunks === 0 || progress.channelMessageId)
   ) {
-    const userbot = userbotConfig();
+    const userbot = getUserbotConfig();
     if (userbot) {
-      const outcome = await sendChannelPromoViaUserbot(destination, promo, messages[0], progress, userbot);
-      if (outcome) return outcome;
-      // null = pasti tidak ada post userbot; lanjut jalur bot langsung di bawah.
+      const result = await sendChannelPromoViaUserbot(destination, promo, messages[0], progress, userbot);
+      if ('outcome' in result) {
+        route.via = 'userbot';
+        return result.outcome;
+      }
+      // fallbackReason = pasti tidak ada post userbot; lanjut jalur bot langsung di bawah.
+      route.via = 'bot_fallback';
+      route.fallbackReason = result.fallbackReason;
     }
   }
   let sentInCall = false;

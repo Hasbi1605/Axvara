@@ -68,27 +68,101 @@ describe("Admin UI — Telegram Channel Force-Join & Broadcast", () => {
 
     expect(await screen.findByText("Channel Resmi Telegram & Wajib Join")).toBeTruthy();
     expect(screen.getByText("Wajib join nonaktif")).toBeTruthy();
+    expect(screen.getByText("Channel publik untuk wajib join dan promo 09.00 & 17.00 WIB.")).toBeTruthy();
+    expect(screen.getByText("Cek saat /start dan belanja. Pesanan & bantuan tetap bisa.")).toBeTruthy();
+    expect(screen.getByText("Katalog ready + tombol Order & Website.")).toBeTruthy();
+    expect(screen.getByText("Katalog ready ke DM pengguna bot.")).toBeTruthy();
 
+    // Saklar tersimpan langsung, tanpa menekan tombol Simpan.
     await user.click(screen.getByRole("switch", { name: "Wajib join channel (Smart Force-Join)" }));
-    await user.click(screen.getByRole("switch", { name: "Auto-promo pagi & sore ke DM Bot" }));
-    await user.click(screen.getByRole("button", { name: /Simpan pengaturan channel/i }));
-
-    await waitFor(() => {
-      expect(postCalls[0]).toMatchObject({
-        url: "/api/admin/telegram/channel",
-        body: {
-          action: "save",
-          channelUsername: "axvaratech",
-          forceSubEnabled: true,
-          channelPromoEnabled: true,
-          dmPromoEnabled: false,
-        },
-      });
+    await waitFor(() => expect(postCalls).toHaveLength(1));
+    expect(postCalls[0]).toMatchObject({
+      url: "/api/admin/telegram/channel",
+      body: { action: "save", channelUsername: "axvaratech", forceSubEnabled: true, channelPromoEnabled: true, dmPromoEnabled: true },
     });
-    expect(screen.getByText("Wajib join aktif")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Wajib join aktif")).toBeTruthy());
+
+    await user.click(screen.getByRole("switch", { name: "Auto-promo pagi & sore ke DM Bot" }));
+    await waitFor(() => expect(postCalls).toHaveLength(2));
+    expect(postCalls[1].body).toMatchObject({ forceSubEnabled: true, dmPromoEnabled: false });
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Auto-promo pagi & sore ke DM Bot" }).getAttribute("aria-checked")).toBe("false"));
+
+    // Tombol Simpan tetap ada untuk username/nama.
+    await user.click(screen.getByRole("button", { name: /Simpan pengaturan channel/i }));
+    await waitFor(() => expect(postCalls).toHaveLength(3));
+    expect(postCalls[2].body).toMatchObject({ forceSubEnabled: true, dmPromoEnabled: false });
 
     await user.click(screen.getByRole("button", { name: /Cek status admin bot/i }));
     expect(await screen.findByText(/@Axvara_bot aktif sebagai Administrator di @axvaratech/)).toBeTruthy();
+  });
+
+  it("reverts a switch and keeps the old value when the immediate save fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/bot/health") {
+        return Response.json({
+          bot_configured: true,
+          bot_enabled: true,
+          telegram_channel: { channelUsername: "axvaratech", channelTitle: "Axvara Official", forceSubEnabled: false, channelPromoEnabled: false, dmPromoEnabled: false, cacheTtlSeconds: 21600 },
+        });
+      }
+      if (url === "/api/admin/telegram/channel" && init?.method === "POST") return Response.json({ error: "Database belum tersedia." }, { status: 503 });
+      return Response.json({ ok: true });
+    }));
+    const user = userEvent.setup();
+    render(<ToastProvider><BotAutomationManager /></ToastProvider>);
+    const dmSwitch = await screen.findByRole("switch", { name: "Auto-promo pagi & sore ke DM Bot" });
+    expect(dmSwitch.getAttribute("aria-checked")).toBe("false");
+    await user.click(dmSwitch);
+    expect(await screen.findByText("Database belum tersedia.")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Auto-promo pagi & sore ke DM Bot" }).getAttribute("aria-checked")).toBe("false"));
+    expect((screen.getByRole("switch", { name: "Auto-promo pagi & sore ke DM Bot" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps switches and buttons disabled and never saves defaults when channel settings did not load", async () => {
+    const posts: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") posts.push(url);
+      if (url === "/api/admin/bot/health") {
+        // Health loads, but the channel block is missing (store_settings read failed server-side).
+        return Response.json({ bot_configured: true, bot_enabled: true });
+      }
+      return Response.json({ ok: true });
+    }));
+    const user = userEvent.setup();
+    render(<ToastProvider><BotAutomationManager /></ToastProvider>);
+    expect(await screen.findByText(/Pengaturan channel belum berhasil dimuat/)).toBeTruthy();
+    for (const name of ["Wajib join channel (Smart Force-Join)", "Auto-promo pagi & sore ke Channel", "Auto-promo pagi & sore ke DM Bot"]) {
+      const control = screen.getByRole("switch", { name }) as HTMLButtonElement;
+      expect(control.disabled).toBe(true);
+      await user.click(control);
+    }
+    expect((screen.getByRole("button", { name: /Simpan pengaturan channel/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /Cek status admin bot/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(posts).toEqual([]);
+  });
+
+  it("shows the channel sender block with live userbot status and the last post line", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url === "/api/admin/bot/health") {
+        return Response.json({
+          bot_configured: true,
+          bot_enabled: true,
+          telegram_channel: { channelUsername: "axvaratech", channelTitle: "Axvara Official", forceSubEnabled: false, channelPromoEnabled: true, dmPromoEnabled: true, cacheTtlSeconds: 21600 },
+          telegram_channel_sender: {
+            mode: "userbot",
+            configured: true,
+            userbot: { reachable: true, ready: false },
+            lastDelivery: { at: "2026-11-28T10:00:00.000Z", slot: "evening", businessDate: "2026-11-28", via: "bot_fallback", state: "sent", buttons: "attached", reason: "userbot_not_ready" },
+          },
+        });
+      }
+      return Response.json({ ok: true });
+    }));
+    render(<ToastProvider><BotAutomationManager /></ToastProvider>);
+    expect(await screen.findByText("Pengirim channel")).toBeTruthy();
+    expect(screen.getByText("Userbot akun owner")).toBeTruthy();
+    expect(screen.getByText("Terkendala")).toBeTruthy();
+    expect(screen.getByText("Terakhir: Sore 28 Nov 17.00 · via bot (cadangan: userbot_not_ready) · tombol terpasang")).toBeTruthy();
   });
 
   it("allows selecting Channel Telegram destination in BroadcastManager and shows channel details in review", async () => {

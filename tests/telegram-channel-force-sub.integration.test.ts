@@ -378,6 +378,15 @@ describe("Smart Force-Join & Telegram Channel broadcasts", () => {
     });
     const promoKb = (promoMsg?.body.reply_markup as { inline_keyboard: { text: string; url?: string }[][] }).inline_keyboard;
     expect(promoKb[0].map((b) => b.text)).toEqual(["🛒 Order di Bot", "🌐 Website"]);
+    // Worker mencatat pengirim + hasil promo channel (mode bot langsung), tanpa alert admin.
+    expect(JSON.parse(String(fx.sql.prepare("SELECT value FROM store_settings WHERE key='telegram_channel_last_delivery'").get()?.value))).toMatchObject({
+      slot: "morning",
+      businessDate: "2026-11-27",
+      via: "bot",
+      state: "sent",
+      buttons: "attached",
+    });
+    expect(tgCalls.filter((c) => c.body.chat_id === "-100999")).toHaveLength(0);
 
     // 3. 403 on telegram_channel marks delivery failed with telegram_channel_not_admin, never flips telegram_users.is_blocked
     vi.setSystemTime(new Date("2026-11-27T02:07:00Z"));
@@ -486,6 +495,43 @@ describe("Smart Force-Join & Telegram Channel broadcasts", () => {
       channelPromoEnabled: true,
       dmPromoEnabled: false,
     });
+
+    // "Pengirim channel": mode bot langsung tanpa cek userbot dan tanpa catatan pengiriman.
+    expect(healthJson.telegram_channel_sender).toEqual({
+      mode: "bot",
+      configured: true,
+      userbot: null,
+      lastDelivery: null,
+    });
+
+    // Mode userbot: cek langsung /tgu/health di proxy + catatan pengiriman terakhir.
+    vi.stubEnv("TELEGRAM_CHANNEL_USERBOT_ENABLED", "true");
+    vi.stubEnv("TELEGRAM_PROMO_STAGING_CHAT_ID", "-1001234567890");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example.test");
+    vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "proxy-token");
+    fx.sql.prepare("INSERT INTO store_settings(key, value) VALUES ('telegram_channel_last_delivery', ?)").run(JSON.stringify({
+      at: "2026-11-28T10:00:00.000Z", slot: "evening", businessDate: "2026-11-28",
+      via: "bot_fallback", state: "sent", buttons: "attached", reason: "userbot_not_ready",
+    }));
+    const proxyCalls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+      proxyCalls.push(String(url));
+      return String(url).includes("/tgu/health") ? Response.json({ ok: true, ready: false }) : Response.json({ ok: true, result: {} });
+    }));
+    const userbotHealth = await (await botHealthGet(new NextRequest("https://axvara.tech/api/admin/bot/health", { headers: { cookie } }))).json();
+    expect(proxyCalls).toContain("https://proxy.example.test/tgu/health");
+    expect(userbotHealth.telegram_channel_sender).toEqual({
+      mode: "userbot",
+      configured: true,
+      userbot: { reachable: true, ready: false },
+      lastDelivery: {
+        at: "2026-11-28T10:00:00.000Z", slot: "evening", businessDate: "2026-11-28",
+        via: "bot_fallback", state: "sent", buttons: "attached", reason: "userbot_not_ready",
+      },
+    });
+    for (const key of ["TELEGRAM_CHANNEL_USERBOT_ENABLED", "TELEGRAM_PROMO_STAGING_CHAT_ID", "WARUNG_REBAHAN_PROXY_URL", "WARUNG_REBAHAN_PROXY_TOKEN"]) {
+      vi.stubEnv(key, "");
+    }
 
     // Verify bot admin check (mock administrator + can_post_messages=true)
     vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {

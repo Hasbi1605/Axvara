@@ -2,6 +2,27 @@ import { createDatabaseAccess, type DatabaseAccess } from '@/lib/db-access';
 import { BROADCAST_QUEUE_MODE_KEY, isBroadcastQueueModeOff } from './queue';
 import { sendBroadcast, type SendOutcome } from './sender';
 import type { BroadcastChannel, BroadcastSnapshot } from './model';
+import { recordChannelPromoDelivery } from '@/lib/telegram/channel-sender-status';
+
+/** Catat pengirim + hasil promo channel & kirim alert admin (best-effort, tidak pernah melempar). */
+async function recordChannelOutcome(
+  db: DatabaseAccess,
+  channel: BroadcastChannel,
+  snapshot: BroadcastSnapshot,
+  destination: string,
+  result: SendOutcome,
+): Promise<void> {
+  if (channel !== 'telegram_channel' || snapshot.promo?.kind !== 'telegram_promo' || !result.channelDelivery) return;
+  try {
+    await recordChannelPromoDelivery(db, {
+      slot: snapshot.promo.slot,
+      businessDate: snapshot.promo.businessDate,
+      state: result.state,
+      destination,
+      meta: result.channelDelivery,
+    });
+  } catch { /* catatan admin tidak boleh mengganggu antrean */ }
+}
 
 // Workers Paid: inter-recipient 250ms (4/s) -> 100ms (10/s), still well under
 // Telegram's ~30 msg/s global limit. Same-chat pacing (sender.ts) stays 300ms.
@@ -450,6 +471,7 @@ export async function processBroadcastDeliveryBatch(
         now(),
         row.id,
       );
+      await recordChannelOutcome(db, channel, snapshot, String(row.destination), result);
 
       if (result.state === 'retry') {
         out.deferred++;
@@ -757,6 +779,7 @@ export async function processBroadcasts(
         now(),
         row.id,
       );
+      await recordChannelOutcome(db, channel, snapshot, String(row.destination), result);
       if (result.state === 'retry') out.deferred++;
       else out[result.state]++;
     }

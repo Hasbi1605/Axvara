@@ -5,6 +5,8 @@ import { CheckCircle2, Loader2, RefreshCw, Save, Send, ShieldCheck } from "lucid
 import { Badge, Button, Card, Input, Label, PageHeader, Skeleton, Switch } from "./ui";
 import { formatWibDateTime } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
+import type { ChannelSenderStatus } from "@/lib/telegram/channel-sender-status";
+import { describeLastDelivery, senderStatusBadge } from "./channel-sender-format";
 
 interface TelegramChannelState {
   channelUsername: string;
@@ -37,6 +39,7 @@ interface HealthData {
   whatsapp_proof_intake: boolean;
   webhook?: { url?: string; pending_updates?: number; last_error?: string | null; error?: string };
   telegram_channel?: TelegramChannelState;
+  telegram_channel_sender?: ChannelSenderStatus;
   telegram_orders?: { status: string; count: number }[];
   whatsapp_orders?: { payment_status: string; count: number }[];
   fulfillment_jobs?: { status: string; count: number }[];
@@ -58,6 +61,9 @@ export default function BotAutomationManager() {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [channelCfg, setChannelCfg] = useState<TelegramChannelState>(DEFAULT_CHANNEL_STATE);
   const [channelSaving, setChannelSaving] = useState(false);
+  // true hanya setelah pengaturan channel benar-benar dimuat dari server; default
+  // lokal tidak boleh pernah tersimpan.
+  const [channelLoaded, setChannelLoaded] = useState(false);
   const [channelVerifying, setChannelVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<ChannelVerifyResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,6 +73,7 @@ export default function BotAutomationManager() {
   const fetchHealth = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setChannelLoaded(false);
     try {
       const response = await fetch("/api/admin/bot/health", { cache: "no-store" });
       const data = await response.json().catch(() => ({})) as HealthData & { error?: string };
@@ -74,8 +81,14 @@ export default function BotAutomationManager() {
       setHealth(data);
       if (data.telegram_channel) {
         setChannelCfg(data.telegram_channel);
+        setChannelLoaded(true);
+      } else {
+        setChannelLoaded(false);
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Status otomasi gagal dimuat"); }
+    } catch (cause) {
+      setChannelLoaded(false);
+      setError(cause instanceof Error ? cause.message : "Status otomasi gagal dimuat");
+    }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void fetchHealth(); }, [fetchHealth]);
@@ -92,7 +105,8 @@ export default function BotAutomationManager() {
     finally { setWebhookLoading(false); }
   };
 
-  const saveChannelSettings = async () => {
+  /** Simpan konfigurasi channel penuh; `true` bila server menerima. */
+  const persistChannel = async (next: TelegramChannelState, options: { resetVerify: boolean }): Promise<boolean> => {
     setChannelSaving(true);
     try {
       const response = await fetch("/api/admin/telegram/channel", {
@@ -100,12 +114,12 @@ export default function BotAutomationManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "save",
-          channelUsername: channelCfg.channelUsername,
-          channelTitle: channelCfg.channelTitle,
-          forceSubEnabled: channelCfg.forceSubEnabled,
-          channelPromoEnabled: channelCfg.channelPromoEnabled,
-          dmPromoEnabled: channelCfg.dmPromoEnabled,
-          cacheTtlSeconds: channelCfg.cacheTtlSeconds,
+          channelUsername: next.channelUsername,
+          channelTitle: next.channelTitle,
+          forceSubEnabled: next.forceSubEnabled,
+          channelPromoEnabled: next.channelPromoEnabled,
+          dmPromoEnabled: next.dmPromoEnabled,
+          cacheTtlSeconds: next.cacheTtlSeconds,
         }),
       });
       const data = await response.json().catch(() => ({})) as { ok?: boolean; config?: TelegramChannelState; dmPromoEnabled?: boolean; error?: string };
@@ -114,15 +128,33 @@ export default function BotAutomationManager() {
       }
       setChannelCfg({
         ...data.config,
-        dmPromoEnabled: data.dmPromoEnabled ?? channelCfg.dmPromoEnabled,
+        dmPromoEnabled: data.dmPromoEnabled ?? next.dmPromoEnabled,
       });
-      setVerifyResult(null);
+      if (options.resetVerify) setVerifyResult(null);
       toast.success("Pengaturan channel Telegram disimpan.");
+      return true;
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Pengaturan channel gagal disimpan.");
+      return false;
     } finally {
       setChannelSaving(false);
     }
+  };
+
+  const saveChannelSettings = async () => {
+    if (!channelLoaded) return;
+    await persistChannel(channelCfg, { resetVerify: true });
+  };
+
+  // Saklar tersimpan langsung saat diubah (optimistis); gagal = kembalikan nilai lama.
+  const toggleChannelSwitch = async (patch: Partial<Pick<TelegramChannelState, "forceSubEnabled" | "channelPromoEnabled" | "dmPromoEnabled">>) => {
+    if (!channelLoaded || channelSaving) return;
+    const previous: Partial<TelegramChannelState> = {};
+    for (const key of Object.keys(patch) as (keyof typeof patch)[]) previous[key] = channelCfg[key];
+    const next = { ...channelCfg, ...patch };
+    setChannelCfg(next);
+    const ok = await persistChannel(next, { resetVerify: false });
+    if (!ok) setChannelCfg((current) => ({ ...current, ...previous }));
   };
 
   const verifyChannelAdmin = async () => {
@@ -170,7 +202,7 @@ export default function BotAutomationManager() {
           <div className="min-w-0">
             <h3 className="font-semibold text-admin-fg">Channel Resmi Telegram &amp; Wajib Join</h3>
             <p className="mt-1 text-xs leading-5 text-admin-muted">
-              Atur channel publik untuk Smart Force-Join bot dan auto-promo katalog pagi/sore (09.00 &amp; 17.00 WIB).
+              Channel publik untuk wajib join dan promo 09.00 &amp; 17.00 WIB.
             </p>
           </div>
           <Badge variant={channelCfg.forceSubEnabled ? "success" : "secondary"}>
@@ -184,7 +216,7 @@ export default function BotAutomationManager() {
               value={channelCfg.channelUsername}
               maxLength={64}
               placeholder="axvaratech"
-              disabled={channelSaving}
+              disabled={channelSaving || !channelLoaded}
               onChange={(e) => {
                 setChannelCfg((prev) => ({ ...prev, channelUsername: e.target.value }));
                 setVerifyResult(null);
@@ -197,7 +229,7 @@ export default function BotAutomationManager() {
               value={channelCfg.channelTitle}
               maxLength={80}
               placeholder="Axvara Official"
-              disabled={channelSaving}
+              disabled={channelSaving || !channelLoaded}
               onChange={(e) => setChannelCfg((prev) => ({ ...prev, channelTitle: e.target.value }))}
             />
           </Label>
@@ -206,40 +238,46 @@ export default function BotAutomationManager() {
           <div className="flex items-center justify-between gap-4 p-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-admin-fg">Wajib join channel (Smart Force-Join)</p>
-              <p className="text-xs text-admin-muted">Cek saat /start dan belanja (cache 6 jam, fail-open). Pesanan, kredensial, garansi, dan bantuan tidak pernah diblokir.</p>
+              <p className="text-xs text-admin-muted">Cek saat /start dan belanja. Pesanan &amp; bantuan tetap bisa.</p>
             </div>
             <Switch
               aria-label="Wajib join channel (Smart Force-Join)"
               checked={channelCfg.forceSubEnabled}
-              disabled={channelSaving}
-              onCheckedChange={(checked) => setChannelCfg((prev) => ({ ...prev, forceSubEnabled: checked }))}
+              disabled={channelSaving || !channelLoaded}
+              onCheckedChange={(checked) => void toggleChannelSwitch({ forceSubEnabled: checked })}
             />
           </div>
           <div className="flex items-center justify-between gap-4 p-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-admin-fg">Auto-promo pagi &amp; sore ke Channel</p>
-              <p className="text-xs text-admin-muted">Posting katalog ready otomatis ke @{channelCfg.channelUsername || "axvaratech"} dengan tombol Order di Bot dan Website.</p>
+              <p className="text-xs text-admin-muted">Katalog ready + tombol Order &amp; Website.</p>
             </div>
             <Switch
               aria-label="Auto-promo pagi & sore ke Channel"
               checked={channelCfg.channelPromoEnabled}
-              disabled={channelSaving}
-              onCheckedChange={(checked) => setChannelCfg((prev) => ({ ...prev, channelPromoEnabled: checked }))}
+              disabled={channelSaving || !channelLoaded}
+              onCheckedChange={(checked) => void toggleChannelSwitch({ channelPromoEnabled: checked })}
             />
           </div>
           <div className="flex items-center justify-between gap-4 p-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-admin-fg">Auto-promo pagi &amp; sore ke DM Bot</p>
-              <p className="text-xs text-admin-muted">Kirim katalog ready ke DM pengguna bot. Dapat dimatikan kapan saja jika promo cukup lewat Channel.</p>
+              <p className="text-xs text-admin-muted">Katalog ready ke DM pengguna bot.</p>
             </div>
             <Switch
               aria-label="Auto-promo pagi & sore ke DM Bot"
               checked={channelCfg.dmPromoEnabled}
-              disabled={channelSaving}
-              onCheckedChange={(checked) => setChannelCfg((prev) => ({ ...prev, dmPromoEnabled: checked }))}
+              disabled={channelSaving || !channelLoaded}
+              onCheckedChange={(checked) => void toggleChannelSwitch({ dmPromoEnabled: checked })}
             />
           </div>
         </div>
+        {!channelLoaded && (
+          <p role="alert" className="mt-3 text-xs text-admin-danger">
+            Pengaturan channel belum berhasil dimuat dari server. Muat ulang sebelum mengubah.
+          </p>
+        )}
+        <ChannelSenderBlock sender={health?.telegram_channel_sender} />
         {verifyResult && (
           <div
             role="status"
@@ -260,10 +298,10 @@ export default function BotAutomationManager() {
           </div>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button size="sm" disabled={channelSaving} onClick={() => void saveChannelSettings()}>
+          <Button size="sm" disabled={channelSaving || !channelLoaded} onClick={() => void saveChannelSettings()}>
             {channelSaving ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Save aria-hidden="true" />} Simpan pengaturan channel
           </Button>
-          <Button variant="outline" size="sm" disabled={channelVerifying || !health?.bot_configured} onClick={() => void verifyChannelAdmin()}>
+          <Button variant="outline" size="sm" disabled={channelVerifying || !channelLoaded || !health?.bot_configured} onClick={() => void verifyChannelAdmin()}>
             {channelVerifying ? <Loader2 className="animate-spin" aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />} Cek status admin bot
           </Button>
         </div>
@@ -278,4 +316,22 @@ export default function BotAutomationManager() {
 
 function ChannelCard({ title, ready, rows, children }: { title: string; ready: boolean; rows: [string, boolean | undefined][]; children: React.ReactNode }) {
   return <Card className="p-4"><div className="flex items-center justify-between gap-3"><h3 className="min-w-0 text-sm font-semibold text-admin-fg">{title}</h3><Badge variant={ready ? "success" : "destructive"}>{ready ? "Siap" : "Perlu konfigurasi"}</Badge></div><div className="mt-4 grid grid-cols-2 gap-2">{rows.map(([label, ok]) => <div key={label} className="flex items-center gap-2 rounded-md bg-admin-subtle px-2.5 py-2 text-xs font-medium text-admin-fg"><span aria-hidden="true" className={`inline-block size-2 rounded-full ${ok ? "bg-admin-success" : "bg-admin-danger"}`} />{label}<span className="sr-only">{ok ? ": aktif" : ": belum"}</span></div>)}</div>{children}</Card>;
+}
+
+function ChannelSenderBlock({ sender }: { sender: ChannelSenderStatus | undefined }) {
+  if (!sender) return null;
+  const badge = senderStatusBadge(sender);
+  return (
+    <div className="mt-4 rounded-md border border-admin-border bg-admin-subtle p-3" aria-label="Pengirim channel">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-medium text-admin-fg">Pengirim channel</h4>
+        {badge && <Badge variant={badge.variant}>{badge.label}</Badge>}
+      </div>
+      <p className="mt-1 text-xs text-admin-muted">
+        {sender.mode === "userbot" ? "Userbot akun owner" : "Bot"}
+        {!sender.configured && " · konfigurasi belum lengkap"}
+      </p>
+      <p className="mt-1 text-xs text-admin-muted">{describeLastDelivery(sender.lastDelivery)}</p>
+    </div>
+  );
 }
