@@ -54,7 +54,7 @@ password akun: jangan commit, jangan kirim lewat chat.
 # di VPS (ec2-user)
 mkdir -p ~/axvara-tg-userbot && cd ~/axvara-tg-userbot
 # salin isi tg-userbot/ (tanpa node_modules) ke sini, lalu:
-npm ci --omit=dev
+npm ci --omit=dev --ignore-scripts   # utf-8-validate opsional gagal compile di t4g.nano; tidak dibutuhkan
 cp .env.example .env && chmod 600 .env     # isi TG_API_ID, TG_API_HASH, TG_ALLOW_*
 scp ~/.axvara-tg-userbot.session ec2-user@<vps>:~/axvara-tg-userbot/session.string
 chmod 600 session.string

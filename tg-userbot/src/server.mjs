@@ -132,10 +132,13 @@ async function main() {
 
   let ready = false;
   const peers = new Map();
+  let dialogs = [];
   const resolvePeer = async (chatId) => {
     const cached = peers.get(chatId);
     if (cached) return cached;
-    const peer = await client.getInputEntity(chatId);
+    // ID "-100…" sebagai string dibaca gramjs sebagai username → cari dari dialog (id bertanda).
+    const dialog = dialogs.find((d) => String(d.id) === chatId);
+    const peer = dialog?.inputEntity ?? (await client.getInputEntity(Number(chatId)));
     peers.set(chatId, peer);
     return peer;
   };
@@ -146,7 +149,7 @@ async function main() {
       log("not_authorized");
       return;
     }
-    await client.getDialogs({ limit: 50 }); // mengisi cache access hash
+    dialogs = await client.getDialogs({ limit: 500 }); // mengisi cache access hash; staging bisa jauh di bawah (akun owner ramai)
     await resolvePeer(allowFrom);
     await resolvePeer(allowTo);
     ready = true;

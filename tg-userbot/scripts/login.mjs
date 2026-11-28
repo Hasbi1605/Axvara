@@ -17,40 +17,70 @@ function parseOut() {
   return path.resolve((raw ?? path.join(os.homedir(), ".axvara-tg-userbot.session")).replace(/^~(?=$|\/)/, os.homedir()));
 }
 
-/** Tanya satu baris; bila hidden=true karakter yang diketik tidak ditampilkan. */
-function ask(question, { hidden = false } = {}) {
+const clean = (v) => v.replace(/\x1b\[[0-9;]*[~A-Za-z]/g, "").replace(/[\x00-\x1f\x7f]/g, "").trim();
+
+/** Satu baris terlihat: mode baris standar (echo TTY), aman untuk paste. */
+function askVisible(question) {
   return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    if (hidden) {
-      rl._writeToOutput = (s) => {
-        // tampilkan hanya prompt; sembunyikan ketikan
-        if (s.startsWith(question)) rl.output.write(s);
-      };
-    }
-    rl.question(question, (answer) => {
-      rl.close();
-      if (hidden) process.stdout.write("\n");
-      resolve(answer.trim());
-    });
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+    process.stdout.write(question);
+    rl.once("line", (line) => { rl.close(); resolve(clean(line)); });
   });
 }
 
-const out = parseOut();
-const apiId = Number(await ask("API ID: "));
-if (!Number.isInteger(apiId) || apiId <= 0) {
-  console.error("API ID tidak valid.");
+/** Satu baris tersembunyi: raw mode, ketikan/paste tidak ditampilkan. */
+function askHidden(question) {
+  return new Promise((resolve) => {
+    process.stdout.write(question);
+    const stdin = process.stdin;
+    if (!stdin.isTTY) return askVisible("").then(resolve);
+    stdin.setRawMode(true);
+    stdin.resume();
+    let buf = "";
+    const onData = (chunk) => {
+      for (const ch of chunk.toString("utf8")) {
+        if (ch === "\u0003") { stdin.setRawMode(false); process.stdout.write("\n"); process.exit(130); }
+        if (ch === "\r" || ch === "\n") {
+          stdin.setRawMode(false); stdin.pause(); stdin.off("data", onData);
+          process.stdout.write("\n");
+          return resolve(clean(buf));
+        }
+        if (ch === "\u007f" || ch === "\b") buf = buf.slice(0, -1);
+        else buf += ch;
+      }
+    };
+    stdin.on("data", onData);
+  });
+}
+
+async function ask(question, { hidden = false, validate = (v) => v.length > 0, tries = 3 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    const v = hidden ? await askHidden(question) : await askVisible(question);
+    if (validate(v)) return v;
+    console.error("Input kosong/tidak valid, coba lagi.");
+  }
+  console.error("Terlalu banyak percobaan.");
   process.exit(1);
 }
-const apiHash = await ask("API hash: ", { hidden: true });
+
+function argValue(name) {
+  const i = process.argv.indexOf(name);
+  return i > -1 ? process.argv[i + 1] : undefined;
+}
+
+const out = parseOut();
+const apiIdArg = (argValue("--api-id") ?? "").replace(/\D/g, "");
+const apiId = Number(apiIdArg || (await ask("API ID: ", { validate: (v) => /^\d{3,12}$/.test(v.replace(/\D/g, "")) })).replace(/\D/g, ""));
+const apiHash = await ask("API hash: ", { hidden: true, validate: (v) => /^[0-9a-f]{32}$/i.test(v) });
 
 const client = new TelegramClient(new StringSession(""), apiId, apiHash, { connectionRetries: 3, useWSS: false });
 client.setLogLevel("error");
 
 try {
   await client.start({
-    phoneNumber: () => ask("Nomor telepon (format internasional, mis. +628...): "),
-    phoneCode: () => ask("Kode login dari Telegram: "),
-    password: () => ask("Password 2FA (kosongkan bila tidak ada): ", { hidden: true }),
+    phoneNumber: () => ask("Nomor telepon (format internasional, mis. +628...): ", { validate: (v) => /^\+?\d{8,15}$/.test(v.replace(/[\s-]/g, "")) }),
+    phoneCode: () => ask("Kode login dari Telegram: ", { validate: (v) => /^\d{4,8}$/.test(v.replace(/\D/g, "")) }),
+    password: () => ask("Password 2FA: ", { hidden: true }),
     onError: (e) => console.error("Gagal:", String(e?.errorMessage ?? e?.name ?? "error")),
   });
   const me = await client.getMe();
