@@ -169,6 +169,8 @@ describe("app logos and stripping", () => {
     expect(appLogoEmojiId("Adobe Express 12M")).toBe("5278668274555436578");
     expect(appLogoEmojiId("Disney+ Hotstar")).toBe("5884437729067932014");
     expect(appLogoEmojiId("Viu")).toBe("6172215587465334604");
+    expect(appLogoEmojiId("Akun Gsuite")).toBe("5318840160236895740");
+    expect(appLogoEmojiId("Google Workspace Business")).toBe("5318840160236895740");
     expect(appLogoEmojiId("Vision Plus")).not.toBe("6172215587465334604");
     expect(appLogoEmojiId("iLovePDF Premium")).toBe("6206155660283879718");
     expect(appLogoEmojiId("Surfshark VPN")).toBe("5879507561878654934");

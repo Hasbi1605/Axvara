@@ -67,6 +67,7 @@ const LOGO = {
   alight: "6287057966373805879", // namlc1Emoji (statis)
   picsart: "5877624510777135360", // AppsIconsWB (statis)
   gmail: "5935891935490216040", // applicationsicon
+  google: "5318840160236895740", // brands_jaba #56 (logo G, untuk G Suite/Workspace — owner 28 Nov 2026)
   hma: "5879636621350933766", // AppsIconsWB (statis)
   surfshark: "5879507561878654934", // AppsIconsWB (statis)
   expressvpn: "5868200072629458257", // AppsIconsWB (statis)
@@ -165,6 +166,7 @@ const RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/perplexity/i, LOGO.perplexity],
   [/gamma/i, LOGO.gamma],
   [/leonardo/i, LOGO.leonardo],
+  [/g\s*-?\s*suite|google\s*workspace/i, LOGO.google],
   [/email\s*(kampus|student|edu)|\bgmail\b/i, LOGO.gmail],
   [/jetbrains/i, LOGO.jetbrains],
   [/trading\s*view/i, LOGO.tradingview],
