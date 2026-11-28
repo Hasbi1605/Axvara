@@ -442,7 +442,7 @@ export async function sendToRecipient(
     : await resolveCredentialTermsByItem(orderCode, database);
   const { credentialMessages } = await import("@/lib/telegram/messages/credential");
   const messages = credentialMessages({
-    orderCode, plaintext, productName, copy: copies.get(variantId || 0), secretTag: "code",
+    orderCode, plaintext, productName, copy: copies.get(variantId || 0),
   });
   if (automatic) {
     if (!/^[1-9]\d*$/.test(target) || !Number.isSafeInteger(Number(target))) throw new Error("no_private_telegram_chat");

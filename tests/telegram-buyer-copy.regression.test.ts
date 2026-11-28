@@ -27,7 +27,7 @@ function parsed(html: string, limit = 4096): Document {
   const document = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   expect(document.querySelectorAll("script, img, a")).toHaveLength(0);
   for (const tag of ["b", "code", "pre", "i", "s", "blockquote"]) {
-    expect((html.match(new RegExp(`<${tag}>`, "g")) ?? []).length)
+    expect((html.match(new RegExp(`<${tag}(?:\\s[^>]*)?>`, "g")) ?? []).length)
       .toBe((html.match(new RegExp(`</${tag}>`, "g")) ?? []).length);
   }
   return document;
@@ -46,11 +46,16 @@ describe("plain Indonesian Telegram buyer copy", () => {
       orderPaidMessage(orderCode, "Produk A"), orderPaidMessage(orderCode, "Produk A", "instant"),
       orderExpiredMessage(orderCode), orderCancelledMessage(orderCode),
       outOfStockMessage(), errorMessage(), qrisRenewRejectedMessage("amount_unavailable"),
-      ...credentialMessages({ plaintext: "account:password" }),
     ];
     for (const message of transactionalMessages) {
       expect(message.replaceAll("━━━━━━━━━━━━━━━━", "")).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|\b1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇/u);
       expect((message.match(/\p{Extended_Pictographic}/gu) ?? []).length).toBeLessThanOrEqual(1);
+      parsed(message);
+    }
+    // Pesan kredensial (permintaan owner 28 Nov 2026) sengaja memakai emoji per
+    // bagian; tetap tanpa slogan/klaim kecepatan dan HTML valid.
+    for (const message of credentialMessages({ plaintext: "account:password" })) {
+      expect(message.replaceAll("━━━━━━━━━━━━━━━━", "")).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|\b1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇/u);
       parsed(message);
     }
     const card = productDetailMessage({ name: "Produk A", price: 5000 });

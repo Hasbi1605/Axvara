@@ -1,4 +1,5 @@
-import { COPY_SECTION_TITLES, type VariantCopy } from "@/lib/product-copy/format";
+import { copySectionTitles, type VariantCopy } from "@/lib/product-copy/format";
+import { appLogoHtml } from "../app-logo-emoji";
 import { marketWarrantyClaim, marketWarrantyClaimEn } from "@/lib/warranty-policy";
 import type { Locale } from "@/lib/i18n/locale";
 import { escapeHtml, truncate } from "./format";
@@ -50,7 +51,6 @@ export function buildCredentialsTxtFile(params: {
   lines.push(`- ${claim.eligibility}`);
   claim.requirements.forEach((req) => lines.push(`- ${req}`));
   claim.notes.forEach((note) => lines.push(`- ${note}`));
-  lines.push("", en ? "Help: /bantuan. Full terms: /garansi" : "Bantuan: /bantuan. Ketentuan lengkap: /garansi");
   return lines.join("\n");
 }
 
@@ -59,31 +59,38 @@ export function credentialsTxtFilename(orderCode: string): string {
   return `AXVARA-${safe}.txt`;
 }
 
+const CREDENTIAL_SEPARATOR = "━━━━━━━━━━━━━━━━";
+const SECTION_ICON: Record<string, string> = { paket: "📌", proses: "📦", aturan: "⚠️", garansi: "🛡" };
+
 /** Escaping happens before counting; every part has complete tags/entities.
  * The 4096 limit is enforced on HTML too (stricter than Telegram's parsed text).
  * Split at Unicode code points and preserve every character of the credential.
+ * Layout (Telegram only): product logo header, credential copy block, icon
+ * section headers, separators, collapsible claim terms, thank-you footer.
  */
 export function credentialMessages({
   plaintext, orderCode, productName, copy, secretTag = "pre", locale = "id",
 }: CredentialMessageOptions & { locale?: Locale }): string[] {
   const en = locale === "en";
-  const identity = [
-    productName ? escapeHtml(truncate(productName, 120)) : "",
-    orderCode ? `<code>${escapeHtml(truncate(orderCode, 120))}</code>` : "",
-  ].filter(Boolean).join("\n");
-  const firstHeader = [en ? "<b>📦 Product ready</b>" : "<b>📦 Produk siap</b>", identity].filter(Boolean).join("\n");
-  const nextHeader = [en ? "<b>Product details (continued)</b>" : "<b>Detail produk (lanjutan)</b>", identity].filter(Boolean).join("\n");
+  const titles = copySectionTitles(locale);
+  const nameLine = productName
+    ? `${appLogoHtml(productName, "🛍")} <b>${escapeHtml(truncate(productName, 120))}</b>`
+    : "";
+  const codeHtml = orderCode ? ` · <code>${escapeHtml(truncate(orderCode, 120))}</code>` : "";
+  const firstHeader = [nameLine, `🎁 <b>${en ? "Product ready" : "Produk siap"}</b>${codeHtml}`].filter(Boolean).join("\n");
+  const nextHeader = [nameLine, `<b>${en ? "Product details (continued)" : "Detail produk (lanjutan)"}</b>${codeHtml}`].filter(Boolean).join("\n");
   const blockLimit = 4096 - Math.max(firstHeader.length, nextHeader.length) - 2;
   const messages: string[] = [];
   let current = firstHeader;
-  const append = (html: string) => {
-    if (current.length + 2 + html.length > 4096) {
+  const append = (html: string, gap = "\n\n") => {
+    if (current.length + gap.length + html.length > 4096) {
       messages.push(current);
       current = nextHeader;
+      gap = "\n\n";
     }
-    current += `\n\n${html}`;
+    current += `${gap}${html}`;
   };
-  const text = (raw: string, tag?: "code" | "pre") => {
+  const text = (raw: string, tag?: "code" | "pre", gap = "\n") => {
     const opening = tag ? `<${tag}>` : "";
     const closing = tag ? `</${tag}>` : "";
     const limit = blockLimit - opening.length - closing.length;
@@ -91,44 +98,65 @@ export function credentialMessages({
     for (const char of raw) {
       const next = escapeHtml(char);
       if (escaped.length + next.length > limit) {
-        append(`${opening}${escaped}${closing}`);
+        append(`${opening}${escaped}${closing}`, gap);
         escaped = "";
       }
       escaped += next;
     }
-    if (escaped) append(`${opening}${escaped}${closing}`);
+    if (escaped) append(`${opening}${escaped}${closing}`, gap);
   };
 
-  append(en ? "Your access/license details:" : "Detail akses/lisensi kamu:");
+  append(CREDENTIAL_SEPARATOR);
+  append(`🔐 <b>${en ? "Your access/license details" : "Detail akses/lisensi kamu"}</b>`, "\n");
   text(plaintext, secretTag);
-  if (secretTag === "code") append(en ? "<i>Tap to copy.</i>" : "<i>Ketuk untuk menyalin.</i>");
+  append(secretTag === "code"
+    ? (en ? "💡 <i>Tap to copy.</i>" : "💡 <i>Ketuk untuk menyalin.</i>")
+    : (en ? "💡 <i>Tap the block above to copy.</i>" : "💡 <i>Ketuk blok di atas untuk menyalin.</i>"), "\n");
 
-  append(en ? "<b>Terms &amp; Conditions</b>" : "<b>Syarat &amp; Ketentuan</b>");
-  for (const section of copy?.sections ?? []) {
-    append(`<b>${COPY_SECTION_TITLES[section.kind]}</b>`);
+  append(CREDENTIAL_SEPARATOR);
+  const sections = copy?.sections ?? [];
+  const notes = copy?.notes ?? [];
+  sections.forEach((section, index) => {
+    append(`${SECTION_ICON[section.kind] ?? "📌"} <b>${escapeHtml(titles[section.kind])}</b>`, index === 0 ? "\n" : "\n\n");
     section.items.forEach(item => text(`• ${item}`));
+  });
+  if (!sections.length) {
+    append(en ? "📌 <b>Terms &amp; Conditions</b>" : "📌 <b>Syarat &amp; Ketentuan</b>", "\n");
   }
-  (copy?.notes ?? []).forEach(note => text(`• ${note}`));
-  if (!copy?.sections.length && !copy?.notes.length) {
+  notes.forEach(note => text(`• ${note}`));
+  if (!sections.length && !notes.length) {
     text(en ? "Follow the terms in the product description. If anything is unclear, contact the admin via /bantuan." : "Ikuti ketentuan pada deskripsi produk. Jika belum jelas, hubungi admin melalui /bantuan.");
   }
 
-  append(en ? "<b>How to Use / Activation</b>" : "<b>Cara Penggunaan / Aktivasi</b>");
+  append(en ? "🚀 <b>How to Use / Activation</b>" : "🚀 <b>Cara Penggunaan / Aktivasi</b>");
   for (const group of copy?.activation ?? []) {
-    if (group.title) text(group.title);
+    if (group.title) append(`<i>${escapeHtml(truncate(group.title, 200))}</i>`, "\n");
     group.steps.forEach((step, index) => text(`${index + 1}. ${step}`));
   }
   if (!copy?.activation.length) {
     text(en ? "No specific guide yet. Contact the admin via /bantuan for usage/activation help for this product." : "Panduan khusus belum tersedia. Hubungi admin melalui /bantuan untuk petunjuk penggunaan/aktivasi produk ini.");
   }
 
-  append(en ? "<b>Warranty claim terms</b>" : "<b>Syarat klaim garansi</b>");
+  append(CREDENTIAL_SEPARATOR);
   const claimPolicy = en ? marketWarrantyClaimEn : marketWarrantyClaim;
-  text(`${claimPolicy.eligibility}. ${en ? "Warranty length and coverage follow the product terms." : "Masa dan cakupan garansi mengikuti ketentuan produk."}`);
-  claimPolicy.requirements.forEach((requirement, index) => text(`${index + 1}. ${requirement}`));
-  claimPolicy.notes.forEach(textLine => text(textLine));
-  text(claimPolicy.closing);
-  append(en ? "Keep these access details private, do not share them. Keep the invoice for claims.\nHelp: /bantuan. Full terms: /garansi" : "Simpan detail akses ini, jangan dibagikan. Simpan invoice untuk klaim.\nBantuan: /bantuan. Ketentuan lengkap: /garansi");
+  const claimLines = [
+    `${claimPolicy.eligibility}. ${en ? "Warranty length and coverage follow the product terms." : "Masa dan cakupan garansi mengikuti ketentuan produk."}`,
+    ...claimPolicy.requirements.map((requirement, index) => `${index + 1}. ${requirement}`),
+    ...claimPolicy.notes,
+    claimPolicy.closing,
+  ];
+  const claimHeader = en ? "🧾 <b>Warranty claim terms</b>" : "🧾 <b>Syarat klaim garansi</b>";
+  const claimQuote = `<blockquote expandable>${claimHeader}\n${claimLines.map(escapeHtml).join("\n")}</blockquote>`;
+  if (claimQuote.length <= blockLimit) {
+    append(claimQuote, "\n");
+  } else {
+    append(claimHeader, "\n");
+    claimLines.forEach(line => text(line));
+  }
+
+  append(CREDENTIAL_SEPARATOR, "\n");
+  append(en ? "🛒 <b>Thanks for shopping at AXVARA!</b> ✨" : "🛒 <b>Terima kasih sudah belanja di AXVARA!</b> ✨", "\n");
+  append(en ? "<i>Keep these access details private, do not share them. Keep the invoice for claims.</i>" : "<i>Simpan detail akses ini, jangan dibagikan. Simpan invoice untuk klaim.</i>", "\n");
   messages.push(current);
   return messages;
 }

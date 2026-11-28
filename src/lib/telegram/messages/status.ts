@@ -53,7 +53,7 @@ export function orderPaidMessage(
       ? (en ? `Made By Order — usually under 1 hour, up to ${hours} hours. Sent automatically to this chat.` : `Made By Order — umumnya kurang dari 1 jam, maksimal ${hours} jam. Dikirim otomatis ke chat ini.`)
       : (en ? `An admin will send the product to this private chat — usually under 1 hour, up to ${hours} hours.` : `Produk akan dikirim admin ke chat pribadi ini — umumnya kurang dari 1 jam, maksimal ${hours} jam.`);
   const lines = [
-    en ? "<b>✅ Payment confirmed</b>" : "<b>✅ Pembayaran lunas</b>",
+    en ? "<b>🎉 Payment confirmed</b>" : "<b>🎉 Pembayaran lunas</b>",
     ...(name ? [name] : []),
     `<code>${escapeHtml(truncate(orderCode, 120))}</code>`,
     "",

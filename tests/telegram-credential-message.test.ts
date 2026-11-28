@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildCredentialsTxtFile, credentialMessages, credentialsTxtFilename } from "@/lib/telegram/messages/credential";
 import { marketWarrantyClaim } from "@/lib/warranty-policy";
 import type { VariantCopy } from "@/lib/product-copy/format";
@@ -16,10 +16,17 @@ describe("pesan kredensial Telegram dengan panduan pasca-bayar", () => {
     const messages = credentialMessages({ plaintext: "buyer@mail.test|p<ass&", orderCode: "AXV-TEST", productName: "Produk <Premium>", copy });
     expect(messages).toHaveLength(1);
     const html = messages[0];
-    expect(html).toContain("<b>📦 Produk siap</b>");
+    expect(html).toContain("🛍 <b>Produk &lt;Premium&gt;</b>");
+    expect(html).toContain("🎁 <b>Produk siap</b> · <code>AXV-TEST</code>");
     expect(html).toContain("<pre>buyer@mail.test|p&lt;ass&amp;</pre>");
-    expect(html.indexOf("Syarat &amp; Ketentuan")).toBeGreaterThan(html.indexOf("</pre>"));
-    expect(html.indexOf("Cara Penggunaan / Aktivasi")).toBeGreaterThan(html.indexOf("Syarat &amp; Ketentuan"));
+    expect(html).toContain("Ketuk blok di atas untuk menyalin");
+    expect(html.indexOf("⚠️ <b>Aturan pakai</b>")).toBeGreaterThan(html.indexOf("</pre>"));
+    expect(html.indexOf("Cara Penggunaan / Aktivasi")).toBeGreaterThan(html.indexOf("Aturan pakai"));
+    expect(html).toContain("<blockquote expandable>🧾 <b>Syarat klaim garansi</b>");
+    expect(html).toContain("Terima kasih sudah belanja di AXVARA!");
+    expect(html).not.toContain("/garansi");
+    // Poin dalam satu bagian tidak lagi dipisah baris kosong.
+    expect(html).toContain("• Jangan mengganti password &lt;akun&gt; &amp; email.\n• Simpan invoice.");
     expect(html.indexOf("Syarat klaim garansi")).toBeGreaterThan(html.indexOf("Cara Penggunaan / Aktivasi"));
     expect(html).toContain("Jangan mengganti password &lt;akun&gt; &amp; email.");
     expect(html).toContain("1. Buka aplikasi resmi.");
@@ -78,6 +85,18 @@ describe("pesan kredensial Telegram dengan panduan pasca-bayar", () => {
   });
 });
 
+describe("logo aplikasi di header kredensial", () => {
+  it("memakai logo produk yang dikenal dan bahasa Inggris untuk locale en", () => {
+    vi.stubEnv("TELEGRAM_CUSTOM_EMOJI", "on");
+    const html = credentialMessages({ plaintext: "x", orderCode: "AXV-1", productName: "Canva Pro / Premium — Invite 1 Bulan", copy, locale: "en" }).join("\n");
+    expect(html).toMatch(/^<tg-emoji emoji-id="\d+">🛍<\/tg-emoji> <b>Canva Pro/);
+    expect(html).toContain("🎁 <b>Product ready</b>");
+    expect(html).toContain("⚠️ <b>Usage rules</b>");
+    expect(html).toContain("Thanks for shopping at AXVARA!");
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("Item 14 — multi-unit credentials as a .txt file", () => {
   it("lists each unit verbatim with a numbered header, terms, and claim rules", () => {
     const txt = buildCredentialsTxtFile({
@@ -96,6 +115,7 @@ describe("Item 14 — multi-unit credentials as a .txt file", () => {
     expect(txt).not.toContain("&amp;");
     expect(txt).toContain("Syarat klaim garansi");
     expect(txt).toContain(marketWarrantyClaim.eligibility);
+    expect(txt).not.toContain("/garansi");
   });
 
   it("uses an EN body when locale is en and sanitizes the filename", () => {

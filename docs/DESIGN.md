@@ -2900,3 +2900,7 @@ putih 10 %. Berkas: `favicon.svg`, `favicon.ico` (PNG 16/32/48), `apple-touch-ic
 penuh tanpa sudut, iOS memberi mask), `icon-192.png`, `icon-512.png`; dirujuk lewat
 `faviconIcons()` (`src/lib/favicons.ts`) di layout root/Pedia dan `gamesMetadata`. `public/favicon.svg`
 dan `public/favicon.ico` root = set Market (fallback).
+
+
+### Pesan kredensial Bot Telegram (2026-11-28)
+Hanya Telegram: header logo aplikasi + nama produk, `🎁 Produk siap · kode`, pemisah `━━━━━━━━━━━━━━━━`, kredensial di blok copy `<pre>`, judul bagian berikon emoji animasi (📌📦⚠️🛡🚀), syarat klaim di kutipan buka-tutup 🧾, penutup `🛒 Terima kasih sudah belanja di AXVARA! ✨`. Pesan lunas memakai 🎉. Pengecualian dari aturan "maks 1 emoji per pesan transaksi" khusus pesan kredensial atas permintaan owner. Rincian di ARCHITECTURE (Tata letak pesan kredensial Telegram).
